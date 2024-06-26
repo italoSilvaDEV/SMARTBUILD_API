@@ -1,0 +1,68 @@
+import { Request, Response } from "express";
+import { prisma } from "../../utils/prisma";
+import { deleteFile } from "../../config/file";
+
+export class CreateCategoryController {
+
+    constructor() {
+        this.handle = this.handle.bind(this);
+        this.deleteFiles = this.deleteFiles.bind(this);
+    }
+
+    deleteFiles(file: string, requestFile: string | undefined) {
+        deleteFile(`./public/tmp/category/${file}`);
+        deleteFile(`./public/tmp/category/${requestFile}`);
+    }
+
+    async handle(request: Request, response: Response) {
+        try {
+            const {
+                category_name,
+                type_category
+            } = request.body;
+
+            if (!category_name || !type_category) {
+                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                throw new Error("Category name and type are required!");
+            }
+
+            let file = "";
+            if (request.file) {
+                file = `${request.file.filename.split('.')[0]}.webp`;
+            }
+
+            const category = await prisma.category.findFirst({
+                where: {
+                    category_name: category_name,
+                    type_category: type_category
+                }
+            });
+
+            if (category) {
+                this.deleteFiles(file, request.file?.filename);
+                throw new Error("This category has already been registered!");
+            }
+
+            const result = await prisma.category.create({
+                data: {
+                    category_name,
+                    status_category: true,
+                    type_category,
+                    category_img: file
+                },
+            });
+
+            deleteFile(`./public/tmp/category/${request.file?.filename}`)
+
+            return response.json(result);
+
+        } catch (error) {
+            //console.error(error);
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Erro interno do servidor" });
+
+        }
+    }
+}
