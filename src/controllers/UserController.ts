@@ -134,9 +134,9 @@ export class UserController {
             const { email, password } = req.body;
 
             if (!email || !password) {
-                throw new Error("Fill in the mandatory fields")
+                return res.status(400).json({ error: "User or password is required!" });
+                //throw new Error("Fill in the mandatory fields")
             }
-
 
             const user = await prisma.user.findUnique({
                 where: {
@@ -145,13 +145,15 @@ export class UserController {
             });
 
             if (!user) {
-                throw new Error("User or password invalid!")
+                return res.status(400).json({ error: "User or password invalid!" });
+                //throw Error("User or password invalid!")
             }
 
             const isValidPassword = await bcrypt.compare(password, user.password);
 
             if (!isValidPassword) {
-                throw new Error("User or password invalid!")
+                return res.status(400).json({ error: "User or password invalid!" });
+                //throw Error("User or password invalid!")
             }
 
             const token = Jwt.sign(
@@ -167,7 +169,7 @@ export class UserController {
             );
 
             // return res.json({ user, token });
-            return res.status(200).json({
+            return res.json({
                 msg: "Authentication completed successfully!",
                 token,
                 rules: user.rules,
