@@ -24,6 +24,7 @@ export class UserController {
     }
 
     async create(req: Request, res: Response) {
+        
         function validateNewUser(data: INewUser): string | null {
             if (!data.name) return "Name is required";
             if (!data.email) return "Email is required";
@@ -74,8 +75,7 @@ export class UserController {
             //senha temporária
             const pass = crypto.randomBytes(3).toString('hex').toUpperCase();
             const hashedPassword = bcrypt.hashSync(pass, 10);
-            //const hashedPassword = bcrypt.hashSync(data.password, 10);
-
+            
             //email
             const SMTP_CONFIG = require('../config/smtp')
             const transporter = nodemailer.createTransport({
@@ -108,7 +108,6 @@ export class UserController {
                     city_and_state: data.city_and_state,
                     rules: JSON.stringify(data.rules) || {},
                     office_id: data.office_id,
-                    //password: hashedPassword,
                     password: hashedPassword
 
                 },

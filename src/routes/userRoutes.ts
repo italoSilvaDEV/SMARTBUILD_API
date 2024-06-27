@@ -13,8 +13,8 @@ const User = new UserController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/user"))
 //criar
 userRoutes.post("/user",
-    checkToken,
-    uploadPhoto.single("file"),
+    // checkToken,
+    uploadPhoto.single("avatar"),
     compressImage("user"),
     User.create)
 
