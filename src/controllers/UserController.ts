@@ -9,7 +9,6 @@ import { INewUser } from "../DTOs/IUser";
 import { deleteFile } from "../config/file";
 import { validationResult } from "express-validator";
 import { NewUser } from "../templateEmail/newUser";
-import fs from 'fs';
 
 
 export class UserController {
@@ -34,26 +33,23 @@ export class UserController {
         }
         const file = req.file?.filename;
         const nameFile = `${req.file?.filename.split(".")[0]}.webp`;
-        
+
         try {
-           
+
             const errors = validationResult(req);
-            if (!errors.isEmpty()) { 
+            if (!errors.isEmpty()) {
                 this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
                 return res.status(400).json({ errors: errors.array() });
             }
 
             const data: INewUser = req.body;
-            //const file = req.file?.filename;
-            //const nameFile = `${req.file?.filename.split(".")[0]}.webp`;
-
-           const validationError = validateNewUser(data);
+            const validationError = validateNewUser(data);
             if (validationError) {
                 this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
                 return res.status(400).json({ error: validationError });
             }
 
-            // Verificar se o e-mail já está registrado
+            //verifica se email existe
             const userExists = await prisma.user.findUnique({
                 where: {
                     email: data.email
@@ -64,7 +60,7 @@ export class UserController {
                 return res.status(400).json({ error: "Email has already been registered in the system" });
             }
 
-            // Verificar se o documento já está registrado
+            // Verificar se o documento existe
             const documentExists = await prisma.user.findUnique({
                 where: {
                     document: data.document
@@ -75,11 +71,13 @@ export class UserController {
                 return res.status(400).json({ error: "Document has already been registered in the system" });
             }
 
+            //senha temporária
             const pass = crypto.randomBytes(3).toString('hex').toUpperCase();
             const hashedPassword = bcrypt.hashSync(pass, 10);
+            //const hashedPassword = bcrypt.hashSync(data.password, 10);
 
+            //email
             const SMTP_CONFIG = require('../config/smtp')
-
             const transporter = nodemailer.createTransport({
                 host: SMTP_CONFIG.host,
                 port: SMTP_CONFIG.port,
@@ -110,13 +108,14 @@ export class UserController {
                     city_and_state: data.city_and_state,
                     rules: JSON.stringify(data.rules) || {},
                     office_id: data.office_id,
-                    password: hashedPassword,
+                    //password: hashedPassword,
+                    password: hashedPassword
+
                 },
             });
             deleteFile(`./public/tmp/user/${req.file?.filename}`)
             await transporter.sendMail(mailOptions);
 
-            
             return res.status(201).json({ message: "User created successfully" });
         } catch (error: any) {
             console.error(error);
@@ -125,15 +124,18 @@ export class UserController {
 
     }
 
-
-
-
     async authenticate(req: Request, res: Response) {
         try {
+
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({ errors: errors.array() });
+            }
+
             const { email, password } = req.body;
 
             if (!email || !password) {
-                throw Error("Fill in the mandatory fields")
+                throw new Error("Fill in the mandatory fields")
             }
 
 
@@ -144,13 +146,13 @@ export class UserController {
             });
 
             if (!user) {
-                throw Error("User or password invalid!")
+                throw new Error("User or password invalid!")
             }
 
             const isValidPassword = await bcrypt.compare(password, user.password);
 
             if (!isValidPassword) {
-                throw Error("User or password invalid!")
+                throw new Error("User or password invalid!")
             }
 
             const token = Jwt.sign(
@@ -176,9 +178,11 @@ export class UserController {
                     name: user.name,
                 },
             })
-        } catch (error: any) {
-            console.error(error);
-            throw Error(error.message || "Internal error")
+        } catch (error) {
+            if (error instanceof Error) {
+                return res.json({ error: error.message });
+            }
+            return res.json({ error: "Internal error" });
         }
     }
 
@@ -235,32 +239,99 @@ export class UserController {
 
             return response.json();
         } catch (error: any) {
-            console.error(error);
-            throw Error(error.message || "Internal error")
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal error" });
         }
     }
 
-    async searchOneUser(request: Request, response: Response) {
+    async updateImg(request: Request, response: Response) {
+        try {
+            const {
+                id,
+            } = request.params;
 
-        let { id } = request.params
-        const result = await prisma.user.findUnique({
-            where: {
-                id
-            },
-            select: {
-                id: true,
-                email: true,
-                name: true,
-                avatar: true,
-                phone: true,
-                document: true,
-                rules: true,
-                city_and_state: true,
-                office: true,
+            let file = ""
+            file = `${request.file?.filename.split('.')[0]}.webp`;
+
+            const user = await prisma.user.findUnique({
+                where: {
+                    id
+                }
+            });
+
+            if (!user) {
+                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                throw new Error("Id invalid!");
             }
-        })
 
-        return response.json(result)
+            await prisma.user.update({
+                where: {
+                    id
+                },
+                data: {
+                    avatar: file
+                }
+            })
+
+            if (user) {
+                deleteFile(`./public/tmp/user/${user.avatar}`)
+            }
+            deleteFile(`./public/tmp/catalog/${request.file?.filename}`)
+
+            return response.json();
+        } catch (error: any) {
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal error" });
+        }
+
+
+    }
+
+    async searchOneUser(request: Request, response: Response) {
+        try {
+
+            let { id } = request.params
+            const user = await prisma.user.findUnique({
+                where: { id }
+            });
+
+            if (!user) {
+                throw Error("User not found!");
+            }
+            const result = await prisma.user.findUnique({
+                where: {
+                    id
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                    avatar: true,
+                    phone: true,
+                    document: true,
+                    //rules: true,                                    
+                    city_and_state: true,
+                    office: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                }
+            })
+
+            return response.json(result)
+        } catch (error) {
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Erro interno do servidor" });
+        }
+
     };
 
     async serchAllUser(request: Request, response: Response) {
@@ -307,24 +378,31 @@ export class UserController {
     }
 
     async delete(request: Request, response: Response) {
+        try {
+            let { id } = request.params
 
-        let { id } = request.params
+            const user = await prisma.user.findUnique({
+                where: { id }
+            });
 
-        const user = await prisma.user.findUnique({
-            where: { id }
-        });
-
-        if (!user) {
-            throw Error("User not found!");
-        }
-
-        await prisma.user.delete({
-            where: {
-                id: id
+            if (!user) {
+                throw new Error("User not found!");
             }
 
-        })
-        return response.json();
+            await prisma.user.delete({
+                where: {
+                    id: id
+                }
+
+            })
+            return response.json();
+        } catch (error) {
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal error" });
+        }
+
     }
 
     async sendMailRecover(request: Request, response: Response) {
@@ -359,8 +437,7 @@ export class UserController {
         const transporter = nodemailer.createTransport({
             host: SMTP_CONFIG.host,
             port: SMTP_CONFIG.port,
-            //secure: false,
-            secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports,
+            secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
             auth: {
                 user: SMTP_CONFIG.user,
                 pass: SMTP_CONFIG.pass
@@ -369,7 +446,6 @@ export class UserController {
                 rejectUnauthorized: false
             }
         });
-
 
         // Verificar a configuração do transportador
         transporter.verify((error, success) => {
@@ -380,7 +456,7 @@ export class UserController {
             }
         });
 
-        const templateEmail = RecoverPassword(user.name.toUpperCase(), token)
+        const templateEmail = RecoverPassword(user.name.toUpperCase(), token);
         const mailOptions = {
             from: SMTP_CONFIG.user,
             to: email,
@@ -390,44 +466,55 @@ export class UserController {
 
         try {
             const result = await transporter.sendMail(mailOptions);
-            console.log("e-mail enviado com sucesso!")
+            console.log("e-mail enviado com sucesso!");
             return response.json(result);
         } catch (error) {
-            return response.json(error)
+            console.error("Erro ao enviar e-mail:", error);
+            return response.status(500).json({ error: "Erro ao enviar e-mail" });
         }
     }
 
     async updatePassword(request: Request, response: Response) {
-        const { code, pass, confirmPass } = request.body;
-        if (pass != confirmPass) {
-            throw Error("Passwords do not match")
-        }
-        const password = bcrypt.hashSync(pass, 10)
-
-        const user = await prisma.user.findUnique({
-            where: {
-                token_recover_password: code
-            }
-        })
-
-        if (!user) {
-            throw new Error("Código inválido!")
-        }
-
-        const result = await prisma.user.update({
-            where: {
-                email: user.email
-            },
-            data: {
-                token_recover_password: null,
-                password: password
-            }
-        })
         try {
+            const { code, pass, confirmPass } = request.body;
+            if (!pass || !confirmPass) {
+                throw new Error("Fill in the mandatory fields")
+            }
+
+            if (pass != confirmPass) {
+                throw new Error("Passwords do not match")
+            }
+            const password = bcrypt.hashSync(pass, 10)
+
+            const user = await prisma.user.findUnique({
+                where: {
+                    token_recover_password: code
+                }
+            })
+
+            if (!user) {
+                throw new Error("Código inválido!")
+            }
+
+            const result = await prisma.user.update({
+                where: {
+                    email: user.email
+                },
+                data: {
+                    token_recover_password: null,
+                    password: password
+                }
+            })
             return response.json(result);
+
+
         } catch (error) {
-            return response.json(error)
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal error" });
         }
+
     }
 
 

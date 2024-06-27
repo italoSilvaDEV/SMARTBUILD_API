@@ -3,7 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 
 
-export class UpdateImgCategoryController {
+export class UpdateCatalogController {
 
     constructor() {
         this.handle = this.handle.bind(this);
@@ -11,54 +11,62 @@ export class UpdateImgCategoryController {
     }
 
     deleteFiles(file: string, requestFile: string | undefined) {
-        deleteFile(`./public/tmp/category/${file}`);
-        deleteFile(`./public/tmp/category/${requestFile}`);
+        deleteFile(`./public/tmp/catalog/${file}`);
+        deleteFile(`./public/tmp/catalog/${requestFile}`);
     }
 
     async handle(request: Request, response: Response) {
-        try{
+        try {
             const {
                 id,
             } = request.params;
-    
+
+            const {
+                catalog_name,
+            } = request.body
+
             let file = ""
             file = `${request.file?.filename.split('.')[0]}.webp`;
-    
-            const category = await prisma.category.findUnique({
+
+            if (!catalog_name) {
+                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                throw new Error("Catalog name is required!");
+            }
+
+            const catalog = await prisma.catalog.findUnique({
                 where: {
                     id
                 }
             });
-    
-            if (!category) {
+
+            if (!catalog) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Category name and type are required!");
+                throw new Error("Catalog name and type are required!");
             }
-    
-    
-            await prisma.category.update({
+
+
+            await prisma.catalog.update({
                 where: {
                     id
                 },
                 data: {
-                    category_img: file
+                    catalog_img: file
                 }
             })
-    
-            if (category) {
-                deleteFile(`./public/tmp/category/${category.category_img}`)
+
+            if (catalog) {
+                deleteFile(`./public/tmp/catalog/${catalog.catalog_img}`)
             }
             deleteFile(`./public/tmp/catalog/${request.file?.filename}`)
-    
-                
+
             return response.json();
-        }catch(error){
+        } catch (error) {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
             return response.json({ error: "Internal error" });
         }
-        
+
 
     }
 }

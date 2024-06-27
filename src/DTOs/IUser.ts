@@ -29,6 +29,8 @@ export interface INewUser {
   rules?: JSON;
   //office: IOffice;
   office_id: string;
+  //apenas pate corrigir email
+  password: string
 }
 
 

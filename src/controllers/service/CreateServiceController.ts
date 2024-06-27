@@ -16,19 +16,6 @@ export class CreateServiceController {
                 price_maximum,
             } = request.body;
 
-            const authHeader = request.headers.authorization;
-            const token = authHeader && authHeader.split(" ")[1];
-            const secret = process.env.SECRET_JWT;
-
-            if (!token) {
-                throw new Error('Token inválido');
-            }
-
-            const decoded = decodeToken(token, String(secret));
-            if (!decoded) {
-                throw new Error("Erro ao decodificar token!");
-            }
-
             const subCategory = await prisma.subCategory.findFirst({
                 where: {
                     id: sub_category_id
