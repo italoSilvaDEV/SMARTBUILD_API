@@ -408,9 +408,9 @@ export class UserController {
 
     async sendMailRecover(request: Request, response: Response) {
         const { email } = request.body;
-
+        
         if (!email) {
-            throw new Error("e-mail is mandatory!")
+            return response.status(400).json({ error: "e-mail is mandatory" });
         }
 
         ///check if user exists
@@ -421,7 +421,7 @@ export class UserController {
         })
 
         if (!user) {
-            throw new Error("User not found!")
+            return response.status(400).json({ error: "User not found!" });
         }
         const token = crypto.randomBytes(3).toString('hex').toUpperCase();
         await prisma.user.update({
@@ -479,11 +479,12 @@ export class UserController {
         try {
             const { code, pass, confirmPass } = request.body;
             if (!pass || !confirmPass) {
-                throw new Error("Fill in the mandatory fields")
+                return response.status(400).json({ error: "Fill in the mandatory fields" });
+                
             }
 
             if (pass != confirmPass) {
-                throw new Error("Passwords do not match")
+                return response.status(400).json({ error: "Passwords do not match" });
             }
             const password = bcrypt.hashSync(pass, 10)
 
@@ -494,7 +495,7 @@ export class UserController {
             })
 
             if (!user) {
-                throw new Error("Código inválido!")
+                return response.status(400).json({ error: "Invalid recovery code" });
             }
 
             const result = await prisma.user.update({
