@@ -35,6 +35,9 @@ userRoutes.put("/user/img/:id",
 // search one user
 userRoutes.get("/user/consulta/:id", checkToken, User.searchOneUser)
 
+// search one user
+userRoutes.get("/user/office", checkToken, User.serchOfficeUser)
+
 //Busca all user
 userRoutes.post("/user/consulta", checkToken, User.serchAllUser)
 

@@ -24,7 +24,7 @@ export class UserController {
     }
 
     async create(req: Request, res: Response) {
-        
+
         function validateNewUser(data: INewUser): string | null {
             if (!data.name) return "Name is required";
             if (!data.email) return "Email is required";
@@ -33,7 +33,7 @@ export class UserController {
             return null;
         }
         const file = req.file?.filename;
-        const nameFile = `${req.file?.filename.split(".")[0]}.webp`;
+        const nameFile = file ?`${req.file?.filename.split(".")[0]}.webp` : null;
 
         try {
 
@@ -72,10 +72,21 @@ export class UserController {
                 return res.status(400).json({ error: "Document has already been registered in the system" });
             }
 
+            // Verificar se o office existe 
+            const office = await prisma.user.findMany({
+                where: {
+                    office_id: data.office_id
+                }
+            });
+            if (!office) {
+                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+                return res.status(400).json({ error: "office invalid" });
+            }
+
             //senha temporária
             const pass = crypto.randomBytes(3).toString('hex').toUpperCase();
             const hashedPassword = bcrypt.hashSync(pass, 10);
-            
+
             //email
             const SMTP_CONFIG = require('../config/smtp')
             const transporter = nodemailer.createTransport({
@@ -139,6 +150,19 @@ export class UserController {
             }
 
             const user = await prisma.user.findUnique({
+                select: {
+                    id: true,
+                    name: true,
+                    password: true,
+                    email: true,
+                    rules: true,
+                    office: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                },
                 where: {
                     email
                 }
@@ -177,6 +201,7 @@ export class UserController {
                     id: user.id,
                     email: user.email,
                     name: user.name,
+                    office: user.office.name
                 },
             })
         } catch (error) {
@@ -336,47 +361,48 @@ export class UserController {
     };
 
     async serchAllUser(request: Request, response: Response) {
-        const { name, email, pag } = request.body
-
-
+        const { name, email, pag } = request.body;
+      
         const filtro: any = {};
         const name_full: any = {};
-
+      
         if (name) { name_full.name = { contains: name } };
         if (email) { filtro.email = { contains: email } };
-
+      
         const result = await prisma.user.findMany({
-            skip: Number(pag) * 20,
-            take: 20,
-            orderBy: {
-                name: "asc"
+          skip: Number(pag) * 8,
+          take: 8,
+          orderBy: {
+            //name: "asc"
+            date_creation: "desc"
+          },
+          where: {
+            AND: [filtro, { OR: [name_full] }]
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+            document: true,
+            office: {
+              select: {
+                name: true
+              }
             },
-            where: {
-                AND: [filtro, { OR: [name_full] }]
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true,
-                document: true,
-                office: {
-                    select: {
-                        name: true
-                    }
-                },
-                city_and_state: true
-            }
-        })
+            city_and_state: true
+          }
+        });
+      
         const total = await prisma.user.count({
-            where: {
-                AND: [filtro, { OR: [name_full] }]
-            }
-        })
-
-
+          where: {
+            AND: [filtro, { OR: [name_full] }]
+          }
+        });
+      
         return response.json({ users: result, total });
-    }
+      }
+      
 
     async delete(request: Request, response: Response) {
         try {
@@ -408,7 +434,7 @@ export class UserController {
 
     async sendMailRecover(request: Request, response: Response) {
         const { email } = request.body;
-        
+
         if (!email) {
             return response.status(400).json({ error: "e-mail is mandatory" });
         }
@@ -480,7 +506,7 @@ export class UserController {
             const { code, pass, confirmPass } = request.body;
             if (!pass || !confirmPass) {
                 return response.status(400).json({ error: "Fill in the mandatory fields" });
-                
+
             }
 
             if (pass != confirmPass) {
@@ -517,6 +543,23 @@ export class UserController {
             return response.json({ error: "Internal error" });
         }
 
+    }
+
+    async serchOfficeUser(request: Request, response: Response) {
+        try {
+            const result = await prisma.office.findMany({
+                select: {
+                    id: true,
+                    name: true,
+                }
+            });
+            return response.json(result);
+        } catch (error) {
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal error" });
+        }
     }
 
 
