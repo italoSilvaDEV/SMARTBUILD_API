@@ -33,7 +33,7 @@ export class UserController {
             return null;
         }
         const file = req.file?.filename;
-        const nameFile = file ?`${req.file?.filename.split(".")[0]}.webp` : null;
+        const nameFile = file ? `${req.file?.filename.split(".")[0]}.webp` : null;
 
         try {
 
@@ -201,7 +201,7 @@ export class UserController {
                     id: user.id,
                     email: user.email,
                     name: user.name,
-                    office: user.office.name
+                    office: user.office
                 },
             })
         } catch (error) {
@@ -213,44 +213,85 @@ export class UserController {
     }
 
     async update(request: Request, response: Response) {
+        const {
+            id,
+            name,
+            email,
+            document,
+            city_and_state,
+            office,
+            phone,
+            current_password,
+            password,
+            confirm_password,
+        } = request.body;
+    
+        // Função de validação
+        function validateUserData(data: any): string | null {
+            if (!data.name) return "Name is required";
+            if (!data.email) return "Email is required";
+            if (!data.document) return "Document is required";
+            if (!data.office.id) return "Office ID is required";
+            return null;
+        }
+    
+        const validationError = validateUserData(request.body);
+        if (validationError) {
+            return response.status(400).json({ error: validationError });
+        }
+    
         try {
-            const {
-                id,
-                name,
-                email,
-                current_password,
-                password,
-                confirm_password,
-            } = request.body;
-
-
             const user = await prisma.user.findUnique({
                 where: { id }
             });
-
+    
             if (!user) {
-                throw Error("User not found!");
+                return response.status(404).json({ error: "User not found!" });
             }
-
+    
             if (password && password !== confirm_password) {
-                throw Error("Passwords do not match")
+                return response.status(400).json({ error: "Passwords do not match" });
             }
-
+    
+            // Check if email is different and already in use
+            if (email !== user.email) {
+                const emailExists = await prisma.user.findUnique({
+                    where: { email }
+                });
+                if (emailExists) {
+                    return response.status(400).json({ error: "Email already registered" });
+                }
+            }
+    
+            // Check if document is different and already in use
+            if (document !== user.document) {
+                const documentExists = await prisma.user.findUnique({
+                    where: { document }
+                });
+                if (documentExists) {
+                    return response.status(400).json({ error: "Document already registered" });
+                }
+            }
+    
             if (current_password && password) {
                 const checkPassword = await bcrypt.compare(current_password, user.password);
-
+    
                 if (!checkPassword) {
-                    throw Error("Invalid current password!")
+                    return response.status(400).json({ error: "Invalid current password!" });
                 }
-
+    
                 const hashedPassword = bcrypt.hashSync(password, 10);
-
+    
                 await prisma.user.update({
                     where: { id },
                     data: {
                         name,
                         email,
                         password: hashedPassword,
+                        document,
+                        city_and_state,
+                        office_id: office.id,
+                        phone,
                     }
                 });
             } else {
@@ -259,18 +300,23 @@ export class UserController {
                     data: {
                         name,
                         email,
+                        document,
+                        city_and_state,
+                        office_id: office.id,
+                        phone,
                     }
                 });
             }
-
-            return response.json();
+    
+            return response.json({ message: "User updated successfully" });
         } catch (error: any) {
             if (error instanceof Error) {
-                return response.json({ error: error.message });
+                return response.status(500).json({ error: error.message });
             }
-            return response.json({ error: "Internal error" });
+            return response.status(500).json({ error: "Internal error" });
         }
     }
+    
 
     async updateImg(request: Request, response: Response) {
         try {
@@ -362,47 +408,47 @@ export class UserController {
 
     async serchAllUser(request: Request, response: Response) {
         const { name, email, pag } = request.body;
-      
+
         const filtro: any = {};
         const name_full: any = {};
-      
+
         if (name) { name_full.name = { contains: name } };
         if (email) { filtro.email = { contains: email } };
-      
+
         const result = await prisma.user.findMany({
-          skip: Number(pag) * 8,
-          take: 8,
-          orderBy: {
-            //name: "asc"
-            date_creation: "desc"
-          },
-          where: {
-            AND: [filtro, { OR: [name_full] }]
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-            document: true,
-            office: {
-              select: {
-                name: true
-              }
+            skip: Number(pag) * 8,
+            take: 8,
+            orderBy: {
+                //name: "asc"
+                date_creation: "desc"
             },
-            city_and_state: true
-          }
+            where: {
+                AND: [filtro, { OR: [name_full] }]
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                document: true,
+                office: {
+                    select: {
+                        name: true
+                    }
+                },
+                city_and_state: true
+            }
         });
-      
+
         const total = await prisma.user.count({
-          where: {
-            AND: [filtro, { OR: [name_full] }]
-          }
+            where: {
+                AND: [filtro, { OR: [name_full] }]
+            }
         });
-      
+
         return response.json({ users: result, total });
-      }
-      
+    }
+
 
     async delete(request: Request, response: Response) {
         try {
