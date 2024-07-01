@@ -13,8 +13,8 @@ const User = new UserController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/user"))
 //criar
 userRoutes.post("/user",
-    checkToken,
-    uploadPhoto.single("file"),
+    // checkToken,
+    uploadPhoto.single("avatar"),
     compressImage("user"),
     User.create)
 
@@ -34,6 +34,9 @@ userRoutes.put("/user/img/:id",
 
 // search one user
 userRoutes.get("/user/consulta/:id", checkToken, User.searchOneUser)
+
+// search one user
+userRoutes.get("/user/office", checkToken, User.serchOfficeUser)
 
 //Busca all user
 userRoutes.post("/user/consulta", checkToken, User.serchAllUser)

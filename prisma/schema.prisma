@@ -8,23 +8,26 @@ datasource db {
 }
 
 model User {
-
-  id                     String    @id @default(uuid())
+  id                     String        @id @default(uuid())
   avatar                 String?
   name                   String
-  email                  String    @unique
-  document               String    @unique
+  email                  String        @unique
+  document               String        @unique
   phone                  String?
   city_and_state         String?
   password               String
   rules                  Json
-  token_recover_password String?   @unique
+  token_recover_password String?       @unique
   autorId                String?
   last_acess             DateTime?
-  date_creation          DateTime  @default(now())
-  date_update            DateTime  @updatedAt
-  office                 Office    @relation(fields: [office_id], references: [id])
+  date_creation          DateTime      @default(now())
+  date_update            DateTime      @updatedAt
   office_id              String
+  office                 Office        @relation(fields: [office_id], references: [id])
+  userLikedCostProject   CostProject[] @relation("userLikedProject")
+  seller_project         Project[]     @relation("seller")
+
+  @@index([office_id], map: "User_office_id_fkey")
 }
 
 model Office {
@@ -40,61 +43,132 @@ model Rules {
   name          String
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-
 }
 
 model Category {
-  id String @id @default(uuid())
-
-  type_category String //residencial || comercial
-  category_img String?
-  status_category Boolean ?
-  category_name    String
-
-  autorId       String?
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-
-  sub_category SubCategory[]
+  id              String        @id @default(uuid())
+  status_category Boolean?
+  category_name   String
+  autorId         String?
+  date_creation   DateTime      @default(now())
+  date_update     DateTime      @updatedAt
+  category_img    String?
+  type_category   String
+  sub_category    SubCategory[]
 
   @@map("service")
 }
 
 model SubCategory {
-  id String @id @default(uuid())
+  id                 String    @id @default(uuid())
+  status_subcategory Boolean?
+  subcategory_name   String
+  autorId            String?
+  date_creation      DateTime  @default(now())
+  date_update        DateTime  @updatedAt
+  category_id        String
+  subcategory        Category  @relation(fields: [category_id], references: [id])
+  service            Service[]
 
-  status_subcategory       Boolean ?
-  subcategory_name String
-
-  autorId       String?
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-
-  subcategory Category @relation(fields: [category_id], references: [id])
-  category_id String
-
-  service Service[]
-
+  @@index([category_id], map: "subcategory_category_id_fkey")
   @@map("subcategory")
 }
 
 model Service {
-  id String @id @default(uuid())
-
-  service_name String
-  type_variable String //produto ou medir(measure/product)
-  price_type    String //fixe ou variável(fixe/variable)
-
-  price_fixe    Decimal?
-  price_minimum Decimal?
-  price_maximum Decimal?
-
-  service         SubCategory @relation(fields: [sub_category_id], references: [id])
+  id              String        @id @default(uuid())
+  service_name    String
+  type_variable   String
+  price_type      String
+  price_fixe      Decimal?
+  price_minimum   Decimal?
+  price_maximum   Decimal?
   sub_category_id String
+  autorId         String?
+  date_creation   DateTime      @default(now())
+  date_update     DateTime      @updatedAt
+  costProject     CostProject[]
+  service         SubCategory   @relation(fields: [sub_category_id], references: [id])
 
+  @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
+  @@map("variable_service")
+}
+
+model Catalog {
+  id            String   @id @default(uuid())
+  catalog_img   String?
+  catalog_name  String
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  @@map("variable_service")
+  @@map("catalog")
+}
+
+model Project {
+  id                 String               @id @default(uuid())
+  seller_user_id     String?
+  price              Decimal
+  status_project     String
+  client_id          String?
+  autorId            String?
+  date_creation      DateTime             @default(now())
+  date_update        DateTime             @updatedAt
+  invoiceCostProject InvoiceCostProject[]
+  client             Client?              @relation(fields: [client_id], references: [id])
+  user               User?                @relation("seller", fields: [seller_user_id], references: [id])
+
+  @@index([client_id], map: "project_client_id_fkey")
+  @@index([seller_user_id], map: "project_seller_user_id_fkey")
+  @@map("project")
+}
+
+model Client {
+  id             String    @id @default(uuid())
+  avatar         String?
+  name           String
+  email          String    @unique
+  document       String?   @unique
+  phone          String?
+  city_and_state String?
+  autorId        String?
+  date_creation  DateTime  @default(now())
+  date_update    DateTime  @updatedAt
+  projects       Project[]
+}
+
+model InvoiceCostProject {
+  id                          String        @id @default(uuid())
+  original_file_name          String?
+  uri                         String?
+  project_cost_invoice_exists Boolean
+  autorId                     String?
+  date_creation               DateTime      @default(now())
+  date_update                 DateTime      @updatedAt
+  project_id                  String?
+  costProject                 CostProject[]
+  project                     Project?      @relation(fields: [project_id], references: [id])
+
+  @@index([project_id], map: "invoice_cost_project_project_id_fkey")
+  @@map("invoice_cost_project")
+}
+
+model CostProject {
+  id                      String              @id @default(uuid())
+  material_name           String
+  price                   Decimal
+  amout                   Int
+  userId                  String?
+  service_id              String?
+  invoice_cost_project_id String?
+  autorId                 String?
+  date_creation           DateTime            @default(now())
+  date_update             DateTime            @updatedAt
+  invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
+  service                 Service?            @relation(fields: [service_id], references: [id])
+  user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
+
+  @@index([invoice_cost_project_id], map: "cost_project_invoice_cost_project_id_fkey")
+  @@index([service_id], map: "cost_project_service_id_fkey")
+  @@index([userId], map: "cost_project_userId_fkey")
+  @@map("cost_project")
 }
