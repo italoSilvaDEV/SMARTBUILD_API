@@ -141,6 +141,9 @@ export class UserController {
             const user = await prisma.user.findUnique({
                 where: {
                     email
+                },
+                include:{
+                    office: true
                 }
             });
 
@@ -172,7 +175,7 @@ export class UserController {
             return res.json({
                 msg: "Authentication completed successfully!",
                 token,
-                rules: user.rules,
+                rules: user.office.name,
                 user: {
                     id: user.id,
                     email: user.email,
