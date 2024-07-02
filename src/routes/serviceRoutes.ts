@@ -25,9 +25,9 @@ const serviceRoutes = Router()
 //category
 const createCategoryController = new CreateCategoryController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/category"))
-serviceRoutes.post("/category", 
-    uploadPhoto.single("file"), 
-    compressImage("category"), 
+serviceRoutes.post("/category",
+    uploadPhoto.single("file"),
+    compressImage("category"),
     createCategoryController.handle
 )
 
@@ -41,12 +41,15 @@ serviceRoutes.put("/category/type/alter", checkToken, updateCategoryTypeControll
 
 //putcategoryImg
 const updateImgCategoryController = new UpdateImgCategoryController()
-serviceRoutes.put("/category/img/:id", 
+serviceRoutes.put("/category/img",
     checkToken,
-    uploadPhoto.single("file"), 
-    compressImage("category"), 
+    uploadPhoto.single("file"),
+    compressImage("category"),
     updateImgCategoryController.handle
 )
+serviceRoutes.patch("/category/name", checkToken, updateImgCategoryController.handleName)
+serviceRoutes.patch("/category/status", checkToken, updateImgCategoryController.handleStatus)
+
 
 const deleteCategoryController = new DeleteCategoryController();
 serviceRoutes.delete("/category", checkToken, deleteCategoryController.handle);
@@ -57,30 +60,30 @@ serviceRoutes.post("/categories/find", checkToken, findCategoriesController.hand
 
 //subcategory
 const createSubCategoryController = new CreateSubCategoryController()
-serviceRoutes.post("/subcategory",checkToken,  createSubCategoryController.handle)
+serviceRoutes.post("/subcategory", checkToken, createSubCategoryController.handle)
 
 const updateSubCategoryController = new UpdateSubCategoryController()
-serviceRoutes.put("/subcategory",checkToken,  updateSubCategoryController.handle)
+serviceRoutes.put("/subcategory", checkToken, updateSubCategoryController.handle)
 
 const deleteSubCategoryController = new DeleteSubCategoryController()
-serviceRoutes.delete("/subcategory",checkToken,  deleteSubCategoryController.handle)
+serviceRoutes.delete("/subcategory", checkToken, deleteSubCategoryController.handle)
 
 const findSubCategoryController = new FindSubCategoryController();
-serviceRoutes.post("/subcategories/find",checkToken,  findSubCategoryController.handle);
+serviceRoutes.post("/subcategories/find", checkToken, findSubCategoryController.handle);
 
 
 //service
 const createServiceController = new CreateServiceController()
-serviceRoutes.post("/service",checkToken,  createServiceController.handle)
+serviceRoutes.post("/service", checkToken, createServiceController.handle)
 
 const updateServiceController = new UpdateServiceController()
-serviceRoutes.put("/service",checkToken,  updateServiceController.handle)
+serviceRoutes.put("/service", checkToken, updateServiceController.handle)
 
 const deleteServiceController = new DeleteServiceController();
-serviceRoutes.delete("/service",checkToken,  deleteServiceController.handle);
+serviceRoutes.delete("/service/:service_id", checkToken, deleteServiceController.handle);
 
 const findServiceController = new FindServiceController();
-serviceRoutes.post("/service/find",checkToken,  findServiceController.handle);
+serviceRoutes.post("/service/find", checkToken, findServiceController.handle);
 
 
 export { serviceRoutes }
