@@ -56,8 +56,13 @@ model Category {
   type_category   String
   sub_category    SubCategory[]
 
+  
+
   @@map("service")
 }
+
+
+
 
 model SubCategory {
   id                 String    @id @default(uuid())
@@ -101,7 +106,22 @@ model Catalog {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
+  imgCatalog ImgCatalog[]
+
   @@map("catalog")
+}
+
+model ImgCatalog{
+    id      String @id @default(uuid())
+    uri     String @unique
+    
+    data_criacao DateTime @default(now())
+    authorId     String?
+
+    category   Catalog @relation(fields: [category_id], references: [id])
+    category_id String
+
+  @@map("imgcatalog")
 }
 
 model Project {

@@ -6,19 +6,31 @@ import { UpdateImgCategoryController } from "../controllers/service/UpdateImgCat
 import { checkToken } from "../middlewares/checkToken";
 import { CreateCatalogController } from "../controllers/catalog/CreateCatalogController";
 import { UpdateCatalogController } from "../controllers/catalog/UpdateCatalogController";
+import { CreateImgCatalogController } from "../controllers/catalog/CreateImgCatalogController";
 
 
 
 const catalogRoutes = Router()
 
+const createCatalogController = new CreateCatalogController();
+catalogRoutes.post("/catalog", checkToken, createCatalogController.handle);
+
 //category
-const createCatalogController = new CreateCatalogController()
+const createImgCatalogController = new CreateImgCatalogController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
-catalogRoutes.post("/catalog", 
+catalogRoutes.post("/catalog/img", 
     uploadPhoto.single("file"), 
     compressImage("catalog"), 
-    createCatalogController.handle
+    createImgCatalogController.handle
 )
+
+// const createCatalogController = new CreateCatalogController()
+// const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
+// catalogRoutes.post("/catalog", 
+//     uploadPhoto.single("file"), 
+//     compressImage("catalog"), 
+//     createCatalogController.handle
+// )
 
 //category put
 // const updateCategoryController = new UpdateCategoryController()
