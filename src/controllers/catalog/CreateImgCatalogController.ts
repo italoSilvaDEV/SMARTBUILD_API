@@ -17,12 +17,12 @@ export class CreateImgCatalogController {
     async handle(request: Request, response: Response) {
         try {
             const {
-                category_id,
+                catalog_id,
             } = request.body;
 
-            if (!category_id) {
+            if (!catalog_id) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Category ID is required!");
+                throw new Error("Catalog id is required!");
             }
 
             let file = "";
@@ -32,21 +32,21 @@ export class CreateImgCatalogController {
                 throw new Error("Image file is required!");
             }
 
-            const category = await prisma.category.findUnique({
+            const category = await prisma.catalog.findUnique({
                 where: {
-                    id: category_id,
+                    id: catalog_id,
                 }
             });
 
             if (!category) {
                 this.deleteFiles(file, request.file?.filename);
-                throw new Error("Category not found!");
+                throw new Error("Catalog not found!");
             }
 
-            const result = await prisma.imgCategory.create({
+            const result = await prisma.imgCatalog.create({
                 data: {
                     uri: file,
-                    category_id: category_id,
+                    catalog_id: catalog_id,
                 },
             });
 

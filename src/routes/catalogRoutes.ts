@@ -15,7 +15,7 @@ const catalogRoutes = Router()
 const createCatalogController = new CreateCatalogController();
 catalogRoutes.post("/catalog", checkToken, createCatalogController.handle);
 
-//category
+//catalog
 const createImgCatalogController = new CreateImgCatalogController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
 catalogRoutes.post("/catalog/img", 

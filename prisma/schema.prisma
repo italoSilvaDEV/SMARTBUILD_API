@@ -61,9 +61,6 @@ model Category {
   @@map("service")
 }
 
-
-
-
 model SubCategory {
   id                 String    @id @default(uuid())
   status_subcategory Boolean?
@@ -118,8 +115,8 @@ model ImgCatalog{
     data_criacao DateTime @default(now())
     authorId     String?
 
-    category   Catalog @relation(fields: [category_id], references: [id])
-    category_id String
+    catalog   Catalog @relation(fields: [catalog_id], references: [id])
+    catalog_id String
 
   @@map("imgcatalog")
 }
