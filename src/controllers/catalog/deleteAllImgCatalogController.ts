@@ -16,9 +16,7 @@ export class DeleteAllImgCatalogController {
   async handle(request: Request, response: Response) {
     try {
       const { id } = request.params;
-
-      let file = "";
-      file = `${request.file?.filename.split('.')[0]}.webp`;
+      const imgcatalogid = request.body; // Expecting an array of ids directly
 
       if (!id) {
         this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
@@ -34,8 +32,12 @@ export class DeleteAllImgCatalogController {
         return response.status(400).json({ error: "Catalog invalid!" });
       }
 
+      if (!Array.isArray(imgcatalogid) || imgcatalogid.length === 0) {
+        return response.status(400).json({ error: "Array of ids is required!" });
+      }
+
       const imgCatalog = await prisma.imgCatalog.findMany({
-        where: { catalog_id: id }
+        where: { id: { in: imgcatalogid }, catalog_id: id }
       });
 
       // Deletar todos os arquivos de imgCatalog
@@ -46,7 +48,7 @@ export class DeleteAllImgCatalogController {
       // Deletar registros de imgCatalog do banco de dados
       if (imgCatalog.length > 0) {
         await prisma.imgCatalog.deleteMany({
-          where: { catalog_id: id }
+          where: { id: { in: imgcatalogid }, catalog_id: id }
         });
       }
 

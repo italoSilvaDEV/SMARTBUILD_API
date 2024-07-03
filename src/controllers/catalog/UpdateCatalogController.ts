@@ -14,15 +14,12 @@ export class UpdateCatalogController {
         deleteFile(`./public/tmp/catalog/${file}`);
         deleteFile(`./public/tmp/catalog/${requestFile}`);
     }
-
+//corrigir fazer mais uma rota para mudar apenas nome
     async handle(request: Request, response: Response) {
         try {
             const {
-                id,
-            } = request.params;
-
-            const {
                 catalog_name,
+                id,
             } = request.body
 
             // deletando todos as imgagens 
@@ -47,14 +44,14 @@ export class UpdateCatalogController {
             }
 
             if(catalog.catalog_name !== catalog_name ){
-                const catalog = await prisma.catalog.findMany({
+                const catalog = await prisma.catalog.findFirst({
                     where: {
                         catalog_name:catalog_name
                     }
                 });
                 if(catalog){
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "catalog name already exists!" });
+                return response.status(400).json({ error: "catalog name already existsssss!" });
                 }
             }
 

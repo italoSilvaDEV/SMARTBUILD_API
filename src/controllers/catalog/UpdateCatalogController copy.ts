@@ -44,18 +44,16 @@ export class UpdateCatalogController {
                 return response.status(400).json({ error: "Catalog name and type are required" });
             }
 
-            if(catalog.catalog_name !== catalog_name){
-                const checkName = await prisma.catalog.findMany({
-                    where: {
-                        catalog_name: catalog_name
-                    }
+            if (catalog.catalog_name !== catalog_name) {
+                const checkName = await prisma.catalog.findFirst({
+                  where: { catalog_name }
                 });
-
-                if(checkName){
-                    this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                    return response.status(400).json({ error: "catalog name already exists" });
+        
+                if (checkName) {
+                  this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                  return response.status(400).json({ error: "Catalog name already exists" });
                 }
-            }
+              }
 
 
             await prisma.catalog.update({
