@@ -30,7 +30,7 @@ export class UpdateCatalogController {
 
             if (!catalog_name) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Catalog name is required!");
+                return response.status(400).json({ error: "Catalog name is required!" });
             }
 
             const catalog = await prisma.catalog.findUnique({
@@ -41,7 +41,20 @@ export class UpdateCatalogController {
 
             if (!catalog) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Catalog name and type are required!");
+                return response.status(400).json({ error: "Catalog name and type are required" });
+            }
+
+            if(catalog.catalog_name !== catalog_name){
+                const checkName = await prisma.catalog.findMany({
+                    where: {
+                        catalog_name: catalog_name
+                    }
+                });
+
+                if(checkName){
+                    this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                    return response.status(400).json({ error: "catalog name already exists" });
+                }
             }
 
 
@@ -50,6 +63,7 @@ export class UpdateCatalogController {
                     id
                 },
                 data: {
+                    catalog_name: catalog_name,
                     catalog_img: file
                 }
             })

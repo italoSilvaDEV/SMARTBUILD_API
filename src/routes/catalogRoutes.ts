@@ -2,13 +2,13 @@ import { Router } from "express"
 import multer from "multer";
 import uploadConfig from "../config/upload";
 import { compressImage } from "../config/compressImage";
-import { UpdateImgCategoryController } from "../controllers/service/UpdateImgCategoryController";
 import { checkToken } from "../middlewares/checkToken";
 import { CreateCatalogController } from "../controllers/catalog/CreateCatalogController";
 import { UpdateCatalogController } from "../controllers/catalog/UpdateCatalogController";
 import { CreateImgCatalogController } from "../controllers/catalog/CreateImgCatalogController";
 import { FindCatalogAllController } from "../controllers/catalog/FindCatalogAllController";
 import { FindOneCatalogController } from "../controllers/catalog/FindOneCatalogController";
+import { DeleteAllImgCatalogController } from "../controllers/catalog/deleteAllImgCatalogController";
 
 
 
@@ -39,23 +39,7 @@ catalogRoutes.post("/catalog/img",
     createImgCatalogController.handle
 )
 
-// const createCatalogController = new CreateCatalogController()
-// const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
-// catalogRoutes.post("/catalog", 
-//     uploadPhoto.single("file"), 
-//     compressImage("catalog"), 
-//     createCatalogController.handle
-// )
-
-//category put
-// const updateCategoryController = new UpdateCategoryController()
-// catalogRoutes.put("/category/alter", checkToken, updateCategoryController.handle)
-
-// const updateCategoryTypeController = new UpdateCategoryTypeController()
-// catalogRoutes.put("/category/type/alter", checkToken, updateCategoryTypeController.handle)
-
-
-//putcategoryImg
+//putcatalogImg
 const updateCatalogController = new UpdateCatalogController()
 catalogRoutes.put("/catalog/:id", 
     checkToken,
@@ -64,7 +48,8 @@ catalogRoutes.put("/catalog/:id",
     updateCatalogController.handle
 )
 
-
+const deleteAllImgCatalogController = new DeleteAllImgCatalogController()
+catalogRoutes.delete("/imgallcatalog",checkToken,  deleteAllImgCatalogController.handle)
 
 
 export { catalogRoutes }

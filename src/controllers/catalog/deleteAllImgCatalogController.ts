@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 
-export class UpdateCatalogController {
+export class DeleteAllImgCatalogController {
   constructor() {
     this.handle = this.handle.bind(this);
     this.deleteFiles = this.deleteFiles.bind(this);
