@@ -42,7 +42,7 @@ export class CreateSubCategoryController {
                 return response.status(409).json({ message: 'This sub-category has already been registered in this category!' });
             }
 
-            await prisma.subCategory.create({
+            const result = await prisma.subCategory.create({
                 data: {
                     subcategory_name,
                     status_subcategory: status_subcategory === "true", // Ensure boolean value
@@ -50,7 +50,7 @@ export class CreateSubCategoryController {
                 }
             });
 
-            return response.status(201).json({ message: 'Sub-category created successfully' });
+            return response.status(201).json(result);
 
         } catch (error) {
             console.error(error);
