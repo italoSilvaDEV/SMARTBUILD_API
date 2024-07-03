@@ -25,12 +25,14 @@ export class UpdateCatalogController {
                 catalog_name,
             } = request.body
 
+            // deletando todos as imgagens 
+            
             let file = ""
             file = `${request.file?.filename.split('.')[0]}.webp`;
 
             if (!catalog_name) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Catalog name is required!");
+                return response.status(400).json({ error: "Catalog name is required!" });
             }
 
             const catalog = await prisma.catalog.findUnique({
@@ -41,7 +43,19 @@ export class UpdateCatalogController {
 
             if (!catalog) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Catalog name and type are required!");
+                return response.status(400).json({ error: "Catalog invalid!" });
+            }
+
+            if(catalog.catalog_name !== catalog_name ){
+                const catalog = await prisma.catalog.findMany({
+                    where: {
+                        catalog_name:catalog_name
+                    }
+                });
+                if(catalog){
+                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                return response.status(400).json({ error: "catalog name already exists!" });
+                }
             }
 
 
@@ -50,6 +64,7 @@ export class UpdateCatalogController {
                     id
                 },
                 data: {
+                    catalog_name: catalog_name,
                     catalog_img: file
                 }
             })
@@ -59,7 +74,7 @@ export class UpdateCatalogController {
             }
             deleteFile(`./public/tmp/catalog/${request.file?.filename}`)
 
-            return response.json();
+            return response.json(catalog.id);
         } catch (error) {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
