@@ -1,4 +1,4 @@
-import { Router } from "express"
+import { Router } from "express";
 import multer from "multer";
 import uploadConfig from "../config/upload";
 import { compressImage } from "../config/compressImage";
@@ -9,43 +9,60 @@ import { FindCostProjectController } from "../controllers/projects/FindCostProje
 import { DeleteCostProjectController } from "../controllers/projects/deleteCostProjectController";
 import { UpdateInvoiceCostProjectController } from "../controllers/projects/UpdateInvoiceCostProjectController";
 import { UpdateCostProjectController } from "../controllers/projects/UpdateCostProjectController";
+import { FindProjectController } from "../controllers/projects/FindProjectController";
 
-
-
-
-const projectRoutes = Router()
+const projectRoutes = Router();
 
 //costProject
-const createInvoiceCostProjectController = new CreateInvoiceCostProjectController()
-const uploadPhoto = multer(uploadConfig.upload("./public/tmp/costproject"))
-projectRoutes.post("/invoicecostproject",
-    checkToken,
-    uploadPhoto.single("file"),
-    compressImage("costproject"),
-    createInvoiceCostProjectController.handle
-)
+const createInvoiceCostProjectController =
+  new CreateInvoiceCostProjectController();
+const uploadPhoto = multer(uploadConfig.upload("./public/tmp/costproject"));
+projectRoutes.post(
+  "/invoicecostproject",
+  checkToken,
+  uploadPhoto.single("file"),
+  compressImage("costproject"),
+  createInvoiceCostProjectController.handle
+);
 
 const createCostProjectController = new CreateCostProjectController();
-projectRoutes.post("/costproject", checkToken, createCostProjectController.handle);
+projectRoutes.post(
+  "/costproject",
+  checkToken,
+  createCostProjectController.handle
+);
+
+const findProjectController = new FindProjectController(); // Nova rota
+projectRoutes.post("/project/find", checkToken, findProjectController.handle);
 
 const findCostProjectController = new FindCostProjectController();
-projectRoutes.post("/costproject/find",checkToken,  findCostProjectController.handle);
+projectRoutes.post(
+  "/costproject/find",
+  checkToken,
+  findCostProjectController.handle
+);
 
-const deleteCostProjectController = new DeleteCostProjectController()
-projectRoutes.delete("/costProject",checkToken,  deleteCostProjectController.handle)
+const deleteCostProjectController = new DeleteCostProjectController();
+projectRoutes.delete(
+  "/costProject",
+  checkToken,
+  deleteCostProjectController.handle
+);
 
-
-const updateInvoiceCostProjectController = new UpdateInvoiceCostProjectController()
-projectRoutes.put("/invoicecostproject/:id", 
-    checkToken,
-    uploadPhoto.single("file"), 
-    compressImage("costproject"), 
-    updateInvoiceCostProjectController.handle
-)
+const updateInvoiceCostProjectController =
+  new UpdateInvoiceCostProjectController();
+projectRoutes.put(
+  "/invoicecostproject/:id",
+  checkToken,
+  uploadPhoto.single("file"),
+  compressImage("costproject"),
+  updateInvoiceCostProjectController.handle
+);
 const updateCostProjectController = new UpdateCostProjectController();
-projectRoutes.put("/costproject",checkToken, updateCostProjectController.handle)
+projectRoutes.put(
+  "/costproject",
+  checkToken,
+  updateCostProjectController.handle
+);
 
-export { projectRoutes }
-
-
-
+export { projectRoutes };
