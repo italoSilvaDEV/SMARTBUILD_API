@@ -8,8 +8,9 @@ import { UpdateCatalogController } from "../controllers/catalog/UpdateCatalogCon
 import { CreateImgCatalogController } from "../controllers/catalog/CreateImgCatalogController";
 import { FindCatalogAllController } from "../controllers/catalog/FindCatalogAllController";
 import { FindOneCatalogController } from "../controllers/catalog/FindOneCatalogController";
-import { DeleteAllImgCatalogController } from "../controllers/catalog/deleteAllImgCatalogController";
+import { DeleteAllImgCatalogController } from "../controllers/catalog/deleteImgIdCatalogController";
 import { UpdateNameCatalogControlller } from "../controllers/catalog/UpdateNameCatalogController";
+import { DeleteCatalogController } from "../controllers/catalog/deleteCatalogController";
 
 
 
@@ -55,6 +56,9 @@ catalogRoutes.put("/catalogname",checkToken, updateNameCatalogControlller.handle
 
 const deleteAllImgCatalogController = new DeleteAllImgCatalogController()
 catalogRoutes.delete("/imgallcatalog/:id",checkToken,  deleteAllImgCatalogController.handle)
+
+const deleteCatalogController = new DeleteCatalogController()
+catalogRoutes.delete("/catalogo/:id",checkToken,  deleteCatalogController.handle)
 
 
 export { catalogRoutes }
