@@ -166,9 +166,6 @@ export class UserController {
                 where: {
                     email
                 },
-                include:{
-                    office: true
-                }
             });
 
             if (!user) {
