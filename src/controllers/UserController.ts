@@ -320,7 +320,6 @@ export class UserController {
         }
     }
     
-
     async updateImg(request: Request, response: Response) {
         try {
             const {

@@ -17,8 +17,12 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Verificar caminho absoluto da pasta 'public'
+const publicPath = path.join(__dirname, '../public');
+console.log('Serving static files from:', publicPath);
+
 // Servir arquivos estáticos
-app.use('/public', express.static(path.join(__dirname, '../public')));
+app.use('/public', express.static(publicPath));
 app.use(express.json());
 app.use(router);
 
