@@ -10,8 +10,8 @@ export class CreateImgCatalogController {
     }
 
     deleteFiles(file: string, requestFile: string | undefined) {
-        deleteFile(`./public/tmp/catalog/${file}`);
-        deleteFile(`./public/tmp/catalog/${requestFile}`);
+        deleteFile(`./public/tmp/catalogimg/${file}`);
+        deleteFile(`./public/tmp/catalogimg/${requestFile}`);
     }
 
     async handle(request: Request, response: Response) {
@@ -50,7 +50,7 @@ export class CreateImgCatalogController {
                 },
             });
 
-            deleteFile(`./public/tmp/catalog/${request.file?.filename}`);
+            deleteFile(`./public/tmp/catalogimg/${request.file?.filename}`);
 
             return response.json(result);
 

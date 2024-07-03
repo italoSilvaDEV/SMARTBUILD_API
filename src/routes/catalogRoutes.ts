@@ -7,20 +7,35 @@ import { checkToken } from "../middlewares/checkToken";
 import { CreateCatalogController } from "../controllers/catalog/CreateCatalogController";
 import { UpdateCatalogController } from "../controllers/catalog/UpdateCatalogController";
 import { CreateImgCatalogController } from "../controllers/catalog/CreateImgCatalogController";
+import { FindCatalogAllController } from "../controllers/catalog/FindCatalogAllController";
+import { FindOneCatalogController } from "../controllers/catalog/FindOneCatalogController";
 
 
 
 const catalogRoutes = Router()
 
-const createCatalogController = new CreateCatalogController();
-catalogRoutes.post("/catalog", checkToken, createCatalogController.handle);
 
 //catalog
+const createCatalogController = new CreateCatalogController()
+const uploadPhotoCatalog = multer(uploadConfig.upload("./public/tmp/catalog"))
+catalogRoutes.post("/catalog", 
+uploadPhotoCatalog.single("file"), 
+    compressImage("catalog"), 
+    createCatalogController.handle
+)
+
+const findCatalogAllController = new FindCatalogAllController()
+catalogRoutes.post("/catalog/find",checkToken,  findCatalogAllController.handle);
+
+const findOneCatalogController = new FindOneCatalogController()
+catalogRoutes.get("/catalog/find/:id",checkToken,  findOneCatalogController.handle);
+
+//Imgcatalog
 const createImgCatalogController = new CreateImgCatalogController()
-const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
+const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalogimg"))
 catalogRoutes.post("/catalog/img", 
     uploadPhoto.single("file"), 
-    compressImage("catalog"), 
+    compressImage("catalogimg"), 
     createImgCatalogController.handle
 )
 
