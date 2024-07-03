@@ -16,10 +16,19 @@ export class FindCategoriesController {
                     type_category: type_category
                 },
                 select: {
+                    id: true,
                     type_category: true,
                     category_img: true,
                     status_category: true,
-                    category_name: true
+                    category_name: true,
+                    sub_category: {
+                        
+                        select: {
+                            id: true,
+                            subcategory_name: true,
+                            service: true
+                        }
+                    }
                 }
             });
 

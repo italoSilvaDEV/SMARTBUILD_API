@@ -3,7 +3,6 @@ import { prisma } from "../../utils/prisma";
 import { decodeToken } from "../../config/decodeToken";
 
 export class CreateServiceController {
-
     async handle(request: Request, response: Response) {
         try {
             const {
@@ -16,31 +15,27 @@ export class CreateServiceController {
                 price_maximum,
             } = request.body;
 
+            if (!service_name) {
+                return response.status(400).json({ message: "Service field is required!" });
+            }
+            if (!type_variable) {
+                return response.status(400).json({ message: "Variable type is required" });
+            }
+            if (!price_type) {
+                return response.status(400).json({ message: "Price type is required" });
+            }
+
             const subCategory = await prisma.subCategory.findFirst({
-                where: {
-                    id: sub_category_id
-                }
+                where: { id: sub_category_id }
             });
 
             if (!subCategory) {
-                throw new Error("subCategory not found!");
-            }
-            if (!service_name) {
-                throw new Error("Service field is required!");
-            }
-            if (!type_variable) {
-                throw new Error("Variable type is required");
-            }
-            if (!price_type) {
-                throw new Error("Price type is required");
+                return response.status(404).json({ message: "Subcategory not found!" });
             }
 
-            if (price_type === "FIXE") {
-                if (!price_type) {
-                    throw new Error("Price type is required");
-                }
+            if (String(price_type).toLocaleUpperCase() === "FIXE") {
                 if (price_fixe <= 0) {
-                    throw new Error("Fixed price field is required");
+                    return response.status(400).json({ message: "Fixed price must be greater than 0" });
                 }
                 await prisma.service.create({
                     data: {
@@ -51,10 +46,10 @@ export class CreateServiceController {
                         sub_category_id
                     },
                 });
-            } else if (price_type === "VARIABLE") {
-              if(price_maximum<=price_minimum){
-                throw new Error("the maximum price must be greater than the minimum price");
-              }
+            } else if (String(price_type).toLocaleUpperCase() === "VARIABLE") {
+                if (price_maximum <= price_minimum) {
+                    return response.status(400).json({ message: "The maximum price must be greater than the minimum price" });
+                }
                 await prisma.service.create({
                     data: {
                         service_name,
@@ -65,15 +60,16 @@ export class CreateServiceController {
                         sub_category_id
                     },
                 });
+            } else {
+                return response.status(400).json({ message: "Invalid price type" });
             }
 
-            return response.json();
+            return response.status(201).json({ message: "Service created successfully" });
         } catch (error) {
-           // console.error(error);
             if (error instanceof Error) {
-                return response.json({ error: error.message });
+                return response.status(500).json({ error: error.message });
             }
-            return response.json({ error: "Erro interno do servidor" });
+            return response.status(500).json({ error: "Internal server error" });
         }
     }
 }

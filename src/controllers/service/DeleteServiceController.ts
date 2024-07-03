@@ -6,7 +6,7 @@ export class DeleteServiceController {
 
     async handle(request: Request, response: Response) {
         try {
-            const { service_id } = request.body;
+            const { service_id } = request.params;
 
             const service = await prisma.service.findFirst({
                 where: {

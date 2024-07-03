@@ -14,16 +14,17 @@ export class UpdateCatalogController {
         deleteFile(`./public/tmp/catalog/${file}`);
         deleteFile(`./public/tmp/catalog/${requestFile}`);
     }
-//corrigir fazer mais uma rota para mudar apenas nome
+
     async handle(request: Request, response: Response) {
         try {
             const {
-                catalog_name,
                 id,
+            } = request.params;
+
+            const {
+                catalog_name,
             } = request.body
 
-            // deletando todos as imgagens 
-            
             let file = ""
             file = `${request.file?.filename.split('.')[0]}.webp`;
 
@@ -40,20 +41,19 @@ export class UpdateCatalogController {
 
             if (!catalog) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "Catalog invalid!" });
+                return response.status(400).json({ error: "Catalog name and type are required" });
             }
 
-            if(catalog.catalog_name !== catalog_name ){
-                const catalog = await prisma.catalog.findFirst({
-                    where: {
-                        catalog_name:catalog_name
-                    }
+            if (catalog.catalog_name !== catalog_name) {
+                const checkName = await prisma.catalog.findFirst({
+                  where: { catalog_name }
                 });
-                if(catalog){
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "catalog name already existsssss!" });
+        
+                if (checkName) {
+                  this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                  return response.status(400).json({ error: "Catalog name already exists" });
                 }
-            }
+              }
 
 
             await prisma.catalog.update({
@@ -71,7 +71,7 @@ export class UpdateCatalogController {
             }
             deleteFile(`./public/tmp/catalog/${request.file?.filename}`)
 
-            return response.json(catalog.id);
+            return response.json();
         } catch (error) {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
