@@ -24,115 +24,105 @@ export class UserController {
     }
 
     async create(req: Request, res: Response) {
-
         function validateNewUser(data: INewUser): string | null {
-            if (!data.name) return "Name is required";
-            if (!data.email) return "Email is required";
-            if (!data.document) return "Document is required";
-            if (!data.office_id) return "Office ID is required";
-            return null;
+          if (!data.name) return "Name is required";
+          if (!data.email) return "Email is required";
+          if (!data.document) return "Document is required";
+          if (!data.office_id) return "Office ID is required";
+          return null;
         }
+      
         const file = req.file?.filename;
         const nameFile = file ? `${req.file?.filename.split(".")[0]}.webp` : null;
-
+      
         try {
-
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                return res.status(400).json({ errors: errors.array() });
+          const errors = validationResult(req);
+          if (!errors.isEmpty()) {
+            this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+            return res.status(400).json({ errors: errors.array() });
+          }
+      
+          const data: INewUser = req.body;
+          const validationError = validateNewUser(data);
+          if (validationError) {
+            this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+            return res.status(400).json({ error: validationError });
+          }
+      
+          // Verifica se o email existe
+          const userExists = await prisma.user.findUnique({
+            where: { email: data.email }
+          });
+          if (userExists) {
+            this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+            return res.status(400).json({ error: "Email has already been registered in the system" });
+          }
+      
+          const documentExists = await prisma.user.findUnique({
+            where: { document: data.document }
+          });
+          if (documentExists) {
+            this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+            return res.status(400).json({ error: "Document has already been registered in the system" });
+          }
+      
+          // Verificar se o office existe 
+          const office = await prisma.user.findMany({
+            where: { office_id: data.office_id }
+          });
+          if (!office) {
+            this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+            return res.status(400).json({ error: "office invalid" });
+          }
+      
+          // Senha temporária
+          const pass = crypto.randomBytes(3).toString('hex').toUpperCase();
+          const hashedPassword = bcrypt.hashSync(pass, 10);
+      
+          // Email
+          const SMTP_CONFIG = require('../config/smtp');
+          const transporter = nodemailer.createTransport({
+            host: SMTP_CONFIG.host,
+            port: SMTP_CONFIG.port,
+            secure: true,
+            auth: {
+              user: SMTP_CONFIG.user,
+              pass: SMTP_CONFIG.pass
+            },
+            tls: { rejectUnauthorized: false }
+          });
+          const templateEmail = NewUser(data.name.toUpperCase(), pass);
+          const mailOptions = {
+            from: SMTP_CONFIG.user,
+            to: data.email,
+            subject: "RP Pro Contracting",
+            html: templateEmail,
+          };
+      
+          await prisma.user.create({
+            data: {
+              avatar: nameFile,
+              name: data.name,
+              email: data.email,
+              document: data.document,
+              phone: data.phone,
+              city_and_state: data.city_and_state,
+              rules: JSON.stringify(data.rules) || {},
+              office_id: data.office_id,
+              password: hashedPassword
             }
-
-            const data: INewUser = req.body;
-            const validationError = validateNewUser(data);
-            if (validationError) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                return res.status(400).json({ error: validationError });
-            }
-
-            //verifica se email existe
-            const userExists = await prisma.user.findUnique({
-                where: {
-                    email: data.email
-                }
-            });
-            if (userExists) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                return res.status(400).json({ error: "Email has already been registered in the system" });
-            }
-
-            // Verificar se o documento existe
-            const documentExists = await prisma.user.findUnique({
-                where: {
-                    document: data.document
-                }
-            });
-            if (documentExists) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                return res.status(400).json({ error: "Document has already been registered in the system" });
-            }
-
-            // Verificar se o office existe 
-            const office = await prisma.user.findMany({
-                where: {
-                    office_id: data.office_id
-                }
-            });
-            if (!office) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                return res.status(400).json({ error: "office invalid" });
-            }
-
-            //senha temporária
-            const pass = crypto.randomBytes(3).toString('hex').toUpperCase();
-            const hashedPassword = bcrypt.hashSync(pass, 10);
-
-            //email
-            const SMTP_CONFIG = require('../config/smtp')
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: true,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass
-                },
-                tls: {
-                    rejectUnauthorized: false
-                }
-            });
-            const templateEmail = NewUser(data.name.toUpperCase(), pass)
-            const mailOptions = {
-                from: SMTP_CONFIG.user,
-                to: data.email,
-                subject: "RP Pro Contracting",
-                html: templateEmail,
-            };
-
-            await prisma.user.create({
-                data: {
-                    avatar: nameFile,
-                    name: data.name,
-                    email: data.email,
-                    document: data.document,
-                    phone: data.phone,
-                    city_and_state: data.city_and_state,
-                    rules: JSON.stringify(data.rules) || {},
-                    office_id: data.office_id,
-                    password: hashedPassword
-
-                },
-            });
-            deleteFile(`./public/tmp/user/${req.file?.filename}`)
-            await transporter.sendMail(mailOptions);
-
-            return res.status(201).json({ message: "User created successfully" });
+          });
+      
+          deleteFile(`./public/tmp/user/${req.file?.filename}`);
+          await transporter.sendMail(mailOptions);
+      
+          return res.status(201).json({ message: "User created successfully" });
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json({ error: error.message || "Internal error" });
+          console.error(error);
+          return res.status(500).json({ error: error.message || "Internal error" });
         }
-
-    }
+      }
+      
 
     async authenticate(req: Request, res: Response) {
         try {
