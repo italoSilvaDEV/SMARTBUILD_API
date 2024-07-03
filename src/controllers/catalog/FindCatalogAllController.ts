@@ -4,11 +4,11 @@ import { prisma } from "../../utils/prisma";
 export class FindCatalogAllController {
     async handle(request: Request, response: Response) {
         try {
-            const { catalog_name, pag } = request.body;
+            const { name, pag } = request.body;
 
             const filtro: any = {};
-            if (catalog_name) {
-                filtro.catalog_name = { contains: catalog_name };
+            if (name) {
+                filtro.catalog_name = { contains: name };
             }
 
             const pageNumber = Number(pag) || 0;

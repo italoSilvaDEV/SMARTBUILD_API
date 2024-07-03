@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 
-
 export class UpdateCatalogController {
 
     constructor() {
@@ -14,71 +13,78 @@ export class UpdateCatalogController {
         deleteFile(`./public/tmp/catalog/${file}`);
         deleteFile(`./public/tmp/catalog/${requestFile}`);
     }
-//corrigir fazer mais uma rota para mudar apenas nome
+
     async handle(request: Request, response: Response) {
         try {
-            const {
-                catalog_name,
-                id,
-            } = request.body
-
-            // deletando todos as imgagens 
-            
-            let file = ""
-            file = `${request.file?.filename.split('.')[0]}.webp`;
+            const { catalog_name, id } = request.body;
 
             if (!catalog_name) {
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                if (request.file) {
+                    this.deleteFiles(request.file.filename.split('.')[0] + '.webp', request.file.filename);
+                }
                 return response.status(400).json({ error: "Catalog name is required!" });
+            }
+
+            let file = "";
+            if (request.file) {
+                file = `${request.file.filename.split('.')[0]}.webp`;
             }
 
             const catalog = await prisma.catalog.findUnique({
                 where: {
-                    id
-                }
+                    id,
+                },
             });
 
             if (!catalog) {
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "Catalog invalid!" });
+                if (request.file) {
+                    this.deleteFiles(request.file.filename.split('.')[0] + '.webp', request.file.filename);
+                }
+                return response.status(400).json({ error: "Catalog not found!" });
             }
 
-            if(catalog.catalog_name !== catalog_name ){
-                const catalog = await prisma.catalog.findFirst({
+            if (catalog.catalog_name !== catalog_name) {
+                const catalogWithName = await prisma.catalog.findUnique({
                     where: {
-                        catalog_name:catalog_name
-                    }
+                        catalog_name: catalog_name,
+                    },
                 });
-                if(catalog){
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "catalog name already existsssss!" });
+                if (catalogWithName) {
+                    if (request.file) {
+                        this.deleteFiles(request.file.filename.split('.')[0] + '.webp', request.file.filename);
+                    }
+                    return response.status(400).json({ error: "Catalog name already exists!" });
                 }
             }
 
+            const updatedData: any = {
+                catalog_name: catalog_name,
+            };
 
-            await prisma.catalog.update({
+            if (file) {
+                updatedData.catalog_img = file;
+            }
+
+            const updatedCatalog = await prisma.catalog.update({
                 where: {
-                    id
+                    id,
                 },
-                data: {
-                    catalog_name: catalog_name,
-                    catalog_img: file
-                }
-            })
+                data: updatedData,
+            });
 
-            if (catalog) {
-                deleteFile(`./public/tmp/catalog/${catalog.catalog_img}`)
+            if (file && catalog.catalog_img) {
+                deleteFile(`./public/tmp/catalog/${catalog.catalog_img}`);
             }
-            deleteFile(`./public/tmp/catalog/${request.file?.filename}`)
+            if (request.file) {
+                deleteFile(`./public/tmp/catalog/${request.file.filename}`);
+            }
 
-            return response.json(catalog.id);
+            return response.json(updatedCatalog);
         } catch (error) {
             if (error instanceof Error) {
-                return response.json({ error: error.message });
+                return response.status(500).json({ error: error.message });
             }
-            return response.json({ error: "Internal error" });
+            return response.status(500).json({ error: "Internal server error" });
         }
-
-
     }
 }
