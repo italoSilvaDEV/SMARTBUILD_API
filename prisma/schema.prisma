@@ -56,8 +56,6 @@ model Category {
   type_category   String
   sub_category    SubCategory[]
 
-  
-
   @@map("service")
 }
 
@@ -98,7 +96,7 @@ model Service {
 model Catalog {
   id            String   @id @default(uuid())
   catalog_img   String?
-  catalog_name  String @unique
+  catalog_name  String   @unique
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -108,15 +106,15 @@ model Catalog {
   @@map("catalog")
 }
 
-model ImgCatalog{
-    id      String @id @default(uuid())
-    uri     String @unique
-    
-    data_criacao DateTime @default(now())
-    authorId     String?
+model ImgCatalog {
+  id  String @id @default(uuid())
+  uri String @unique
 
-    catalog   Catalog @relation(fields: [catalog_id], references: [id])
-    catalog_id String
+  data_criacao DateTime @default(now())
+  authorId     String?
+
+  catalog    Catalog @relation(fields: [catalog_id], references: [id])
+  catalog_id String
 
   @@map("imgcatalog")
 }
@@ -129,12 +127,14 @@ model Project {
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
   invoiceCostProject InvoiceCostProject[]
-  
-  client             Client?              @relation(fields: [client_id], references: [id])
-  client_id          String?
-  
-  user               User?                @relation("seller", fields: [seller_user_id], references: [id])
-  seller_user_id     String?
+
+  workedHours Workedhours []
+
+  client    Client? @relation(fields: [client_id], references: [id])
+  client_id String?
+
+  user           User?   @relation("seller", fields: [seller_user_id], references: [id])
+  seller_user_id String?
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -191,3 +191,24 @@ model CostProject {
   @@index([userId], map: "cost_project_userId_fkey")
   @@map("cost_project")
 }
+
+//seler e admin - nome de um funcionario - quantidade de horas - data e hora - preço da hora
+
+model Workedhours {
+  id String @id @default(uuid())
+
+  name_user String 
+  
+  amount_of_hours Decimal
+  hourly_price Decimal
+ 
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  project    Project? @relation(fields: [project_id], references: [id])
+  project_id String?
+  
+  @@map("worked_hours")
+}
+
+
