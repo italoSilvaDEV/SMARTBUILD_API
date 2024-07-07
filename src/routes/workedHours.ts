@@ -12,6 +12,7 @@ import { UpdateCostProjectController } from "../controllers/projects/UpdateCostP
 import { CreateWorkedHoursController } from "../controllers/WorkedHours/CreateWorkedHoursController";
 import { FindWorkedHoursProjectController } from "../controllers/WorkedHours/FindWorkedHoursProjectController";
 import { UpdateWorkedHoursController } from "../controllers/WorkedHours/UpdateWorkedHoursController";
+import { DeleteWorkedHoursController } from "../controllers/WorkedHours/DeleteWorkedHoursController";
 
 
 
@@ -25,8 +26,8 @@ workedRours.post("/workedhours", checkToken, createWorkedHoursController.handle)
 const findWorkedHoursProjectController = new FindWorkedHoursProjectController();
 workedRours.post("/workedhours/find",checkToken,  findWorkedHoursProjectController.handle);
 
-// const deleteCostProjectController = new DeleteCostProjectController()
-// projectRoutes.delete("/costProject",checkToken,  deleteCostProjectController.handle)
+const deleteWorkedHoursController = new DeleteWorkedHoursController()
+workedRours.delete("/workedhours/:id",checkToken,  deleteWorkedHoursController.handle)
 
 
 

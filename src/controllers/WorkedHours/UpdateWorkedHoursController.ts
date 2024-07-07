@@ -5,7 +5,6 @@ export class UpdateWorkedHoursController {
   async handle(request: Request, response: Response) {
     const {
       id,
-      project_id,
       name_user,
       amount_of_hours,
       hourly_price,
@@ -37,7 +36,6 @@ export class UpdateWorkedHoursController {
       await prisma.workedhours.update({
         where: { id },
         data: {
-          project_id,
           name_user,
           amount_of_hours: parseFloat(amount_of_hours),
           hourly_price,
