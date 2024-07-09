@@ -117,7 +117,7 @@ export class ProjectController {
         } = req.body
         let file = ""
         file = ""
-        deleteFile(`./public/tmp/rom/${req.file?.filename}`)
+        deleteFile(`./public/tmp/service-project/${req.file?.filename}`)
         file = `${req.file?.filename.split('.')[0]}.webp`;
 
         await prisma.imgServiceProject.create({
