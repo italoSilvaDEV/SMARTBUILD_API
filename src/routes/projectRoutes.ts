@@ -9,11 +9,23 @@ import { FindCostProjectController } from "../controllers/projects/FindCostProje
 import { DeleteCostProjectController } from "../controllers/projects/deleteCostProjectController";
 import { UpdateInvoiceCostProjectController } from "../controllers/projects/UpdateInvoiceCostProjectController";
 import { UpdateCostProjectController } from "../controllers/projects/UpdateCostProjectController";
+import { ProjectController } from "../controllers/projects/ProjectController";
 
 
 
 
 const projectRoutes = Router()
+
+const projectController = new ProjectController()
+const uploadServiceProject = multer(uploadConfig.upload("./public/tmp/service-project"))
+projectRoutes.post("/project", checkToken, projectController.createProject)
+projectRoutes.post("/service-project", checkToken, projectController.createServiceProject)
+projectRoutes.post("/img-service-project",
+    checkToken,
+    uploadServiceProject.single("file"),
+    compressImage("service-project"),
+    projectController.upLoadPhotoServiceProject
+)
 
 //costProject
 const createInvoiceCostProjectController = new CreateInvoiceCostProjectController()
