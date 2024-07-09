@@ -121,7 +121,7 @@ model ImgServiceProject {
 model Catalog {
   id            String   @id @default(uuid())
   catalog_img   String?
-  catalog_name  String
+  catalog_name  String   @unique
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -146,17 +146,21 @@ model ImgCatalog {
 
 model Project {
   id                 String               @id @default(uuid())
-  seller_user_id     String?
   price              Decimal
   status_project     String
-  client_id          String?
   autorId            String?
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
   invoiceCostProject InvoiceCostProject[]
-  client             Client?              @relation(fields: [client_id], references: [id])
-  user               User?                @relation("seller", fields: [seller_user_id], references: [id])
   serviceProject     ServiceProject[]
+  workedHours Workedhours []
+
+  client    Client? @relation(fields: [client_id], references: [id])
+  client_id String?
+
+  user           User?   @relation("seller", fields: [seller_user_id], references: [id])
+  seller_user_id String?
+
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -217,3 +221,24 @@ model CostProject {
   @@index([userId], map: "cost_project_userId_fkey")
   @@map("cost_project")
 }
+
+//seler e admin - nome de um funcionario - quantidade de horas - data e hora - preço da hora
+
+model Workedhours {
+  id String @id @default(uuid())
+
+  name_user String 
+  
+  amount_of_hours Decimal
+  hourly_price Decimal
+ 
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  project    Project? @relation(fields: [project_id], references: [id])
+  project_id String?
+  
+  @@map("worked_hours")
+}
+
+

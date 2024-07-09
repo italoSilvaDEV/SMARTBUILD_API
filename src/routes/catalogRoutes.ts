@@ -63,5 +63,6 @@ catalogRoutes.delete("/catalogo/:id",checkToken,  deleteCatalogController.handle
 
 export { catalogRoutes }
 
+//seler e admin - nome de um funcionario - quantidade de horas - data e hora - preço da hora
 
 
