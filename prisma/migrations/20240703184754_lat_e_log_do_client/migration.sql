@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `Client` ADD COLUMN `birth_date` VARCHAR(191) NULL,
+    ADD COLUMN `lat` VARCHAR(191) NULL,
+    ADD COLUMN `location` VARCHAR(191) NULL,
+    ADD COLUMN `log` VARCHAR(191) NULL;

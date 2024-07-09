@@ -75,7 +75,7 @@ model SubCategory {
 }
 
 model Service {
-  id              String        @id @default(uuid())
+  id              String           @id @default(uuid())
   service_name    String
   type_variable   String
   price_type      String
@@ -84,13 +84,38 @@ model Service {
   price_maximum   Decimal?
   sub_category_id String
   autorId         String?
-  date_creation   DateTime      @default(now())
-  date_update     DateTime      @updatedAt
+  date_creation   DateTime         @default(now())
+  date_update     DateTime         @updatedAt
   costProject     CostProject[]
-  service         SubCategory   @relation(fields: [sub_category_id], references: [id])
+  service         SubCategory      @relation(fields: [sub_category_id], references: [id])
+  ServiceProject  ServiceProject[]
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
+}
+
+model ServiceProject {
+  id          String              @id @default(uuid())
+  name        String
+  description String
+  hours       Decimal
+  price       Decimal
+  service     Service             @relation(fields: [id_service], references: [id])
+  id_service  String
+  photos      ImgServiceProject[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  Project       Project? @relation(fields: [projectId], references: [id])
+  projectId     String?
+}
+
+model ImgServiceProject {
+  id               String          @id @default(uuid())
+  uri              String          @unique
+  date_creation    DateTime        @default(now())
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
 }
 
 model Catalog {
@@ -127,7 +152,7 @@ model Project {
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
   invoiceCostProject InvoiceCostProject[]
-
+  serviceProject     ServiceProject[]
   workedHours Workedhours []
 
   client    Client? @relation(fields: [client_id], references: [id])
@@ -135,6 +160,7 @@ model Project {
 
   user           User?   @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
+
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -149,6 +175,10 @@ model Client {
   document       String?   @unique
   phone          String?
   city_and_state String?
+  birth_date     String?
+  location       String?
+  lat            String?
+  log            String?
   autorId        String?
   date_creation  DateTime  @default(now())
   date_update    DateTime  @updatedAt
