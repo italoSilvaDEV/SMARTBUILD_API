@@ -19,6 +19,8 @@ const projectRoutes = Router()
 const projectController = new ProjectController()
 const uploadServiceProject = multer(uploadConfig.upload("./public/tmp/service-project"))
 projectRoutes.post("/project", checkToken, projectController.createProject)
+projectRoutes.get("/project/find", checkToken, projectController.getAllProjects)
+projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById)
 projectRoutes.post("/service-project", checkToken, projectController.createServiceProject)
 projectRoutes.post("/img-service-project",
     checkToken,
