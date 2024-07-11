@@ -10,6 +10,8 @@ import { DeleteCostProjectController } from "../controllers/projects/deleteCostP
 import { UpdateInvoiceCostProjectController } from "../controllers/projects/UpdateInvoiceCostProjectController";
 import { UpdateCostProjectController } from "../controllers/projects/UpdateCostProjectController";
 import { ProjectController } from "../controllers/projects/ProjectController";
+import { CreatePdfProjectController } from "../controllers/projects/CreatePdfProjectUploadController";
+import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProjectAllController";
 
 
 
@@ -38,12 +40,26 @@ projectRoutes.post("/invoicecostproject",
     compressImage("costproject"),
     createInvoiceCostProjectController.handle
 )
+const createPdfProjectController = new CreatePdfProjectController()
+const uploadpdf = multer(uploadConfig.upload("./public/tmp/pdfproject"))
+projectRoutes.post("/pdfproject",
+    checkToken,
+    uploadpdf.single("file"),
+    createPdfProjectController.handle
+)
+
+
+
 
 const createCostProjectController = new CreateCostProjectController();
 projectRoutes.post("/costproject", checkToken, createCostProjectController.handle);
 
 const findCostProjectController = new FindCostProjectController();
 projectRoutes.post("/costproject/find",checkToken,  findCostProjectController.handle);
+
+const findPdfProjectAllController = new FindPdfProjectAllController();
+projectRoutes.post("/pdfproject/find",checkToken,  findPdfProjectAllController.handle);
+
 
 const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject",checkToken,  deleteCostProjectController.handle)
