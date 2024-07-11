@@ -154,6 +154,7 @@ model Project {
   invoiceCostProject InvoiceCostProject[]
   serviceProject     ServiceProject[]
   workedHours Workedhours []
+  pdfproject PdfProject[]
 
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
@@ -165,6 +166,21 @@ model Project {
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
   @@map("project")
+}
+
+model PdfProject {
+  id                          String        @id @default(uuid())
+  original_file_name          String?
+  uri                         String?
+  
+  project                     Project?      @relation(fields: [project_id], references: [id])
+  project_id                  String?
+
+  autorId                     String?
+  date_creation               DateTime      @default(now())
+  date_update                 DateTime      @updatedAt
+  
+  @@map("pdf_project")
 }
 
 model Client {
