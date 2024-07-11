@@ -21,7 +21,7 @@ export class UpdateCostProjectController {
                     price,
                     amout,
                     userId,
-                    service_id,
+                    serviceProjectId,
                     invoice_cost_project_id
                 } = project;
 
@@ -42,7 +42,7 @@ export class UpdateCostProjectController {
                     errors.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
-                if (!userId || !service_id || !invoice_cost_project_id) {
+                if (!userId || !serviceProjectId || !invoice_cost_project_id) {
                     errors.push("User ID, service ID and invoice is required");
                     continue;
                 }
@@ -61,8 +61,8 @@ export class UpdateCostProjectController {
                     where: { id: userId }
                 });
 
-                const service = await prisma.service.findUnique({
-                    where: { id: service_id }
+                const service = await prisma.serviceProject.findUnique({
+                    where: { id: serviceProjectId }
                 });
 
                 if (!user) {
@@ -90,7 +90,7 @@ export class UpdateCostProjectController {
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId,
-                        service_id,
+                        serviceProjectId,
                         invoice_cost_project_id: invoice_cost_project_id
                     },
                 });
