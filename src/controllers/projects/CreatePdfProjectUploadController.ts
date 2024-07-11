@@ -17,16 +17,15 @@ export class CreatePdfProjectController {
         try {
             const { project_id } = req.body;
 
-           let file = "";
+            let file = "";
             const filePath = `./public/tmp/pdfproject/${req.file?.filename}`;
             const dimensions = getImageDimensions(filePath);
 
             if (!dimensions) {
                 // não é img
                 file = String(req.file?.filename);
-            } else{
-                if(req.file?.filename)
-                this.deleteFiles(req.file?.filename);
+            } else {
+                if (req.file?.filename) this.deleteFiles(req.file?.filename);
                 return res.status(400).json({ error: "Project identifier is required" });
             }
 
@@ -40,21 +39,28 @@ export class CreatePdfProjectController {
             }
 
             const project = await prisma.project.findUnique({
-                where:{
+                where: {
                     id: project_id
                 }
-            })
+            });
 
-            if(!project){
+            if (!project) {
                 this.deleteFiles(req.file.filename);
                 return res.status(400).json({ error: "project does not exist" });
             }
-            // const file = req.file.filename;
-            const originalFileName = req.file.originalname;
+
+            // Remove a extensão .pdf do nome do arquivo
+            const originalFileName = req.file.filename;
+
+            function removeHashFromFileName(fileName: string): string {
+                const hashRegex = /^[a-f0-9]{32}-/i; // Regex para detectar e remover o hash
+                return fileName.replace(hashRegex, '');
+            }
+           
 
             const result = await prisma.pdfProject.create({
                 data: {
-                    original_file_name: originalFileName,
+                    original_file_name: removeHashFromFileName(originalFileName),
                     uri: file,
                     project_id: project_id
                 },

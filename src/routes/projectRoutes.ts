@@ -1,6 +1,7 @@
 import { Router } from "express"
 import multer from "multer";
 import uploadConfig from "../config/upload";
+import uploadConfigUtf8 from "../config/uploadUtf8";
 import { compressImage } from "../config/compressImage";
 import { checkToken } from "../middlewares/checkToken";
 import { CreateInvoiceCostProjectController } from "../controllers/projects/CreateInvoiceCostProjectController";
@@ -41,7 +42,7 @@ projectRoutes.post("/invoicecostproject",
     createInvoiceCostProjectController.handle
 )
 const createPdfProjectController = new CreatePdfProjectController()
-const uploadpdf = multer(uploadConfig.upload("./public/tmp/pdfproject"))
+const uploadpdf = multer(uploadConfigUtf8.uploadUtf8("./public/tmp/pdfproject"))
 projectRoutes.post("/pdfproject",
     checkToken,
     uploadpdf.single("file"),
