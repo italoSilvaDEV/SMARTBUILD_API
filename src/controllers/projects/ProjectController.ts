@@ -28,24 +28,81 @@ export interface IServicesData {
     price: number
 }
 export class ProjectController {
+    // async getAllProjects(req: Request, res: Response) {
+    //     const { id_seller, status_project, page } = req.query;
+    //     const query: any = {};
+
+    //     if (id_seller) query.seller_user_id = { equals: id_seller };
+
+    //     if (status_project) {
+    //         const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
+    //         query.status_project = { in: statusArray };
+    //     }
+
+
+    //     try {
+    //         const projects = await prisma.project.findMany({
+    //             where: query,                
+    //             include: {
+    //                 client: true,
+    //                 serviceProject: true,
+    //                 user: {
+    //                     select: {
+    //                         id: true,
+    //                         avatar: true,
+    //                         email: true,
+    //                         name: true,
+    //                     }
+    //                 }
+    //             },
+    //             skip: Number(page) * 10,
+    //             take: 10,
+    //             orderBy: { date_update: 'desc' },
+    //         });
+
+    //         // Calcular o preço total para cada projeto
+    //         const projectsWithPrice = projects.map(project => {
+    //             const totalPrice = project.serviceProject.reduce((total, service) => {
+    //                 return total + Number(service.hours) * Number(service.price);
+    //             }, 0);
+
+    //             return {
+    //                 ...project,
+    //                 price: totalPrice
+    //             };
+    //         });
+
+    //         const total = await prisma.project.count({
+    //             where: query,
+    //         });
+
+    //         return res.json({ projects: projectsWithPrice, total });
+    //     } catch (error) {
+    //         if (error instanceof Error) {
+    //             return res.json({ error: error.message });
+    //         }
+    //         return res.json({ error: "Erro interno do servidor" });
+    //     }
+    // };
+
     async getAllProjects(req: Request, res: Response) {
         const { id_seller, status_project, page } = req.query;
         const query: any = {};
-
+    
         if (id_seller) query.seller_user_id = { equals: id_seller };
-
+    
         if (status_project) {
             const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
             query.status_project = { in: statusArray };
         }
-
-
+    
         try {
             const projects = await prisma.project.findMany({
-                where: query,                
+                where: query,
                 include: {
                     client: true,
                     serviceProject: true,
+                    workedHours: true,
                     user: {
                         select: {
                             id: true,
@@ -59,31 +116,52 @@ export class ProjectController {
                 take: 10,
                 orderBy: { date_update: 'desc' },
             });
-
-            // Calcular o preço total para cada projeto
-            const projectsWithPrice = projects.map(project => {
-                const totalPrice = project.serviceProject.reduce((total, service) => {
-                    return total + Number(service.hours) * Number(service.price);
+    
+            const projectsWithCalculations = projects.map(project => {
+                // Calcula o preço total do serviço
+                const totalServicePrice = project.serviceProject.reduce((total, service) => {
+                    return total + Number(service.price);
                 }, 0);
-
+    
+                // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
+                let totalCostOfServiceHours = 0;
+                let totalNumberOfHoursWorked = 0;
+    
+                const uniqueUsers = new Set();
+    
+                project.workedHours.forEach(workedHour => {
+                    totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+                    totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+                    uniqueUsers.add(workedHour.name_user);
+                });
+    
+                const workersOnThisProject = uniqueUsers.size;
+    
+                // Remove o array workedHours do projeto
+                const { workedHours, ...projectWithoutWorkedHours } = project;
+    
                 return {
-                    ...project,
-                    price: totalPrice
+                    ...projectWithoutWorkedHours,
+                    totalServicePrice,
+                    cost_of_service_hours: totalCostOfServiceHours,
+                    total_number_of_hours_worked: totalNumberOfHoursWorked,
+                    workers_on_this_project: workersOnThisProject
                 };
             });
-
+    
             const total = await prisma.project.count({
                 where: query,
             });
-
-            return res.json({ projects: projectsWithPrice, total });
+    
+            return res.json({ projects: projectsWithCalculations, total });
         } catch (error) {
             if (error instanceof Error) {
                 return res.json({ error: error.message });
             }
             return res.json({ error: "Erro interno do servidor" });
         }
-    };
+    }
+    
 
 
     async getProjectById(req: Request, res: Response) {
@@ -101,7 +179,7 @@ export class ProjectController {
                             email: true,
                             name: true,
                         }
-                    }
+                    },
                 },
             });
             if (project) {

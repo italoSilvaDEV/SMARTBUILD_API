@@ -17,17 +17,25 @@ export class FindWorkedHoursProjectController {
             }
 
             if (date_initial && date_final) {
+                const dateStart = new Date(date_initial);
+                dateStart.setUTCHours(0, 0, 0, 0);
+                const dateEnd = new Date(date_final);
+                dateEnd.setUTCHours(23, 59, 59, 999);
                 filtro.date_creation = {
-                    gte: new Date(date_initial),
-                    lte: new Date(date_final),
+                    gte: dateStart,
+                    lte: dateEnd,
                 };
             } else if (date_initial) {
+                const dateStart = new Date(date_initial);
+                dateStart.setUTCHours(0, 0, 0, 0);
                 filtro.date_creation = {
-                    gte: new Date(date_initial),
+                    gte: dateStart,
                 };
             } else if (date_final) {
+                const dateEnd = new Date(date_final);
+                dateEnd.setUTCHours(23, 59, 59, 999);
                 filtro.date_creation = {
-                    lte: new Date(date_final),
+                    lte: dateEnd,
                 };
             }
 
