@@ -4,7 +4,7 @@ import { prisma } from "../../utils/prisma";
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
         try {
-            const { project_id, name_user, pag } = request.body;
+            const { project_id, name_user, pag, date_initial, date_final } = request.body;
 
             if (!project_id) {
                 return response.status(400).json({ error: "Project ID is required" });
@@ -14,6 +14,21 @@ export class FindWorkedHoursProjectController {
 
             if (name_user) {
                 filtro.name_user = { contains: name_user };
+            }
+
+            if (date_initial && date_final) {
+                filtro.date_creation = {
+                    gte: new Date(date_initial),
+                    lte: new Date(date_final),
+                };
+            } else if (date_initial) {
+                filtro.date_creation = {
+                    gte: new Date(date_initial),
+                };
+            } else if (date_final) {
+                filtro.date_creation = {
+                    lte: new Date(date_final),
+                };
             }
 
             const pageNumber = Number(pag) || 0;
@@ -26,6 +41,7 @@ export class FindWorkedHoursProjectController {
                     name_user: true,
                     amount_of_hours: true,
                     hourly_price: true,
+                    date_creation: true,
                 },
                 skip: pageNumber * 20,
                 take: 20,
