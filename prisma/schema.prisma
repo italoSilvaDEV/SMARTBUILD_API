@@ -238,8 +238,6 @@ model CostProject {
   @@map("cost_project")
 }
 
-//seler e admin - nome de um funcionario - quantidade de horas - data e hora - preço da hora
-
 model Workedhours {
   id String @id @default(uuid())
 
