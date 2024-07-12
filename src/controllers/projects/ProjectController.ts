@@ -28,63 +28,6 @@ export interface IServicesData {
     price: number
 }
 export class ProjectController {
-    // async getAllProjects(req: Request, res: Response) {
-    //     const { id_seller, status_project, page } = req.query;
-    //     const query: any = {};
-
-    //     if (id_seller) query.seller_user_id = { equals: id_seller };
-
-    //     if (status_project) {
-    //         const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
-    //         query.status_project = { in: statusArray };
-    //     }
-
-
-    //     try {
-    //         const projects = await prisma.project.findMany({
-    //             where: query,                
-    //             include: {
-    //                 client: true,
-    //                 serviceProject: true,
-    //                 user: {
-    //                     select: {
-    //                         id: true,
-    //                         avatar: true,
-    //                         email: true,
-    //                         name: true,
-    //                     }
-    //                 }
-    //             },
-    //             skip: Number(page) * 10,
-    //             take: 10,
-    //             orderBy: { date_update: 'desc' },
-    //         });
-
-    //         // Calcular o preço total para cada projeto
-    //         const projectsWithPrice = projects.map(project => {
-    //             const totalPrice = project.serviceProject.reduce((total, service) => {
-    //                 return total + Number(service.hours) * Number(service.price);
-    //             }, 0);
-
-    //             return {
-    //                 ...project,
-    //                 price: totalPrice
-    //             };
-    //         });
-
-    //         const total = await prisma.project.count({
-    //             where: query,
-    //         });
-
-    //         return res.json({ projects: projectsWithPrice, total });
-    //     } catch (error) {
-    //         if (error instanceof Error) {
-    //             return res.json({ error: error.message });
-    //         }
-    //         return res.json({ error: "Erro interno do servidor" });
-    //     }
-    // };
-
     async getAllProjects(req: Request, res: Response) {
         const { id_seller, status_project, page } = req.query;
         const query: any = {};
@@ -161,7 +104,7 @@ export class ProjectController {
             return res.json({ error: "Erro interno do servidor" });
         }
     }
-    
+
 
 
     async getProjectById(req: Request, res: Response) {
