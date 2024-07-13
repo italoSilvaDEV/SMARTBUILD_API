@@ -106,7 +106,13 @@ export class ProjectController {
         where: query,
         include: {
           client: true,
-          serviceProject: true,
+          serviceProject: {
+            include: {
+              service: true,
+              Project: true,
+              photos: true,
+            },
+          },
           workedHours: true,
           user: {
             select: {
