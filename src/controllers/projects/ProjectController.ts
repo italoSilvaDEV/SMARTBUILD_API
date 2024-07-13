@@ -228,7 +228,11 @@ export class ProjectController {
                             }
                         }
                     },
-                    invoiceCostProject: true,
+                    invoiceCostProject: {
+                        include: {
+                            costProject: true
+                        }
+                    },
                     workedHours: true,
                     user: {
                         select: {
@@ -256,8 +260,38 @@ export class ProjectController {
                         invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
                     }))
                 );
+                const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
+                    return total + invoice.costProject.reduce((subtotal, cost) => {
+                        return subtotal + Number(cost.price) * Number(cost.amout);
+                    }, 0);
+                }, 0);
+                let totalCostOfServiceHours = 0;
+                let totalNumberOfHoursWorked = 0;
 
-                res.json({ ...project, costProjects });
+                const uniqueUsers = new Set();
+
+                project.workedHours.forEach(workedHour => {
+                    totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+                    totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+                    uniqueUsers.add(workedHour.name_user);
+                });
+
+                const workersOnThisProject = uniqueUsers.size;
+
+                // Calcula o somatório de hours * price
+                const priceProject = project.serviceProject.reduce((total, service) => {
+                    return total + Number(service.hours) * Number(service.price);
+                }, 0);
+
+                res.json({
+                    ...project,
+                    costProjects,
+                    costofwork,
+                    cost_of_service_hours: totalCostOfServiceHours,
+                    total_number_of_hours_worked: totalNumberOfHoursWorked,
+                    workers_on_this_project: workersOnThisProject,
+                    price_project: priceProject // Adiciona o novo campo price_project
+                });
             } else {
                 res.status(404).json({ error: 'Project not found' });
             }
