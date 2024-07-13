@@ -32,11 +32,6 @@ projectRoutes.get(
   checkToken,
   projectController.getProjectById
 );
-projectRoutes.get(
-  "/project/:id/services",
-  checkToken,
-  projectController.getServicesByProjectId
-); // Nova rota adicionada
 projectRoutes.post(
   "/service-project",
   checkToken,
@@ -94,12 +89,7 @@ projectRoutes.post(
   findPdfProjectAllController.handle
 );
 
-const deleteCostProjectController = new DeleteCostProjectController();
-projectRoutes.delete(
-  "/costProject",
-  checkToken,
-  deleteCostProjectController.handle
-);
+
 
 const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
@@ -116,13 +106,6 @@ const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
 
-const updateInvoiceCostProjectController = new UpdateInvoiceCostProjectController()
-projectRoutes.put("/invoicecostproject/:id", 
-    checkToken,
-    uploadPhoto.single("file"), 
-    compressImage("costproject"), 
-    updateInvoiceCostProjectController.handle
-)
 const updateCostProjectController = new UpdateCostProjectController();
 projectRoutes.put(
   "/costproject",

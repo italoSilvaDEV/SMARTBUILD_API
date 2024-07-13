@@ -32,339 +32,180 @@ export interface IServicesData {
 
 export class ProjectController {
 
-    // async getAllProjects(req: Request, res: Response) {
-    //     const { id_seller, status_project, page } = req.query;
-    //     const query: any = {};
+  // async getAllProjects(req: Request, res: Response) {
+  //     const { id_seller, status_project, page } = req.query;
+  //     const query: any = {};
 
-    //     if (id_seller) query.seller_user_id = { equals: id_seller };
+  //     if (id_seller) query.seller_user_id = { equals: id_seller };
 
-    //     if (status_project) {
-    //         const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
-    //         query.status_project = { in: statusArray };
-    //     }
+  //     if (status_project) {
+  //         const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
+  //         query.status_project = { in: statusArray };
+  //     }
 
-    //     try {
-    //         const projects = await prisma.project.findMany({
-    //             where: query,
-    //             include: {
-    //                 client: true,
-    //                 serviceProject: true,
-    //                 workedHours: true,
-    //                 user: {
-    //                     select: {
-    //                         id: true,
-    //                         avatar: true,
-    //                         email: true,
-    //                         name: true,
-    //                     }
-    //                 }
-    //             },
-    //             skip: Number(page) * 10,
-    //             take: 10,
-    //             orderBy: { date_update: 'desc' },
-    //         });
+  //     try {
+  //         const projects = await prisma.project.findMany({
+  //             where: query,
+  //             include: {
+  //                 client: true,
+  //                 serviceProject: true,
+  //                 workedHours: true,
+  //                 user: {
+  //                     select: {
+  //                         id: true,
+  //                         avatar: true,
+  //                         email: true,
+  //                         name: true,
+  //                     }
+  //                 }
+  //             },
+  //             skip: Number(page) * 10,
+  //             take: 10,
+  //             orderBy: { date_update: 'desc' },
+  //         });
 
-    //         const projectsWithCalculations = projects.map(project => {
-    //             // Calcula o preço total do serviço
-    //             const totalServicePrice = project.serviceProject.reduce((total, service) => {
-    //                 return total + Number(service.price);
-    //             }, 0);
+  //         const projectsWithCalculations = projects.map(project => {
+  //             // Calcula o preço total do serviço
+  //             const totalServicePrice = project.serviceProject.reduce((total, service) => {
+  //                 return total + Number(service.price);
+  //             }, 0);
 
-    //             // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
-    //             let totalCostOfServiceHours = 0;
-    //             let totalNumberOfHoursWorked = 0;
+  //             // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
+  //             let totalCostOfServiceHours = 0;
+  //             let totalNumberOfHoursWorked = 0;
 
-    //             const uniqueUsers = new Set();
+  //             const uniqueUsers = new Set();
 
-    //             project.workedHours.forEach(workedHour => {
-    //                 totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
-    //                 totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-    //                 uniqueUsers.add(workedHour.name_user);
-    //             });
+  //             project.workedHours.forEach(workedHour => {
+  //                 totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+  //                 totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+  //                 uniqueUsers.add(workedHour.name_user);
+  //             });
 
-    //             const workersOnThisProject = uniqueUsers.size;
+  //             const workersOnThisProject = uniqueUsers.size;
 
-    //             // Calcula o somatório de hours * price
-    //             const priceProject = project.serviceProject.reduce((total, service) => {
-    //                 return total + Number(service.hours) * Number(service.price);
-    //             }, 0);
+  //             // Calcula o somatório de hours * price
+  //             const priceProject = project.serviceProject.reduce((total, service) => {
+  //                 return total + Number(service.hours) * Number(service.price);
+  //             }, 0);
 
-    //             // Remove o array workedHours do projeto
-    //             const { workedHours, ...projectWithoutWorkedHours } = project;
+  //             // Remove o array workedHours do projeto
+  //             const { workedHours, ...projectWithoutWorkedHours } = project;
 
-    //             return {
-    //                 ...projectWithoutWorkedHours,
-    //                 totalServicePrice,
-    //                 cost_of_service_hours: totalCostOfServiceHours,
-    //                 total_number_of_hours_worked: totalNumberOfHoursWorked,
-    //                 workers_on_this_project: workersOnThisProject,
-    //                 price_project: priceProject // Adiciona o novo campo price_project
-    //             };
-    //         });
+  //             return {
+  //                 ...projectWithoutWorkedHours,
+  //                 totalServicePrice,
+  //                 cost_of_service_hours: totalCostOfServiceHours,
+  //                 total_number_of_hours_worked: totalNumberOfHoursWorked,
+  //                 workers_on_this_project: workersOnThisProject,
+  //                 price_project: priceProject // Adiciona o novo campo price_project
+  //             };
+  //         });
 
-    //         const total = await prisma.project.count({
-    //             where: query,
-    //         });
+  //         const total = await prisma.project.count({
+  //             where: query,
+  //         });
 
-    //         return res.json({ projects: projectsWithCalculations, total });
-    //     } catch (error) {
-    //         if (error instanceof Error) {
-    //             return res.json({ error: error.message });
-    //         }
-    //         return res.json({ error: "Erro interno do servidor" });
-    //     }
-    // }
+  //         return res.json({ projects: projectsWithCalculations, total });
+  //     } catch (error) {
+  //         if (error instanceof Error) {
+  //             return res.json({ error: error.message });
+  //         }
+  //         return res.json({ error: "Erro interno do servidor" });
+  //     }
+  // }
 
-    async getAllProjects(req: Request, res: Response) {
-        const { id_seller, status_project, page } = req.query;
-        const query: any = {};
+  async getAllProjects(req: Request, res: Response) {
+    const { id_seller, status_project, page } = req.query;
+    const query: any = {};
 
-        if (id_seller) query.seller_user_id = { equals: id_seller };
+    if (id_seller) query.seller_user_id = { equals: id_seller };
 
-        if (status_project) {
-            const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
-            query.status_project = { in: statusArray };
-        }
-
-        try {
-            const projects = await prisma.project.findMany({
-                where: query,
-                include: {
-                    client: true,
-                    serviceProject: {
-                        include: {
-                            service: true
-                        }
-                    },
-                    workedHours: true,
-                    invoiceCostProject: {
-                        include: {
-                            costProject: true
-                        }
-                    },
-                    user: {
-                        select: {
-                            id: true,
-                            avatar: true,
-                            email: true,
-                            name: true,
-                        }
-                    }
-                },
-                skip: Number(page) * 10,
-                take: 10,
-                orderBy: { date_update: 'desc' },
-            });
-
-            const projectsWithCalculations = projects.map(project => {
-                // Calcula o custo total do trabalho
-                const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-                    return total + invoice.costProject.reduce((subtotal, cost) => {
-                        return subtotal + Number(cost.price) * Number(cost.amout);
-                    }, 0);
-                }, 0);
-
-                // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
-                let totalCostOfServiceHours = 0;
-                let totalNumberOfHoursWorked = 0;
-
-                const uniqueUsers = new Set();
-
-                project.workedHours.forEach(workedHour => {
-                    totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
-                    totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-                    uniqueUsers.add(workedHour.name_user);
-                });
-
-                const workersOnThisProject = uniqueUsers.size;
-
-                // Calcula o somatório de hours * price
-                const priceProject = project.serviceProject.reduce((total, service) => {
-                    return total + Number(service.hours) * Number(service.price);
-                }, 0);
-
-                // Remove o array workedHours do projeto
-                const { workedHours, ...projectWithoutWorkedHours } = project;
-
-                return {
-                    ...projectWithoutWorkedHours,
-                    costofwork,
-                    cost_of_service_hours: totalCostOfServiceHours,
-                    total_number_of_hours_worked: totalNumberOfHoursWorked,
-                    workers_on_this_project: workersOnThisProject,
-                    price_project: priceProject // Adiciona o novo campo price_project
-                };
-            });
-
-            const total = await prisma.project.count({
-                where: query,
-            });
-
-            return res.json({ projects: projectsWithCalculations, total });
-        } catch (error) {
-            if (error instanceof Error) {
-                return res.json({ error: error.message });
-            }
-            return res.json({ error: "Erro interno do servidor" });
-        }
+    if (status_project) {
+      const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
+      query.status_project = { in: statusArray };
     }
 
-    async getProjectById(req: Request, res: Response) {
-        const { id } = req.params;
-        try {
-            const project = await prisma.project.findUnique({
-                where: { id },
-                include: {
-                    client: true,
-                    serviceProject: {
-                        include: {
-                            service: true,
-                            Project: true,
-                            photos: true,
-                            costProject: {
-                                include: {
-                                    workedHours: true,
-                                    invoiceCostProject: true, // Inclui invoiceCostProject aqui
-                                    ServiceProject: {
-                                        include: {
-                                            service: true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    invoiceCostProject: {
-                        include: {
-                            costProject: true
-                        }
-                    },
-                    workedHours: true,
-                    user: {
-                        select: {
-                            id: true,
-                            avatar: true,
-                            email: true,
-                            name: true,
-                        }
-                    },
-                },
-            });
-
-            if (project) {
-                const costProjects = project.serviceProject.flatMap(serviceProject =>
-                    serviceProject.costProject.map(cost => ({
-                        id: cost.id,
-                        material_name: cost.material_name,
-                        price: cost.price,
-                        amout: cost.amout,
-                        service_project_id: cost.ServiceProject?.id,
-                        service_project_name: cost.ServiceProject?.name,
-                        employee_id: cost.workedHours.id,
-                        employee_name: cost.workedHours?.name_user,
-                        invoice_cost_project_id: cost.invoiceCostProject?.id,
-                        invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
-                    }))
-                );
-                const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-                    return total + invoice.costProject.reduce((subtotal, cost) => {
-                        return subtotal + Number(cost.price) * Number(cost.amout);
-                    }, 0);
-                }, 0);
-                let totalCostOfServiceHours = 0;
-                let totalNumberOfHoursWorked = 0;
-
-                const uniqueUsers = new Set();
-
-                project.workedHours.forEach(workedHour => {
-                    totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
-                    totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-                    uniqueUsers.add(workedHour.name_user);
-                });
-
-                const workersOnThisProject = uniqueUsers.size;
-
-                // Calcula o somatório de hours * price
-                const priceProject = project.serviceProject.reduce((total, service) => {
-                    return total + Number(service.hours) * Number(service.price);
-                }, 0);
-
-                res.json({
-                    ...project,
-                    costProjects,
-                    costofwork,
-                    cost_of_service_hours: totalCostOfServiceHours,
-                    total_number_of_hours_worked: totalNumberOfHoursWorked,
-                    workers_on_this_project: workersOnThisProject,
-                    price_project: priceProject // Adiciona o novo campo price_project
-                });
-            } else {
-                res.status(404).json({ error: 'Project not found' });
+    try {
+      const projects = await prisma.project.findMany({
+        where: query,
+        include: {
+          client: true,
+          serviceProject: {
+            include: {
+              service: true
             }
-        } catch (error) {
-            if (error instanceof Error) {
-                return res.json({ error: error.message });
+          },
+          workedHours: true,
+          invoiceCostProject: {
+            include: {
+              costProject: true
             }
-            return res.json({ error: "Erro interno do servidor" });
-        }
-    }
-
-
-
-
-    async createProject(req: Request, res: Response) {
-        const data: INewProject = req.body;
-        try {
-            const result = await prisma.client.create({
-                data: {
-                    name: data.client.name,
-                    email: data.client.email,
-                    document: data.client.document,
-                    phone: data.client.phone,
-                    location: data.client.location,
-                    birth_date: data.client.birth_date,
-                    lat: data.client.lat,
-                    log: data.client.log
-                },
-            });
-            const project = await prisma.project.create({
-                data: {
-                    seller_user_id: data.seller_user_id,
-                    price: data.price,
-                    status_project: "Budget",
-                    client_id: result.id
-                },
-            });
-            return res.status(201).json(project);
-        } catch (error) {
-            if (error instanceof Error) {
-                return res.json({ error: error.message });
+          },
+          user: {
+            select: {
+              id: true,
+              avatar: true,
+              email: true,
+              name: true,
             }
-            return res.json({ error: "Erro interno do servidor" });
-        }
-    };
+          }
+        },
+        skip: Number(page) * 10,
+        take: 10,
+        orderBy: { date_update: 'desc' },
+      });
 
-    async createServiceProject(req: Request, res: Response) {
-        const data: IServicesData = req.body
+      const projectsWithCalculations = projects.map(project => {
+        // Calcula o custo total do trabalho
+        const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
+          return total + invoice.costProject.reduce((subtotal, cost) => {
+            return subtotal + Number(cost.price) * Number(cost.amout);
+          }, 0);
+        }, 0);
 
-        try {
-            const result = await prisma.serviceProject.create({
-                data: {
-                    id_service: data.id_service,
-                    projectId: data.id_project,
-                    description: data.description,
-                    hours: data.hours,
-                    name: data.name,
-                    price: data.price,
-                }
-            })
-            return res.json(result);
-        } catch (error) {
-            if (error instanceof Error) {
-                return res.json({ error: error.message });
-            }
-            return res.json({ error: "Erro interno do servidor" });
-        }
+        // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
+        let totalCostOfServiceHours = 0;
+        let totalNumberOfHoursWorked = 0;
+
+        const uniqueUsers = new Set();
+
+        project.workedHours.forEach(workedHour => {
+          totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+          totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+          uniqueUsers.add(workedHour.name_user);
+        });
+
+        const workersOnThisProject = uniqueUsers.size;
+
+        // Calcula o somatório de hours * price
+        const priceProject = project.serviceProject.reduce((total, service) => {
+          return total + Number(service.hours) * Number(service.price);
+        }, 0);
+
+        // Remove o array workedHours do projeto
+        const { workedHours, ...projectWithoutWorkedHours } = project;
+
+        return {
+          ...projectWithoutWorkedHours,
+          costofwork,
+          cost_of_service_hours: totalCostOfServiceHours,
+          total_number_of_hours_worked: totalNumberOfHoursWorked,
+          workers_on_this_project: workersOnThisProject,
+          price_project: priceProject // Adiciona o novo campo price_project
+        };
+      });
+
+      const total = await prisma.project.count({
+        where: query,
+      });
+
+      return res.json({ projects: projectsWithCalculations, total });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
     }
   }
 
@@ -375,21 +216,90 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: true,
+          serviceProject: {
+            include: {
+              service: true,
+              Project: true,
+              photos: true,
+              costProject: {
+                include: {
+                  workedHours: true,
+                  invoiceCostProject: true, // Inclui invoiceCostProject aqui
+                  ServiceProject: {
+                    include: {
+                      service: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          invoiceCostProject: {
+            include: {
+              costProject: true
+            }
+          },
+          workedHours: true,
           user: {
             select: {
               id: true,
               avatar: true,
               email: true,
               name: true,
-            },
+            }
           },
         },
       });
+
       if (project) {
-        res.json(project);
+        const costProjects = project.serviceProject.flatMap(serviceProject =>
+          serviceProject.costProject.map(cost => ({
+            id: cost.id,
+            material_name: cost.material_name,
+            price: cost.price,
+            amout: cost.amout,
+            service_project_id: cost.ServiceProject?.id,
+            service_project_name: cost.ServiceProject?.name,
+            employee_id: cost.workedHours.id,
+            employee_name: cost.workedHours?.name_user,
+            invoice_cost_project_id: cost.invoiceCostProject?.id,
+            invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
+          }))
+        );
+        const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
+          return total + invoice.costProject.reduce((subtotal, cost) => {
+            return subtotal + Number(cost.price) * Number(cost.amout);
+          }, 0);
+        }, 0);
+        let totalCostOfServiceHours = 0;
+        let totalNumberOfHoursWorked = 0;
+
+        const uniqueUsers = new Set();
+
+        project.workedHours.forEach(workedHour => {
+          totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+          totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+          uniqueUsers.add(workedHour.name_user);
+        });
+
+        const workersOnThisProject = uniqueUsers.size;
+
+        // Calcula o somatório de hours * price
+        const priceProject = project.serviceProject.reduce((total, service) => {
+          return total + Number(service.hours) * Number(service.price);
+        }, 0);
+
+        res.json({
+          ...project,
+          costProjects,
+          costofwork,
+          cost_of_service_hours: totalCostOfServiceHours,
+          total_number_of_hours_worked: totalNumberOfHoursWorked,
+          workers_on_this_project: workersOnThisProject,
+          price_project: priceProject // Adiciona o novo campo price_project
+        });
       } else {
-        res.status(404).json({ error: "Project not found" });
+        res.status(404).json({ error: 'Project not found' });
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -398,6 +308,34 @@ export class ProjectController {
       return res.json({ error: "Erro interno do servidor" });
     }
   }
+
+
+
+
+
+  async createServiceProject(req: Request, res: Response) {
+    const data: IServicesData = req.body
+
+    try {
+      const result = await prisma.serviceProject.create({
+        data: {
+          id_service: data.id_service,
+          projectId: data.id_project,
+          description: data.description,
+          hours: data.hours,
+          name: data.name,
+          price: data.price,
+        }
+      })
+      return res.json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+
 
   async getServicesByProjectId(req: Request, res: Response) {
     const { id } = req.params;
@@ -442,29 +380,6 @@ export class ProjectController {
         },
       });
       return res.status(201).json(project);
-    } catch (error) {
-      if (error instanceof Error) {
-        return res.json({ error: error.message });
-      }
-      return res.json({ error: "Erro interno do servidor" });
-    }
-  }
-
-  async createServiceProject(req: Request, res: Response) {
-    const data: IServicesData = req.body;
-
-    try {
-      const result = await prisma.serviceProject.create({
-        data: {
-          id_service: data.id_service,
-          projectId: data.id_project,
-          description: data.description,
-          hours: data.hours,
-          name: data.name,
-          price: data.price,
-        },
-      });
-      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
