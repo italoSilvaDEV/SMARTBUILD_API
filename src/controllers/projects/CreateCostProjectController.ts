@@ -1,10 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 
-
 export class CreateCostProjectController {
-
-
     async handle(req: Request, res: Response) {
         try {
             let costProjects = req.body;
@@ -20,7 +17,8 @@ export class CreateCostProjectController {
                     price,
                     amout,
                     userId,
-                    service_id,
+                    workedhoursId,
+                    serviceProjectId,
                     invoice_cost_project_id
                 } = project;
 
@@ -36,8 +34,8 @@ export class CreateCostProjectController {
                     errors.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
-                if (!userId || !service_id || !invoice_cost_project_id) {
-                    errors.push("User ID, service ID and invoice is required");
+                if (!userId || !workedhoursId || !invoice_cost_project_id || !serviceProjectId) {
+                    errors.push("User ID, worked hours ID, invoice ID, and service project ID are required");
                     continue;
                 }
 
@@ -45,8 +43,12 @@ export class CreateCostProjectController {
                     where: { id: userId }
                 });
 
-                const service = await prisma.service.findUnique({
-                    where: { id: service_id }
+                const service = await prisma.workedhours.findUnique({
+                    where: { id: workedhoursId }
+                });
+
+                const serviceProject = await prisma.serviceProject.findUnique({
+                    where: { id: serviceProjectId }
                 });
 
                 if (!user) {
@@ -59,19 +61,24 @@ export class CreateCostProjectController {
                     continue;
                 }
 
-                if (!invoice_cost_project_id) {
-                    errors.push("invoice cost project to invalid!");
+                if (!serviceProject) {
+                    errors.push("Service project linked to invalid project!");
                     continue;
                 }
 
+                if (!invoice_cost_project_id) {
+                    errors.push("Invoice cost project is invalid!");
+                    continue;
+                }
 
                 await prisma.costProject.create({
                     data: {
                         material_name,
                         price: parseFloat(price),
                         amout: parseInt(amout),
-                        userId,
-                        service_id,
+                        userId: userId ?? '',
+                        workedhoursId,
+                        serviceProjectId,
                         invoice_cost_project_id: invoice_cost_project_id
                     },
                 });
@@ -81,7 +88,7 @@ export class CreateCostProjectController {
                 return res.status(400).json({ errors });
             }
 
-            return res.json();
+            return res.status(201).json({ message: "Cost projects created successfully" });
 
         } catch (error) {
             if (error instanceof Error) {

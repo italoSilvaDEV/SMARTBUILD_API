@@ -63,7 +63,7 @@ projectRoutes.post("/pdfproject/find",checkToken,  findPdfProjectAllController.h
 
 
 const deleteCostProjectController = new DeleteCostProjectController()
-projectRoutes.delete("/costProject",checkToken,  deleteCostProjectController.handle)
+projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
 
 const updateInvoiceCostProjectController = new UpdateInvoiceCostProjectController()

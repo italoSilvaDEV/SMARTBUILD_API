@@ -128,7 +128,11 @@ export class ProjectController {
                 where: query,
                 include: {
                     client: true,
-                    serviceProject: true,
+                    serviceProject: {
+                        include: {
+                            service: true
+                        }
+                    },
                     workedHours: true,
                     invoiceCostProject: {
                         include: {
@@ -209,7 +213,23 @@ export class ProjectController {
                 where: { id },
                 include: {
                     client: true,
-                    serviceProject: true,
+                    serviceProject: {
+                        include: {
+                            costProject: {
+                                include: {
+                                    workedHours: true,
+                                    invoiceCostProject: true, // Inclui invoiceCostProject aqui
+                                    ServiceProject: {
+                                        include: {
+                                            service: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    invoiceCostProject: true,
+                    workedHours: true,
                     user: {
                         select: {
                             id: true,
@@ -220,8 +240,24 @@ export class ProjectController {
                     },
                 },
             });
+
             if (project) {
-                res.json(project);
+                const costProjects = project.serviceProject.flatMap(serviceProject =>
+                    serviceProject.costProject.map(cost => ({
+                        id: cost.id,
+                        material_name: cost.material_name,
+                        price: cost.price,
+                        amout: cost.amout,
+                        service_project_id: cost.ServiceProject?.id,
+                        service_project_name: cost.ServiceProject?.name,
+                        employee_id: cost.workedHours.id,
+                        employee_name: cost.workedHours?.name_user,
+                        invoice_cost_project_id: cost.invoiceCostProject?.id,
+                        invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
+                    }))
+                );
+
+                res.json({ ...project, costProjects });
             } else {
                 res.status(404).json({ error: 'Project not found' });
             }
@@ -231,7 +267,10 @@ export class ProjectController {
             }
             return res.json({ error: "Erro interno do servidor" });
         }
-    };
+    }
+
+
+
 
     async createProject(req: Request, res: Response) {
         const data: INewProject = req.body;
