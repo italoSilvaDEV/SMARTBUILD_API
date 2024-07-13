@@ -111,6 +111,18 @@ projectRoutes.put(
   updateInvoiceCostProjectController.handle
 );
 
+
+const deleteCostProjectController = new DeleteCostProjectController()
+projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
+
+
+const updateInvoiceCostProjectController = new UpdateInvoiceCostProjectController()
+projectRoutes.put("/invoicecostproject/:id", 
+    checkToken,
+    uploadPhoto.single("file"), 
+    compressImage("costproject"), 
+    updateInvoiceCostProjectController.handle
+)
 const updateCostProjectController = new UpdateCostProjectController();
 projectRoutes.put(
   "/costproject",

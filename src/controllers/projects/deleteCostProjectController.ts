@@ -15,7 +15,7 @@ export class DeleteCostProjectController {
     //eacd/a0e
     async handle(request: Request, response: Response) {
         try {
-            const { cost_project_id } = request.body;
+            const { cost_project_id } = request.params;
 
             // Verificação da existência do CostProject
             const costProject = await prisma.costProject.findFirst({

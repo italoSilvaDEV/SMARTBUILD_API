@@ -382,20 +382,78 @@ export class UserController {
     }
   }
 
+  // async searchOneUser(request: Request, response: Response) {
+  //   try {
+  //     let { id } = request.params;
+  //     const user = await prisma.user.findUnique({
+  //       where: { id },
+  //     });
+
+  //     if (!user) {
+  //       throw Error("User not found!");
+  //     }
+  //     const result = await prisma.user.findUnique({
+  //       where: {
+  //         id,
+  //       },
+  //       select: {
+  //         id: true,
+  //         email: true,
+  //         name: true,
+  //         avatar: true,
+  //         phone: true,
+  //         document: true,
+  //         //rules: true,
+  //         city_and_state: true,
+  //         office: {
+  //           select: {
+  //             id: true,
+  //             name: true,
+  //           },
+  //         },
+  //         seller_project: {
+  //           select: {
+  //             status_project: true,
+  //             serviceProject:{
+  //               select:{
+  //                   hours: true,
+  //                   price: true
+  //               }
+  //             },
+  //             client: {
+  //               select: {
+  //                 name: true,
+  //                 city_and_state: true,
+  //               },
+
+  //             }
+  //           }
+  //         }
+  //       },
+  //     });
+
+  //     return response.json(result);
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return response.json({ error: error.message });
+  //     }
+  //     return response.json({ error: "Erro interno do servidor" });
+  //   }
+  // }
+
   async searchOneUser(request: Request, response: Response) {
     try {
       let { id } = request.params;
       const user = await prisma.user.findUnique({
         where: { id },
       });
-
+  
       if (!user) {
         throw Error("User not found!");
       }
+  
       const result = await prisma.user.findUnique({
-        where: {
-          id,
-        },
+        where: { id },
         select: {
           id: true,
           email: true,
@@ -403,7 +461,6 @@ export class UserController {
           avatar: true,
           phone: true,
           document: true,
-          //rules: true,
           city_and_state: true,
           office: {
             select: {
@@ -411,10 +468,42 @@ export class UserController {
               name: true,
             },
           },
+          seller_project: {
+            select: {
+              status_project: true,
+              serviceProject: {
+                select: {
+                  hours: true,
+                  price: true,
+                },
+              },
+              client: {
+                select: {
+                  name: true,
+                  city_and_state: true,
+                },
+              },
+            },
+          },
         },
       });
-
-      return response.json(result);
+  
+      const formattedResult = {
+        ...result,
+        seller_project: result?.seller_project.map(project => {
+          const price_project = project.serviceProject.reduce((total, service) => {
+            return total + Number(service.hours) * Number(service.price);
+          }, 0);
+  
+          return {
+            status_project: project.status_project,
+            price_project,
+            client: project.client,
+          };
+        }),
+      };
+  
+      return response.json(formattedResult);
     } catch (error) {
       if (error instanceof Error) {
         return response.json({ error: error.message });
@@ -422,6 +511,7 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
+  
 
   async serchAllUser(request: Request, response: Response) {
     const { name, email, pag } = request.body;
