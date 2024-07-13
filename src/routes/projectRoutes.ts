@@ -46,7 +46,7 @@ const findCostProjectController = new FindCostProjectController();
 projectRoutes.post("/costproject/find",checkToken,  findCostProjectController.handle);
 
 const deleteCostProjectController = new DeleteCostProjectController()
-projectRoutes.delete("/costProject",checkToken,  deleteCostProjectController.handle)
+projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
 
 const updateInvoiceCostProjectController = new UpdateInvoiceCostProjectController()
