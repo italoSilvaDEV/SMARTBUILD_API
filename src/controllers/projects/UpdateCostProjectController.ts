@@ -21,7 +21,8 @@ export class UpdateCostProjectController {
                     price,
                     amout,
                     userId,
-                    serviceProjectId,
+                    employee_id,
+                    service_project_id,
                     invoice_cost_project_id
                 } = project;
 
@@ -29,7 +30,10 @@ export class UpdateCostProjectController {
                     errors.push("Material name is required!");
                     continue;
                 }
-
+                if(!employee_id){
+                    errors.push("Employee is required!");
+                    continue;
+                }
                 if (!material_name) {
                     errors.push("Material name is required!");
                     continue;
@@ -42,7 +46,7 @@ export class UpdateCostProjectController {
                     errors.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
-                if (!userId || !serviceProjectId || !invoice_cost_project_id) {
+                if (!userId || !service_project_id || !invoice_cost_project_id) {
                     errors.push("User ID, service ID and invoice is required");
                     continue;
                 }
@@ -62,7 +66,7 @@ export class UpdateCostProjectController {
                 });
 
                 const service = await prisma.serviceProject.findUnique({
-                    where: { id: serviceProjectId }
+                    where: { id: service_project_id }
                 });
 
                 if (!user) {
@@ -90,7 +94,8 @@ export class UpdateCostProjectController {
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId,
-                        serviceProjectId,
+                        workedhoursId: employee_id,
+                        serviceProjectId: service_project_id,
                         invoice_cost_project_id: invoice_cost_project_id
                     },
                 });
