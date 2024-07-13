@@ -1,6 +1,7 @@
 import { Router } from "express"
 import multer from "multer";
 import uploadConfig from "../config/upload";
+import uploadConfigUtf8 from "../config/uploadUtf8";
 import { compressImage } from "../config/compressImage";
 import { checkToken } from "../middlewares/checkToken";
 import { CreateInvoiceCostProjectController } from "../controllers/projects/CreateInvoiceCostProjectController";
@@ -10,6 +11,8 @@ import { DeleteCostProjectController } from "../controllers/projects/deleteCostP
 import { UpdateInvoiceCostProjectController } from "../controllers/projects/UpdateInvoiceCostProjectController";
 import { UpdateCostProjectController } from "../controllers/projects/UpdateCostProjectController";
 import { ProjectController } from "../controllers/projects/ProjectController";
+import { CreatePdfProjectController } from "../controllers/projects/CreatePdfProjectUploadController";
+import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProjectAllController";
 
 
 
@@ -38,12 +41,26 @@ projectRoutes.post("/invoicecostproject",
     compressImage("costproject"),
     createInvoiceCostProjectController.handle
 )
+const createPdfProjectController = new CreatePdfProjectController()
+const uploadpdf = multer(uploadConfigUtf8.uploadUtf8("./public/tmp/pdfproject"))
+projectRoutes.post("/pdfproject",
+    checkToken,
+    uploadpdf.single("file"),
+    createPdfProjectController.handle
+)
+
+
+
 
 const createCostProjectController = new CreateCostProjectController();
 projectRoutes.post("/costproject", checkToken, createCostProjectController.handle);
 
 const findCostProjectController = new FindCostProjectController();
 projectRoutes.post("/costproject/find",checkToken,  findCostProjectController.handle);
+
+const findPdfProjectAllController = new FindPdfProjectAllController();
+projectRoutes.post("/pdfproject/find",checkToken,  findPdfProjectAllController.handle);
+
 
 const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
