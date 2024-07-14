@@ -215,6 +215,9 @@ model InvoiceCostProject {
   @@map("invoice_cost_project")
 }
 
+
+
+
 model CostProject {
   id                      String              @id @default(uuid())
   material_name           String
@@ -228,8 +231,7 @@ model CostProject {
   invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
   user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
 
-  workedHours      Workedhours     @relation(fields: [workedhoursId], references: [id])
-  workedhoursId    String
+ 
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
   serviceProjectId String?
 
@@ -251,7 +253,6 @@ model Workedhours {
 
   project     Project?      @relation(fields: [project_id], references: [id])
   project_id  String?
-  CostProject CostProject[]
 
   @@map("worked_hours")
 }

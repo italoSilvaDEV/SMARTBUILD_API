@@ -21,17 +21,12 @@ export class UpdateCostProjectController {
                     price,
                     amout,
                     userId,
-                    employee_id,
                     service_project_id,
                     invoice_cost_project_id
                 } = project;
 
                 if(!id){
                     errors.push("Material name is required!");
-                    continue;
-                }
-                if(!employee_id){
-                    errors.push("Employee is required!");
                     continue;
                 }
                 if (!material_name) {
@@ -94,7 +89,6 @@ export class UpdateCostProjectController {
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId,
-                        workedhoursId: employee_id,
                         serviceProjectId: service_project_id,
                         invoice_cost_project_id: invoice_cost_project_id
                     },

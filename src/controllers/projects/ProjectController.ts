@@ -223,7 +223,6 @@ export class ProjectController {
               photos: true,
               costProject: {
                 include: {
-                  workedHours: true,
                   invoiceCostProject: true, // Inclui invoiceCostProject aqui
                   ServiceProject: {
                     include: {
@@ -260,8 +259,6 @@ export class ProjectController {
             amout: cost.amout,
             service_project_id: cost.ServiceProject?.id,
             service_project_name: cost.ServiceProject?.name,
-            employee_id: cost.workedHours.id,
-            employee_name: cost.workedHours?.name_user,
             invoice_cost_project_id: cost.invoiceCostProject?.id,
             invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
           }))
