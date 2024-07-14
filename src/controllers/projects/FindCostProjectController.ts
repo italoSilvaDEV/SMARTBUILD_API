@@ -20,11 +20,7 @@ export class FindCostProjectController {
                     material_name: true,
                     price: true,
                     amout: true,
-                    service: {
-                        select: {
-                            service_name: true,
-                        }
-                    },
+                    ServiceProject: true,
                     user: {
                         select: {
                             name: true

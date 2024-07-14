@@ -86,7 +86,6 @@ model Service {
   autorId         String?
   date_creation   DateTime         @default(now())
   date_update     DateTime         @updatedAt
-  costProject     CostProject[]
   service         SubCategory      @relation(fields: [sub_category_id], references: [id])
   ServiceProject  ServiceProject[]
 
@@ -95,18 +94,18 @@ model Service {
 }
 
 model ServiceProject {
-  id          String              @id @default(uuid())
-  name        String
-  description String
-  hours       Decimal
-  price       Decimal
-  service     Service             @relation(fields: [id_service], references: [id])
-  id_service  String
-  photos      ImgServiceProject[]
-
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-  Project       Project? @relation(fields: [projectId], references: [id])
+  id            String              @id @default(uuid())
+  name          String
+  description   String
+  hours         Decimal
+  price         Decimal
+  service       Service             @relation(fields: [id_service], references: [id])
+  id_service    String
+  photos        ImgServiceProject[]
+  costProject   CostProject[]
+  date_creation DateTime            @default(now())
+  date_update   DateTime            @updatedAt
+  Project       Project?            @relation(fields: [projectId], references: [id])
   projectId     String?
 }
 
@@ -162,7 +161,6 @@ model Project {
   user           User?   @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
 
-
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
   @@map("project")
@@ -217,44 +215,44 @@ model InvoiceCostProject {
   @@map("invoice_cost_project")
 }
 
+
+
+
 model CostProject {
   id                      String              @id @default(uuid())
   material_name           String
   price                   Decimal
   amout                   Int
   userId                  String?
-  service_id              String?
   invoice_cost_project_id String?
   autorId                 String?
   date_creation           DateTime            @default(now())
   date_update             DateTime            @updatedAt
   invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
-  service                 Service?            @relation(fields: [service_id], references: [id])
   user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
 
+ 
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+
   @@index([invoice_cost_project_id], map: "cost_project_invoice_cost_project_id_fkey")
-  @@index([service_id], map: "cost_project_service_id_fkey")
   @@index([userId], map: "cost_project_userId_fkey")
   @@map("cost_project")
 }
 
-//seler e admin - nome de um funcionario - quantidade de horas - data e hora - preço da hora
-
 model Workedhours {
   id String @id @default(uuid())
 
-  name_user String 
-  
+  name_user String
+
   amount_of_hours Decimal
-  hourly_price Decimal
- 
+  hourly_price    Decimal
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  project    Project? @relation(fields: [project_id], references: [id])
-  project_id String?
-  
+  project     Project?      @relation(fields: [project_id], references: [id])
+  project_id  String?
+
   @@map("worked_hours")
 }
-
-

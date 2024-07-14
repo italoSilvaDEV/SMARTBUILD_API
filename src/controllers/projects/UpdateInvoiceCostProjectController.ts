@@ -23,7 +23,7 @@ export class UpdateInvoiceCostProjectController {
             } = request.params;
 
             if (!id) {
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                this.deleteFiles(String(request.file?.filename), request.file?.filename);
                 throw new Error("id is requireed!");
             }
 

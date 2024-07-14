@@ -21,7 +21,7 @@ export class UpdateCostProjectController {
                     price,
                     amout,
                     userId,
-                    service_id,
+                    service_project_id,
                     invoice_cost_project_id
                 } = project;
 
@@ -29,7 +29,6 @@ export class UpdateCostProjectController {
                     errors.push("Material name is required!");
                     continue;
                 }
-
                 if (!material_name) {
                     errors.push("Material name is required!");
                     continue;
@@ -42,7 +41,7 @@ export class UpdateCostProjectController {
                     errors.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
-                if (!userId || !service_id || !invoice_cost_project_id) {
+                if (!userId || !service_project_id || !invoice_cost_project_id) {
                     errors.push("User ID, service ID and invoice is required");
                     continue;
                 }
@@ -61,8 +60,8 @@ export class UpdateCostProjectController {
                     where: { id: userId }
                 });
 
-                const service = await prisma.service.findUnique({
-                    where: { id: service_id }
+                const service = await prisma.serviceProject.findUnique({
+                    where: { id: service_project_id }
                 });
 
                 if (!user) {
@@ -90,7 +89,7 @@ export class UpdateCostProjectController {
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId,
-                        service_id,
+                        serviceProjectId: service_project_id,
                         invoice_cost_project_id: invoice_cost_project_id
                     },
                 });
