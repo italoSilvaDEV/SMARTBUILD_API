@@ -20,22 +20,22 @@ export class CreateWorkedHoursController {
         hourly_price
       } = req.body as CreateWorkedHoursRequest;
 
-      const errors: string[] = [];
+      const error: string[] = [];
 
       if (!name_user || typeof name_user !== 'string' || name_user.trim() === '') {
-        errors.push("Name user is required and must not be empty!");
+        error.push("Name user is required and must not be empty!");
       }
 
       if (amount_of_hours === undefined || parseFloat(amount_of_hours) <= 0) {
-        errors.push("Amount of hours is mandatory and must be greater than zero!");
+        error.push("Amount of hours is mandatory and must be greater than zero!");
       }
 
       if (hourly_price === undefined || hourly_price <= 0) {
-        errors.push("Hourly price is mandatory and must be greater than zero!");
+        error.push("Hourly price is mandatory and must be greater than zero!");
       }
 
-      if (errors.length > 0) {
-        return res.status(400).json({ errors });
+      if (error.length > 0) {
+        return res.status(400).json({ error });
       }
 
       await prisma.workedhours.create({
