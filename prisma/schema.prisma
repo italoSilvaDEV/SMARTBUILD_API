@@ -185,7 +185,7 @@ model Client {
   id             String    @id @default(uuid())
   avatar         String?
   name           String
-  email          String    @unique
+  email          String    
   document       String?   @unique
   phone          String?
   city_and_state String?
