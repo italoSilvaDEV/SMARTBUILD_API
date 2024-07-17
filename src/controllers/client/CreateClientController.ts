@@ -25,7 +25,7 @@ export class CreateClientController {
                 errors.push("Email is required!");
             }
 
-            const existingClient = await prisma.client.findUnique({
+            const existingClient = await prisma.client.findFirst({
                 where: { email: email }
             });
 

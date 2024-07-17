@@ -99,8 +99,10 @@ model ServiceProject {
   description   String
   hours         Decimal
   price         Decimal
-  service       Service             @relation(fields: [id_service], references: [id])
-  id_service    String
+
+  service       Service?             @relation(fields: [id_service], references: [id])
+  id_service    String?
+  
   photos        ImgServiceProject[]
   costProject   CostProject[]
   date_creation DateTime            @default(now())
@@ -185,7 +187,7 @@ model Client {
   id             String    @id @default(uuid())
   avatar         String?
   name           String
-  email          String    @unique
+  email          String    
   document       String?   @unique
   phone          String?
   city_and_state String?
