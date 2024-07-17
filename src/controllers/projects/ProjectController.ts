@@ -316,7 +316,7 @@ export class ProjectController {
     try {
       const result = await prisma.serviceProject.create({
         data: {
-          id_service: data.id_service,
+          id_service: data.id_service || null,
           projectId: data.id_project,
           description: data.description,
           hours: data.hours,
