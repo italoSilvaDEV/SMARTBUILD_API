@@ -192,7 +192,7 @@ model Client {
   phone          String?
   city_and_state String?
   birth_date     String?
-  location       String?
+  location       String? @db.Text
   lat            String?
   log            String?
   autorId        String?
