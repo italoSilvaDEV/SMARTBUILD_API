@@ -188,7 +188,7 @@ model Client {
   avatar         String?
   name           String
   email          String    
-  document       String?   @unique
+  document       String?   
   phone          String?
   city_and_state String?
   birth_date     String?

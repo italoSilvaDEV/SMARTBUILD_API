@@ -356,7 +356,8 @@ export class ProjectController {
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
     try {
-      const result = await prisma.client.create({
+
+     const result = await prisma.client.create({
         data: {
           name: data.client.name,
           email: data.client.email,
