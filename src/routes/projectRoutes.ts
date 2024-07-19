@@ -22,6 +22,7 @@ const uploadServiceProject = multer(
 );
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
+projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
 projectRoutes.get(
   "/project/find",
   checkToken,

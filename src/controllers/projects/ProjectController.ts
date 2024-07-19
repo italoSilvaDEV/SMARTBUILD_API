@@ -356,6 +356,7 @@ export class ProjectController {
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
     try {
+
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -372,7 +373,7 @@ export class ProjectController {
         data: {
           seller_user_id: data.seller_user_id,
           price: data.price,
-          status_project: "Budget",
+          status_project: "Pending",
           client_id: result.id,
         },
       });
@@ -415,6 +416,23 @@ export class ProjectController {
           status_project,
           client_id,
           autorId,
+        },
+      });
+      return res.json(project);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+  async updateStatusProject(req: Request, res: Response) {
+    const { id, status } = req.body;
+    try {
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          status_project: status
         },
       });
       return res.json(project);

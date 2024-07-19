@@ -10,16 +10,16 @@ export class CreateSubCategoryController {
         const secret = process.env.SECRET_JWT;
 
         if (!token) {
-            return response.status(401).json({ message: 'Token inválido' });
+            return response.status(401).json({ error: 'Token inválido' });
         }
 
         const decoded = decodeToken(token, String(secret));
         if (!decoded) {
-            return response.status(401).json({ message: 'Erro ao decodificar token!' });
+            return response.status(401).json({ error: 'Erro ao decodificar token!' });
         }
 
         if (!subcategory_name) {
-            return response.status(400).json({ message: 'subcategory is a required field!' });
+            return response.status(400).json({ error: 'subcategory is a required field!' });
         }
 
         try {
@@ -28,7 +28,7 @@ export class CreateSubCategoryController {
             });
 
             if (!category) {
-                return response.status(404).json({ message: 'Invalid category!' });
+                return response.status(404).json({ error: 'Invalid category!' });
             }
 
             const existingSubcategory = await prisma.subCategory.findFirst({
@@ -36,10 +36,10 @@ export class CreateSubCategoryController {
                     subcategory_name,
                     category_id
                 }
-            });
+            }); 
 
             if (existingSubcategory) {
-                return response.status(409).json({ message: 'This sub-category has already been registered in this category!' });
+                return response.status(400).json({ error: 'This sub-category has already been registered in this category!' });
             }
 
             const result = await prisma.subCategory.create({
@@ -53,8 +53,10 @@ export class CreateSubCategoryController {
             return response.status(201).json(result);
 
         } catch (error) {
-            console.error(error);
-            return response.status(500).json({ message: 'Internal server error' });
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal server error" });
         }
     }
 }
