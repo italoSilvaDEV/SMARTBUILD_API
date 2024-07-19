@@ -373,7 +373,7 @@ export class ProjectController {
         data: {
           seller_user_id: data.seller_user_id,
           price: data.price,
-          status_project: "Pending",
+          status_project: data.status_project,
           client_id: result.id,
         },
       });
