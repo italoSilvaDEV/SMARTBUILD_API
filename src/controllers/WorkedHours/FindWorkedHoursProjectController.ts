@@ -68,7 +68,7 @@ export class FindWorkedHoursProjectController {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
-            return response.json({ error: "Erro interno do servidor" });
+            return response.json({ error: "Internal server error"});
         }
     }
 }

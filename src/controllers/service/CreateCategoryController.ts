@@ -23,7 +23,8 @@ export class CreateCategoryController {
 
             if (!category_name || !type_category) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Category name and type are required!");
+                return response.status(400).json({ error: "Category name and type are required!" });
+                
             }
 
             let file = "";
@@ -40,7 +41,8 @@ export class CreateCategoryController {
 
             if (category) {
                 this.deleteFiles(file, request.file?.filename);
-                throw new Error("This category has already been registered!");
+                return response.status(400).json({ error: "This category has already been registered!" });
+                
             }
 
             const result = await prisma.category.create({
@@ -61,7 +63,7 @@ export class CreateCategoryController {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
-            return response.json({ error: "Erro interno do servidor" });
+            return response.json({ error: "Internal server error" });
 
         }
     }

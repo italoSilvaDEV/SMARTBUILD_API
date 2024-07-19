@@ -16,13 +16,13 @@ export class CreateServiceController {
             } = request.body;
 
             if (!service_name) {
-                return response.status(400).json({ message: "Service field is required!" });
+                return response.status(400).json({ error: "Service field is required!" });
             }
             if (!type_variable) {
-                return response.status(400).json({ message: "Variable type is required" });
+                return response.status(400).json({ error: "Variable type is required" });
             }
             if (!price_type) {
-                return response.status(400).json({ message: "Price type is required" });
+                return response.status(400).json({ error: "Price type is required" });
             }
 
             const subCategory = await prisma.subCategory.findFirst({
@@ -30,12 +30,12 @@ export class CreateServiceController {
             });
 
             if (!subCategory) {
-                return response.status(404).json({ message: "Subcategory not found!" });
+                return response.status(404).json({ error: "Subcategory not found!" });
             }
 
             if (String(price_type).toLocaleUpperCase() === "FIXE") {
                 if (price_fixe <= 0) {
-                    return response.status(400).json({ message: "Fixed price must be greater than 0" });
+                    return response.status(400).json({ error: "Fixed price must be greater than 0" });
                 }
                 await prisma.service.create({
                     data: {
@@ -48,7 +48,7 @@ export class CreateServiceController {
                 });
             } else if (String(price_type).toLocaleUpperCase() === "VARIABLE") {
                 if (price_maximum <= price_minimum) {
-                    return response.status(400).json({ message: "The maximum price must be greater than the minimum price" });
+                    return response.status(400).json({ error: "The maximum price must be greater than the minimum price" });
                 }
                 await prisma.service.create({
                     data: {
@@ -61,10 +61,10 @@ export class CreateServiceController {
                     },
                 });
             } else {
-                return response.status(400).json({ message: "Invalid price type" });
+                return response.status(400).json({ error: "Invalid price type" });
             }
 
-            return response.status(201).json({ message: "Service created successfully" });
+            return response.status(201).json({ error: "Service created successfully" });
         } catch (error) {
             if (error instanceof Error) {
                 return response.status(500).json({ error: error.message });
