@@ -6,7 +6,7 @@ export class DeleteSubCategoryController {
 
     async handle(request: Request, response: Response) {
         try {
-            const { sub_category_id } = request.body;
+            const { sub_category_id } = request.params;
 
             // Verificação da existência da subcategoria
             const subCategory = await prisma.subCategory.findFirst({
@@ -19,7 +19,7 @@ export class DeleteSubCategoryController {
             });
 
             if (!subCategory) {
-                throw new Error("Subcategory not found!");
+                return response.status(400).json({ message: 'Subcategory not found!' });
             }
 
             // Exclusão de todos os serviços associados à subcategoria
@@ -42,7 +42,7 @@ export class DeleteSubCategoryController {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
-            return response.json({ error: "Erro interno do servidor" });
+            return response.status(500).json({ message: 'Internal server error' });
         }
     }
 }

@@ -66,7 +66,7 @@ const updateSubCategoryController = new UpdateSubCategoryController()
 serviceRoutes.put("/subcategory", checkToken, updateSubCategoryController.handle)
 
 const deleteSubCategoryController = new DeleteSubCategoryController()
-serviceRoutes.delete("/subcategory", checkToken, deleteSubCategoryController.handle)
+serviceRoutes.delete("/subcategory/:sub_category_id", checkToken, deleteSubCategoryController.handle)
 
 const findSubCategoryController = new FindSubCategoryController();
 serviceRoutes.post("/subcategories/find", checkToken, findSubCategoryController.handle);
@@ -75,6 +75,7 @@ serviceRoutes.post("/subcategories/find", checkToken, findSubCategoryController.
 //service
 const createServiceController = new CreateServiceController()
 serviceRoutes.post("/service", checkToken, createServiceController.handle)
+
 
 const updateServiceController = new UpdateServiceController()
 serviceRoutes.put("/service", checkToken, updateServiceController.handle)

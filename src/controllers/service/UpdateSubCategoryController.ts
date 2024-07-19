@@ -12,9 +12,9 @@ export class UpdateSubCategoryController {
                 status_subcategory,
                 type_category
             } = request.body;
-
+ 
             if (!category_id || !subcategory_id || !subcategory_name || !type_category) {
-                throw new Error("All fields are required!");
+                return response.status(400).json({ error: "All fields are required!" });
             }
 
             const category = await prisma.category.findFirst({
@@ -24,40 +24,37 @@ export class UpdateSubCategoryController {
             });
 
             if (!category) {
-                throw new Error("Invalid category!");
+                return response.status(400).json({ error: "Invalid category!" });
+                
             }
 
             const subcategory = await prisma.subCategory.findUnique({
                 where: {
                     id: subcategory_id
                 },
-                include: {
-                    subcategory: true
-                }
             });
 
             if (!subcategory) {
-                throw new Error("Invalid subcategory!");
+                return response.status(400).json({ error: "Invalid subcategory!" });
+                
             }
 
             // Se não houver mudanças, retorne sem atualizar
             if (subcategory.subcategory_name === subcategory_name) {
                 return response.json({});
-            }
-
-            // Verifique se já existe uma subcategoria com o novo nome dentro da mesma categoria e tipo
-            const existingSubcategory = await prisma.subCategory.findFirst({
-                where: {
-                    subcategory_name: subcategory_name,
-                    category_id: category_id,
-                    subcategory: {
-                        type_category: type_category
+            }else if(subcategory_name !== subcategory.subcategory_name){
+                const existingSubcategory = await prisma.subCategory.findFirst({
+                    where: {
+                        subcategory_name: subcategory_name,
+                        category_id: category_id,
+                        subcategory: {
+                            type_category: type_category
+                        }
                     }
+                });
+                if (existingSubcategory) {
+                    return response.status(400).json({ error: "This sub-category has already been registered !" });
                 }
-            });
-
-            if (existingSubcategory && existingSubcategory.id !== subcategory_id) {
-                throw new Error("This sub-category has already been registered !");
             }
 
             // Atualize a subcategoria
@@ -76,7 +73,7 @@ export class UpdateSubCategoryController {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
-            return response.json({ error: "Erro interno do servidor" });
+            return response.json({ error: "Internal server error" });
         }
     }
 }

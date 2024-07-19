@@ -64,19 +64,32 @@ export class UpdateImgCategoryController {
     }
     async handleName(request: Request, response: Response) {
         try {
-            const { id, category_name } = request.body;
+            const { id, category_name, type_category } = request.body;
 
             if (!id || !category_name) {
-                throw new Error("ID and category name are required!");
+                return response.status(400).json({ error: "ID and category name are required!" });
             }
             const category = await prisma.category.findUnique({
                 where: { id }
             });
 
             if (!category) {
-                throw new Error("Category not found!");
+                return response.status(400).json({ error: "Category not found!" });
             }
 
+            if (category.category_name === category_name) {
+                return response.json({});
+            }else if(category.category_name !== category_name){
+                const existingCategory = await prisma.category.findFirst({
+                    where: {
+                        category_name: category_name,
+                        type_category: type_category,
+                    }
+                });
+                if (existingCategory) {
+                    return response.status(400).json({ error: "This category has already been registered!" });
+                }
+            }
 
             await prisma.category.update({
                 where: { id },
