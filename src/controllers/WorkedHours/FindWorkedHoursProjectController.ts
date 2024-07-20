@@ -50,6 +50,8 @@ export class FindWorkedHoursProjectController {
                     amount_of_hours: true,
                     hourly_price: true,
                     date_creation: true,
+                    start_date: true,
+                    end_date: true
                 },
                 skip: pageNumber * 20,
                 take: 20,
