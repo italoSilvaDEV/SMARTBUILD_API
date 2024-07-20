@@ -96,7 +96,7 @@ model Service {
 model ServiceProject {
   id            String              @id @default(uuid())
   name          String
-  description   String
+  description   String  @db.Text
   hours         Decimal
   price         Decimal
 
