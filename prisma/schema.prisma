@@ -247,7 +247,11 @@ model Workedhours {
 
   name_user String
 
-  amount_of_hours Decimal
+  start_date String?
+
+  end_date String?
+  
+  amount_of_hours Decimal?
   hourly_price    Decimal
 
   date_creation DateTime @default(now())

@@ -8,14 +8,21 @@ export class UpdateWorkedHoursController {
       name_user,
       amount_of_hours,
       hourly_price,
+      start_date,
+      end_date,
     } = request.body;
 
     // Função de validação
     function validateWorkedHoursData(data: any): string | null {
       if (!data.id) return "ID is required";
       if (!data.name_user) return "Name user is required";
-      if (!data.amount_of_hours) return "Amount of hours is required";
+      if (!data.amount_of_hours && data.amount_of_hours !== null) return "Amount of hours is required";
       if (!data.hourly_price) return "Hourly price is required";
+      if (data.start_date && data.end_date) {
+        const startDate = new Date(data.start_date);
+        const endDate = new Date(data.end_date);
+        if (endDate < startDate) return "End date cannot be earlier than start date";
+      }
       return null;
     }
 
@@ -37,8 +44,10 @@ export class UpdateWorkedHoursController {
         where: { id },
         data: {
           name_user,
-          amount_of_hours: parseFloat(amount_of_hours),
+          amount_of_hours: parseFloat(amount_of_hours) || null,
           hourly_price,
+          start_date,
+          end_date,
         }
       });
 
