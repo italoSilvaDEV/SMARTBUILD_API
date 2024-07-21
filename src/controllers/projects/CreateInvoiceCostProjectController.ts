@@ -16,45 +16,46 @@ export class CreateInvoiceCostProjectController {
 
     async handle(req: Request, res: Response) {
         try {
-            const {
-                project_id
-            } = req.body;
-
-            let file = "";
-            const filePath = `./public/tmp/costproject/${req.file?.filename}`;
-            const dimensions = getImageDimensions(filePath);
-
-            if (!dimensions) {
-                // não é img
-                file = String(req.file?.filename);
-            } else {
-                deleteFile(`./public/tmp/costproject/${req.file?.filename}`);
-                file = `${req.file?.filename.split('.')[0]}.webp`;
-            }
+            const { project_id } = req.body;
 
             if (!project_id) {
-                this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
-                throw new Error("project identifier is required");
+                if (req.file) {
+                    this.deleteFiles(req.file?.filename?.split('.')[0] + '.webp', req.file?.filename);
+                }
+                return res.status(400).json({ error: "Project identifier is required" });
             }
 
             let result;
-            if (!req.file?.originalname) {
+
+            if (!req.file) {
                 result = await prisma.invoiceCostProject.create({
                     data: {
                         project_cost_invoice_exists: false,
-                        project_id:project_id
+                        project_id: project_id
                     },
                 });
             } else {
+                let file = "";
+                const filePath = `./public/tmp/costproject/${req.file.filename}`;
+                const dimensions = getImageDimensions(filePath);
+
+                if (!dimensions) {
+                    // não é img
+                    file = String(req.file.filename);
+                } else {
+                    deleteFile(`./public/tmp/costproject/${req.file.filename}`);
+                    file = `${req.file.filename.split('.')[0]}.webp`;
+                }
+
                 result = await prisma.invoiceCostProject.create({
                     data: {
-                        original_file_name: String(req.file?.originalname),
+                        original_file_name: String(req.file.originalname),
                         uri: file,
                         project_cost_invoice_exists: true,
-                        project_id:project_id
+                        project_id: project_id
                     },
                 });
-                deleteFile(`./public/tmp/user/${req.file?.filename}`);
+                deleteFile(`./public/tmp/user/${req.file.filename}`);
             }
 
             const formattedResult = {
