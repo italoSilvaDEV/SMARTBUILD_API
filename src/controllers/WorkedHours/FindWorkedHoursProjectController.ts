@@ -21,21 +21,24 @@ export class FindWorkedHoursProjectController {
                 dateStart.setUTCHours(0, 0, 0, 0);
                 const dateEnd = new Date(date_final);
                 dateEnd.setUTCHours(23, 59, 59, 999);
-                filtro.date_creation = {
-                    gte: dateStart,
-                    lte: dateEnd,
+                filtro.start_date = {
+                    gte: dateStart.toISOString(),
+                    lte: dateEnd.toISOString(),
                 };
             } else if (date_initial) {
                 const dateStart = new Date(date_initial);
                 dateStart.setUTCHours(0, 0, 0, 0);
-                filtro.date_creation = {
-                    gte: dateStart,
+                const dateEnd = new Date(date_initial);
+                dateEnd.setUTCHours(23, 59, 59, 999);
+                filtro.start_date = {
+                    gte: dateStart.toISOString(),
+                    lte: dateEnd.toISOString(),
                 };
             } else if (date_final) {
                 const dateEnd = new Date(date_final);
                 dateEnd.setUTCHours(23, 59, 59, 999);
-                filtro.date_creation = {
-                    lte: dateEnd,
+                filtro.start_date = {
+                    lte: dateEnd.toISOString(),
                 };
             }
 
