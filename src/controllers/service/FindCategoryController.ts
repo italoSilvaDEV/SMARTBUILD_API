@@ -5,16 +5,25 @@ export class FindCategoriesController {
 
     async handle(request: Request, response: Response) {
         try {
-            const { type_category } = request.body;
+            const { type_category, search } = request.body;
 
             if (!type_category) {
                 throw new Error("Type category is required!");
             }
 
+            const filtro: any = {
+                type_category: { equals: type_category }
+            };
+
+            if (search) {
+                filtro.OR = [
+                    { category_name: { contains: search } },
+                    { sub_category: { some: { service: { some: { service_name: { contains: search } } } } } }
+                ];
+            }
+
             const categories = await prisma.category.findMany({
-                where: {
-                    type_category: type_category
-                },
+                where: filtro,
                 select: {
                     id: true,
                     type_category: true,
@@ -22,7 +31,6 @@ export class FindCategoriesController {
                     status_category: true,
                     category_name: true,
                     sub_category: {
-                        
                         select: {
                             id: true,
                             subcategory_name: true,

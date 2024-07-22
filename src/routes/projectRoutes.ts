@@ -47,8 +47,7 @@ projectRoutes.post(
 );
 
 //costProject
-const createInvoiceCostProjectController =
-  new CreateInvoiceCostProjectController();
+const createInvoiceCostProjectController = new CreateInvoiceCostProjectController();
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/costproject"));
 projectRoutes.post(
   "/invoicecostproject",
