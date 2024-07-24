@@ -30,6 +30,10 @@ export interface IServicesData {
   price: number;
 }
 
+export interface IputServiceData extends IServicesData{
+  id: string
+}
+
 export class ProjectController {
 
   async getAllProjects(req: Request, res: Response) {
@@ -257,6 +261,43 @@ export class ProjectController {
     }
   }
 
+  async updateServiceProject(req: Request, res: Response) {
+    const data: IputServiceData = req.body;
+   console.log(data)
+    try {
+      // Verificar se o id_service existe na tabela referenciada
+      const serviceExists = await prisma.serviceProject.findUnique({
+        where: {
+          id: data.id,
+        }
+      });
+  
+      if (!serviceExists) {
+        return res.status(400).json({ error: "Serviço não encontrado" });
+      }
+  
+      const result = await prisma.serviceProject.update({
+        where: {
+          id: data.id, // Use a chave primária correta aqui
+        },
+        //47806967-dc1a-49ec-8607-dac0347a6d6f
+        data: {
+          id_service: data.id_service || null,
+          projectId: data.id_project,
+          description: data.description,
+          hours: data.hours,
+          name: data.name,
+          price: data.price,
+        }
+      });
+      return res.json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
 
   async getServicesByProjectId(req: Request, res: Response) {
     const { id } = req.params;

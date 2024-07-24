@@ -33,11 +33,15 @@ projectRoutes.get(
   checkToken,
   projectController.getProjectById
 );
+
 projectRoutes.post(
   "/service-project",
   checkToken,
   projectController.createServiceProject
 );
+
+projectRoutes.put( "/service-project",  checkToken,  projectController.updateServiceProject);
+
 projectRoutes.post(
   "/img-service-project",
   checkToken,
