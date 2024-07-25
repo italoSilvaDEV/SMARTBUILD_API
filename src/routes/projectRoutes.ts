@@ -41,6 +41,9 @@ projectRoutes.post(
 );
 
 projectRoutes.put( "/service-project",  checkToken,  projectController.updateServiceProject);
+projectRoutes.delete( "/service-img-project/:id",  checkToken,  projectController.DeleteAllImgServiceProjectController);
+
+
 
 projectRoutes.post(
   "/img-service-project",
@@ -48,6 +51,12 @@ projectRoutes.post(
   uploadServiceProject.single("file"),
   compressImage("service-project"),
   projectController.upLoadPhotoServiceProject
+);
+
+projectRoutes.delete(
+  "/service-project/:id",
+  checkToken,
+  projectController.deleteServiceProject
 );
 
 //costProject
