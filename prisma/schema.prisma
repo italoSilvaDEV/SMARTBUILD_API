@@ -217,9 +217,6 @@ model InvoiceCostProject {
   @@map("invoice_cost_project")
 }
 
-
-
-
 model CostProject {
   id                      String              @id @default(uuid())
   material_name           String
