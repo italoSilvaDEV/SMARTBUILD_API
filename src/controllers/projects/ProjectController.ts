@@ -459,6 +459,78 @@ constructor() {
     }
   }
 
+  async getUserSeller(request: Request, response: Response) {
+    try {
+      const { pag } = request.query; // Alterado para request.query
+
+      const pageNumber = Number(pag) || 0;
+
+      // Find office with name 'Seller'
+      const sellerOffice = await prisma.office.findFirst({
+        select: { id: true },
+        where: { name: 'Seller' },
+      });
+
+      if (!sellerOffice) {
+        return response.status(404).json({ error: "Seller office not found" });
+      }
+
+      const result = await prisma.user.findMany({
+        where: {
+          office_id: sellerOffice.id,
+        },
+        select: {
+          id: true,
+          avatar: true,
+          name: true,
+          email: true,
+          document: true,
+          phone: true,
+          city_and_state: true,
+          date_creation: true,
+          date_update: true,
+        },
+        skip: pageNumber * 20,
+        take: 20,
+        orderBy: {
+          date_creation: "desc"
+        },
+      });
+
+      const total = await prisma.user.count({
+        where: {
+          office_id: sellerOffice.id,
+        },
+      });
+
+      return response.json({ total, result });
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return response.status(500).json({ error: error.message });
+      }
+      return response.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async updateUserSellerProject(req: Request, res: Response) {
+    const { id, seller_user_id } = req.body;
+    try {
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          seller_user_id: seller_user_id
+        },
+      });
+      return res.json(project);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
     try {

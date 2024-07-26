@@ -28,11 +28,12 @@ projectRoutes.get(
   checkToken,
   projectController.getAllProjects
 );
-projectRoutes.get(
-  "/project/find/:id",
-  checkToken,
-  projectController.getProjectById
-);
+projectRoutes.get("/project/find/:id",checkToken,projectController.getProjectById);
+
+projectRoutes.get("/project/user-seller",checkToken,projectController.getUserSeller);
+
+projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject);
+
 
 projectRoutes.post(
   "/service-project",
@@ -101,6 +102,8 @@ projectRoutes.post(
   checkToken,
   findPdfProjectAllController.handle
 );
+
+
 
 
 
