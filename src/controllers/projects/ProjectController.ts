@@ -37,8 +37,10 @@ export interface IputServiceData extends IServicesData {
 export class ProjectController {
 
   async getAllProjects(req: Request, res: Response) {
-    const { id_seller, status_project, page } = req.query;
+    const { id_seller, status_project, page, search } = req.query;
     const query: any = {};
+
+    
 
     if (id_seller) query.seller_user_id = { equals: id_seller };
 
@@ -46,6 +48,32 @@ export class ProjectController {
       const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
       query.status_project = { in: statusArray };
     }
+
+    if (search) {
+      query.OR = [
+        {
+          client: {
+            name: {
+              contains: search,
+             
+            },
+          },
+        },
+        {
+          user: {
+            name: {
+              contains: search,
+             
+            },
+          },
+        },
+        
+      ];
+    }
+
+    const take = 25;  
+    const pageNumber = Number(page) ?? 0;  
+    const skip = pageNumber * take; 
 
     try {
       const projects = await prisma.project.findMany({
@@ -72,8 +100,8 @@ export class ProjectController {
             }
           }
         },
-        skip: Number(page) * 10,
-        take: 10,
+        skip,
+        take,
         orderBy: { date_update: 'desc' },
       });
 
@@ -125,7 +153,14 @@ export class ProjectController {
         where: query,
       });
 
-      return res.json({ projects: projectsWithCalculations, total });
+      let amount = (pageNumber * take) + projectsWithCalculations.length;
+
+      // Se amount exceder total, ajustar amount para ser igual a total
+      if (amount > total) {
+        amount = total;
+      }
+
+      return res.json({ projects: projectsWithCalculations, total, amount });
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -133,6 +168,8 @@ export class ProjectController {
       return res.json({ error: "Erro interno do servidor" });
     }
   }
+
+
 
   async getProjectById(req: Request, res: Response) {
     const { id } = req.params;
@@ -276,8 +313,8 @@ export class ProjectController {
       if (!serviceExists) {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
-      
-      if(!data.id_service){
+
+      if (!data.id_service) {
         const result = await prisma.serviceProject.update({
           where: {
             id: data.id, // Use a chave primária correta aqui
@@ -288,9 +325,9 @@ export class ProjectController {
             hours: data.hours,
             price: data.price,
           }
-        });  
+        });
         return res.json(result);
-      }else{
+      } else {
         const result = await prisma.serviceProject.update({
           where: {
             id: data.id, // Use a chave primária correta aqui
@@ -309,12 +346,12 @@ export class ProjectController {
       return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
-// novo delete imgServiceProject
-constructor() {
-  this.deleteFiles = this.deleteFiles.bind(this);
-  this.DeleteAllImgServiceProjectController = this.DeleteAllImgServiceProjectController.bind(this);
-  this.deleteServiceProject = this.deleteServiceProject.bind(this);
-}
+  // novo delete imgServiceProject
+  constructor() {
+    this.deleteFiles = this.deleteFiles.bind(this);
+    this.DeleteAllImgServiceProjectController = this.DeleteAllImgServiceProjectController.bind(this);
+    this.deleteServiceProject = this.deleteServiceProject.bind(this);
+  }
   // constructor() {
   //   this.handle = this.handle.bind(this);
   //   this.deleteFiles = this.deleteFiles.bind(this);
@@ -388,8 +425,8 @@ constructor() {
   // deleteFiles(file: string) {
   //   deleteFile(`./public/tmp/service-project/${file}`);
   // }
-// ja estava funcionando tenho que testar se mudou pelo fato de comentar 
-//o conteudo acima
+  // ja estava funcionando tenho que testar se mudou pelo fato de comentar 
+  //o conteudo acima
   //
   async deleteServiceProject(request: Request, response: Response) {
     try {
