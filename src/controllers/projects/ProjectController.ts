@@ -71,7 +71,7 @@ export class ProjectController {
       ];
     }
 
-    const take = 25;  
+    const take = 30;  
     const pageNumber = Number(page) ?? 0;  
     const skip = pageNumber * take; 
 
