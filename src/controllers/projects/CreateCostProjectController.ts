@@ -10,7 +10,7 @@ export class CreateCostProjectController {
                 costProjects = [costProjects];
             }
 
-            const errors: string[] = [];
+            const error: string[] = [];
             for (const project of costProjects) {
                 const {
                     material_name,
@@ -22,15 +22,15 @@ export class CreateCostProjectController {
                 } = project;
 
                 if (!material_name) {
-                    errors.push("Material name is required!");
+                    error.push("Material name is required!");
                     continue;
                 }
                 if (!price || parseFloat(price) <= 0) {
-                    errors.push("Price is mandatory and must be greater than zero!");
+                    error.push("Price is mandatory and must be greater than zero!");
                     continue;
                 }
                 if (!amout || parseInt(amout) <= 0) {
-                    errors.push("Amout is mandatory and must be greater than zero");
+                    error.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
 
@@ -44,19 +44,19 @@ export class CreateCostProjectController {
                 });
 
                 if (!user) {
-                    errors.push("User linked to invalid project!");
+                    error.push("User linked to invalid project!");
                     continue;
                 }
 
                 
 
                 if (!serviceProject) {
-                    errors.push("Service project linked to invalid project!");
+                    error.push("Service project linked to invalid project!");
                     continue;
                 }
 
                 if (!invoice_cost_project_id) {
-                    errors.push("Invoice cost project is invalid!");
+                    error.push("Invoice cost project is invalid!");
                     continue;
                 }
 
@@ -72,8 +72,8 @@ export class CreateCostProjectController {
                 });
             }
 
-            if (errors.length > 0) {
-                return res.status(400).json({ errors });
+            if (error.length > 0) {
+                return res.status(400).json({ error });
             }
 
             return res.status(201).json({ message: "Cost projects created successfully" });

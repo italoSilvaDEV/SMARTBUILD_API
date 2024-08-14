@@ -13,7 +13,7 @@ export class UpdateCostProjectController {
                 costProjects = [costProjects];
             }
 
-            const errors: string[] = [];
+            const error: string[] = [];
             for (const project of costProjects) {
                 const {
                     id,
@@ -26,23 +26,23 @@ export class UpdateCostProjectController {
                 } = project;
 
                 if(!id){
-                    errors.push("Material name is required!");
+                    error.push("Material name is required!");
                     continue;
                 }
                 if (!material_name) {
-                    errors.push("Material name is required!");
+                    error.push("Material name is required!");
                     continue;
                 }
                 if (!price || parseFloat(price) <= 0) {
-                    errors.push("Price is mandatory and must be greater than zero!");
+                    error.push("Price is mandatory and must be greater than zero!");
                     continue;
                 }
                 if (!amout || parseInt(amout) <= 0) {
-                    errors.push("Amout is mandatory and must be greater than zero");
+                    error.push("Amout is mandatory and must be greater than zero");
                     continue;
                 }
                 if (!userId || !service_project_id || !invoice_cost_project_id) {
-                    errors.push("User ID, service ID and invoice is required");
+                    error.push("User ID, service ID and invoice is required");
                     continue;
                 }
 
@@ -65,17 +65,17 @@ export class UpdateCostProjectController {
                 });
 
                 if (!user) {
-                    errors.push("User linked to invalid project!");
+                    error.push("User linked to invalid project!");
                     continue;
                 }
 
                 if (!service) {
-                    errors.push("Service linked to invalid project!");
+                    error.push("Service linked to invalid project!");
                     continue;
                 }
 
                 if (!invoice_cost_project_id) {
-                    errors.push("invoice cost project to invalid!");
+                    error.push("invoice cost project to invalid!");
                     continue;
                 }
 
@@ -95,8 +95,8 @@ export class UpdateCostProjectController {
                 });
             }
 
-            if (errors.length > 0) {
-                return res.status(400).json({ errors });
+            if (error.length > 0) {
+                return res.status(400).json({ error });
             }
 
             return res.json();

@@ -24,7 +24,8 @@ export class UpdateInvoiceCostProjectController {
 
             if (!id) {
                 this.deleteFiles(String(request.file?.filename), request.file?.filename);
-                throw new Error("id is requireed!");
+                return response.status(404).json({ error: "id is requireed!!" });
+                
             }
 
             const invoiceCostProject = await prisma.invoiceCostProject.findUnique({
@@ -35,7 +36,8 @@ export class UpdateInvoiceCostProjectController {
 
             if (!invoiceCostProject) {
                 this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Invoice id is required!");
+                return response.status(404).json({ error: "Invoice id is required!" });
+                
             }
 
             let file = "";
@@ -96,7 +98,7 @@ export class UpdateInvoiceCostProjectController {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
-            return response.json({ error: "Internal error" });
+            return response.status(500).json({ error: "Internal error" });
         }
 
 
