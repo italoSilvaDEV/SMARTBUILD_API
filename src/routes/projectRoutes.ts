@@ -123,10 +123,6 @@ projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProj
 
 
 const updateCostProjectController = new UpdateCostProjectController();
-projectRoutes.put(
-  "/costproject",
-  checkToken,
-  updateCostProjectController.handle
-);
+projectRoutes.put("/costproject",checkToken,updateCostProjectController.handle);
 
 export { projectRoutes };

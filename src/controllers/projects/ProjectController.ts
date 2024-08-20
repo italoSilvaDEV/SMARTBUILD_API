@@ -40,7 +40,7 @@ export class ProjectController {
     const { id_seller, status_project, page, search } = req.query;
     const query: any = {};
 
-    
+
 
     if (id_seller) query.seller_user_id = { equals: id_seller };
 
@@ -55,7 +55,7 @@ export class ProjectController {
           client: {
             name: {
               contains: search,
-             
+
             },
           },
         },
@@ -63,17 +63,17 @@ export class ProjectController {
           user: {
             name: {
               contains: search,
-             
+
             },
           },
         },
-        
+
       ];
     }
 
-    const take = 25;  
-    const pageNumber = Number(page) ?? 0;  
-    const skip = pageNumber * take; 
+    const take = 30;
+    const pageNumber = Number(page);
+    const skip = pageNumber * take;
 
     try {
       const projects = await prisma.project.findMany({
@@ -102,7 +102,13 @@ export class ProjectController {
         },
         skip,
         take,
-        orderBy: { date_update: 'desc' },
+        // orderBy: [
+        //   {id: 'asc'}, // ou 'desc', dependendo da lógica desejada
+        //   { date_update: 'desc' }
+        // ],
+        orderBy: {
+          date_update: "desc"
+        },
       });
 
       const projectsWithCalculations = projects.map(project => {
@@ -217,6 +223,7 @@ export class ProjectController {
           serviceProject.costProject.map(cost => ({
             id: cost.id,
             material_name: cost.material_name,
+            transaction_type: cost.transaction_type,
             price: cost.price,
             amout: cost.amout,
             service_project_id: cost.ServiceProject?.id,
@@ -226,9 +233,18 @@ export class ProjectController {
           }))
         );
 
+        // const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
+        //   return total + invoice.costProject.reduce((subtotal, cost) => {
+        //     return subtotal + Number(cost.price) * Number(cost.amout);
+        //   }, 0);
+        // }, 0);
+
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
           return total + invoice.costProject.reduce((subtotal, cost) => {
-            return subtotal + Number(cost.price) * Number(cost.amout);
+            if (cost.transaction_type === "Cost") {
+              return subtotal + Number(cost.price) * Number(cost.amout);
+            }
+            return subtotal;
           }, 0);
         }, 0);
 

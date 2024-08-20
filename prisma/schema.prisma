@@ -222,6 +222,8 @@ model CostProject {
   material_name           String
   price                   Decimal
   amout                   Int
+
+  transaction_type        String?   
   userId                  String?
   invoice_cost_project_id String?
   autorId                 String?
