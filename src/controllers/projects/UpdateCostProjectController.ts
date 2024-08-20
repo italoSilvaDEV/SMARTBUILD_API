@@ -18,6 +18,7 @@ export class UpdateCostProjectController {
                 const {
                     id,
                     material_name,
+                    transaction_type,
                     price,
                     amout,
                     userId,
@@ -31,6 +32,10 @@ export class UpdateCostProjectController {
                 }
                 if (!material_name) {
                     error.push("Material name is required!");
+                    continue;
+                }
+                if(!transaction_type){
+                    error.push("Transaction type is required")
                     continue;
                 }
                 if (!price || parseFloat(price) <= 0) {
@@ -86,6 +91,7 @@ export class UpdateCostProjectController {
                     },
                     data: {
                         material_name,
+                        transaction_type,
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId,

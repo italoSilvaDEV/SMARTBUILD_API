@@ -223,6 +223,7 @@ export class ProjectController {
           serviceProject.costProject.map(cost => ({
             id: cost.id,
             material_name: cost.material_name,
+            transaction_type: cost.transaction_type,
             price: cost.price,
             amout: cost.amout,
             service_project_id: cost.ServiceProject?.id,
@@ -232,9 +233,18 @@ export class ProjectController {
           }))
         );
 
+        // const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
+        //   return total + invoice.costProject.reduce((subtotal, cost) => {
+        //     return subtotal + Number(cost.price) * Number(cost.amout);
+        //   }, 0);
+        // }, 0);
+
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
           return total + invoice.costProject.reduce((subtotal, cost) => {
-            return subtotal + Number(cost.price) * Number(cost.amout);
+            if (cost.transaction_type === "Cost") {
+              return subtotal + Number(cost.price) * Number(cost.amout);
+            }
+            return subtotal;
           }, 0);
         }, 0);
 
