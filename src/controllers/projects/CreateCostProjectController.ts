@@ -14,6 +14,7 @@ export class CreateCostProjectController {
             for (const project of costProjects) {
                 const {
                     material_name,
+                    transaction_type,
                     price,
                     amout,
                     userId,
@@ -23,6 +24,10 @@ export class CreateCostProjectController {
 
                 if (!material_name) {
                     error.push("Material name is required!");
+                    continue;
+                }
+                if(!transaction_type){
+                    error.push("Transaction type is required")
                     continue;
                 }
                 if (!price || parseFloat(price) <= 0) {
@@ -63,11 +68,13 @@ export class CreateCostProjectController {
                 await prisma.costProject.create({
                     data: {
                         material_name,
+                        transaction_type,
                         price: parseFloat(price),
                         amout: parseInt(amout),
                         userId: userId ?? '',
                         serviceProjectId,
                         invoice_cost_project_id: invoice_cost_project_id
+                        
                     },
                 });
             }

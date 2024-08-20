@@ -18,6 +18,7 @@ export class FindCostProjectController {
                 select: {
                     id: true,
                     material_name: true,
+                    transaction_type: true,
                     price: true,
                     amout: true,
                     ServiceProject: true,
