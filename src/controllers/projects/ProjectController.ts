@@ -233,20 +233,18 @@ export class ProjectController {
           }))
         );
 
-        // const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-        //   return total + invoice.costProject.reduce((subtotal, cost) => {
-        //     return subtotal + Number(cost.price) * Number(cost.amout);
-        //   }, 0);
-        // }, 0);
-
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-          return total + invoice.costProject.reduce((subtotal, cost) => {
+          const costSum = invoice.costProject.reduce((subtotal, cost) => {
             if (cost.transaction_type === "Cost") {
               return subtotal + Number(cost.price) * Number(cost.amout);
+            } else if (cost.transaction_type === "Credit") {
+              return subtotal - Number(cost.price) * Number(cost.amout);
             }
             return subtotal;
           }, 0);
+          return total + costSum;
         }, 0);
+        
 
         let totalCostOfServiceHours = 0;
         let totalNumberOfHoursWorked = 0;
