@@ -67,6 +67,13 @@ export class ProjectController {
             },
           },
         },
+        {
+          client: {
+            location: {
+              contains: search,
+            },
+          },
+        },
 
       ];
     }
