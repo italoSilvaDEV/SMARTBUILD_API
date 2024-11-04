@@ -46,6 +46,7 @@ userRoutes.delete("/user/:id", checkToken, User.delete)
 
 //Recuperar senha
 userRoutes.post('/recover-password', User.sendMailRecover)
+userRoutes.post('/valid-code', User.validCode)
 userRoutes.post('/create-password', User.updatePassword)
 
 
