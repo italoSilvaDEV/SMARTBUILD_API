@@ -183,8 +183,8 @@ model ProjectStages {
 
   user           User     @relation(fields: [id_user_update], references: [id])
   id_user_update String
-  Project        Project? @relation(fields: [projectId], references: [id])
-  projectId      String?
+  Project        Project @relation(fields: [projectId], references: [id])
+  projectId      String
 }
 
 model GalleryBefore {
