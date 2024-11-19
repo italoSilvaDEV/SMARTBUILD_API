@@ -680,6 +680,41 @@ export class ProjectController {
     }
   }
 
+  async startDateProject(req: Request, res: Response) {
+    const { id, start_date } = req.body;
+    try {
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          start_date
+        },
+      });
+      return res.json(project);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+  async deadlineProject(req: Request, res: Response) {
+    const { id, deadline } = req.body;
+    try {
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          deadline
+        },
+      });
+      return res.json(project);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+
   async deleteProject(req: Request, res: Response) {
     const { id } = req.params;
     try {
