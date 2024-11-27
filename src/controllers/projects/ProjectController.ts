@@ -190,6 +190,11 @@ export class ProjectController {
       const project = await prisma.project.findUnique({
         where: { id },
         include: {
+          projectResponsibles: true,
+          stages: true,
+          galleryAlfter: true,
+          galleryBefore: true,
+
           client: true,
           serviceProject: {
             include: {
@@ -251,7 +256,7 @@ export class ProjectController {
           }, 0);
           return total + costSum;
         }, 0);
-        
+
 
         let totalCostOfServiceHours = 0;
         let totalNumberOfHoursWorked = 0;
@@ -727,4 +732,83 @@ export class ProjectController {
       return res.json({ error: "Erro interno do servidor" });
     }
   }
+  async addProjectResponsibles(req: Request, res: Response) {
+    const { user_id, project_id } = req.body;
+
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: project_id },
+        select: {
+          projectResponsibles: { select: { id: true } }
+        }
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Projeto não encontrado" });
+      }
+
+      const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+      if (!currentResponsibles.includes(user_id)) {
+        currentResponsibles.push(user_id);
+      }
+
+      await prisma.project.update({
+        where: {
+          id: project_id,
+        },
+        data: {
+          projectResponsibles: {
+            set: currentResponsibles.map((id) => ({ id }))
+          }
+        }
+      });
+
+      return res.status(204).end();
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+  
+  async removeProjectResponsibles(req: Request, res: Response) {
+    const { user_id, project_id } = req.body;
+
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: project_id },
+        select: {
+          projectResponsibles: { select: { id: true } }
+        }
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Projeto não encontrado" });
+      }
+
+      const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+      const updatedResponsibles = currentResponsibles.filter((id) => id !== user_id);
+
+      await prisma.project.update({
+        where: {
+          id: project_id,
+        },
+        data: {
+          projectResponsibles: {
+            set: updatedResponsibles.map((id) => ({ id }))
+          }
+        }
+      });
+
+      return res.status(204).end();
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
+  }
+
+
 }

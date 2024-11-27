@@ -13,6 +13,7 @@ import { UpdateCostProjectController } from "../controllers/projects/UpdateCostP
 import { ProjectController } from "../controllers/projects/ProjectController";
 import { CreatePdfProjectController } from "../controllers/projects/CreatePdfProjectUploadController";
 import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProjectAllController";
+import { GalleryProjectController } from "../controllers/projects/GalleryProjectController";
 
 const projectRoutes = Router();
 
@@ -104,11 +105,6 @@ projectRoutes.post(
   checkToken,
   findPdfProjectAllController.handle
 );
-
-
-
-
-
 const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
 projectRoutes.put(
@@ -119,12 +115,19 @@ projectRoutes.put(
   updateInvoiceCostProjectController.handle
 );
 
-
 const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
 
 const updateCostProjectController = new UpdateCostProjectController();
-projectRoutes.put("/costproject",checkToken,updateCostProjectController.handle);
+projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle);
+
+projectRoutes.post("/add_project_responsibles", checkToken, projectController.addProjectResponsibles)
+projectRoutes.delete("/remove_project_responsibles", checkToken, projectController.removeProjectResponsibles)
+
+const galleryProject = new GalleryProjectController()
+projectRoutes.post('/project/gallery',checkToken, galleryProject.create.bind(galleryProject))
+projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
+projectRoutes.get('/project/gallery/:id', checkToken, galleryProject.find)
 
 export { projectRoutes };
