@@ -2,6 +2,7 @@ import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
+import { validate as isUUID } from "uuid";
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -685,40 +686,76 @@ export class ProjectController {
     }
   }
 
+
   async startDateProject(req: Request, res: Response) {
     const { id, start_date } = req.body;
+
     try {
+      // Validação do ID
+      if (!id || !isUUID(id)) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Atualizar a data de início
       const project = await prisma.project.update({
         where: { id },
-        data: {
-          start_date
-        },
+        data: { start_date },
       });
+
       return res.json(project);
     } catch (error) {
+      console.error(error);
       if (error instanceof Error) {
-        return res.json({ error: error.message });
+        return res.status(500).json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
+
   async deadlineProject(req: Request, res: Response) {
     const { id, deadline } = req.body;
+
     try {
+      // Validação do ID
+      if (!id || !isUUID(id)) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Atualizar o prazo final
       const project = await prisma.project.update({
         where: { id },
-        data: {
-          deadline
-        },
+        data: { deadline },
       });
+
       return res.json(project);
     } catch (error) {
+      console.error(error);
       if (error instanceof Error) {
-        return res.json({ error: error.message });
+        return res.status(500).json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
+
+
 
   async deleteProject(req: Request, res: Response) {
     const { id } = req.params;

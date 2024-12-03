@@ -8,6 +8,22 @@ export class ProjectStageController {
         try {
             const { description, check, id_user_update, projectId } = req.body;
 
+            if (!description || typeof description !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'description'" });
+            }
+
+            if (typeof check !== "boolean") {
+                return res.status(400).json({ message: "Invalid or missing 'check' (must be a boolean)" });
+            }
+
+            if (!id_user_update || typeof id_user_update !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'id_user_update'" });
+            }
+
+            if (!projectId || typeof projectId !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'projectId'" });
+            }
+
             const projectStage = await prisma.projectStages.create({
                 data: {
                     description,
@@ -28,12 +44,16 @@ export class ProjectStageController {
         try {
             const { id } = req.params;
 
-            const projectStage = await prisma.projectStages.findUnique({
-                where: { id },
+            if (!id || typeof id !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'id'" });
+            }
+
+            const projectStage = await prisma.projectStages.findMany({
+                where: { projectId: id },
             });
 
-            if (!projectStage) {
-                return res.status(404).json({ message: "Project stage not found" });
+            if (!projectStage || projectStage.length === 0) {
+                return res.status(404).json({ message: "Project stages not found for the given 'id'" });
             }
 
             res.json(projectStage);
@@ -43,20 +63,26 @@ export class ProjectStageController {
         }
     }
 
-    static async findAll(req: Request, res: Response) {
-        try {
-            const projectStages = await prisma.projectStages.findMany();
-            res.json(projectStages);
-        } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error fetching project stages" });
-        }
-    }
-
     static async update(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const { description, check, id_user_update, projectId } = req.body;
+            const { description, check, id_user_update } = req.body;
+
+            if (!id || typeof id !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'id'" });
+            }
+
+            if (description && typeof description !== "string") {
+                return res.status(400).json({ message: "Invalid 'description'" });
+            }
+
+            if (check !== undefined && typeof check !== "boolean") {
+                return res.status(400).json({ message: "Invalid 'check' (must be a boolean)" });
+            }
+
+            if (id_user_update && typeof id_user_update !== "string") {
+                return res.status(400).json({ message: "Invalid 'id_user_update'" });
+            }
 
             const projectStage = await prisma.projectStages.update({
                 where: { id },
@@ -64,7 +90,6 @@ export class ProjectStageController {
                     description,
                     check,
                     id_user_update,
-                    projectId,
                 },
             });
 
@@ -78,6 +103,10 @@ export class ProjectStageController {
     static async delete(req: Request, res: Response) {
         try {
             const { id } = req.params;
+
+            if (!id || typeof id !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'id'" });
+            }
 
             await prisma.projectStages.delete({
                 where: { id },

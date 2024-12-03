@@ -128,6 +128,6 @@ projectRoutes.delete("/remove_project_responsibles", checkToken, projectControll
 const galleryProject = new GalleryProjectController()
 projectRoutes.post('/project/gallery',checkToken, galleryProject.create.bind(galleryProject))
 projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
-projectRoutes.get('/project/gallery/:id', checkToken, galleryProject.find)
+projectRoutes.get('/project/gallery/:id', galleryProject.find)
 
 export { projectRoutes };
