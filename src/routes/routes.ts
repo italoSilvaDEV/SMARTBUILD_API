@@ -6,6 +6,7 @@ import { projectRoutes } from './projectRoutes'
 import { clientRoutes } from './clientRoutes'
 import { workedRours } from './workedHours'
 import projectStageRoutes from './projetcStagesRoutes'
+import { userAttendanceRoutes } from './userAttendanceRoutes'
 
 const router = Router()
 
@@ -16,6 +17,7 @@ router.use(projectRoutes)
 router.use(clientRoutes)
 router.use(workedRours)
 router.use("/project-stages", projectStageRoutes);
+router.use(userAttendanceRoutes)
 
 export { router }
 

@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { UserController } from "../controllers/UserController"
+import { UserController } from "../controllers/User/UserController"
 import { checkToken } from "../middlewares/checkToken"
 
 

@@ -1,14 +1,14 @@
 import bcrypt from "bcrypt";
-import { prisma } from "../utils/prisma";
+import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-import Jwt, { JwtPayload } from "jsonwebtoken";
+import Jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { RecoverPassword } from "../templateEmail/recoverPassword";
-import { INewUser } from "../DTOs/IUser";
-import { deleteFile } from "../config/file";
+import { RecoverPassword } from "../../templateEmail/recoverPassword";
+import { INewUser } from "../../DTOs/IUser";
+import { deleteFile } from "../../config/file";
 import { validationResult } from "express-validator";
-import { NewUser } from "../templateEmail/newUser";
+import { NewUser } from "../../templateEmail/newUser";
 
 export class UserController {
   constructor() {

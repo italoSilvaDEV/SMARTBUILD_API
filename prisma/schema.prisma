@@ -28,9 +28,11 @@ model User {
   seller_project         Project[]       @relation("seller")
   ProjectStages          ProjectStages[]
 
-  projectResponsibles Project[] @relation("projectResponsibles")
-  Project             Project?  @relation(fields: [projectId], references: [id])
+  projectResponsibles Project[]            @relation("projectResponsibles")
+  Project             Project?             @relation(fields: [projectId], references: [id])
   projectId           String?
+  UserServiceProject  UserServiceProject[]
+  UserAttendance      UserAttendance[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -108,12 +110,13 @@ model ServiceProject {
   service    Service? @relation(fields: [id_service], references: [id])
   id_service String?
 
-  photos        ImgServiceProject[]
-  costProject   CostProject[]
-  date_creation DateTime            @default(now())
-  date_update   DateTime            @updatedAt
-  Project       Project?            @relation(fields: [projectId], references: [id])
-  projectId     String?
+  photos             ImgServiceProject[]
+  costProject        CostProject[]
+  date_creation      DateTime             @default(now())
+  date_update        DateTime             @updatedAt
+  Project            Project?             @relation(fields: [projectId], references: [id])
+  projectId          String?
+  UserServiceProject UserServiceProject[]
 }
 
 model ImgServiceProject {
@@ -300,4 +303,42 @@ model Workedhours {
   project_id String?
 
   @@map("worked_hours")
+}
+
+// Relacionamento entre User e ServiceProject
+model UserServiceProject {
+  id                 String           @id @default(uuid())
+  user_id            String
+  service_project_id String
+  assigned_at        DateTime         @default(now())
+  user               User             @relation(fields: [user_id], references: [id])
+  service_project    ServiceProject   @relation(fields: [service_project_id], references: [id])
+  user_attendances   UserAttendance[]
+
+  @@unique([user_id, service_project_id], map: "user_service_project_unique")
+  @@index([user_id], map: "user_service_project_user_id_fkey")
+  @@index([service_project_id], map: "user_service_project_service_project_id_fkey")
+  @@map("user_service_project")
+}
+
+// Tabela para registrar o ponto dos usuários
+model UserAttendance {
+  id                      String             @id @default(uuid())
+  user_id                 String
+  check_in_time           DateTime
+  check_out_time          DateTime?
+  check_in_address        String
+  check_in_latitude       Float
+  check_in_longitude      Float
+  check_out_address       String?
+  check_out_latitude      Float?
+  check_out_longitude     Float?
+  date                    DateTime           @default(now())
+  user                    User               @relation(fields: [user_id], references: [id])
+  UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
+  user_service_project_id String
+
+  @@index([user_id], map: "user_attendance_user_id_fkey")
+  @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
+  @@map("user_attendance")
 }
