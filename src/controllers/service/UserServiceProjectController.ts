@@ -92,15 +92,29 @@ export class UserServiceProjectController {
                 },
             });
 
-            if (!userServiceProject) {
-                return res.status(404).json({ error: 'Relationship not found' });
-            }
-
             res.status(200).json(userServiceProject);
         } catch (error) {
             console.error(error);
             res.status(500).json({ error: 'Mistake when looking for a relationship' });
         }
     }  
+
+    async getByUser(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+
+            const userServiceProject = await prisma.userServiceProject.findMany({
+                where: { user_id: { equals: id } },
+                include: {
+                   service_project: true
+                },
+            });
+
+            res.status(200).json(userServiceProject);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: 'Error when searching for services' });
+        }
+    }
 }
 
