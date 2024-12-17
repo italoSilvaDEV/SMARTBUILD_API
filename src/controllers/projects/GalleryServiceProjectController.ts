@@ -13,7 +13,7 @@ export class GalleryProjectController {
                 return response.status(400).json({ error: 'Erro no upload do arquivo' });
             }
             const {
-                projectId, type
+                serviceProjectId, type
             } = request.body;
             const file = request.file;
 
@@ -23,9 +23,9 @@ export class GalleryProjectController {
             try {
                 const fileName = await uploadFileToS3(file, ''); // Usar a função reutilizável
 
-                const project = await prisma.project.findUnique({
+                const project = await prisma.serviceProject.findUnique({
                     where: {
-                        id: projectId
+                        id: serviceProjectId
                     }
                 })
                 if (!project) {
@@ -34,7 +34,7 @@ export class GalleryProjectController {
                 if (type === 'before') {
                     await prisma.galleryBefore.create({
                         data: {
-                            projectId,
+                            serviceProjectId,
                             url: fileName
                         }
                     });
@@ -42,7 +42,7 @@ export class GalleryProjectController {
                 if (type === 'after') {
                     await prisma.galleryAfter.create({
                         data: {
-                            projectId,
+                            serviceProjectId,
                             url: fileName
                         }
                     });
@@ -58,7 +58,7 @@ export class GalleryProjectController {
         const { id } = request.params;
 
         try {
-            const project = await prisma.project.findUnique({
+            const project = await prisma.serviceProject.findUnique({
                 where: { id },
             });
 
@@ -68,8 +68,8 @@ export class GalleryProjectController {
 
             // Buscar galerias antes e depois
             const [galleryBefore, galleryAfter] = await Promise.all([
-                prisma.galleryBefore.findMany({ where: { projectId: id } }),
-                prisma.galleryAfter.findMany({ where: { projectId: id } }),
+                prisma.galleryBefore.findMany({ where: { serviceProjectId: id } }),
+                prisma.galleryAfter.findMany({ where: { serviceProjectId: id } }),
             ]);
 
             // Processar URLs com assincronismo

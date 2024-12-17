@@ -3,10 +3,10 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-export class ProjectStageController {
+export class ServiceStageController {
     static async create(req: Request, res: Response) {
         try {
-            const { description, check, id_user_update, projectId } = req.body;
+            const { description, check, id_user_update, serviceProjectId } = req.body;
 
             if (!description || typeof description !== "string") {
                 return res.status(400).json({ message: "Invalid or missing 'description'" });
@@ -20,16 +20,16 @@ export class ProjectStageController {
                 return res.status(400).json({ message: "Invalid or missing 'id_user_update'" });
             }
 
-            if (!projectId || typeof projectId !== "string") {
-                return res.status(400).json({ message: "Invalid or missing 'projectId'" });
+            if (!serviceProjectId || typeof serviceProjectId !== "string") {
+                return res.status(400).json({ message: "Invalid or missing 'serviceProjectId'" });
             }
 
-            const projectStage = await prisma.projectStages.create({
+            const projectStage = await prisma.serviceStages.create({
                 data: {
                     description,
                     check,
                     id_user_update,
-                    projectId,
+                    serviceProjectId,
                 },
             });
 
@@ -48,8 +48,17 @@ export class ProjectStageController {
                 return res.status(400).json({ message: "Invalid or missing 'id'" });
             }
 
-            const projectStage = await prisma.projectStages.findMany({
-                where: { projectId: id },
+            const projectStage = await prisma.serviceStages.findMany({
+                where: { serviceProjectId: id },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            avatar: true,
+                            name: true
+                        }
+                    }
+                }
             });
 
             if (!projectStage || projectStage.length === 0) {
@@ -84,7 +93,7 @@ export class ProjectStageController {
                 return res.status(400).json({ message: "Invalid 'id_user_update'" });
             }
 
-            const projectStage = await prisma.projectStages.update({
+            const projectStage = await prisma.serviceStages.update({
                 where: { id },
                 data: {
                     description,
@@ -108,7 +117,7 @@ export class ProjectStageController {
                 return res.status(400).json({ message: "Invalid or missing 'id'" });
             }
 
-            await prisma.projectStages.delete({
+            await prisma.serviceStages.delete({
                 where: { id },
             });
 

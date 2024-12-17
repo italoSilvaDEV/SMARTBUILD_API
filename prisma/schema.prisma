@@ -8,31 +8,28 @@ datasource db {
 }
 
 model User {
-  id                     String          @id @default(uuid())
+  id                     String               @id @default(uuid())
   avatar                 String?
   name                   String
-  email                  String          @unique
-  document               String          @unique
+  email                  String               @unique
+  document               String               @unique
   phone                  String?
   city_and_state         String?
   password               String
   rules                  Json
-  token_recover_password String?         @unique
+  token_recover_password String?              @unique
   autorId                String?
   last_acess             DateTime?
-  date_creation          DateTime        @default(now())
-  date_update            DateTime        @updatedAt
+  date_creation          DateTime             @default(now())
+  date_update            DateTime             @updatedAt
   office_id              String
-  office                 Office          @relation(fields: [office_id], references: [id])
-  userLikedCostProject   CostProject[]   @relation("userLikedProject")
-  seller_project         Project[]       @relation("seller")
-  ProjectStages          ProjectStages[]
-
-  projectResponsibles Project[]            @relation("projectResponsibles")
-  Project             Project?             @relation(fields: [projectId], references: [id])
-  projectId           String?
-  UserServiceProject  UserServiceProject[]
-  UserAttendance      UserAttendance[]
+  office                 Office               @relation(fields: [office_id], references: [id])
+  userLikedCostProject   CostProject[]        @relation("userLikedProject")
+  seller_project         Project[]            @relation("seller")
+  ServiceStages          ServiceStages[]
+  projectId              String?
+  UserServiceProject     UserServiceProject[]
+  UserAttendance         UserAttendance[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -106,10 +103,16 @@ model ServiceProject {
   description String  @db.Text
   hours       Decimal
   price       Decimal
+  status      String?
+  start_date  String?
+  deadline    String?
 
   service    Service? @relation(fields: [id_service], references: [id])
   id_service String?
 
+  stages             ServiceStages[]
+  galleryBefore      GalleryBefore[]
+  galleryAlfter      GalleryAfter[]
   photos             ImgServiceProject[]
   costProject        CostProject[]
   date_creation      DateTime             @default(now())
@@ -166,50 +169,45 @@ model Project {
   serviceProject     ServiceProject[]
   workedHours        Workedhours[]
   pdfproject         PdfProject[]
-  stages             ProjectStages[]
-  galleryBefore      GalleryBefore[]
-  galleryAlfter      GalleryAfter[]
 
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
 
-  user                User?   @relation("seller", fields: [seller_user_id], references: [id])
-  seller_user_id      String?
-  projectResponsibles User[]  @relation("projectResponsibles")
-  User                User[]
+  user           User?   @relation("seller", fields: [seller_user_id], references: [id])
+  seller_user_id String?
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
   @@map("project")
 }
 
-model ProjectStages {
+model ServiceStages {
   id            String   @id @default(uuid())
   description   String
   check         Boolean  @default(false)
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  user           User    @relation(fields: [id_user_update], references: [id])
-  id_user_update String
-  Project        Project @relation(fields: [projectId], references: [id])
-  projectId      String
+  user             User            @relation(fields: [id_user_update], references: [id])
+  id_user_update   String
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
 }
 
 model GalleryBefore {
-  id            String   @id @default(uuid())
-  url           String
-  date_creation DateTime @default(now())
-  Project       Project? @relation(fields: [projectId], references: [id])
-  projectId     String?
+  id               String          @id @default(uuid())
+  url              String
+  date_creation    DateTime        @default(now())
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
 }
 
 model GalleryAfter {
-  id            String   @id @default(uuid())
-  url           String
-  date_creation DateTime @default(now())
-  Project       Project? @relation(fields: [projectId], references: [id])
-  projectId     String?
+  id               String          @id @default(uuid())
+  url              String
+  date_creation    DateTime        @default(now())
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
 }
 
 model PdfProject {

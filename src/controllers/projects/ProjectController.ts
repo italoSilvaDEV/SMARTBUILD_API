@@ -90,7 +90,8 @@ export class ProjectController {
           client: true,
           serviceProject: {
             include: {
-              service: true
+              service: true,
+              stages: true,
             }
           },
           workedHours: true,
@@ -110,10 +111,6 @@ export class ProjectController {
         },
         skip,
         take,
-        // orderBy: [
-        //   {id: 'asc'}, // ou 'desc', dependendo da lógica desejada
-        //   { date_update: 'desc' }
-        // ],
         orderBy: {
           date_update: "desc"
         },
@@ -159,7 +156,11 @@ export class ProjectController {
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
           workers_on_this_project: workersOnThisProject,
-          price_project: priceProject // Adiciona o novo campo price_project
+          price_project: priceProject,
+          serviceProject: project.serviceProject.map(service => ({
+            ...service,
+            stages: service.stages
+          })),
         };
       });
 
@@ -191,23 +192,33 @@ export class ProjectController {
       const project = await prisma.project.findUnique({
         where: { id },
         include: {
-          projectResponsibles: true,
-          stages: true,
-          galleryAlfter: true,
-          galleryBefore: true,
-
           client: true,
           serviceProject: {
             include: {
+              UserServiceProject: {
+                select: {
+                  id: true,
+                  user: {
+                    select: {
+                      name: true,
+                      id: true,
+                      avatar: true,
+                    }
+                  }
+                }
+              },
+              galleryAlfter: true,
+              galleryBefore: true,
+              stages: true,
               service: true,
               Project: true,
               photos: true,
               costProject: {
                 include: {
-                  invoiceCostProject: true, // Inclui invoiceCostProject aqui
+                  invoiceCostProject: true,
                   ServiceProject: {
                     include: {
-                      service: true
+                      service: true,
                     }
                   }
                 }
@@ -766,86 +777,130 @@ export class ProjectController {
       if (error instanceof Error) {
         return res.json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.json({ error: "Internal server error" });
     }
   }
-  async addProjectResponsibles(req: Request, res: Response) {
-    const { user_id, project_id } = req.body;
 
+  async findServicesProjectByProjectId(req: Request, res: Response) {
+    const { id } = req.params;
     try {
-      const project = await prisma.project.findUnique({
-        where: { id: project_id },
-        select: {
-          projectResponsibles: { select: { id: true } }
-        }
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
       });
 
-      if (!project) {
-        return res.status(404).json({ error: "Projeto não encontrado" });
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
       }
-
-      const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
-      if (!currentResponsibles.includes(user_id)) {
-        currentResponsibles.push(user_id);
-      }
-
-      await prisma.project.update({
-        where: {
-          id: project_id,
-        },
-        data: {
-          projectResponsibles: {
-            set: currentResponsibles.map((id) => ({ id }))
+      const result = await prisma.serviceProject.findMany({
+        where: { projectId: id },
+        include: {
+          Project: {
+            select: {
+              id: true
+            }
+          },
+          photos: true,
+          stages: true,
+          UserServiceProject: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true
+                }
+              }
+            }
           }
         }
       });
-
-      return res.status(204).end();
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.json({ error: "Internal server error" });
     }
   }
-  
-  async removeProjectResponsibles(req: Request, res: Response) {
-    const { user_id, project_id } = req.body;
+  // async addProjectResponsibles(req: Request, res: Response) {
+  //   const { user_id, project_id } = req.body;
 
-    try {
-      const project = await prisma.project.findUnique({
-        where: { id: project_id },
-        select: {
-          projectResponsibles: { select: { id: true } }
-        }
-      });
+  //   try {
+  //     const project = await prisma.project.findUnique({
+  //       where: { id: project_id },
+  //       select: {
+  //         projectResponsibles: { select: { id: true } }
+  //       }
+  //     });
 
-      if (!project) {
-        return res.status(404).json({ error: "Projeto não encontrado" });
-      }
+  //     if (!project) {
+  //       return res.status(404).json({ error: "Projeto não encontrado" });
+  //     }
 
-      const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
-      const updatedResponsibles = currentResponsibles.filter((id) => id !== user_id);
+  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+  //     if (!currentResponsibles.includes(user_id)) {
+  //       currentResponsibles.push(user_id);
+  //     }
 
-      await prisma.project.update({
-        where: {
-          id: project_id,
-        },
-        data: {
-          projectResponsibles: {
-            set: updatedResponsibles.map((id) => ({ id }))
-          }
-        }
-      });
+  //     await prisma.project.update({
+  //       where: {
+  //         id: project_id,
+  //       },
+  //       data: {
+  //         projectResponsibles: {
+  //           set: currentResponsibles.map((id) => ({ id }))
+  //         }
+  //       }
+  //     });
 
-      return res.status(204).end();
-    } catch (error) {
-      if (error instanceof Error) {
-        return res.json({ error: error.message });
-      }
-      return res.json({ error: "Erro interno do servidor" });
-    }
-  }
+  //     return res.status(204).end();
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return res.json({ error: error.message });
+  //     }
+  //     return res.json({ error: "Erro interno do servidor" });
+  //   }
+  // }
+
+  // async removeProjectResponsibles(req: Request, res: Response) {
+  //   const { user_id, project_id } = req.body;
+
+  //   try {
+  //     const project = await prisma.project.findUnique({
+  //       where: { id: project_id },
+  //       select: {
+  //         projectResponsibles: { select: { id: true } }
+  //       }
+  //     });
+
+  //     if (!project) {
+  //       return res.status(404).json({ error: "Projeto não encontrado" });
+  //     }
+
+  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+  //     const updatedResponsibles = currentResponsibles.filter((id) => id !== user_id);
+
+  //     await prisma.project.update({
+  //       where: {
+  //         id: project_id,
+  //       },
+  //       data: {
+  //         projectResponsibles: {
+  //           set: updatedResponsibles.map((id) => ({ id }))
+  //         }
+  //       }
+  //     });
+
+  //     return res.status(204).end();
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return res.json({ error: error.message });
+  //     }
+  //     return res.json({ error: "Erro interno do servidor" });
+  //   }
+  // }
 
 
 }
