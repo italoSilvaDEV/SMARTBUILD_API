@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
@@ -824,6 +825,71 @@ export class ProjectController {
       return res.json({ error: "Internal server error" });
     }
   }
+
+  async findHistoryServicesProjectById(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Verificar se o projeto existe
+      const existingProject = await prisma.serviceProject.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Service Project not found" });
+      }
+      const result = await prisma.userAttendance.findMany({
+        where: { 
+          UserServiceProject: {
+            service_project_id: {
+              equals: id
+            }
+          }
+        }, 
+        include: {
+          UserServiceProject: {
+            select: {
+              service_project: {
+                select: {
+                  price: true,                  
+                }
+              }
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true
+            }
+          }
+        }
+      });
+
+      // Calcular as horas trabalhadas
+      const formattedResult = result.map((attendance) => {
+        let hoursWorked = 0;
+        if (attendance.check_out_time) {
+          hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+        }
+        return {
+          ...attendance,
+          hours_worked: parseFloat(hoursWorked.toFixed(2)), // Formata para 2 casas decimais
+          price: Number(attendance.UserServiceProject.service_project.price) * parseFloat(hoursWorked.toFixed(2))
+        };
+      });
+
+      return res.json(formattedResult);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Internal server error" });
+    }
+  }
+
+
+
+
   // async addProjectResponsibles(req: Request, res: Response) {
   //   const { user_id, project_id } = req.body;
 

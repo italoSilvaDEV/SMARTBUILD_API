@@ -133,4 +133,8 @@ projectRoutes.get('/project/gallery/:id', galleryProject.find)
 
 projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
 
+projectRoutes.get('/project/services-project/history/:id', checkToken, projectController.findHistoryServicesProjectById)
+
+
+
 export { projectRoutes };
