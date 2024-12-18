@@ -17,6 +17,7 @@ model User {
   city_and_state         String?
   password               String
   rules                  Json
+  hourly_price           Float?
   token_recover_password String?              @unique
   autorId                String?
   last_acess             DateTime?

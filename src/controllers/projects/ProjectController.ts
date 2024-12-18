@@ -859,7 +859,8 @@ export class ProjectController {
             select: {
               id: true,
               name: true,
-              avatar: true
+              avatar: true,
+              hourly_price: true
             }
           }
         }
@@ -874,7 +875,7 @@ export class ProjectController {
         return {
           ...attendance,
           hours_worked: parseFloat(hoursWorked.toFixed(2)), // Formata para 2 casas decimais
-          price: Number(attendance.UserServiceProject.service_project.price) * parseFloat(hoursWorked.toFixed(2))
+          price: Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
         };
       });
 
