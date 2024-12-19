@@ -31,6 +31,7 @@ model User {
   projectId              String?
   UserServiceProject     UserServiceProject[]
   UserAttendance         UserAttendance[]
+  Activities             Activities[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -121,6 +122,21 @@ model ServiceProject {
   Project            Project?             @relation(fields: [projectId], references: [id])
   projectId          String?
   UserServiceProject UserServiceProject[]
+  Activities         Activities[]
+}
+
+model Activities {
+  id   String @id @default(uuid())
+  text String
+
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }
 
 model ImgServiceProject {

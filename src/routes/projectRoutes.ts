@@ -14,6 +14,7 @@ import { ProjectController } from "../controllers/projects/ProjectController";
 import { CreatePdfProjectController } from "../controllers/projects/CreatePdfProjectUploadController";
 import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProjectAllController";
 import { GalleryProjectController } from "../controllers/projects/GalleryServiceProjectController";
+import { createActivity, deleteActivity, listActivities } from "../controllers/projects/activitiesController";
 
 const projectRoutes = Router();
 
@@ -135,6 +136,10 @@ projectRoutes.get('/project/services-project/:id', checkToken, projectController
 
 projectRoutes.get('/project/services-project/history/:id', checkToken, projectController.findHistoryServicesProjectById)
 
-
-
+// Rota para listar atividades
+projectRoutes.get("/project/services-project/activities/:serviceProjectId", checkToken, listActivities);
+// Rota para cadastrar uma nova atividade
+projectRoutes.post("/project/services-project/activities", checkToken, createActivity);
+// Rota para excluir uma atividade
+projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
 export { projectRoutes };

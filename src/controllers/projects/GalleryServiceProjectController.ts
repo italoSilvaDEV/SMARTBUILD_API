@@ -50,6 +50,7 @@ export class GalleryProjectController {
 
                 return response.json();
             } catch (error) {
+                console.log(error)
                 throw Error('Erro interno do servidor')
             }
         });

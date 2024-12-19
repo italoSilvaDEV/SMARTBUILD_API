@@ -863,6 +863,9 @@ export class ProjectController {
               hourly_price: true
             }
           }
+        },
+        orderBy: {
+          check_in_time: "desc"
         }
       });
 
@@ -888,6 +891,7 @@ export class ProjectController {
     }
   }
 
+  
 
 
 
