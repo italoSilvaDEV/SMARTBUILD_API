@@ -17,6 +17,7 @@ import { FindServiceController } from "../controllers/service/FindServiceControl
 import { FindSubCategoryController } from "../controllers/service/FindSubcategoriaController";
 import { UpdateCategoryTypeController } from "../controllers/service/UpdateCategoryTypeController";
 import { checkToken } from "../middlewares/checkToken";
+import { UserServiceProjectController } from "../controllers/service/UserServiceProjectController";
 
 
 
@@ -85,6 +86,10 @@ serviceRoutes.delete("/service/:service_id", checkToken, deleteServiceController
 
 const findServiceController = new FindServiceController();
 serviceRoutes.post("/service/find", checkToken, findServiceController.handle);
+
+const userServiceProjectController = new UserServiceProjectController()
+serviceRoutes.post('/user_service_project', checkToken, userServiceProjectController.create);
+serviceRoutes.get('/user_service_project/:id', checkToken, userServiceProjectController.getById);
 
 
 export { serviceRoutes }

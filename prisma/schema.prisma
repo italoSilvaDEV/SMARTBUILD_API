@@ -8,24 +8,30 @@ datasource db {
 }
 
 model User {
-  id                     String        @id @default(uuid())
+  id                     String               @id @default(uuid())
   avatar                 String?
   name                   String
-  email                  String        @unique
-  document               String        @unique
+  email                  String               @unique
+  document               String               @unique
   phone                  String?
   city_and_state         String?
   password               String
   rules                  Json
-  token_recover_password String?       @unique
+  hourly_price           Float?
+  token_recover_password String?              @unique
   autorId                String?
   last_acess             DateTime?
-  date_creation          DateTime      @default(now())
-  date_update            DateTime      @updatedAt
+  date_creation          DateTime             @default(now())
+  date_update            DateTime             @updatedAt
   office_id              String
-  office                 Office        @relation(fields: [office_id], references: [id])
-  userLikedCostProject   CostProject[] @relation("userLikedProject")
-  seller_project         Project[]     @relation("seller")
+  office                 Office               @relation(fields: [office_id], references: [id])
+  userLikedCostProject   CostProject[]        @relation("userLikedProject")
+  seller_project         Project[]            @relation("seller")
+  ServiceStages          ServiceStages[]
+  projectId              String?
+  UserServiceProject     UserServiceProject[]
+  UserAttendance         UserAttendance[]
+  Activities             Activities[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -94,21 +100,43 @@ model Service {
 }
 
 model ServiceProject {
-  id            String              @id @default(uuid())
-  name          String
-  description   String  @db.Text
-  hours         Decimal
-  price         Decimal
+  id          String  @id @default(uuid())
+  name        String
+  description String  @db.Text
+  hours       Decimal
+  price       Decimal
+  status      String?
+  start_date  String?
+  deadline    String?
 
-  service       Service?             @relation(fields: [id_service], references: [id])
-  id_service    String?
-  
-  photos        ImgServiceProject[]
-  costProject   CostProject[]
-  date_creation DateTime            @default(now())
-  date_update   DateTime            @updatedAt
-  Project       Project?            @relation(fields: [projectId], references: [id])
-  projectId     String?
+  service    Service? @relation(fields: [id_service], references: [id])
+  id_service String?
+
+  stages             ServiceStages[]
+  galleryBefore      GalleryBefore[]
+  galleryAlfter      GalleryAfter[]
+  photos             ImgServiceProject[]
+  costProject        CostProject[]
+  date_creation      DateTime             @default(now())
+  date_update        DateTime             @updatedAt
+  Project            Project?             @relation(fields: [projectId], references: [id])
+  projectId          String?
+  UserServiceProject UserServiceProject[]
+  Activities         Activities[]
+}
+
+model Activities {
+  id   String @id @default(uuid())
+  text String
+
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }
 
 model ImgServiceProject {
@@ -150,12 +178,14 @@ model Project {
   price              Decimal
   status_project     String
   autorId            String?
+  start_date         String?
+  deadline           String?
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
   invoiceCostProject InvoiceCostProject[]
   serviceProject     ServiceProject[]
-  workedHours Workedhours []
-  pdfproject PdfProject[]
+  workedHours        Workedhours[]
+  pdfproject         PdfProject[]
 
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
@@ -168,18 +198,47 @@ model Project {
   @@map("project")
 }
 
-model PdfProject {
-  id                          String        @id @default(uuid())
-  original_file_name          String?
-  uri                         String?
-  
-  project                     Project?      @relation(fields: [project_id], references: [id])
-  project_id                  String?
+model ServiceStages {
+  id            String   @id @default(uuid())
+  description   String
+  check         Boolean  @default(false)
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 
-  autorId                     String?
-  date_creation               DateTime      @default(now())
-  date_update                 DateTime      @updatedAt
-  
+  user             User            @relation(fields: [id_user_update], references: [id])
+  id_user_update   String
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+}
+
+model GalleryBefore {
+  id               String          @id @default(uuid())
+  url              String
+  date_creation    DateTime        @default(now())
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+}
+
+model GalleryAfter {
+  id               String          @id @default(uuid())
+  url              String
+  date_creation    DateTime        @default(now())
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String?
+}
+
+model PdfProject {
+  id                 String  @id @default(uuid())
+  original_file_name String?
+  uri                String?
+
+  project    Project? @relation(fields: [project_id], references: [id])
+  project_id String?
+
+  autorId       String?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
   @@map("pdf_project")
 }
 
@@ -187,12 +246,12 @@ model Client {
   id             String    @id @default(uuid())
   avatar         String?
   name           String
-  email          String    
-  document       String?   
+  email          String
+  document       String?
   phone          String?
   city_and_state String?
   birth_date     String?
-  location       String? @db.Text
+  location       String?   @db.Text
   lat            String?
   log            String?
   autorId        String?
@@ -218,12 +277,12 @@ model InvoiceCostProject {
 }
 
 model CostProject {
-  id                      String              @id @default(uuid())
-  material_name           String
-  price                   Decimal
-  amout                   Int
+  id            String  @id @default(uuid())
+  material_name String
+  price         Decimal
+  amout         Int
 
-  transaction_type        String?   
+  transaction_type        String?
   userId                  String?
   invoice_cost_project_id String?
   autorId                 String?
@@ -232,7 +291,6 @@ model CostProject {
   invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
   user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
 
- 
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
   serviceProjectId String?
 
@@ -249,15 +307,53 @@ model Workedhours {
   start_date String?
 
   end_date String?
-  
+
   amount_of_hours Decimal?
   hourly_price    Decimal
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  project     Project?      @relation(fields: [project_id], references: [id])
-  project_id  String?
+  project    Project? @relation(fields: [project_id], references: [id])
+  project_id String?
 
   @@map("worked_hours")
+}
+
+// Relacionamento entre User e ServiceProject
+model UserServiceProject {
+  id                 String           @id @default(uuid())
+  user_id            String
+  service_project_id String
+  assigned_at        DateTime         @default(now())
+  user               User             @relation(fields: [user_id], references: [id])
+  service_project    ServiceProject   @relation(fields: [service_project_id], references: [id])
+  user_attendances   UserAttendance[]
+
+  @@unique([user_id, service_project_id], map: "user_service_project_unique")
+  @@index([user_id], map: "user_service_project_user_id_fkey")
+  @@index([service_project_id], map: "user_service_project_service_project_id_fkey")
+  @@map("user_service_project")
+}
+
+// Tabela para registrar o ponto dos usuários
+model UserAttendance {
+  id                      String             @id @default(uuid())
+  user_id                 String
+  check_in_time           DateTime
+  check_out_time          DateTime?
+  check_in_address        String
+  check_in_latitude       Float
+  check_in_longitude      Float
+  check_out_address       String?
+  check_out_latitude      Float?
+  check_out_longitude     Float?
+  date                    DateTime           @default(now())
+  user                    User               @relation(fields: [user_id], references: [id])
+  UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
+  user_service_project_id String
+
+  @@index([user_id], map: "user_attendance_user_id_fkey")
+  @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
+  @@map("user_attendance")
 }

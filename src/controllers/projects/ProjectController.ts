@@ -1,7 +1,9 @@
+import dayjs from "dayjs";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
+import { validate as isUUID } from "uuid";
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -89,7 +91,8 @@ export class ProjectController {
           client: true,
           serviceProject: {
             include: {
-              service: true
+              service: true,
+              stages: true,
             }
           },
           workedHours: true,
@@ -109,10 +112,6 @@ export class ProjectController {
         },
         skip,
         take,
-        // orderBy: [
-        //   {id: 'asc'}, // ou 'desc', dependendo da lógica desejada
-        //   { date_update: 'desc' }
-        // ],
         orderBy: {
           date_update: "desc"
         },
@@ -158,7 +157,11 @@ export class ProjectController {
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
           workers_on_this_project: workersOnThisProject,
-          price_project: priceProject // Adiciona o novo campo price_project
+          price_project: priceProject,
+          serviceProject: project.serviceProject.map(service => ({
+            ...service,
+            stages: service.stages
+          })),
         };
       });
 
@@ -193,15 +196,30 @@ export class ProjectController {
           client: true,
           serviceProject: {
             include: {
+              UserServiceProject: {
+                select: {
+                  id: true,
+                  user: {
+                    select: {
+                      name: true,
+                      id: true,
+                      avatar: true,
+                    }
+                  }
+                }
+              },
+              galleryAlfter: true,
+              galleryBefore: true,
+              stages: true,
               service: true,
               Project: true,
               photos: true,
               costProject: {
                 include: {
-                  invoiceCostProject: true, // Inclui invoiceCostProject aqui
+                  invoiceCostProject: true,
                   ServiceProject: {
                     include: {
-                      service: true
+                      service: true,
                     }
                   }
                 }
@@ -251,7 +269,7 @@ export class ProjectController {
           }, 0);
           return total + costSum;
         }, 0);
-        
+
 
         let totalCostOfServiceHours = 0;
         let totalNumberOfHoursWorked = 0;
@@ -680,6 +698,77 @@ export class ProjectController {
     }
   }
 
+
+  async startDateProject(req: Request, res: Response) {
+    const { id, start_date } = req.body;
+
+    try {
+      // Validação do ID
+      if (!id || !isUUID(id)) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Atualizar a data de início
+      const project = await prisma.project.update({
+        where: { id },
+        data: { start_date },
+      });
+
+      return res.json(project);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async deadlineProject(req: Request, res: Response) {
+    const { id, deadline } = req.body;
+
+    try {
+      // Validação do ID
+      if (!id || !isUUID(id)) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Atualizar o prazo final
+      const project = await prisma.project.update({
+        where: { id },
+        data: { deadline },
+      });
+
+      return res.json(project);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+
+
   async deleteProject(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -689,7 +778,200 @@ export class ProjectController {
       if (error instanceof Error) {
         return res.json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.json({ error: "Internal server error" });
     }
   }
+
+  async findServicesProjectByProjectId(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const result = await prisma.serviceProject.findMany({
+        where: { projectId: id },
+        include: {
+          Project: {
+            select: {
+              id: true
+            }
+          },
+          photos: true,
+          stages: true,
+          UserServiceProject: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true
+                }
+              }
+            }
+          }
+        }
+      });
+      return res.json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Internal server error" });
+    }
+  }
+
+  async findHistoryServicesProjectById(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Verificar se o projeto existe
+      const existingProject = await prisma.serviceProject.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Service Project not found" });
+      }
+      const result = await prisma.userAttendance.findMany({
+        where: { 
+          UserServiceProject: {
+            service_project_id: {
+              equals: id
+            }
+          }
+        }, 
+        include: {
+          UserServiceProject: {
+            select: {
+              service_project: {
+                select: {
+                  price: true,                  
+                }
+              }
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+              hourly_price: true
+            }
+          }
+        },
+        orderBy: {
+          check_in_time: "desc"
+        }
+      });
+
+      // Calcular as horas trabalhadas
+      const formattedResult = result.map((attendance) => {
+        let hoursWorked = 0;
+        if (attendance.check_out_time) {
+          hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+        }
+        return {
+          ...attendance,
+          hours_worked: parseFloat(hoursWorked.toFixed(2)), // Formata para 2 casas decimais
+          price: Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
+        };
+      });
+
+      return res.json(formattedResult);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Internal server error" });
+    }
+  }
+
+  
+
+
+
+  // async addProjectResponsibles(req: Request, res: Response) {
+  //   const { user_id, project_id } = req.body;
+
+  //   try {
+  //     const project = await prisma.project.findUnique({
+  //       where: { id: project_id },
+  //       select: {
+  //         projectResponsibles: { select: { id: true } }
+  //       }
+  //     });
+
+  //     if (!project) {
+  //       return res.status(404).json({ error: "Projeto não encontrado" });
+  //     }
+
+  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+  //     if (!currentResponsibles.includes(user_id)) {
+  //       currentResponsibles.push(user_id);
+  //     }
+
+  //     await prisma.project.update({
+  //       where: {
+  //         id: project_id,
+  //       },
+  //       data: {
+  //         projectResponsibles: {
+  //           set: currentResponsibles.map((id) => ({ id }))
+  //         }
+  //       }
+  //     });
+
+  //     return res.status(204).end();
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return res.json({ error: error.message });
+  //     }
+  //     return res.json({ error: "Erro interno do servidor" });
+  //   }
+  // }
+
+  // async removeProjectResponsibles(req: Request, res: Response) {
+  //   const { user_id, project_id } = req.body;
+
+  //   try {
+  //     const project = await prisma.project.findUnique({
+  //       where: { id: project_id },
+  //       select: {
+  //         projectResponsibles: { select: { id: true } }
+  //       }
+  //     });
+
+  //     if (!project) {
+  //       return res.status(404).json({ error: "Projeto não encontrado" });
+  //     }
+
+  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
+  //     const updatedResponsibles = currentResponsibles.filter((id) => id !== user_id);
+
+  //     await prisma.project.update({
+  //       where: {
+  //         id: project_id,
+  //       },
+  //       data: {
+  //         projectResponsibles: {
+  //           set: updatedResponsibles.map((id) => ({ id }))
+  //         }
+  //       }
+  //     });
+
+  //     return res.status(204).end();
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return res.json({ error: error.message });
+  //     }
+  //     return res.json({ error: "Erro interno do servidor" });
+  //   }
+  // }
+
+
 }

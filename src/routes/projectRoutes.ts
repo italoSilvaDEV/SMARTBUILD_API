@@ -13,6 +13,8 @@ import { UpdateCostProjectController } from "../controllers/projects/UpdateCostP
 import { ProjectController } from "../controllers/projects/ProjectController";
 import { CreatePdfProjectController } from "../controllers/projects/CreatePdfProjectUploadController";
 import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProjectAllController";
+import { GalleryProjectController } from "../controllers/projects/GalleryServiceProjectController";
+import { createActivity, deleteActivity, listActivities } from "../controllers/projects/activitiesController";
 
 const projectRoutes = Router();
 
@@ -23,6 +25,8 @@ const uploadServiceProject = multer(
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
+projectRoutes.patch("/project/update/start_date", checkToken, projectController.startDateProject);
+projectRoutes.patch("/project/update/deadline", checkToken, projectController.deadlineProject);
 projectRoutes.get(
   "/project/find",
   checkToken,
@@ -102,11 +106,6 @@ projectRoutes.post(
   checkToken,
   findPdfProjectAllController.handle
 );
-
-
-
-
-
 const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
 projectRoutes.put(
@@ -117,12 +116,30 @@ projectRoutes.put(
   updateInvoiceCostProjectController.handle
 );
 
-
 const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
 
 const updateCostProjectController = new UpdateCostProjectController();
-projectRoutes.put("/costproject",checkToken,updateCostProjectController.handle);
+projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle);
 
+// projectRoutes.post("/add_project_responsibles", checkToken, projectController.addProjectResponsibles)
+// projectRoutes.delete("/remove_project_responsibles", checkToken, projectController.removeProjectResponsibles)
+
+const galleryProject = new GalleryProjectController()
+projectRoutes.post('/project/gallery',checkToken, galleryProject.create.bind(galleryProject))
+projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
+projectRoutes.get('/project/gallery/:id', galleryProject.find)
+
+
+projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
+
+projectRoutes.get('/project/services-project/history/:id', checkToken, projectController.findHistoryServicesProjectById)
+
+// Rota para listar atividades
+projectRoutes.get("/project/services-project/activities/:serviceProjectId", checkToken, listActivities);
+// Rota para cadastrar uma nova atividade
+projectRoutes.post("/project/services-project/activities", checkToken, createActivity);
+// Rota para excluir uma atividade
+projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
 export { projectRoutes };

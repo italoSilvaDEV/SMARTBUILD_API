@@ -1,0 +1,768 @@
+-- MySQL dump 10.13  Distrib 8.0.40, for Linux (x86_64)
+--
+-- Host: localhost    Database: rpprontractindb
+-- ------------------------------------------------------
+-- Server version	8.0.40-0ubuntu0.24.04.1
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table `Activities`
+--
+
+DROP TABLE IF EXISTS `Activities`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Activities` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `text` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `authorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `Activities_serviceProjectId_fkey` (`serviceProjectId`),
+  KEY `Activities_authorId_fkey` (`authorId`),
+  CONSTRAINT `Activities_authorId_fkey` FOREIGN KEY (`authorId`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `Activities_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `Activities`
+--
+
+LOCK TABLES `Activities` WRITE;
+/*!40000 ALTER TABLE `Activities` DISABLE KEYS */;
+INSERT INTO `Activities` VALUES ('51412749-51f2-447d-aff5-cb356b659eeb','fdsdfsdikufhsdf','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','7d1a1e28-0da0-43f5-ab87-2228be4870b7','2024-12-19 18:27:08.508','2024-12-19 18:27:08.508'),('849b1cfd-656c-49ac-b9b9-c802c0a3eb56','sfdgsdfgsd','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','7d1a1e28-0da0-43f5-ab87-2228be4870b7','2024-12-19 18:36:29.089','2024-12-19 18:36:29.089'),('e19619f4-246f-4144-bfb9-297c2f16a96f','asdflhsdf','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','7d1a1e28-0da0-43f5-ab87-2228be4870b7','2024-12-19 18:27:18.006','2024-12-19 18:27:18.006');
+/*!40000 ALTER TABLE `Activities` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `Client`
+--
+
+DROP TABLE IF EXISTS `Client`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Client` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `avatar` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `document` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `phone` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `city_and_state` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `birth_date` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `lat` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `location` text COLLATE utf8mb4_unicode_ci,
+  `log` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `Client`
+--
+
+LOCK TABLES `Client` WRITE;
+/*!40000 ALTER TABLE `Client` DISABLE KEYS */;
+INSERT INTO `Client` VALUES ('4f505573-6fa0-416a-81a4-b12f6921fdc6',NULL,'alana','alana@gmail.com','1234234234','2334234234',NULL,NULL,'2024-12-13 17:55:52.570','2024-12-13 17:55:52.570','2024-12-02','','Residencial Terra Livre, Parque Vitória, São José de Ribamar, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Northeast Region, 65054-706, Brazil',''),('7e0470d7-40be-4539-b6b3-59c98980adcb',NULL,'teyty','barbosa.mayko@gmail.com','','8975654',NULL,NULL,'2024-11-08 19:42:18.405','2024-11-08 19:42:18.405','','','Rua Vinte e Nove, Cohatrac III, Cohatrac, São Luís, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Região Nordeste, 65054-706, Brasil',''),('83e93d79-f3a6-417b-8ca2-535306d77996',NULL,'sdfsdfsdf','barbosa@gfmail.com','12342342','3245345',NULL,NULL,'2024-12-18 19:37:37.470','2024-12-18 19:37:37.470','2024-12-17','','Rua Vinte e Nove, Cohatrac III, Cohatrac, São Luís, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Northeast Region, 65054-706, Brazil',''),('9cde819c-61ae-41a3-992d-c0d9a519c0ea',NULL,'Teste','barbosa.mayko@gmail.com','23423423','98991363018',NULL,NULL,'2024-11-08 19:19:41.981','2024-11-08 19:19:41.981','1992-12-12','-2.5327205','Rua Vinte e Nove, Cohatrac III, Cohatrac, São Luís, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Região Nordeste, 65054-706, Brasil','-44.1998916'),('a760c652-f36a-4a85-929c-c9223e856ec2',NULL,'tesq','barbosa.mayko@gmail.com','453543','0967676788',NULL,NULL,'2024-11-08 19:37:44.856','2024-11-08 19:37:44.856','1992-12-12','','Rua Vinte e Nove, Cohatrac III, Cohatrac, São Luís, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Região Nordeste, 65054-706, Brasil',''),('c574ef52-4e1a-4cc5-91e1-90523fd252a0',NULL,'Chico','barbosa_alfameq@hotmail.com','2342340','9898676876',NULL,NULL,'2024-12-13 17:28:13.762','2024-12-13 17:28:13.762','2024-12-13','-2.54301460367885','Avenida C, Jardim Araçagi, São José de Ribamar, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Northeast Region, 65053-620, Brazil','-44.20100212097168'),('d0442124-04a8-4e08-bd22-38abdb6008b3',NULL,'teyty','barbosa.mayko@gmail.com','','8975654',NULL,NULL,'2024-11-08 19:42:18.618','2024-11-08 19:42:18.618','','','Rua Vinte e Nove, Cohatrac III, Cohatrac, São Luís, Região Geográfica Imediata de São Luís, Região Geográfica Intermediária de São Luís, Maranhão, Região Nordeste, 65054-706, Brasil','');
+/*!40000 ALTER TABLE `Client` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `GalleryAfter`
+--
+
+DROP TABLE IF EXISTS `GalleryAfter`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `GalleryAfter` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `url` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `GalleryAfter_serviceProjectId_fkey` (`serviceProjectId`),
+  CONSTRAINT `GalleryAfter_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `GalleryAfter`
+--
+
+LOCK TABLES `GalleryAfter` WRITE;
+/*!40000 ALTER TABLE `GalleryAfter` DISABLE KEYS */;
+INSERT INTO `GalleryAfter` VALUES ('003617f7-9b04-42b4-beae-f66abff895a1','2baa096aeef3cf2cd45fc284e6d710a6-png-transparent-man-desktop-man-face-image-file-formats-people.png','2024-12-19 18:53:34.855','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d'),('05961b90-ddc6-4d15-8938-38297c0dc51d','0ea0b8e22d59527b0ee2cb468f1da47d-file.jpeg','2024-12-18 20:02:30.203','9a92318c-1d0f-4208-8af9-c95bfd14e718');
+/*!40000 ALTER TABLE `GalleryAfter` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `GalleryBefore`
+--
+
+DROP TABLE IF EXISTS `GalleryBefore`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `GalleryBefore` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `url` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `GalleryBefore_serviceProjectId_fkey` (`serviceProjectId`),
+  CONSTRAINT `GalleryBefore_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `GalleryBefore`
+--
+
+LOCK TABLES `GalleryBefore` WRITE;
+/*!40000 ALTER TABLE `GalleryBefore` DISABLE KEYS */;
+INSERT INTO `GalleryBefore` VALUES ('28f31135-da9e-4600-bf06-4cd538afd7c4','b813e883ae05cf254b4853b8799e7a4c-WhatsAppImage2024-05-02at15.05.40.jpeg','2024-12-19 18:53:17.145','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d');
+/*!40000 ALTER TABLE `GalleryBefore` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `ImgServiceProject`
+--
+
+DROP TABLE IF EXISTS `ImgServiceProject`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ImgServiceProject` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `uri` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ImgServiceProject_uri_key` (`uri`),
+  KEY `ImgServiceProject_serviceProjectId_fkey` (`serviceProjectId`),
+  CONSTRAINT `ImgServiceProject_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `ImgServiceProject`
+--
+
+LOCK TABLES `ImgServiceProject` WRITE;
+/*!40000 ALTER TABLE `ImgServiceProject` DISABLE KEYS */;
+INSERT INTO `ImgServiceProject` VALUES ('3b44192e-6ea0-4f4d-aab3-e6527bac6664','36fe2c2d7cd81dac0f0b996d9c65d265-blob.webp','2024-12-13 17:28:14.370','45c088de-e5af-4647-ad78-8a621eca1248'),('4fb46bbc-0a34-4b39-8257-84b83ea541cc','e3ed953ddf50570375ba408bfc699323-blob.webp','2024-12-13 17:28:14.960','45c088de-e5af-4647-ad78-8a621eca1248'),('b4b9b95a-90cd-47f1-b42c-debb85d5f989','44d4e47124ff1bd9ceda5eebf60b136f-blob.webp','2024-12-18 19:37:38.098','9a92318c-1d0f-4208-8af9-c95bfd14e718');
+/*!40000 ALTER TABLE `ImgServiceProject` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `Office`
+--
+
+DROP TABLE IF EXISTS `Office`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Office` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `Office`
+--
+
+LOCK TABLES `Office` WRITE;
+/*!40000 ALTER TABLE `Office` DISABLE KEYS */;
+INSERT INTO `Office` VALUES ('4526f2aa-999c-459e-9847-bffcdb74f09a','Employee','2024-12-05 14:33:06.319','2024-12-05 14:32:58.653'),('c1f14c70-51b8-44fb-b030-d4d625f137cf','Administrator','2024-11-05 19:37:28.560','2024-11-05 19:37:37.606');
+/*!40000 ALTER TABLE `Office` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `Rules`
+--
+
+DROP TABLE IF EXISTS `Rules`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Rules` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `Rules`
+--
+
+LOCK TABLES `Rules` WRITE;
+/*!40000 ALTER TABLE `Rules` DISABLE KEYS */;
+/*!40000 ALTER TABLE `Rules` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `ServiceProject`
+--
+
+DROP TABLE IF EXISTS `ServiceProject`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ServiceProject` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `hours` decimal(65,30) NOT NULL,
+  `price` decimal(65,30) NOT NULL,
+  `id_service` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `projectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `status` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `deadline` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `start_date` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ServiceProject_projectId_fkey` (`projectId`),
+  KEY `ServiceProject_id_service_fkey` (`id_service`),
+  CONSTRAINT `ServiceProject_id_service_fkey` FOREIGN KEY (`id_service`) REFERENCES `variable_service` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `ServiceProject_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `ServiceProject`
+--
+
+LOCK TABLES `ServiceProject` WRITE;
+/*!40000 ALTER TABLE `ServiceProject` DISABLE KEYS */;
+INSERT INTO `ServiceProject` VALUES ('1eebd6e0-9bb9-4bb9-b09f-0cf09bdfd4fa','tesd','ytdfytd',1.000000000000000000000000000000,7865.000000000000000000000000000000,NULL,'2024-11-08 19:37:45.117','2024-11-08 19:37:45.117','1d89dfb2-7938-4e2a-aac7-0d36107f2b8b',NULL,NULL,NULL),('45c088de-e5af-4647-ad78-8a621eca1248','Teste','DFGDSFGSDFGD SDFG SDFGDSFGSDF',2.000000000000000000000000000000,0.000000000000000000000000000000,'75347e3c-3505-4a2a-b0fb-860a76b6ef09','2024-12-13 17:28:13.800','2024-12-13 17:28:13.800','f74cb949-0ed0-4788-a8d4-07ec89a9253b',NULL,NULL,NULL),('5fb34e44-37bb-4458-b842-5093c536cac8',' novo','dfioshdfoih',1.000000000000000000000000000000,200.000000000000000000000000000000,NULL,'2024-12-13 17:55:52.610','2024-12-13 17:55:52.610','018ae786-2dde-4671-965a-113e1807bd76',NULL,NULL,NULL),('7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','teste','teste',2.000000000000000000000000000000,12312.000000000000000000000000000000,NULL,'2024-11-08 19:19:42.046','2024-12-09 16:34:25.581','d847d99a-3f88-4fb1-95bc-7e4826d9c27e',NULL,NULL,'hoje'),('9a92318c-1d0f-4208-8af9-c95bfd14e718','Teste','fdsfdsfsdfs',1.000000000000000000000000000000,0.000000000000000000000000000000,'75347e3c-3505-4a2a-b0fb-860a76b6ef09','2024-12-18 19:37:37.535','2024-12-18 19:37:37.535','8f529da1-631e-4c92-955b-0216abccd250',NULL,NULL,NULL);
+/*!40000 ALTER TABLE `ServiceProject` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `ServiceStages`
+--
+
+DROP TABLE IF EXISTS `ServiceStages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ServiceStages` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `check` tinyint(1) NOT NULL DEFAULT '0',
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `id_user_update` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ServiceStages_id_user_update_fkey` (`id_user_update`),
+  KEY `ServiceStages_serviceProjectId_fkey` (`serviceProjectId`),
+  CONSTRAINT `ServiceStages_id_user_update_fkey` FOREIGN KEY (`id_user_update`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `ServiceStages_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `ServiceStages`
+--
+
+LOCK TABLES `ServiceStages` WRITE;
+/*!40000 ALTER TABLE `ServiceStages` DISABLE KEYS */;
+INSERT INTO `ServiceStages` VALUES ('078c638d-1dc6-423c-abeb-c5827f60be0f','asdasdasd',0,'2024-12-17 18:23:57.542','2024-12-17 18:23:57.542','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d'),('4fe76091-ebcf-407b-a467-007508b1483a','asdasdas',1,'2024-12-14 17:05:43.409','2024-12-14 17:19:50.154','7d1a1e28-0da0-43f5-ab87-2228be4870b7','45c088de-e5af-4647-ad78-8a621eca1248'),('66b77924-8244-4952-be1a-dccaa9321a1e','sdasdTeste',1,'2024-12-11 18:58:50.701','2024-12-18 16:35:23.998','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d'),('7198746e-b0fd-4453-9e3f-5d27c0af36dc','sfdfsdfs',0,'2024-12-14 17:05:47.671','2024-12-14 17:21:08.772','7d1a1e28-0da0-43f5-ab87-2228be4870b7','45c088de-e5af-4647-ad78-8a621eca1248'),('9605b416-7ef4-4c1f-892d-3eb28fd35dc1','seven',0,'2024-12-13 18:34:56.572','2024-12-13 18:34:56.572','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('a1721a61-10b1-4ba1-9733-870fe60e5caa','four',0,'2024-12-13 18:16:23.975','2024-12-13 18:16:23.975','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('aefb3d13-77e6-4378-8be4-fd3d4f2b08fc','five',0,'2024-12-13 18:29:37.293','2024-12-13 18:29:37.293','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('b114db54-0e6d-4dba-9ce5-51fd410bc115','asdasdas',1,'2024-12-18 16:35:27.492','2024-12-19 18:36:32.813','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d'),('c24a2722-2a02-4510-af9d-318575b09d85','two',0,'2024-12-13 18:09:26.703','2024-12-13 18:09:26.703','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('c69295d2-788d-43ea-bfbe-864260404a16','asdasda',1,'2024-12-09 16:00:36.838','2024-12-14 17:24:23.235','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d'),('cd944f0b-3ce8-4df1-a26e-a637e4b524d3','one',0,'2024-12-13 17:59:50.741','2024-12-13 17:59:50.741','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('d3a9d038-4d02-4404-b3ac-7ec1f3d5c09c','teste',0,'2024-12-13 18:40:37.760','2024-12-13 18:40:37.760','7d1a1e28-0da0-43f5-ab87-2228be4870b7','5fb34e44-37bb-4458-b842-5093c536cac8'),('ec714a2f-8e64-4c2f-962a-375da48df84c','sdfsghhhh',1,'2024-12-11 18:46:16.678','2024-12-14 17:27:44.392','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d');
+/*!40000 ALTER TABLE `ServiceStages` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `User`
+--
+
+DROP TABLE IF EXISTS `User`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `User` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `avatar` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `document` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `city_and_state` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `password` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `rules` json NOT NULL,
+  `token_recover_password` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `last_acess` datetime(3) DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `office_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `projectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `hourly_price` double DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `User_email_key` (`email`),
+  UNIQUE KEY `User_document_key` (`document`),
+  UNIQUE KEY `User_token_recover_password_key` (`token_recover_password`),
+  KEY `User_office_id_fkey` (`office_id`),
+  CONSTRAINT `User_office_id_fkey` FOREIGN KEY (`office_id`) REFERENCES `Office` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `User`
+--
+
+LOCK TABLES `User` WRITE;
+/*!40000 ALTER TABLE `User` DISABLE KEYS */;
+INSERT INTO `User` VALUES ('7d1a1e28-0da0-43f5-ab87-2228be4870b7','1dfac4bd08489ba54a120c0e4189f84f-Screenshotfrom2024-11-0514-33-20.webp','Mayko','barbosa.mayko@gmail.com','03919460308','98986010717','Maranhão-São Luís','$2b$10$tII/fS..d1Bf3r4.8t/XYuJRJ.zt8Ar/UlgKln/1MOhipg5ybRspe','{}',NULL,NULL,NULL,'2024-11-05 19:37:48.640','2024-11-05 19:40:21.076','c1f14c70-51b8-44fb-b030-d4d625f137cf',NULL,NULL);
+/*!40000 ALTER TABLE `User` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `_prisma_migrations`
+--
+
+DROP TABLE IF EXISTS `_prisma_migrations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `_prisma_migrations` (
+  `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `checksum` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `finished_at` datetime(3) DEFAULT NULL,
+  `migration_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `logs` text COLLATE utf8mb4_unicode_ci,
+  `rolled_back_at` datetime(3) DEFAULT NULL,
+  `started_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `applied_steps_count` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `_prisma_migrations`
+--
+
+LOCK TABLES `_prisma_migrations` WRITE;
+/*!40000 ALTER TABLE `_prisma_migrations` DISABLE KEYS */;
+INSERT INTO `_prisma_migrations` VALUES ('05bbf979-d680-4483-857d-dfa03eac4241','3024162ae8ca86d2655625a4fc787b4c660940189ec5076435ba13796436f7a1','2024-11-01 14:47:57.556','20240709005041_service_project',NULL,NULL,'2024-11-01 14:47:57.031',1),('0778e068-9ce1-4113-81f8-52e4182271a5','ac0bd321743f0e64318ee5ea12e704b21310c9b3a50af8ee622031cf732d6ba2','2024-11-01 14:48:03.062','20240820145931_create_column_transaction_type_cost_project',NULL,NULL,'2024-11-01 14:48:02.997',1),('0b024c82-95a5-4af4-9fa3-ca6c87fda98b','00de9725d1bda82f1d3c2da27f3b1ce2460b4b0bbb06a7f1af3b366d1b329d9c','2024-11-19 16:39:38.306','20241119163937_',NULL,NULL,'2024-11-19 16:39:37.974',1),('0cd0127f-2b61-4e10-9aff-1ac9705e91a8','cae856110bc7b59940290aa029c57f2c09196ec3eb966ee621765308ecf95246','2024-11-01 14:48:02.432','20240718003933_long_text_em_location_de_client',NULL,NULL,'2024-11-01 14:48:02.226',1),('2137c6ca-66a2-455d-a83e-380036a92cf2','22cf92bdd12b7acfe7b39cc0bfd8e0b06e43b416671ed146ece4aad8f6854d37','2024-11-19 15:03:47.939','20241119150347_create_tables_gallery_before_and_gallery_after',NULL,NULL,'2024-11-19 15:03:47.341',1),('250c889a-3578-42cd-a656-c8cda36f0242','a2745a6adc64009dc395e68066fde192cf312b1f0183390868c0e08bc925b76f','2024-11-01 14:48:02.985','20240720185708_create_startdate_enddate_workedhours',NULL,NULL,'2024-11-01 14:48:02.908',1),('308f8f5b-af0f-4027-b9e9-d571eb478e57','f28406aacb89e916c4f3a2fd325584c7d3d396ef0903f9e4be681f3df22e65bb','2024-11-01 14:48:01.534','20240711184201_relacionamento_cost_project_e_service_project',NULL,NULL,'2024-11-01 14:48:01.265',1),('35de9a91-479e-4aa7-af9e-d88692e63586','a19419305a15dea6cbea0314a2e4518f0edd9e87e9a62619d842c83c7663628f','2024-12-09 17:33:31.003','20241209173330_',NULL,NULL,'2024-12-09 17:33:30.892',1),('36b6a489-89e3-4c99-b138-c748469fc6c1','176b48a31431601633d541011ea006f3eef9d302c5f4261147c071461cef366e','2024-12-05 14:42:26.497','20241205144225_relacionamento_entre_user_e_service_project_criacao_de_tabela_de_ponto_user_attendance',NULL,NULL,'2024-12-05 14:42:25.816',1),('37ace6ca-b02a-4bec-9203-1a9d038ad497','6ed84efc8e53008167a5ecbdfa32f05a5f1ee2704a894ea93e743da1f6bf8678','2024-12-05 22:14:34.136','20241205221433_',NULL,NULL,'2024-12-05 22:14:33.774',1),('3be2d061-673b-4995-a1d5-feb065845390','dc960c1925cb54ffd41e9a335d38c362bea1cae1caaf5de8fa21887547a6feeb','2024-11-01 14:47:49.546','20240617185222_rules',NULL,NULL,'2024-11-01 14:47:49.054',1),('4109e10a-2536-46e0-859c-28c59c3130f3','57a89acd31b667bedc63d8b120bb1c887b6143122dd184119dd824ad43e09785','2024-11-01 14:47:57.023','20240705175451_project_and_and_worked_hours',NULL,NULL,'2024-11-01 14:47:55.532',1),('41427a42-5ae7-4a00-947d-d06d8de19fd7','b4b5295bfe84f7ff04870eb1b8a269bb81a64a4c8beee31d3495ab7154e0cb91','2024-11-19 14:46:15.798','20241119144615_start_date_and_deadline_in_table_project',NULL,NULL,'2024-11-19 14:46:15.738',1),('434d05f8-06ed-4719-967e-f19de710ca19','2e7d307e48b151723fa81692ecabaaa6cb21b95ee341d19003a3e339677fc288','2024-12-09 15:34:30.648','20241209153430_status_em_service_project',NULL,NULL,'2024-12-09 15:34:30.579',1),('4e7de883-48e5-43b3-b67b-a553223dff91','14bd7e986c8a8e8c7e3aaad89e8050e75051545e0d0e015f24b9b9d83656f532','2024-11-01 14:47:54.324','20240702083655_create_imgcatalog',NULL,NULL,'2024-11-01 14:47:54.062',1),('51b1d374-e590-497d-ae5c-b22c779c3620','4a6cb239fe5e328113f06954271a95d596595cd763731f0886f117826768797f','2024-12-05 22:11:23.220','20241205221122_add_user_service_project_relation_to_user_attendance',NULL,NULL,'2024-12-05 22:11:22.942',1),('699f169e-6b3a-4382-b09d-fd883cfd6563','7dc0e4d2a79e3705fe29443f5733f8dd05e0242a0de7ca3f40831349af3bb5b3','2024-12-05 14:49:57.111','20241205144957_relacionamento_de_muitos_para_muitos',NULL,NULL,'2024-12-05 14:49:57.046',1),('6aeb9f8e-8e3a-4178-822a-5abc74f2c048','8e153825a7022bc878d39c355853230211af3734bec1a23424cf4d1a810c66d9','2024-11-01 14:48:02.733','20240720004037_long_text_description_service_project',NULL,NULL,'2024-11-01 14:48:02.522',1),('6f2b1205-7b99-4059-8320-7127d7ab6966','9469a90f056ea718d648ee427e31871f9c807abceb2ac887db895d706a9ce798','2024-11-01 14:47:49.749','20240617193324_rules_obrigatiorio',NULL,NULL,'2024-11-01 14:47:49.554',1),('72a7244e-dc73-4c16-8476-3a64dd5fa48a','31ddad15d9d6c775f70e3c3582fd31aa63e1b5072adc214ec14b7919d725c66c','2024-11-01 14:48:01.257','20240711184023_remove_serviceproject_costproject_relation',NULL,NULL,'2024-11-01 14:48:01.051',1),('75afeee9-544a-4b5a-aefc-16649def1362','cd41aa216902d829191363c54419480fd2b8ace2b7e687c44740cdfd4d41fde4','2024-11-01 14:47:58.118','20240711170617_create_pdf_project',NULL,NULL,'2024-11-01 14:47:57.854',1),('8eab2561-dfa3-47ec-869c-dc65b75cb13d','401fccc1b9ee049f7e29fa90d788b584fc02be520c98cdfb93590fccaae43bdb','2024-11-01 14:48:02.510','20240719193348_campo_doc_do_client_nao_unico',NULL,NULL,'2024-11-01 14:48:02.440',1),('930ddc2e-d4e6-48e0-b576-f8791fe26b86','b43f36b9b5f7cd7c2934ec42aa90ee144a6cb4090468158a33d7534a0aaa7c0f','2024-11-01 14:47:54.410','20240703184754_lat_e_log_do_client',NULL,NULL,'2024-11-01 14:47:54.335',1),('9bccd786-ea1c-4107-ba1b-80c9897d0f9c','e96e772245c807a99961b6f5713781873003679ced5c9124c8db4ab10462d280','2024-11-01 14:47:58.975','20240711182718_relacionamento_entre_cost_project_e_service_project',NULL,NULL,'2024-11-01 14:47:58.338',1),('9be9c208-4be3-41d9-a31c-0bcfd836adea','10f5d2737ab85e44841080a81bb264059111cbbec18d687d458d636c2f9aa3a9','2024-11-01 14:47:55.380','20240705170653_create_tab_workedhours',NULL,NULL,'2024-11-01 14:47:54.506',1),('a0155c90-9d73-4872-b217-927e81c5cb08','c729b62dc3521991c98591b6713e1589417ada88db804107cfe4c14b17f94eab','2024-11-01 14:48:01.747','20240714140956_remove_relationships_cost_project_and_workedhours',NULL,NULL,'2024-11-01 14:48:01.543',1),('ad544107-6e7b-456b-b2fb-575b35e20e8f','52088895b59882690bb0dda72039baa1af3505bb4ca973c24e935752533a2416','2024-11-01 14:47:58.329','20240711182155_remove_service_relation',NULL,NULL,'2024-11-01 14:47:58.129',1),('ae27b191-ea50-4add-a9d5-c1fc1dc79d6c','db68aa9cf0b935d82c45c161a3214a39afdfb8d6c5c9790856aaece54c7597a4','2024-12-18 17:36:18.072','20241218173617_campo_hourly_price_na_tabela_user',NULL,NULL,'2024-12-18 17:36:18.004',1),('b2fddab5-8fe1-4dce-8163-4430db8eae25','a51211cd920e09b3280d383df99341abb8490e434770b43165f046d77a9c9350','2024-12-05 21:40:29.081','20241205214029_add_location_to_check_out',NULL,NULL,'2024-12-05 21:40:29.015',1),('b366d3d8-174e-4718-80e3-2445f023357a','db9fdfb8c8da104604f274f59fa36d72d8e25a50180cc6228c479eab1824621f','2024-11-01 14:47:54.050','20240627121743_create_catalog_project_client_costo_projet_invoice_cost_project',NULL,NULL,'2024-11-01 14:47:50.439',1),('b380de47-0747-4732-a110-f9285afd6bfc','19047115a2e6ababa45755c87e7ffc8bb9b59bb385740f9a4c480f57be2f8ad9','2024-12-19 17:34:30.770','20241219173430_activities_in_service_project',NULL,NULL,'2024-12-19 17:34:30.347',1),('b58e7da0-a946-4d3a-99ee-78d9221c487e','843477b5c5988cdf182f3d750c5113034a5463e93d87fe98ec6a76c5970fdd10','2024-12-09 17:38:15.810','20241209173815_',NULL,NULL,'2024-12-09 17:38:15.758',1),('b7d7f65a-54cb-478b-a635-29890b592fbb','a39bdf0c1366f767d632a45b43883969f603c15fa46bd2cd1e5fcfdee120bd79','2024-11-01 14:47:54.497','20240703202549_catalog_name_isrequerid',NULL,NULL,'2024-11-01 14:47:54.419',1),('c2ee0ebc-4994-4a7c-b088-c1fc1ddd4941','9ac6db66e8450fddeab50b5ebccdebbb47637a668eee32dc33d5ad6f3852eec3','2024-12-05 21:30:31.783','20241205213031_add_location_to_user_attendance',NULL,NULL,'2024-12-05 21:30:31.713',1),('cd7fcdf8-2ac5-4575-98c8-6d5c978d4f8a','d1dd946b7a84705e5626294dd2a33f640062ad67075693ddb0d25eb65fdc5a62','2024-11-01 14:48:02.215','20240717224659_id_service_nao_obrigatorio_em_serviceprojec',NULL,NULL,'2024-11-01 14:48:01.824',1),('d5cb2e1c-a706-406e-a1ce-be011d991089','b393d7b9abb8830d90769874dd5018eac5fff45de45fef4fc8bdaefe5b1cb53b','2024-12-09 16:26:56.175','20241209162656_start_date_e_deadline_in_service_project',NULL,NULL,'2024-12-09 16:26:56.092',1),('d8faa1e9-d71a-47ff-a6e5-733b5b22f371','f2d3d01835262090b85cd717665cf3af1911ad019c0d738129aa6b151450ccb6','2024-11-01 14:47:50.427','20240618012956_category_img_type',NULL,NULL,'2024-11-01 14:47:50.355',1),('da8c63b4-337d-4b35-8a3e-82923abfc9e5','edca3a20aa2a62a7cda47a08d155baa1c71ebca1d8c77b6d88d8864d7c45c77a','2024-11-01 14:47:50.347','20240617231744_create_table_category_subcategory_service',NULL,NULL,'2024-11-01 14:47:49.759',1),('db2d9b6e-e7eb-487e-90b1-e2cee3e74280','87e9cc1a70edff1bfe29e272416b3bfd21995406589778de37b4c25a8c5ecbff','2024-11-01 14:48:02.899','20240720153319_amount_of_hours_nao_e_obrigatorio',NULL,NULL,'2024-11-01 14:48:02.742',1),('db358a98-fddb-47d5-a7d2-ba8eaf95907e','9755a84bdbffbaf52eb58d850f3c08578449bc698aeb933c4d6fbf39eca7a0d5','2024-11-01 14:47:57.845','20240709010225_relacionamento_project_com_service_project',NULL,NULL,'2024-11-01 14:47:57.565',1),('e5ec6341-a5c9-4694-a441-656074cb0f11','bb70e811dd98373ba73765283f7b04ef3da68665e66a43c588a2489459c4670e','2024-12-09 14:53:44.342','20241209145341_',NULL,NULL,'2024-12-09 14:53:41.259',1),('f75d4617-c6f2-421f-b4ff-241a8724c7d6','59d0661ac79179ec0162429e6ac34321e319b1537d33d4f8bb8ab362f41a7ccf','2024-11-01 14:48:01.813','20240715201453_email_de_cliente_nao_unico',NULL,NULL,'2024-11-01 14:48:01.755',1),('f937abd2-aa74-440c-af38-f17bef448f34','3ffda1e331e58f2a1fdc0229320d397a80904a1eba7d39dda23eef633861cef3','2024-11-01 14:48:01.040','20240711182953_relacionamento_cost_project_e_worked_hours',NULL,NULL,'2024-11-01 14:47:59.207',1),('f9855e84-f441-4d8f-ae88-7c22d29ac4c4','d0915c63454f0df9bb3e21567756f33085eddc72955b972881d25a630e851458','2024-11-26 00:50:38.051','20241126005037_responsaveis_por_projeto',NULL,NULL,'2024-11-26 00:50:37.452',1),('fc39da20-7222-4445-aed9-5ccdaa2e262a','72d3ebf76d6cbcb8cba6be68c11923985e58b4557d2b53df0bbe3d2c86e8827e','2024-11-19 14:59:53.929','20241119145951_create_table_project_stages',NULL,NULL,'2024-11-19 14:59:51.623',1),('ff1de80c-8d56-4b4c-8e98-8592d7a826a6','5642f638380c70627d6375a907fb888138ace821d70ca73ff45a346ef9ac4a62','2024-11-01 14:47:49.046','20240616112747_create_table_user',NULL,NULL,'2024-11-01 14:47:48.744',1);
+/*!40000 ALTER TABLE `_prisma_migrations` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `catalog`
+--
+
+DROP TABLE IF EXISTS `catalog`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `catalog_img` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `catalog_name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `catalog_catalog_name_key` (`catalog_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `catalog`
+--
+
+LOCK TABLES `catalog` WRITE;
+/*!40000 ALTER TABLE `catalog` DISABLE KEYS */;
+/*!40000 ALTER TABLE `catalog` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `cost_project`
+--
+
+DROP TABLE IF EXISTS `cost_project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `cost_project` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `material_name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price` decimal(65,30) NOT NULL,
+  `amout` int NOT NULL,
+  `userId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `invoice_cost_project_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `serviceProjectId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `transaction_type` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `cost_project_userId_fkey` (`userId`),
+  KEY `cost_project_invoice_cost_project_id_fkey` (`invoice_cost_project_id`),
+  KEY `cost_project_serviceProjectId_fkey` (`serviceProjectId`),
+  CONSTRAINT `cost_project_invoice_cost_project_id_fkey` FOREIGN KEY (`invoice_cost_project_id`) REFERENCES `invoice_cost_project` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `cost_project_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `cost_project_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `cost_project`
+--
+
+LOCK TABLES `cost_project` WRITE;
+/*!40000 ALTER TABLE `cost_project` DISABLE KEYS */;
+INSERT INTO `cost_project` VALUES ('8d57438c-15b3-46c9-8ef3-8c3e573a00ce','assfdsf',12.000000000000000000000000000000,12,'7d1a1e28-0da0-43f5-ab87-2228be4870b7','dd22ff08-155c-401e-9dfe-b7d2881e603d',NULL,'2024-12-18 18:05:02.343','2024-12-18 18:05:27.911','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','Credit');
+/*!40000 ALTER TABLE `cost_project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `imgcatalog`
+--
+
+DROP TABLE IF EXISTS `imgcatalog`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `imgcatalog` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `uri` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `data_criacao` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `authorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `catalog_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `imgcatalog_uri_key` (`uri`),
+  KEY `imgcatalog_catalog_id_fkey` (`catalog_id`),
+  CONSTRAINT `imgcatalog_catalog_id_fkey` FOREIGN KEY (`catalog_id`) REFERENCES `catalog` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `imgcatalog`
+--
+
+LOCK TABLES `imgcatalog` WRITE;
+/*!40000 ALTER TABLE `imgcatalog` DISABLE KEYS */;
+/*!40000 ALTER TABLE `imgcatalog` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `invoice_cost_project`
+--
+
+DROP TABLE IF EXISTS `invoice_cost_project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `invoice_cost_project` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `original_file_name` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `uri` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `project_cost_invoice_exists` tinyint(1) NOT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `project_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `invoice_cost_project_project_id_fkey` (`project_id`),
+  CONSTRAINT `invoice_cost_project_project_id_fkey` FOREIGN KEY (`project_id`) REFERENCES `project` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `invoice_cost_project`
+--
+
+LOCK TABLES `invoice_cost_project` WRITE;
+/*!40000 ALTER TABLE `invoice_cost_project` DISABLE KEYS */;
+INSERT INTO `invoice_cost_project` VALUES ('dd22ff08-155c-401e-9dfe-b7d2881e603d','Screenshotfrom2024-12-1814-42-40.webp','beccee86f0adc0162f8809a759b8d10e-Screenshotfrom2024-12-1814-42-40.webp',1,NULL,'2024-12-18 18:05:02.320','2024-12-18 18:05:27.949','d847d99a-3f88-4fb1-95bc-7e4826d9c27e');
+/*!40000 ALTER TABLE `invoice_cost_project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `pdf_project`
+--
+
+DROP TABLE IF EXISTS `pdf_project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `pdf_project` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `original_file_name` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `uri` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `project_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `pdf_project_project_id_fkey` (`project_id`),
+  CONSTRAINT `pdf_project_project_id_fkey` FOREIGN KEY (`project_id`) REFERENCES `project` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `pdf_project`
+--
+
+LOCK TABLES `pdf_project` WRITE;
+/*!40000 ALTER TABLE `pdf_project` DISABLE KEYS */;
+/*!40000 ALTER TABLE `pdf_project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `project`
+--
+
+DROP TABLE IF EXISTS `project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `project` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `seller_user_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `price` decimal(65,30) NOT NULL,
+  `status_project` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `client_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `deadline` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `start_date` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `project_seller_user_id_fkey` (`seller_user_id`),
+  KEY `project_client_id_fkey` (`client_id`),
+  CONSTRAINT `project_client_id_fkey` FOREIGN KEY (`client_id`) REFERENCES `Client` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `project_seller_user_id_fkey` FOREIGN KEY (`seller_user_id`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `project`
+--
+
+LOCK TABLES `project` WRITE;
+/*!40000 ALTER TABLE `project` DISABLE KEYS */;
+INSERT INTO `project` VALUES ('018ae786-2dde-4671-965a-113e1807bd76','7d1a1e28-0da0-43f5-ab87-2228be4870b7',200.000000000000000000000000000000,'Pre-Start','4f505573-6fa0-416a-81a4-b12f6921fdc6',NULL,'2024-12-13 17:55:52.583','2024-12-13 17:55:52.583',NULL,NULL),('1d89dfb2-7938-4e2a-aac7-0d36107f2b8b','7d1a1e28-0da0-43f5-ab87-2228be4870b7',7865.000000000000000000000000000000,'Pre-Start','a760c652-f36a-4a85-929c-c9223e856ec2',NULL,'2024-11-08 19:37:44.944','2024-11-08 19:37:44.944',NULL,NULL),('8f529da1-631e-4c92-955b-0216abccd250','7d1a1e28-0da0-43f5-ab87-2228be4870b7',0.000000000000000000000000000000,'Pre-Start','83e93d79-f3a6-417b-8ca2-535306d77996',NULL,'2024-12-18 19:37:37.502','2024-12-18 19:37:37.502',NULL,NULL),('a927436e-c1ab-4a76-868c-b3e1e152b505','7d1a1e28-0da0-43f5-ab87-2228be4870b7',0.000000000000000000000000000000,'Pending','7e0470d7-40be-4539-b6b3-59c98980adcb',NULL,'2024-11-08 19:42:18.422','2024-11-08 19:42:18.422',NULL,NULL),('d847d99a-3f88-4fb1-95bc-7e4826d9c27e','7d1a1e28-0da0-43f5-ab87-2228be4870b7',24624.000000000000000000000000000000,'Pre-Start','9cde819c-61ae-41a3-992d-c0d9a519c0ea',NULL,'2024-11-08 19:19:42.004','2024-11-08 19:19:42.004',NULL,NULL),('e2ef6f8c-06c2-40c5-8fce-8269cda76e7e','7d1a1e28-0da0-43f5-ab87-2228be4870b7',0.000000000000000000000000000000,'Accepted','d0442124-04a8-4e08-bd22-38abdb6008b3',NULL,'2024-11-08 19:42:18.636','2024-12-03 17:07:00.326','2024-11-19T15:52:00.010Z','2024-11-19T15:52:00.010Z'),('f74cb949-0ed0-4788-a8d4-07ec89a9253b','7d1a1e28-0da0-43f5-ab87-2228be4870b7',0.000000000000000000000000000000,'Pre-Start','c574ef52-4e1a-4cc5-91e1-90523fd252a0',NULL,'2024-12-13 17:28:13.779','2024-12-13 17:28:13.779',NULL,NULL);
+/*!40000 ALTER TABLE `project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `service`
+--
+
+DROP TABLE IF EXISTS `service`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `service` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status_category` tinyint(1) DEFAULT NULL,
+  `category_name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `category_img` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `type_category` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `service`
+--
+
+LOCK TABLES `service` WRITE;
+/*!40000 ALTER TABLE `service` DISABLE KEYS */;
+INSERT INTO `service` VALUES ('90057c21-df9e-4ee6-8d83-e95f760a44ef',1,'teste',NULL,'2024-11-08 19:41:20.456','2024-11-08 19:41:20.456','b103aa389dd5768fb3cdd92ca1eb9cd3-Screenshotfrom2024-11-0615-58-59.webp','Residential');
+/*!40000 ALTER TABLE `service` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `subcategory`
+--
+
+DROP TABLE IF EXISTS `subcategory`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `subcategory` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status_subcategory` tinyint(1) DEFAULT NULL,
+  `subcategory_name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `category_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `subcategory_category_id_fkey` (`category_id`),
+  CONSTRAINT `subcategory_category_id_fkey` FOREIGN KEY (`category_id`) REFERENCES `service` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `subcategory`
+--
+
+LOCK TABLES `subcategory` WRITE;
+/*!40000 ALTER TABLE `subcategory` DISABLE KEYS */;
+INSERT INTO `subcategory` VALUES ('9a1d0435-a2ca-4fdf-aec7-2b5414b332a0',0,'asdasd',NULL,'2024-12-05 15:14:57.927','2024-12-05 15:15:02.094','90057c21-df9e-4ee6-8d83-e95f760a44ef');
+/*!40000 ALTER TABLE `subcategory` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `user_attendance`
+--
+
+DROP TABLE IF EXISTS `user_attendance`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_attendance` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `check_in_time` datetime(3) NOT NULL,
+  `check_out_time` datetime(3) DEFAULT NULL,
+  `date` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `check_in_address` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `check_in_latitude` double NOT NULL,
+  `check_in_longitude` double NOT NULL,
+  `check_out_address` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `check_out_latitude` double DEFAULT NULL,
+  `check_out_longitude` double DEFAULT NULL,
+  `user_service_project_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `user_attendance_user_id_fkey` (`user_id`),
+  KEY `user_attendance_user_service_project_id_fkey` (`user_service_project_id`),
+  CONSTRAINT `user_attendance_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `user_attendance_user_service_project_id_fkey` FOREIGN KEY (`user_service_project_id`) REFERENCES `user_service_project` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `user_attendance`
+--
+
+LOCK TABLES `user_attendance` WRITE;
+/*!40000 ALTER TABLE `user_attendance` DISABLE KEYS */;
+INSERT INTO `user_attendance` VALUES ('19c6cc9c-f511-46e4-8539-ef17b612b3af','7d1a1e28-0da0-43f5-ab87-2228be4870b7','2024-12-05 22:27:20.755',NULL,'2024-12-05 22:27:20.756','123 Main Street, Springfield',37.7749,-122.4194,NULL,NULL,NULL,'d23c8d26-5521-4de5-a1b8-d61a3283242c'),('c5010a81-3756-44e1-a55e-b2c9d27b0b4a','7d1a1e28-0da0-43f5-ab87-2228be4870b7','2024-12-05 22:18:37.964','2024-12-05 22:26:57.053','2024-12-05 22:18:37.965','123 Main Street, Springfield',37.7749,-122.4194,'456 Elm Street, Springfield',37.7749,-122.4194,'d23c8d26-5521-4de5-a1b8-d61a3283242c');
+/*!40000 ALTER TABLE `user_attendance` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `user_service_project`
+--
+
+DROP TABLE IF EXISTS `user_service_project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_service_project` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `service_project_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `assigned_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_service_project_unique` (`user_id`,`service_project_id`),
+  KEY `user_service_project_user_id_fkey` (`user_id`),
+  KEY `user_service_project_service_project_id_fkey` (`service_project_id`),
+  CONSTRAINT `user_service_project_service_project_id_fkey` FOREIGN KEY (`service_project_id`) REFERENCES `ServiceProject` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `user_service_project_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `user_service_project`
+--
+
+LOCK TABLES `user_service_project` WRITE;
+/*!40000 ALTER TABLE `user_service_project` DISABLE KEYS */;
+INSERT INTO `user_service_project` VALUES ('d23c8d26-5521-4de5-a1b8-d61a3283242c','7d1a1e28-0da0-43f5-ab87-2228be4870b7','7ee9e809-d49e-49c0-980b-79a1c3ec4c0d','2024-12-05 15:20:14.263');
+/*!40000 ALTER TABLE `user_service_project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `variable_service`
+--
+
+DROP TABLE IF EXISTS `variable_service`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `variable_service` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `service_name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type_variable` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price_type` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price_fixe` decimal(65,30) DEFAULT NULL,
+  `price_minimum` decimal(65,30) DEFAULT NULL,
+  `price_maximum` decimal(65,30) DEFAULT NULL,
+  `sub_category_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `autorId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `variable_service_sub_category_id_fkey` (`sub_category_id`),
+  CONSTRAINT `variable_service_sub_category_id_fkey` FOREIGN KEY (`sub_category_id`) REFERENCES `subcategory` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `variable_service`
+--
+
+LOCK TABLES `variable_service` WRITE;
+/*!40000 ALTER TABLE `variable_service` DISABLE KEYS */;
+INSERT INTO `variable_service` VALUES ('75347e3c-3505-4a2a-b0fb-860a76b6ef09','Teste','teste','teste',NULL,NULL,NULL,'9a1d0435-a2ca-4fdf-aec7-2b5414b332a0',NULL,'2024-12-05 15:15:10.133','2024-12-05 15:13:45.156');
+/*!40000 ALTER TABLE `variable_service` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `worked_hours`
+--
+
+DROP TABLE IF EXISTS `worked_hours`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `worked_hours` (
+  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name_user` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `amount_of_hours` decimal(65,30) DEFAULT NULL,
+  `hourly_price` decimal(65,30) NOT NULL,
+  `date_creation` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `date_update` datetime(3) NOT NULL,
+  `project_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `end_date` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `start_date` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `worked_hours_project_id_fkey` (`project_id`),
+  CONSTRAINT `worked_hours_project_id_fkey` FOREIGN KEY (`project_id`) REFERENCES `project` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `worked_hours`
+--
+
+LOCK TABLES `worked_hours` WRITE;
+/*!40000 ALTER TABLE `worked_hours` DISABLE KEYS */;
+INSERT INTO `worked_hours` VALUES ('03a35ab0-65cf-437a-a046-43787699ff21','teste',NULL,400.000000000000000000000000000000,'2024-11-08 19:22:59.001','2024-12-18 18:04:32.429','d847d99a-3f88-4fb1-95bc-7e4826d9c27e','2024-11-15','2024-11-08');
+/*!40000 ALTER TABLE `worked_hours` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2024-12-19 16:01:39

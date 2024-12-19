@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { UserController } from "../controllers/UserController"
+import { UserController } from "../controllers/User/UserController"
 import { checkToken } from "../middlewares/checkToken"
 
 
@@ -46,6 +46,7 @@ userRoutes.delete("/user/:id", checkToken, User.delete)
 
 //Recuperar senha
 userRoutes.post('/recover-password', User.sendMailRecover)
+userRoutes.post('/valid-code', User.validCode)
 userRoutes.post('/create-password', User.updatePassword)
 
 

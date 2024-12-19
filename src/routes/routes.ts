@@ -5,6 +5,8 @@ import { catalogRoutes } from './catalogRoutes'
 import { projectRoutes } from './projectRoutes'
 import { clientRoutes } from './clientRoutes'
 import { workedRours } from './workedHours'
+import {serviceStageRoutes} from './serviceStagesRoutes'
+import { userAttendanceRoutes } from './userAttendanceRoutes'
 
 const router = Router()
 
@@ -14,6 +16,8 @@ router.use(catalogRoutes)
 router.use(projectRoutes)
 router.use(clientRoutes)
 router.use(workedRours)
+router.use("/service-project-stages", serviceStageRoutes);
+router.use(userAttendanceRoutes)
 
 export { router }
 

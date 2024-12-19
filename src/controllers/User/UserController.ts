@@ -1,14 +1,14 @@
 import bcrypt from "bcrypt";
-import { prisma } from "../utils/prisma";
+import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-import Jwt, { JwtPayload } from "jsonwebtoken";
+import Jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { RecoverPassword } from "../templateEmail/recoverPassword";
-import { INewUser } from "../DTOs/IUser";
-import { deleteFile } from "../config/file";
+import { RecoverPassword } from "../../templateEmail/recoverPassword";
+import { INewUser } from "../../DTOs/IUser";
+import { deleteFile } from "../../config/file";
 import { validationResult } from "express-validator";
-import { NewUser } from "../templateEmail/newUser";
+import { NewUser } from "../../templateEmail/newUser";
 
 export class UserController {
   constructor() {
@@ -388,11 +388,11 @@ export class UserController {
       const user = await prisma.user.findUnique({
         where: { id },
       });
-  
+
       if (!user) {
         throw Error("User not found!");
       }
-  
+
       const result = await prisma.user.findUnique({
         where: { id },
         select: {
@@ -428,14 +428,14 @@ export class UserController {
           },
         },
       });
-  
+
       const formattedResult = {
         ...result,
         seller_project: result?.seller_project.map(project => {
           const price_project = project.serviceProject.reduce((total, service) => {
             return total + Number(service.hours) * Number(service.price);
           }, 0);
-  
+
           return {
             status_project: project.status_project,
             price_project,
@@ -443,7 +443,7 @@ export class UserController {
           };
         }),
       };
-  
+
       return response.json(formattedResult);
     } catch (error) {
       if (error instanceof Error) {
@@ -452,7 +452,7 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-  
+
 
   async serchAllUser(request: Request, response: Response) {
     const { name, email, pag } = request.body;
@@ -598,7 +598,28 @@ export class UserController {
       return response.status(500).json({ error: "Erro ao enviar e-mail" });
     }
   }
+  async validCode(request: Request, response: Response) {
+    try {
+      const { code } = request.body;
 
+      const user = await prisma.user.findUnique({
+        where: {
+          token_recover_password: code,
+        },
+      });
+      if (user) {
+        return response.status(200).json();
+      }
+
+      return response.status(400).json({ error: "Invalid recovery code" });
+
+    } catch (error) {
+      if (error instanceof Error) {
+        return response.json({ error: error.message });
+      }
+      return response.json({ error: "Internal error" });
+    }
+  }
   async updatePassword(request: Request, response: Response) {
     try {
       const { code, pass, confirmPass } = request.body;
