@@ -97,7 +97,7 @@ export class UserController {
       const hashedPassword = bcrypt.hashSync(pass, 10);
 
       // Email
-      const SMTP_CONFIG = require("../config/smtp");
+      const SMTP_CONFIG = require("../../config/smtp");
       const transporter = nodemailer.createTransport({
         host: SMTP_CONFIG.host,
         port: SMTP_CONFIG.port,

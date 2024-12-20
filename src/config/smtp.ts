@@ -6,7 +6,7 @@
 // }
 
 module.exports = {
-    host: `${process.env.HOST_SMTP}`,
+    host: `smtpout.secureserver.net`,
     port: Number(process.env.PORT_SMTP),
     user: process.env.EMAIL_SMTP,
     pass: process.env.PASS_SMTP
