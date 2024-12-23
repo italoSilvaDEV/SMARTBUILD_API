@@ -8,7 +8,6 @@ export class UserServiceProjectController {
   async create(req: Request, res: Response) {
     try {
       const { user_ids, service_project_id, assigned_at } = req.body;
-      console.log(service_project_id);
 
       // Verifica se o projeto existe
       const serviceProjectExists = await prisma.serviceProject.findUnique({
@@ -38,14 +37,6 @@ export class UserServiceProjectController {
         });
       }
 
-      // Remove relações com usuários não listados
-      await prisma.userServiceProject.deleteMany({
-        where: {
-          service_project_id,
-          user_id: { notIn: user_ids },
-        },
-      });
-
       // Obtém relações já existentes
       const existingRelations = await prisma.userServiceProject.findMany({
         where: {
@@ -58,6 +49,40 @@ export class UserServiceProjectController {
       const associatedUserIds = existingRelations.map(
         (relation) => relation.user_id
       );
+
+      // Busca usuários que não possuem dados relacionados em outras tabelas
+      const removableRelations = await prisma.userServiceProject.findMany({
+        where: {
+          service_project_id,
+          user_id: { notIn: user_ids },
+        },
+        select: {
+          id: true,
+          user_id: true,
+        },
+      });
+
+      const removableUserIds = [];
+
+      for (const relation of removableRelations) {
+        const hasDependencies = await prisma.userAttendance.findFirst({
+          where: { user_service_project_id: relation.id },
+        });
+
+        if (!hasDependencies) {
+          removableUserIds.push(relation.user_id);
+        }
+      }
+
+      // Remove apenas usuários sem dependências
+      if (removableUserIds.length > 0) {
+        await prisma.userServiceProject.deleteMany({
+          where: {
+            service_project_id,
+            user_id: { in: removableUserIds },
+          },
+        });
+      }
 
       // Filtra IDs que não estão associados
       const newUserIds = user_ids.filter(
@@ -76,10 +101,14 @@ export class UserServiceProjectController {
       res.status(201).json({
         message: `${newRelations.count} users successfully added to the project.`,
         addedUserIds: newUserIds,
+        removedUserIds: removableUserIds,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: "Error while creating relationships." });
+      res.status(500).json({
+        error: "Error while creating relationships.",
+        details: error.message || "Unknown error",
+      });
     }
   }
 

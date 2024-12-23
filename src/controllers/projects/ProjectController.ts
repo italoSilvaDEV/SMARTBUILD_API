@@ -214,6 +214,7 @@ export class ProjectController {
               service: true,
               Project: true,
               photos: true,
+              Activities: true,
               costProject: {
                 include: {
                   invoiceCostProject: true,
@@ -803,6 +804,7 @@ export class ProjectController {
           },
           photos: true,
           stages: true,
+          Activities: true,
           UserServiceProject: {
             select: {
               id: true,
