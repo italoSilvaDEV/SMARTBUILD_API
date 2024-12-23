@@ -105,6 +105,7 @@ export class UserServiceProjectController {
           avatar: true,
           name: true,
           office: true,
+          
           UserServiceProject: {
             select: {
               service_project: {

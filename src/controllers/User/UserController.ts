@@ -127,7 +127,8 @@ export class UserController {
           rules: JSON.stringify(data.rules) || {},
           office_id: data.office_id,
           password: hashedPassword,
-          hourly_price: Number(data.hourly_price)||0
+          hourly_price: Number(data.hourly_price) || 0,
+          profession: data.profession
         },
       });
 
@@ -231,7 +232,7 @@ export class UserController {
       phone,
       current_password,
       password,
-
+      profession,
       hourly_price,
       confirm_password,
     } = request.body;
@@ -311,7 +312,8 @@ export class UserController {
             city_and_state,
             office_id: office.id,
             phone,
-            hourly_price
+            hourly_price,
+            profession
           },
         });
       } else {
@@ -324,7 +326,8 @@ export class UserController {
             city_and_state,
             office_id: office.id,
             phone,
-            hourly_price
+            hourly_price,
+            profession
           },
         });
       }
@@ -407,6 +410,7 @@ export class UserController {
           document: true,
           city_and_state: true,
           hourly_price: true,
+          profession: true,
           office: {
             select: {
               id: true,

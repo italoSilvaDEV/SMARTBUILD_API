@@ -32,6 +32,7 @@ export interface INewUser {
   //apenas pate corrigir email
   password: string
   hourly_price?: number
+  profession?: string
 }
 
 
