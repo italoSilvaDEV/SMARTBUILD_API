@@ -86,18 +86,25 @@ export class UserServiceProjectController {
   async getById(req: Request, res: Response) {
     try {
       const { id } = req.params; // ID do ServiceProject
-
       // Obter todos os usuários da empresa (employees)
       const employees = await prisma.user.findMany({
         where: {
-          office_id: {
-            not: undefined, // Garante que office_id está definido
-          },
+          office: {
+            OR: [
+              {
+                name: "Employee"
+              },
+              {
+                name: "Worker"
+              }
+            ]
+          }
         },
         select: {
           id: true,
           avatar: true,
           name: true,
+          office: true,
           UserServiceProject: {
             select: {
               service_project: {
@@ -124,6 +131,7 @@ export class UserServiceProjectController {
           avatar: employee.avatar,
           name: employee.name,
           isLinked, // Retorna true se o usuário estiver vinculado ao serviço
+          office: employee.office.name,
           services: employee.UserServiceProject.map((usp) => ({
             id: usp.service_project?.id,
             name: usp.service_project?.name,

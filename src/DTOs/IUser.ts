@@ -31,6 +31,7 @@ export interface INewUser {
   office_id: string;
   //apenas pate corrigir email
   password: string
+  hourly_price?: number
 }
 
 
