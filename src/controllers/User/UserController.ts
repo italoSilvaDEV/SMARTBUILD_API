@@ -368,12 +368,10 @@ export class UserController {
       }
       deleteFile(`./public/tmp/catalog/${request.file.filename}`);
 
-      return response
-        .status(200)
-        .json({
-          avatar: updatedUser.avatar,
-          message: "Avatar updated successfully",
-        });
+      return response.status(200).json({
+        avatar: updatedUser.avatar,
+        message: "Avatar updated successfully",
+      });
     } catch (error: any) {
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
@@ -431,10 +429,13 @@ export class UserController {
 
       const formattedResult = {
         ...result,
-        seller_project: result?.seller_project.map(project => {
-          const price_project = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price);
-          }, 0);
+        seller_project: result?.seller_project.map((project) => {
+          const price_project = project.serviceProject.reduce(
+            (total, service) => {
+              return total + Number(service.hours) * Number(service.price);
+            },
+            0
+          );
 
           return {
             status_project: project.status_project,
@@ -452,7 +453,6 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-
 
   async serchAllUser(request: Request, response: Response) {
     const { name, email, pag } = request.body;
@@ -612,7 +612,6 @@ export class UserController {
       }
 
       return response.status(400).json({ error: "Invalid recovery code" });
-
     } catch (error) {
       if (error instanceof Error) {
         return response.json({ error: error.message });
