@@ -256,6 +256,7 @@ model Client {
   location       String?   @db.Text
   lat            String?
   log            String?
+  radius         Float?
   autorId        String?
   date_creation  DateTime  @default(now())
   date_update    DateTime  @updatedAt

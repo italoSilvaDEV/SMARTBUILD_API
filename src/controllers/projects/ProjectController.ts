@@ -21,6 +21,7 @@ export interface IClientData {
   location: string;
   lat: string;
   log: string;
+  radius: string;
 }
 
 export interface IServicesData {
@@ -622,6 +623,7 @@ export class ProjectController {
           birth_date: data.client.birth_date,
           lat: data.client.lat,
           log: data.client.log,
+          radius: Number(data.client.radius)
         },
       });
       const project = await prisma.project.create({
