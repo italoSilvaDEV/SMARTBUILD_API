@@ -899,19 +899,41 @@ export class ProjectController {
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
       }
-  
-      // Buscar os projetos do vendedor
-      const projects = await prisma.project.findMany({
-        where: { seller_user_id },
-        include: {
-          client: true, // Inclui os dados do cliente
+      const user = await prisma.user.findUnique({
+        where: {
+          id: seller_user_id
         },
-      });
+        select: {
+          office: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      let projects: any = []
+      if (user?.office.name.toLocaleLowerCase() == "seller") {
+        // Buscar os projetos do vendedor
+        projects = await prisma.project.findMany({
+          where: { seller_user_id },
+          include: {
+            client: true, // Inclui os dados do cliente
+          },
+        });
+      } else {
+        // Buscar todos os projetos
+        projects = await prisma.project.findMany({
+          include: {
+            client: true, // Inclui os dados do cliente
+          },
+        });
+      }
+      
   
       // Transformar os projetos no formato necessário
-      const events = projects.map((project) => {
-        const start = project.start_date ? new Date(`${project.start_date}T00:00:00`) : null;
-        const end = project.deadline ? new Date(`${project.deadline}T23:59:59`) : null; // Inclui o último dia
+      const events = projects.map((project: any) => {
+        const start = project.start_date ? new Date(`${project.start_date}T00:00:00`) : project.start_date;
+        const end = project.deadline ? new Date(`${project.deadline}T23:59:59`) : project.deadline; // Inclui o último dia
   
         // Formatar endereço do cliente
         const description = project.client?.location
@@ -920,15 +942,15 @@ export class ProjectController {
   
         return {
           title: project.client?.name || "Unknown Client",
-          start: start,
-          end: end,
+          start: project.start_date || start,
+          end: project.deadline || end,
           description,
         };
       });
   
       // Filtrar eventos válidos (com datas de início e fim)
       const filteredEvents = events.filter(
-        (event) => event.start && event.end
+        (event: any) => event.start && event.end
       );
   
       return res.json(filteredEvents);
@@ -1006,40 +1028,77 @@ export class ProjectController {
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
       }
-  
-      // Buscar os ServiceProjects relacionados ao vendedor
-      const serviceProjects = await prisma.serviceProject.findMany({
+      const user = await prisma.user.findUnique({
         where: {
-          Project: {
-            seller_user_id,
-          },
+          id: seller_user_id
         },
-        include: {
-          Project: {
-            include: {
-              client: true,
+        select: {
+          office: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      let serviceProjects: any = []
+      if (user?.office.name.toLocaleLowerCase() == "seller") {
+        // Buscar os ServiceProjects relacionados ao vendedor
+        serviceProjects = await prisma.serviceProject.findMany({
+          where: {
+            Project: {
+              seller_user_id,
             },
           },
-          UserServiceProject: {
-            include: {
-              user: {
-                select: {
-                  avatar: true,
-                  name: true,
+          include: {
+            Project: {
+              include: {
+                client: true,
+              },
+            },
+            UserServiceProject: {
+              include: {
+                user: {
+                  select: {
+                    avatar: true,
+                    name: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+      } else {
+        // Buscar todos os ServiceProjects
+        serviceProjects = await prisma.serviceProject.findMany({
+         
+          include: {
+            Project: {
+              include: {
+                client: true,
+              },
+            },
+            UserServiceProject: {
+              include: {
+                user: {
+                  select: {
+                    avatar: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+      
   
       // Transformar os dados no formato necessário para o calendário
-      const events = serviceProjects.map((service) => {
+      const events = serviceProjects.map((service: any) => {
         const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
         const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
   
         // Array de imagens dos usuários vinculados
-        const userImages = service.UserServiceProject.map((userService) => ({
+        const userImages = service.UserServiceProject.map((userService: any) => ({
           name: userService.user.name,
           avatar: userService.user.avatar || "/default_avatar.png",
         }));
@@ -1059,7 +1118,7 @@ export class ProjectController {
       });
   
       // Filtrar eventos válidos (com datas de início e fim)
-      const filteredEvents = events.filter((event) => event.start && event.end);
+      const filteredEvents = events.filter((event: any) => event.start && event.end);
   
       return res.json(filteredEvents);
     } catch (error) {
