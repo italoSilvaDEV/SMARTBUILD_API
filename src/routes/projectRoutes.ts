@@ -149,5 +149,7 @@ projectRoutes.patch("/service-project/update/dates",  checkToken, projectControl
 
 projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
 
+projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectController.getWorkerSchedule);
+
 
 export { projectRoutes };
