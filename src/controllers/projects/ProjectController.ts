@@ -21,6 +21,7 @@ export interface IClientData {
   location: string;
   lat: string;
   log: string;
+  radius: string;
 }
 
 export interface IServicesData {
@@ -185,8 +186,6 @@ export class ProjectController {
     }
   }
 
-
-
   async getProjectById(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -214,6 +213,7 @@ export class ProjectController {
               service: true,
               Project: true,
               photos: true,
+              Activities: true,
               costProject: {
                 include: {
                   invoiceCostProject: true,
@@ -311,8 +311,6 @@ export class ProjectController {
       return res.json({ error: "Erro interno do servidor" });
     }
   }
-
-
 
   async createServiceProject(req: Request, res: Response) {
     const data: IServicesData = req.body
@@ -621,6 +619,7 @@ export class ProjectController {
           birth_date: data.client.birth_date,
           lat: data.client.lat,
           log: data.client.log,
+          radius: Number(data.client.radius)
         },
       });
       const project = await prisma.project.create({
@@ -803,6 +802,7 @@ export class ProjectController {
           },
           photos: true,
           stages: true,
+          Activities: true,
           UserServiceProject: {
             select: {
               id: true,
@@ -838,19 +838,19 @@ export class ProjectController {
         return res.status(404).json({ error: "Service Project not found" });
       }
       const result = await prisma.userAttendance.findMany({
-        where: { 
+        where: {
           UserServiceProject: {
             service_project_id: {
               equals: id
             }
           }
-        }, 
+        },
         include: {
           UserServiceProject: {
             select: {
               service_project: {
                 select: {
-                  price: true,                  
+                  price: true,
                 }
               }
             }
@@ -891,7 +891,354 @@ export class ProjectController {
     }
   }
 
-  
+  async getSellerSchedule(req: Request, res: Response) {
+    const { seller_user_id } = req.body;
+
+    try {
+      // Validação do ID do vendedor
+      if (!seller_user_id) {
+        return res.status(400).json({ error: "Seller user ID is required" });
+      }
+      const user = await prisma.user.findUnique({
+        where: {
+          id: seller_user_id
+        },
+        select: {
+          office: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      let projects: any = []
+      if (user?.office.name.toLocaleLowerCase() == "seller") {
+        // Buscar os projetos do vendedor
+        projects = await prisma.project.findMany({
+          where: { seller_user_id },
+          include: {
+            client: true, // Inclui os dados do cliente
+          },
+        });
+      } else {
+        // Buscar todos os projetos
+        projects = await prisma.project.findMany({
+          include: {
+            client: true, // Inclui os dados do cliente
+          },
+        });
+      }
+
+
+      // Transformar os projetos no formato necessário
+      const events = projects.map((project: any) => {
+        const start = project.start_date ? new Date(`${project.start_date}T00:00:00`) : project.start_date;
+        const end = project.deadline ? new Date(`${project.deadline}T23:59:59`) : project.deadline; // Inclui o último dia
+
+        // Formatar endereço do cliente
+        const description = project.client?.location
+          ? project.client.location
+          : "No address available";
+
+        return {
+          id: project.id,
+          title: project.client?.name || "Unknown Client",
+          start: project.start_date || start,
+          end: project.deadline || end,
+          description,
+        };
+      });
+
+      // Filtrar eventos válidos (com datas de início e fim)
+      const filteredEvents = events.filter(
+        (event: any) => event.start && event.end
+      );
+
+      return res.json(filteredEvents);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // async getServiceProjectSchedule(req: Request, res: Response) {
+  //   const { seller_user_id } = req.body;
+
+  //   try {
+  //     // Validação do ID do vendedor
+  //     if (!seller_user_id) {
+  //       return res.status(400).json({ error: "Seller user ID is required" });
+  //     }
+
+  //     // Buscar os ServiceProjects relacionados ao vendedor
+  //     const serviceProjects = await prisma.serviceProject.findMany({
+  //       where: {
+  //         Project: {
+  //           seller_user_id,
+  //         },
+  //       },
+  //       include: {
+  //         Project: {
+  //           include: {
+  //             client: true,
+  //           },
+  //         },
+  //       },
+  //     });
+
+  //     // Transformar os dados no formato necessário para o calendário
+  //     const events = serviceProjects.map((service) => {
+  //       const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
+  //       const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
+
+  //       // Formatar endereço do cliente e informações adicionais
+  //       const description = service.Project?.client?.location
+  //         ? service.Project.client.location
+  //         : "No address available";
+
+  //       const imageUrl = service.Project?.client?.avatar || "/default_avatar.png";
+
+  //       return {
+  //         title: service.name,
+  //         start,
+  //         end,
+  //         description,
+  //         imageUrl,
+  //       };
+  //     });
+
+  //     // Filtrar eventos válidos (com datas de início e fim)
+  //     const filteredEvents = events.filter((event) => event.start && event.end);
+
+  //     return res.json(filteredEvents);
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       return res.status(500).json({ error: error.message });
+  //     }
+  //     return res.status(500).json({ error: "Internal server error" });
+  //   }
+  // }
+
+  async getServiceProjectSchedule(req: Request, res: Response) {
+    const { seller_user_id } = req.body;
+
+    try {
+      // Validação do ID do vendedor
+      if (!seller_user_id) {
+        return res.status(400).json({ error: "Seller user ID is required" });
+      }
+      const user = await prisma.user.findUnique({
+        where: {
+          id: seller_user_id
+        },
+        select: {
+          office: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      let serviceProjects: any = []
+      if (user?.office.name.toLocaleLowerCase() == "seller") {
+        // Buscar os ServiceProjects relacionados ao vendedor
+        serviceProjects = await prisma.serviceProject.findMany({
+          where: {
+            Project: {
+              seller_user_id,
+            },
+          },
+          include: {
+            Project: {
+              include: {
+                client: true,
+              },
+            },
+            UserServiceProject: {
+              include: {
+                user: {
+                  select: {
+                    avatar: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      } else {
+        // Buscar todos os ServiceProjects
+        serviceProjects = await prisma.serviceProject.findMany({
+
+          include: {
+            Project: {
+              include: {
+                client: true,
+              },
+            },
+            UserServiceProject: {
+              include: {
+                user: {
+                  select: {
+                    avatar: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+
+      // Transformar os dados no formato necessário para o calendário
+      const events = serviceProjects.map((service: any) => {
+        const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
+        const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
+
+        // Array de imagens dos usuários vinculados
+        const userImages = service.UserServiceProject.map((userService: any) => ({
+          name: userService.user.name,
+          avatar: userService.user.avatar || "/default_avatar.png",
+        }));
+
+        // Formatar descrição e informações adicionais
+        const description = service.Project?.client?.location
+          ? service.Project.client.location
+          : "No address available";
+
+        return {
+          id: service.Project.id,
+          title: service.name,
+          start,
+          end,
+          description,
+          userImages, // Array de imagens e nomes
+        };
+      });
+
+      // Filtrar eventos válidos (com datas de início e fim)
+      const filteredEvents = events.filter((event: any) => event.start && event.end);
+
+      return res.json(filteredEvents);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async getWorkerSchedule(req: Request, res: Response) {
+    const { id } = req.params;
+
+    try {
+      // Validação do ID do worker
+      if (!id) {
+        return res.status(400).json({ error: "Worker user ID is required" });
+      }
+      const user = await prisma.user.findUnique({
+        where: {
+          id
+        },
+        select: {
+          office: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      if (user?.office.name.toLocaleLowerCase() !== "worker") {
+        return res.status(400).json({ error: "The id entered must be that of a worker" });
+        // Buscar os ServiceProjects relacionados ao vendedor
+      }
+      const serviceProjects = await prisma.serviceProject.findMany({
+        where: {
+          UserServiceProject: {
+            some: {
+              user_id: id
+            }
+          }
+        },
+        include: {
+          Project: {
+            include: {
+              client: true,
+            },
+          },
+        },
+      });
+
+      // Transformar os dados no formato necessário para o calendário
+      const events = serviceProjects.map((service) => {
+        const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
+        const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
+
+               // Formatar descrição e informações adicionais
+        const description = service.Project?.client?.location
+          ? service.Project.client.location
+          : "No address available";
+
+        return {
+          title: service.name,
+          start,
+          end,
+          description,
+        };
+      });
+
+      // Filtrar eventos válidos (com datas de início e fim)
+      const filteredEvents = events.filter((event: any) => event.start && event.end);
+
+      return res.json(filteredEvents);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async updateDatesServiceProject(req: Request, res: Response) {
+    const { id, start_date, deadline } = req.body;
+
+    try {
+      // Validação do ID
+      if (!id || !isUUID(id)) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o serviço existe
+      const existingService = await prisma.serviceProject.findUnique({
+        where: { id },
+      });
+
+      if (!existingService) {
+        return res.status(404).json({ error: "ServiceProject not found" });
+      }
+
+      // Atualizar as datas apenas se forem fornecidas
+      const updateData: { start_date?: string; deadline?: string } = {};
+      if (start_date) updateData.start_date = start_date;
+      if (deadline) updateData.deadline = deadline;
+
+      const updatedService = await prisma.serviceProject.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return res.json(updatedService);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
 
 
 

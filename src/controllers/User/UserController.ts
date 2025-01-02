@@ -127,6 +127,8 @@ export class UserController {
           rules: JSON.stringify(data.rules) || {},
           office_id: data.office_id,
           password: hashedPassword,
+          hourly_price: Number(data.hourly_price) || 0,
+          profession: data.profession
         },
       });
 
@@ -230,6 +232,8 @@ export class UserController {
       phone,
       current_password,
       password,
+      profession,
+      hourly_price,
       confirm_password,
     } = request.body;
 
@@ -308,6 +312,8 @@ export class UserController {
             city_and_state,
             office_id: office.id,
             phone,
+            hourly_price,
+            profession
           },
         });
       } else {
@@ -320,6 +326,8 @@ export class UserController {
             city_and_state,
             office_id: office.id,
             phone,
+            hourly_price,
+            profession
           },
         });
       }
@@ -368,12 +376,10 @@ export class UserController {
       }
       deleteFile(`./public/tmp/catalog/${request.file.filename}`);
 
-      return response
-        .status(200)
-        .json({
-          avatar: updatedUser.avatar,
-          message: "Avatar updated successfully",
-        });
+      return response.status(200).json({
+        avatar: updatedUser.avatar,
+        message: "Avatar updated successfully",
+      });
     } catch (error: any) {
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
@@ -403,6 +409,8 @@ export class UserController {
           phone: true,
           document: true,
           city_and_state: true,
+          hourly_price: true,
+          profession: true,
           office: {
             select: {
               id: true,
@@ -431,10 +439,13 @@ export class UserController {
 
       const formattedResult = {
         ...result,
-        seller_project: result?.seller_project.map(project => {
-          const price_project = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price);
-          }, 0);
+        seller_project: result?.seller_project.map((project) => {
+          const price_project = project.serviceProject.reduce(
+            (total, service) => {
+              return total + Number(service.hours) * Number(service.price);
+            },
+            0
+          );
 
           return {
             status_project: project.status_project,
@@ -452,7 +463,6 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-
 
   async serchAllUser(request: Request, response: Response) {
     const { name, email, pag } = request.body;
@@ -489,6 +499,7 @@ export class UserController {
           },
         },
         city_and_state: true,
+        hourly_price: true
       },
     });
 
@@ -612,7 +623,6 @@ export class UserController {
       }
 
       return response.status(400).json({ error: "Invalid recovery code" });
-
     } catch (error) {
       if (error instanceof Error) {
         return response.json({ error: error.message });
