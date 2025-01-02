@@ -941,6 +941,7 @@ export class ProjectController {
           : "No address available";
   
         return {
+          id: project.id,
           title: project.client?.name || "Unknown Client",
           start: project.start_date || start,
           end: project.deadline || end,
@@ -1109,6 +1110,7 @@ export class ProjectController {
           : "No address available";
   
         return {
+          id: service.Project.id,
           title: service.name,
           start,
           end,
