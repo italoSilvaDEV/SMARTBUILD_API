@@ -142,4 +142,12 @@ projectRoutes.get("/project/services-project/activities/:serviceProjectId", chec
 projectRoutes.post("/project/services-project/activities", checkToken, createActivity);
 // Rota para excluir uma atividade
 projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
+
+projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule);
+
+projectRoutes.patch("/service-project/update/dates",  checkToken, projectController.updateDatesServiceProject);
+
+projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
+
+
 export { projectRoutes };
