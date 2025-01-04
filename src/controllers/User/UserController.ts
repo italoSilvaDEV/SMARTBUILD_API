@@ -355,6 +355,8 @@ export class UserController {
       if (!request.file) {
         return response.status(400).json({ error: "No file uploaded" });
       }
+      const filePath = request.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
+      const s3Bucket = process.env.AMAZON_S3_BUCKET!;
 
       const file = `${request.file.filename.split(".")[0]}.webp`;
 
@@ -368,13 +370,14 @@ export class UserController {
         this.deleteFiles(file, request.file.filename);
         return response.status(404).json({ error: "Invalid ID" });
       }
+      const fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
 
       const updatedUser = await prisma.user.update({
         where: {
           id,
         },
         data: {
-          avatar: file,
+          avatar: fileName,
         },
       });
 
@@ -382,6 +385,7 @@ export class UserController {
         deleteFile(`./public/tmp/user/${user.avatar}`);
       }
       deleteFile(`./public/tmp/catalog/${request.file.filename}`);
+      
 
       return response.status(200).json({
         avatar: updatedUser.avatar,
@@ -398,13 +402,9 @@ export class UserController {
   async searchOneUser(request: Request, response: Response) {
     try {
       let { id } = request.params;
-      const user = await prisma.user.findUnique({
-        where: { id },
-      });
+    
 
-      if (!user) {
-        throw Error("User not found!");
-      }
+      
 
       const result = await prisma.user.findUnique({
         where: { id },
@@ -443,9 +443,12 @@ export class UserController {
           },
         },
       });
-
+      if (!result) {
+        throw Error("User not found!");
+      }
       const formattedResult = {
         ...result,
+        avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
         seller_project: result?.seller_project.map((project) => {
           const price_project = project.serviceProject.reduce(
             (total, service) => {
