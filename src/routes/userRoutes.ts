@@ -5,12 +5,12 @@ import { checkToken } from "../middlewares/checkToken"
 
 import { compressImage } from "../config/compressImage";
 import multer from "multer";
-import uploadConfig from "../config/upload";
+import uploadConfig from "../config/uploadUtf8";
 const userRoutes = Router()
 
 const User = new UserController()
 //criar usuario
-const uploadPhoto = multer(uploadConfig.upload("./public/tmp/user"))
+const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
 //criar
 userRoutes.post("/user",
     checkToken,
