@@ -4,6 +4,8 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
 import { validate as isUUID } from "uuid";
+import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -646,18 +648,20 @@ export class ProjectController {
 
   async upLoadPhotoServiceProject(req: Request, res: Response) {
     const { serviceProjectId } = req.body;
-    let file = "";
-    file = "";
+   
     deleteFile(`./public/tmp/service-project/${req.file?.filename}`);
-    file = `${req.file?.filename.split(".")[0]}.webp`;
+    const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
+    const s3Bucket = process.env.AMAZON_S3_BUCKET!;
+    const fileName = await uploadImageWebpToS3(`./public/tmp/service-project/${filePath}`, s3Bucket);
 
     await prisma.imgServiceProject.create({
       data: {
-        uri: file,
+        uri: fileName,
         serviceProjectId,
       },
     });
 
+    deleteFile(`./public/tmp/service-project/${filePath}`);
     return res.json();
   }
 
@@ -805,7 +809,13 @@ export class ProjectController {
               id: true
             }
           },
-          photos: true,
+          photos: {
+            select: {
+              uri: true,
+              id: true,
+              date_creation: true
+            }
+          },
           stages: true,
           Activities: true,
           UserServiceProject: {
@@ -822,7 +832,31 @@ export class ProjectController {
           }
         }
       });
-      return res.json(result);
+
+      
+      // Processar URLs assinadas
+      const processedResult = await Promise.all(
+        result.map(async (serviceProject) => ({
+          ...serviceProject,
+          photos: await Promise.all(
+            serviceProject.photos.map(async (photo) => ({
+              ...photo,
+              uri: photo.uri ? await getPresignedUrl(photo.uri) : null, // Assina o campo `uri`
+            }))
+          ),
+          UserServiceProject: await Promise.all(
+            serviceProject.UserServiceProject.map(async (userService) => ({
+              ...userService,
+              user: {
+                ...userService.user,
+                avatar: userService.user.avatar ? await getPresignedUrl(userService.user.avatar) : null, // Assina o campo `avatar`
+              },
+            }))
+          ),
+        }))
+      );
+
+      return res.json(processedResult);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
