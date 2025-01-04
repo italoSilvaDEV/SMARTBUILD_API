@@ -22,6 +22,9 @@ export interface IClientData {
   lat: string;
   log: string;
   radius: string;
+
+  start_date: string;
+  deadline: string;
 }
 
 export interface IServicesData {
@@ -628,6 +631,8 @@ export class ProjectController {
           price: data.price,
           status_project: data.status_project,
           client_id: result.id,
+          start_date: data.client.start_date,
+          deadline: data.client.deadline
         },
       });
       return res.status(201).json(project);
