@@ -82,8 +82,8 @@ const uploadpdf = multer(
 projectRoutes.post(
   "/pdfproject",
   checkToken,
-  uploadpdf.single("file"),
-  createPdfProjectController.handle
+  // uploadpdf.single("file"),
+  createPdfProjectController.handle.bind(createPdfProjectController)
 );
 
 const createCostProjectController = new CreateCostProjectController();

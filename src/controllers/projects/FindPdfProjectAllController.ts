@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class FindPdfProjectAllController {
   async handle(request: Request, response: Response) {
@@ -37,8 +38,14 @@ export class FindPdfProjectAllController {
       const total = await prisma.pdfProject.count({
         where: filtro
       });
+      const resultWithPresignedPdf = await Promise.all(
+        result.map(async (prev) => ({
+          ...prev,
+          uri: prev.uri ? await getPresignedUrl(prev.uri) : null, // Gera URL assinada
+        }))
+      );
 
-      return response.json({ total, result });
+      return response.json({ total, result: resultWithPresignedPdf });
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
