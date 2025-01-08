@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
-import { getImageDimensions } from "../../config/compressImage";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 
@@ -50,14 +49,7 @@ export class CreatePdfProjectController {
                     return res.status(400).json({ error: "project does not exist" });
                 }
 
-                // Remove a extensão .pdf do nome do arquivo
-                const originalFileName = file.filename;
-
-                function removeHashFromFileName(fileName: string): string {
-                    const hashRegex = /^[a-f0-9]{32}-/i; // Regex para detectar e remover o hash
-                    return fileName.replace(hashRegex, '');
-                }
-           
+                       
 
                 const result = await prisma.pdfProject.create({
                     data: {
@@ -71,7 +63,7 @@ export class CreatePdfProjectController {
                     id: result.id,
                     original_file_name: result.original_file_name
                 };
-
+                this.deleteFiles(file.filename);
                 return res.json(formattedResult);
             } catch (error) {
                 if (req.file) {

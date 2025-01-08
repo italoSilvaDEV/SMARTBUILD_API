@@ -250,7 +250,7 @@ export class ProjectController {
 
       if (project) {
         const costProjects = project.serviceProject.flatMap(serviceProject =>
-          serviceProject.costProject.map(cost => ({
+          Promise.all(serviceProject.costProject.map(async cost => ({
             id: cost.id,
             material_name: cost.material_name,
             transaction_type: cost.transaction_type,
@@ -259,9 +259,10 @@ export class ProjectController {
             service_project_id: cost.ServiceProject?.id,
             service_project_name: cost.ServiceProject?.name,
             invoice_cost_project_id: cost.invoiceCostProject?.id,
-            invoice_cost_project: cost.invoiceCostProject?.uri // Inclui o campo invoice_cost_project
+            invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri)) // Inclui o campo invoice_cost_project
           }))
-        );
+          )
+        )
 
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
           const costSum = invoice.costProject.reduce((subtotal, cost) => {
@@ -648,7 +649,7 @@ export class ProjectController {
 
   async upLoadPhotoServiceProject(req: Request, res: Response) {
     const { serviceProjectId } = req.body;
-   
+
     deleteFile(`./public/tmp/service-project/${req.file?.filename}`);
     const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
     const s3Bucket = process.env.AMAZON_S3_BUCKET!;
@@ -833,7 +834,7 @@ export class ProjectController {
         }
       });
 
-      
+
       // Processar URLs assinadas
       const processedResult = await Promise.all(
         result.map(async (serviceProject) => ({
@@ -1216,7 +1217,7 @@ export class ProjectController {
         const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
         const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
 
-               // Formatar descrição e informações adicionais
+        // Formatar descrição e informações adicionais
         const description = service.Project?.client?.location
           ? service.Project.client.location
           : "No address available";

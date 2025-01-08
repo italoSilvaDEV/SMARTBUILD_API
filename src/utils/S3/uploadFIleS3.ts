@@ -1,10 +1,8 @@
 import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, S3Client, UploadPartCommand } from "@aws-sdk/client-s3";
 import fs from 'fs';
 import path from 'path';
-import { Request, Response } from "express";
 import crypto from "crypto"
 import iconv from "iconv-lite";
-import multer from "multer";
 import { compressImage } from "../../config/compressImage";
 // import { statusUpload } from "../../controllers/NotificationController";
 
@@ -238,10 +236,11 @@ export async function uploadImageWebpToS3(filePath: string, s3Bucket: string): P
 
     // Compressão do arquivo (se necessário)
     compressImage(filePath);
+    const fileHash = crypto.randomBytes(4).toString("hex");
 
     const originalName = path.basename(filePath, path.extname(filePath)) + '.webp';
     const sanitizedOriginalName = iconv.decode(Buffer.from(String(originalName), 'binary'), 'utf-8').replace(/\s/g, '');
-    const fileName = `${sanitizedOriginalName}`;
+    const fileName = `${fileHash}-${sanitizedOriginalName}`;
 
     const fileStream = fs.createReadStream(filePath);
 

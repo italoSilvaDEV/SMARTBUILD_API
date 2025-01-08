@@ -70,9 +70,7 @@ const uploadPhoto = multer(uploadConfig.upload("./public/tmp/costproject"));
 projectRoutes.post(
   "/invoicecostproject",
   checkToken,
-  uploadPhoto.single("file"),
-  compressImage("costproject"),
-  createInvoiceCostProjectController.handle
+  createInvoiceCostProjectController.handle.bind(createInvoiceCostProjectController)
 );
 
 const createPdfProjectController = new CreatePdfProjectController();
