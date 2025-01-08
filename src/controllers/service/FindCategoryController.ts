@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class FindCategoriesController {
 
@@ -39,8 +40,15 @@ export class FindCategoriesController {
                     }
                 }
             });
+            const resultWithPresigned = await Promise.all(
+                categories.map(async (prev) => ({
+                    ...prev,
+                    category_img: prev.category_img ? await getPresignedUrl(prev.category_img) : null, // Gera URL assinada
+                }))
+            );
 
-            return response.json(categories);
+
+            return response.json(resultWithPresigned);
         } catch (error) {
             console.error(error);
             if (error instanceof Error) {

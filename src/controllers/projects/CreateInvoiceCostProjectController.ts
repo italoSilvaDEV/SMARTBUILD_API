@@ -20,7 +20,7 @@ export class CreateInvoiceCostProjectController {
     async handle(req: Request, res: Response) {
         upload(req, res, async (err) => {
             if (err) {
-                return res.status(400).json({ error: 'Erro no upload do arquivo' });
+                return res.status(400).json({ error: 'Error uploading file' });
             }
             try {
                 const { project_id } = req.body;
@@ -43,7 +43,7 @@ export class CreateInvoiceCostProjectController {
                         file = await uploadFileToS3_2(req.file, ''); // Usar a função reutilizável
                     } else {
 
-                        file = await uploadImageWebpToS3(file, ''); // Usar a função reutilizável
+                        file = await uploadImageWebpToS3(filePath, ''); // Usar a função reutilizável
                         
                     }
                     deleteFile(`./public/tmp/costproject/${req.file.filename}`);

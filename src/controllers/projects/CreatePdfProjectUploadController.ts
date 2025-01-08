@@ -19,7 +19,7 @@ export class CreatePdfProjectController {
 
         upload(req, res, async (err) => {
             if (err) {
-                return res.status(400).json({ error: 'Erro no upload do arquivo' });
+                return res.status(400).json({ error: 'Error uploading file' });
             }
             try {
                 const { project_id } = req.body;

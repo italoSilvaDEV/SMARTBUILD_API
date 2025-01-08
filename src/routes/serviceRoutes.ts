@@ -27,9 +27,9 @@ const serviceRoutes = Router()
 const createCategoryController = new CreateCategoryController()
 const uploadPhoto = multer(uploadConfig.upload("./public/tmp/category"))
 serviceRoutes.post("/category",
-    uploadPhoto.single("file"),
-    compressImage("category"),
-    createCategoryController.handle
+    // uploadPhoto.single("file"),
+    // compressImage("category"),
+    createCategoryController.handle.bind(createCategoryController)
 )
 
 //category put

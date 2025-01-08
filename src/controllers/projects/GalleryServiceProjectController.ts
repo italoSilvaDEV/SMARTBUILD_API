@@ -10,7 +10,7 @@ export class GalleryProjectController {
     async create(request: Request, response: Response) {
         upload(request, response, async (err) => {
             if (err) {
-                return response.status(400).json({ error: 'Erro no upload do arquivo' });
+                return response.status(400).json({ error: 'Error uploading file' });
             }
             const {
                 serviceProjectId, type
