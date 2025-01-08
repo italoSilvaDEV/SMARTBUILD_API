@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
+import multer from "multer";
+import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 
+const upload = multer({ dest: './public/tmp/catalogimg' }).single('file');
 export class CreateImgCatalogController {
 
     constructor() {
@@ -15,51 +18,57 @@ export class CreateImgCatalogController {
     }
 
     async handle(request: Request, response: Response) {
-        try {
-            const {
-                catalog_id,
-            } = request.body;
-
-            if (!catalog_id) {
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                return response.status(400).json({ error: "Catalog id is required" });
+        upload(request, response, async (err) => {
+            if (err) {
+                return response.status(400).json({ error: 'Error uploading file' });
             }
+            try {
+                const {
+                    catalog_id,
+                } = request.body;
 
-            let file = "";
-            if (request.file) {
-                file = `${request.file.filename.split('.')[0]}.webp`;
-            } else {
-                return response.status(400).json({ error: "Image file is required!" });
-            }
-
-            const category = await prisma.catalog.findUnique({
-                where: {
-                    id: catalog_id,
+                if (!catalog_id) {
+                    this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
+                    return response.status(400).json({ error: "Catalog id is required" });
                 }
-            });
 
-            if (!category) {
-                this.deleteFiles(file, request.file?.filename);
-                return response.status(400).json({ error: "Catalog not found!" });
+                let file = "";
+                if (request.file) {
+                    const filePath = `./public/tmp/catalogimg/${request.file.filename}`;
+                    file = await uploadImageWebpToS3(filePath, '');
+                } else {
+                    return response.status(400).json({ error: "Image file is required!" });
+                }
+
+                const category = await prisma.catalog.findUnique({
+                    where: {
+                        id: catalog_id,
+                    }
+                });
+
+                if (!category) {
+                    this.deleteFiles(file, request.file?.filename);
+                    return response.status(400).json({ error: "Catalog not found!" });
+                }
+
+                const result = await prisma.imgCatalog.create({
+                    data: {
+                        uri: file,
+                        catalog_id: catalog_id,
+                    },
+                });
+
+                deleteFile(`./public/tmp/catalogimg/${request.file?.filename}`);
+
+                return response.json(result);
+
+            } catch (error) {
+                // console.error(error);
+                if (error instanceof Error) {
+                    return response.json({ error: error.message });
+                }
+                return response.json({ error: "Internal server error" });
             }
-
-            const result = await prisma.imgCatalog.create({
-                data: {
-                    uri: file,
-                    catalog_id: catalog_id,
-                },
-            });
-
-            deleteFile(`./public/tmp/catalogimg/${request.file?.filename}`);
-
-            return response.json(result);
-
-        } catch (error) {
-            // console.error(error);
-            if (error instanceof Error) {
-                return response.json({ error: error.message });
-            }
-            return response.json({ error: "Internal server error" });
-        }
+        })
     }
 }

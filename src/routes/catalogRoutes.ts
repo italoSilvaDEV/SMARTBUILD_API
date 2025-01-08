@@ -28,11 +28,11 @@ uploadPhotoCatalog.single("file"),
 
 //crioarimgcatalog
 const createImgCatalogController = new CreateImgCatalogController()
-const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalogimg"))
+// const uploadPhoto = multer(uploadConfig.upload("./public/tmp/catalogimg"))
 catalogRoutes.post("/catalog/img", 
-    uploadPhoto.single("file"), 
-    compressImage("catalogimg"), 
-    createImgCatalogController.handle
+    // uploadPhoto.single("file"), 
+    // compressImage("catalogimg"), 
+    createImgCatalogController.handle.bind(createImgCatalogController)
 )
 
 const findCatalogAllController = new FindCatalogAllController()
