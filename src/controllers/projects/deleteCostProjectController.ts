@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
+import S3Storage from "../../utils/S3/s3Storage";
 
 export class DeleteCostProjectController {
 
@@ -9,8 +10,10 @@ export class DeleteCostProjectController {
         this.deleteFiles = this.deleteFiles.bind(this);
     }
 
-    deleteFiles(file: string) {
-        deleteFile(`./public/tmp/costproject/${file}`);
+    async deleteFiles(file: string) {
+
+        const s3 = new S3Storage()
+        await s3.deleteFile(file);
     }
     //eacd/a0e
     async handle(request: Request, response: Response) {

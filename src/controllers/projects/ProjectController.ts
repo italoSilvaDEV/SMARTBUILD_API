@@ -6,6 +6,7 @@ import { Request, Response } from "express";
 import { validate as isUUID } from "uuid";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import S3Storage from "../../utils/S3/s3Storage";
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -404,11 +405,10 @@ export class ProjectController {
   //   deleteFile(`./public/tmp/service-project${file}`);
   //   deleteFile(`./public/tmp/service-project${requestFile}`);
   // }
-  deleteFiles(file: string, requestFile?: string) {
-    deleteFile(`./public/tmp/service-project/${file}`);
-    if (requestFile) {
-      deleteFile(`./public/tmp/service-project/${requestFile}`);
-    }
+  async deleteFiles(file: string) {
+    const s3 = new S3Storage()
+    await s3.deleteFile(file);
+    
   }
 
   async DeleteAllImgServiceProjectController(request: Request, response: Response) {
@@ -417,7 +417,6 @@ export class ProjectController {
       const imgServiceProjectIds = request.body; // Expecting an array of ids directly
 
       if (!id) {
-        this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
         return response.status(400).json({ error: "Service project ID is required!" });
       }
 
@@ -426,8 +425,6 @@ export class ProjectController {
       });
 
       if (!serviceProject) {
-        console.log("id match")
-        this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
         return response.status(400).json({ error: "Service project invalid!" });
       }
 

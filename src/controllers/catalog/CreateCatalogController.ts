@@ -26,7 +26,6 @@ export class CreateCatalogController {
                 const { catalog_name } = request.body;
 
                 if (!catalog_name) {
-                    this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
                     return response.status(400).json({ error: "Catalog name is required" });
                 }
 

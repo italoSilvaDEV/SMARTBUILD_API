@@ -43,12 +43,9 @@ catalogRoutes.get("/catalog/find/:id",checkToken,  findOneCatalogController.hand
 
 //putcatalog
 const updateCatalogController = new UpdateCatalogController()
-const uploadImgPhoto = multer(uploadConfig.upload("./public/tmp/catalog"))
 catalogRoutes.put("/catalog", 
     checkToken,
-    uploadImgPhoto.single("file"), 
-    compressImage("catalog"), 
-    updateCatalogController.handle
+    updateCatalogController.handle.bind(updateCatalogController)
 )
 
 const updateNameCatalogControlller = new UpdateNameCatalogControlller();

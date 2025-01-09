@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
+import multer from "multer";
+import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
+import S3Storage from "../../utils/S3/s3Storage";
+
+const upload = multer({ dest: './public/tmp/category' }).single('file');
 
 export class UpdateImgCategoryController {
 
@@ -17,50 +22,56 @@ export class UpdateImgCategoryController {
     }
 
     async handle(request: Request, response: Response) {
-        try {
-            const { id, category_name } = request.body;
-
-            if (!id || !category_name) {
-                throw new Error("ID and category name are required!");
+        upload(request, response, async (err) => {
+            if (err) {
+                return response.status(400).json({ error: 'Error uploading file' });
             }
-            const category = await prisma.category.findUnique({
-                where: { id }
-            });
+            try {
+                const { id, category_name } = request.body;
 
-            if (!category) {
-                this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                throw new Error("Category not found!");
-            }
-
-            let file = "";
-            if (request.file?.filename) {
-                file = `${request.file.filename.split('.')[0]}.webp`;
-                await prisma.category.update({
-                    where: { id },
-                    data: {
-                        category_img: file,
-                        category_name
-                    }
-                });
-
-                // Delete old category image
-                if (category.category_img) {
-                    deleteFile(`./public/tmp/category/${category.category_img}`);
+                if (!id || !category_name) {
+                    throw new Error("ID and category name are required!");
                 }
-            } else {
-                await prisma.category.update({
-                    where: { id },
-                    data: { category_name }
+                const category = await prisma.category.findUnique({
+                    where: { id }
                 });
-            }
 
-            return response.status(200).json({ message: "Category updated successfully" });
-        } catch (error) {
-            if (error instanceof Error) {
-                return response.status(400).json({ error: error.message });
+                if (!category) {                    
+                    throw new Error("Category not found!");
+                }
+
+                let file = "";
+                if (request.file?.filename) {
+                    const filePath = `./public/tmp/category/${request.file.filename}`;
+                    file = await uploadImageWebpToS3(filePath, '');
+                    await prisma.category.update({
+                        where: { id },
+                        data: {
+                            category_img: file,
+                            category_name
+                        }
+                    });
+
+                    // Delete old category image
+                    if (category.category_img) {
+                        const s3 = new S3Storage()
+                        await s3.deleteFile(category.category_img);
+                    }
+                } else {
+                    await prisma.category.update({
+                        where: { id },
+                        data: { category_name }
+                    });
+                }
+
+                return response.status(200).json({ message: "Category updated successfully" });
+            } catch (error) {
+                if (error instanceof Error) {
+                    return response.status(400).json({ error: error.message });
+                }
+                return response.status(500).json({ error: "Internal error" });
             }
-            return response.status(500).json({ error: "Internal error" });
-        }
+        })
     }
     async handleName(request: Request, response: Response) {
         try {

@@ -12,6 +12,7 @@ import { NewUser } from "../../templateEmail/newUser";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import S3Storage from "../../utils/S3/s3Storage";
 
 
 export class UserController {
@@ -547,6 +548,10 @@ export class UserController {
           id: id,
         },
       });
+      if (user.avatar) {
+        const s3 = new S3Storage()
+        await s3.deleteFile(user.avatar);
+      }
       return response.json();
     } catch (error) {
       if (error instanceof Error) {

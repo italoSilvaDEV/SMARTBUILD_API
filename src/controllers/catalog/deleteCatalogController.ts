@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { deleteFile } from "../../config/file";
+import S3Storage from "../../utils/S3/s3Storage";
 
 export class DeleteCatalogController {
   constructor() {
@@ -29,7 +29,8 @@ export class DeleteCatalogController {
 
       // Deletar todos os arquivos de imgCatalog
       for (const img of imgCatalog) {
-        deleteFile(`./public/tmp/catalogimg/${img.uri}`);
+        const s3 = new S3Storage()
+        await s3.deleteFile(img.uri);
       }
 
       // Deletar registros de imgCatalog do banco de dados

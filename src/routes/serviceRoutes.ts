@@ -44,9 +44,7 @@ serviceRoutes.put("/category/type/alter", checkToken, updateCategoryTypeControll
 const updateImgCategoryController = new UpdateImgCategoryController()
 serviceRoutes.put("/category/img",
     checkToken,
-    uploadPhoto.single("file"),
-    compressImage("category"),
-    updateImgCategoryController.handle
+    updateImgCategoryController.handle.bind(updateImgCategoryController)
 )
 serviceRoutes.patch("/category/name", checkToken, updateImgCategoryController.handleName)
 serviceRoutes.patch("/category/status", checkToken, updateImgCategoryController.handleStatus)

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
+import S3Storage from "../../utils/S3/s3Storage";
 
 export class DeleteAllImgCatalogController {
   constructor() {
@@ -18,8 +19,8 @@ export class DeleteAllImgCatalogController {
       const { id } = request.params;
       const imgcatalogid = request.body; // Expecting an array of ids directly
 
+      const s3 = new S3Storage()
       if (!id) {
-        this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
         return response.status(400).json({ error: "Catalog name is required!" });
       }
 
@@ -28,8 +29,7 @@ export class DeleteAllImgCatalogController {
       });
 
       if (!catalog) {
-        this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-        return response.status(400).json({ error: "Catalog invalid!" });
+       return response.status(400).json({ error: "Catalog invalid!" });
       }
 
       if (!Array.isArray(imgcatalogid) || imgcatalogid.length === 0) {
@@ -42,7 +42,7 @@ export class DeleteAllImgCatalogController {
 
       // Deletar todos os arquivos de imgCatalog
       for (const img of imgCatalog) {
-        deleteFile(`./public/tmp/catalogimg/${img.uri}`);
+        await s3.deleteFile(img.uri);
       }
 
       // Deletar registros de imgCatalog do banco de dados
