@@ -135,7 +135,8 @@ export class UserController {
           office_id: data.office_id,
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
-          profession: data.profession
+          profession: data.profession,
+          companyId: data.companyId
         },
       });
 
@@ -476,7 +477,7 @@ export class UserController {
   }
 
   async serchAllUser(request: Request, response: Response) {
-    const { name, email, pag } = request.body;
+    const { name, email, pag, companyId  } = request.body;
 
     const filtro: any = {};
     const name_full: any = {};
@@ -496,7 +497,9 @@ export class UserController {
         date_creation: "desc",
       },
       where: {
-        AND: [filtro, { OR: [name_full] }],
+        AND: [filtro, { OR: [name_full] }, {
+          companyId
+        }],
       },
       select: {
         id: true,
