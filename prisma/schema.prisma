@@ -35,7 +35,27 @@ model User {
   UserAttendance         UserAttendance[]
   Activities             Activities[]
 
+  company   Company? @relation(fields: [companyId], references: [id])
+  companyId String?
+
   @@index([office_id], map: "User_office_id_fkey")
+}
+
+model Company {
+  id             String           @id @default(uuid())
+  avatar         String?
+  name           String
+  date_creation  DateTime         @default(now())
+  date_update    DateTime         @updatedAt
+  User           User[]
+  Category       Category[]
+  SubCategory    SubCategory[]
+  Service        Service[]
+  ServiceProject ServiceProject[]
+  Catalog        Catalog[]
+  Project        Project[]
+  Client         Client[]
+  UserAttendance UserAttendance[]
 }
 
 model Office {
@@ -63,6 +83,8 @@ model Category {
   category_img    String?
   type_category   String
   sub_category    SubCategory[]
+  company         Company?      @relation(fields: [companyId], references: [id])
+  companyId       String?
 
   @@map("service")
 }
@@ -77,6 +99,8 @@ model SubCategory {
   category_id        String
   subcategory        Category  @relation(fields: [category_id], references: [id])
   service            Service[]
+  company            Company?  @relation(fields: [companyId], references: [id])
+  companyId          String?
 
   @@index([category_id], map: "subcategory_category_id_fkey")
   @@map("subcategory")
@@ -96,6 +120,8 @@ model Service {
   service         SubCategory      @relation(fields: [sub_category_id], references: [id])
   sub_category_id String
   ServiceProject  ServiceProject[]
+  company         Company?         @relation(fields: [companyId], references: [id])
+  companyId       String?
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
@@ -125,6 +151,8 @@ model ServiceProject {
   projectId          String?
   UserServiceProject UserServiceProject[]
   Activities         Activities[]
+  company            Company?             @relation(fields: [companyId], references: [id])
+  companyId          String?
 }
 
 model Activities {
@@ -158,6 +186,8 @@ model Catalog {
   date_update   DateTime @updatedAt
 
   imgCatalog ImgCatalog[]
+  company    Company?     @relation(fields: [companyId], references: [id])
+  companyId  String?
 
   @@map("catalog")
 }
@@ -192,8 +222,10 @@ model Project {
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
 
-  user           User?   @relation("seller", fields: [seller_user_id], references: [id])
+  user           User?    @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
+  company        Company? @relation(fields: [companyId], references: [id])
+  companyId      String?
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -261,6 +293,8 @@ model Client {
   date_creation  DateTime  @default(now())
   date_update    DateTime  @updatedAt
   projects       Project[]
+  company        Company?  @relation(fields: [companyId], references: [id])
+  companyId      String?
 }
 
 model InvoiceCostProject {
@@ -355,6 +389,8 @@ model UserAttendance {
   user                    User               @relation(fields: [user_id], references: [id])
   UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
   user_service_project_id String
+  company                 Company?           @relation(fields: [companyId], references: [id])
+  companyId               String?
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
