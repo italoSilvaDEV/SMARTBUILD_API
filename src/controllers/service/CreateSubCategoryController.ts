@@ -4,7 +4,7 @@ import { decodeToken } from "../../config/decodeToken";
 
 export class CreateSubCategoryController {
     async handle(request: Request, response: Response) {
-        const { subcategory_name, status_subcategory, category_id } = request.body;
+        const { subcategory_name, status_subcategory, category_id, company_id } = request.body;
         const authHeader = request.headers.authorization;
         const token = authHeader && authHeader.split(" ")[1];
         const secret = process.env.SECRET_JWT;
@@ -46,7 +46,8 @@ export class CreateSubCategoryController {
                 data: {
                     subcategory_name,
                     status_subcategory: status_subcategory === "true", // Ensure boolean value
-                    category_id
+                    category_id,
+                    company_id 
                 }
             });
 

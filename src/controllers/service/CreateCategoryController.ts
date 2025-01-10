@@ -25,7 +25,8 @@ export class CreateCategoryController {
             try {
                 const {
                     category_name,
-                    type_category
+                    type_category,
+                    company_id
                 } = request.body;
 
                 if (!category_name || !type_category) {
@@ -59,7 +60,8 @@ export class CreateCategoryController {
                         category_name,
                         status_category: true,
                         type_category,
-                        category_img: file
+                        category_img: file,
+                        company_id
                     },
                 });
 

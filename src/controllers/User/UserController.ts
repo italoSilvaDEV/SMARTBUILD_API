@@ -136,7 +136,7 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
-          companyId: data.companyId
+          company_id: data.company_id
         },
       });
 
@@ -179,6 +179,7 @@ export class UserController {
               name: true,
             },
           },
+          company: true
         },
         where: {
           email,
@@ -220,6 +221,8 @@ export class UserController {
           avatar: user.avatar,
           name: user.name,
           office: user.office,
+          company: user.company
+          
         },
       });
     } catch (error) {
@@ -477,7 +480,7 @@ export class UserController {
   }
 
   async serchAllUser(request: Request, response: Response) {
-    const { name, email, pag, companyId  } = request.body;
+    const { name, email, pag, company_id  } = request.body;
 
     const filtro: any = {};
     const name_full: any = {};
@@ -498,7 +501,7 @@ export class UserController {
       },
       where: {
         AND: [filtro, { OR: [name_full] }, {
-          companyId
+          company_id
         }],
       },
       select: {

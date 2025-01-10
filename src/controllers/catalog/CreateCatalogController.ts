@@ -23,7 +23,7 @@ export class CreateCatalogController {
                 return response.status(400).json({ error: 'Error uploading file' });
             }
             try {
-                const { catalog_name } = request.body;
+                const { catalog_name, company_id } = request.body;
 
                 if (!catalog_name) {
                     return response.status(400).json({ error: "Catalog name is required" });
@@ -54,6 +54,7 @@ export class CreateCatalogController {
                     data: {
                         catalog_img: file,
                         catalog_name: catalog_name,
+                        company_id
                     },
                 });
 

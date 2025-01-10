@@ -12,6 +12,7 @@ export interface INewProject {
   price: number;
   status_project: string;
   type_category: string;
+  company_id: string;
   client: IClientData;
 }
 
@@ -37,6 +38,7 @@ export interface IServicesData {
   description: string;
   hours: number;
   price: number;
+  company_id: string;
 }
 
 export interface IputServiceData extends IServicesData {
@@ -331,6 +333,7 @@ export class ProjectController {
           hours: data.hours,
           name: data.name,
           price: data.price,
+          company_id: data.company_id
         }
       })
       return res.json(result);
@@ -622,7 +625,8 @@ export class ProjectController {
           birth_date: data.client.birth_date,
           lat: data.client.lat,
           log: data.client.log,
-          radius: Number(data.client.radius)
+          radius: Number(data.client.radius),
+          company_id: data.company_id
         },
       });
       const project = await prisma.project.create({
@@ -632,7 +636,8 @@ export class ProjectController {
           status_project: data.status_project,
           client_id: result.id,
           start_date: data.client.start_date,
-          deadline: data.client.deadline
+          deadline: data.client.deadline,
+          company_id: data.company_id
         },
       });
       return res.status(201).json(project);
@@ -929,7 +934,7 @@ export class ProjectController {
   }
 
   async getSellerSchedule(req: Request, res: Response) {
-    const { seller_user_id } = req.body;
+    const { seller_user_id, company_id } = req.body;
 
     try {
       // Validação do ID do vendedor
@@ -960,6 +965,7 @@ export class ProjectController {
       } else {
         // Buscar todos os projetos
         projects = await prisma.project.findMany({
+          where: { company_id },
           include: {
             client: true, // Inclui os dados do cliente
           },

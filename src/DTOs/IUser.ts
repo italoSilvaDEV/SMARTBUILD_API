@@ -33,7 +33,7 @@ export interface INewUser {
   password: string
   hourly_price?: number
   profession?: string
-  companyId: string
+  company_id: string
 }
 
 
