@@ -6,7 +6,7 @@ export class FindCategoriesController {
 
     async handle(request: Request, response: Response) {
         try {
-            const { type_category, search, company_id } = request.body;
+            const { company_id, type_category, search } = request.body;
 
             if (!type_category) {
                 throw new Error("Type category is required!");
