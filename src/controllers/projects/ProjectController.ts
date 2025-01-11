@@ -541,7 +541,7 @@ export class ProjectController {
 
   async getUserSeller(request: Request, response: Response) {
     try {
-      const { pag } = request.query; // Alterado para request.query
+      const { pag, company_id } = request.query; // Alterado para request.query
 
       const pageNumber = Number(pag) || 0;
 
@@ -557,7 +557,11 @@ export class ProjectController {
 
       const result = await prisma.user.findMany({
         where: {
-          office_id: sellerOffice.id,
+          AND: [
+            { company_id: { equals: String(company_id) } },
+            { office_id: sellerOffice.id, }
+          ]
+          
         },
         select: {
           id: true,
