@@ -48,9 +48,10 @@ export interface IputServiceData extends IServicesData {
 export class ProjectController {
 
   async getAllProjects(req: Request, res: Response) {
-    const { id_seller, status_project, page, search } = req.query;
+    const { company_id, id_seller, status_project, page, search } = req.query;
     const query: any = {};
-
+    if (!company_id) return res.status(404).json({ error: "Company_id is required!" })
+    if (company_id) query.company_id = { equals: String(company_id) };
 
 
     if (id_seller) query.seller_user_id = { equals: id_seller };
@@ -95,7 +96,7 @@ export class ProjectController {
 
     try {
       const projects = await prisma.project.findMany({
-        where: query,
+        where:  query,
         include: {
           client: true,
           serviceProject: {
@@ -1069,9 +1070,13 @@ export class ProjectController {
   // }
 
   async getServiceProjectSchedule(req: Request, res: Response) {
-    const { seller_user_id } = req.body;
+    const {company_id, seller_user_id } = req.body;
 
     try {
+      // Validação do ID da empresa
+      if (!company_id) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
       // Validação do ID do vendedor
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
@@ -1118,7 +1123,10 @@ export class ProjectController {
       } else {
         // Buscar todos os ServiceProjects
         serviceProjects = await prisma.serviceProject.findMany({
-
+          where: {
+            company_id: {
+              equals: company_id
+          }},
           include: {
             Project: {
               include: {
