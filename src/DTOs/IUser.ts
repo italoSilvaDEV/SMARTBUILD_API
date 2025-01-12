@@ -37,3 +37,16 @@ export interface INewUser {
 }
 
 
+export interface INewCompany {
+  company_name: string
+  avatar?: string;
+  name: string;
+  email: string;
+  document: string;
+  phone?: string;
+  city_and_state?: string;
+  rules?: JSON;
+  office_id: string;
+  password: string
+  profession?: string
+}

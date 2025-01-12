@@ -6,12 +6,24 @@ import { checkToken } from "../middlewares/checkToken"
 import { compressImage } from "../config/compressImage";
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
+import { CompanyController } from "../controllers/company/CompanyController";
 const userRoutes = Router()
 
 const User = new UserController()
+const Company = new CompanyController()
 //criar usuario
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
 //criar
+userRoutes.post("/company",
+    checkToken,
+    uploadPhoto.single("avatar"),
+    compressImage("user"),
+    Company.create)
+    
+userRoutes.get("/company",
+    checkToken,
+    Company.findMany)
+
 userRoutes.post("/user",
     checkToken,
     uploadPhoto.single("avatar"),

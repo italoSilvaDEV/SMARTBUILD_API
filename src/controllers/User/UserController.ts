@@ -119,7 +119,7 @@ export class UserController {
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: data.email,
-        subject: "RP Pro Contracting",
+        subject: "Smart Build",
         html: templateEmail,
       };
 
@@ -625,7 +625,7 @@ export class UserController {
     const mailOptions = {
       from: SMTP_CONFIG.user,
       to: email,
-      subject: "RP PRO Contracting - Password Reset",
+      subject: "Smart Build - Password Reset",
       html: templateEmail,
     };
 
