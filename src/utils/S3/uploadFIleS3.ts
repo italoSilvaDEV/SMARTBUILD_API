@@ -122,9 +122,11 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
         region: region,
         credentials: {
             accessKeyId: key,
-            secretAccessKey: secret
+            secretAccessKey: secret,
+            
         },
     });
+    console.log("Bucket Name:", bucket);
 
     const fileHash = crypto.randomBytes(4).toString("hex");
     const originalName = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf-8');
