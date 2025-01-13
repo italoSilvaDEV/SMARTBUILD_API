@@ -5,17 +5,14 @@ import crypto from "crypto"
 import iconv from "iconv-lite";
 import { compressImage } from "../../config/compressImage";
 // import { statusUpload } from "../../controllers/NotificationController";
-const region = `${process.env.AMAZON_S3_REGION}`
-const key = `${process.env.AMAZON_S3_KEY}`
-const secret = `${process.env.AMAZON_S3_SECRET}`
-const bucket = `${process.env.AMAZON_S3_BUCKET}`
+
 // Função reutilizável para upload multipart para o S3
 export async function uploadFileToS3(file: Express.Multer.File, userId: string) {
     const s3 = new S3Client({
-        region: region,
+        region: process.env.AMAZON_S3_REGION,
         credentials: {
-            accessKeyId: key,
-            secretAccessKey: secret
+            accessKeyId: process.env.AMAZON_S3_KEY!,
+            secretAccessKey: process.env.AMAZON_S3_SECRET!,
         },
     });
 
@@ -27,7 +24,7 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
     const fileStream = fs.createReadStream(filePath);
 
     const createMultipartUploadCommand = new CreateMultipartUploadCommand({
-        Bucket: bucket,
+        Bucket: process.env.AMAZON_S3_BUCKET!,
         Key: fileName,
         ContentType: file.mimetype,
     });
@@ -50,7 +47,7 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
             buffer = Buffer.concat([buffer, chunk]);
             if (buffer.length >= partSize) {
                 const uploadPartCommand = new UploadPartCommand({
-                    Bucket: bucket,
+                    Bucket: process.env.AMAZON_S3_BUCKET!,
                     Key: fileName,
                     UploadId: uploadId,
                     PartNumber: partNumber,
@@ -73,7 +70,7 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
 
         if (buffer.length > 0) {
             const uploadPartCommand = new UploadPartCommand({
-                Bucket: bucket,
+                Bucket: process.env.AMAZON_S3_BUCKET!,
                 Key: fileName,
                 UploadId: uploadId,
                 PartNumber: partNumber,
@@ -89,7 +86,7 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
         }
 
         const completeMultipartUploadCommand = new CompleteMultipartUploadCommand({
-            Bucket: bucket,
+            Bucket: process.env.AMAZON_S3_BUCKET!,
             Key: fileName,
             UploadId: uploadId,
             MultipartUpload: { Parts: parts },
@@ -106,7 +103,7 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
         // Em caso de erro, abortar o multipart upload
         if (uploadId) {
             const abortMultipartUploadCommand = new AbortMultipartUploadCommand({
-                Bucket: bucket,
+                Bucket: process.env.AMAZON_S3_BUCKET!,
                 Key: file.originalname,
                 UploadId: uploadId,
             });
@@ -119,14 +116,12 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
 }
 export async function uploadFileToS3_2(file: Express.Multer.File, userId: string) {
     const s3 = new S3Client({
-        region: region,
+        region: process.env.AMAZON_S3_REGION,
         credentials: {
-            accessKeyId: key,
-            secretAccessKey: secret,
-            
+            accessKeyId: process.env.AMAZON_S3_KEY!,
+            secretAccessKey: process.env.AMAZON_S3_SECRET!,
         },
     });
-    console.log("Bucket Name:", bucket);
 
     const fileHash = crypto.randomBytes(4).toString("hex");
     const originalName = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf-8');
@@ -136,7 +131,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
     const fileStream = fs.createReadStream(filePath);
 
     const createMultipartUploadCommand = new CreateMultipartUploadCommand({
-        Bucket: bucket,
+        Bucket: process.env.AMAZON_S3_BUCKET!,
         Key: fileName,
         ContentType: file.mimetype,
     });
@@ -159,7 +154,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
             buffer = Buffer.concat([buffer, chunk]);
             if (buffer.length >= partSize) {
                 const uploadPartCommand = new UploadPartCommand({
-                    Bucket: bucket,
+                    Bucket: process.env.AMAZON_S3_BUCKET!,
                     Key: fileName,
                     UploadId: uploadId,
                     PartNumber: partNumber,
@@ -182,7 +177,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
 
         if (buffer.length > 0) {
             const uploadPartCommand = new UploadPartCommand({
-                Bucket: bucket,
+                Bucket: process.env.AMAZON_S3_BUCKET!,
                 Key: fileName,
                 UploadId: uploadId,
                 PartNumber: partNumber,
@@ -198,7 +193,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
         }
 
         const completeMultipartUploadCommand = new CompleteMultipartUploadCommand({
-            Bucket: bucket,
+            Bucket: process.env.AMAZON_S3_BUCKET!,
             Key: fileName,
             UploadId: uploadId,
             MultipartUpload: { Parts: parts },
@@ -215,7 +210,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
         // Em caso de erro, abortar o multipart upload
         if (uploadId) {
             const abortMultipartUploadCommand = new AbortMultipartUploadCommand({
-                Bucket: bucket,
+                Bucket: process.env.AMAZON_S3_BUCKET!,
                 Key: file.originalname,
                 UploadId: uploadId,
             });
@@ -232,10 +227,10 @@ export async function uploadImageWebpToS3(filePath: string, s3Bucket: string): P
     }
     // Inicializa o cliente S3
     const s3 = new S3Client({
-        region: region,
+        region: process.env.AMAZON_S3_REGION,
         credentials: {
-            accessKeyId: key,
-            secretAccessKey: secret
+            accessKeyId: process.env.AMAZON_S3_KEY!,
+            secretAccessKey: process.env.AMAZON_S3_SECRET!,
         },
     });
 
