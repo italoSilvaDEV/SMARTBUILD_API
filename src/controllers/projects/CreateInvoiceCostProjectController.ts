@@ -65,6 +65,7 @@ export class CreateInvoiceCostProjectController {
                 return res.json(formattedResult);
 
             } catch (error) {
+                console.log( error)
                 if (error instanceof Error) {
                     return res.status(500).json({ error: error.message });
                 }
