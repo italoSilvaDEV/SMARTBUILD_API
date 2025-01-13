@@ -8,6 +8,9 @@
     "start": "node dist/server.js",
     "build": "tsc"
   },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
