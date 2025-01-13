@@ -35,7 +35,8 @@ export class CreateImgCatalogController {
                 let file = "";
                 if (request.file) {
                     const filePath = `./public/tmp/catalogimg/${request.file.filename}`;
-                    file = await uploadImageWebpToS3(filePath, '');
+                    const bucket = `${process.env.AMAZON_S3_BUCKET}`
+                    file = await uploadImageWebpToS3(filePath, bucket);
                 } else {
                     return response.status(400).json({ error: "Image file is required!" });
                 }

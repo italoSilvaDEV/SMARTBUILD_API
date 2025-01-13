@@ -39,7 +39,8 @@ export class CreateCategoryController {
                 if (request.file) {
 
                     const filePath = `./public/tmp/category/${request.file.filename}`;
-                    file = await uploadImageWebpToS3(filePath, '');
+                    const bucket = `${process.env.AMAZON_S3_BUCKET}`
+                    file = await uploadImageWebpToS3(filePath, bucket);
                 }
 
                 const category = await prisma.category.findFirst({

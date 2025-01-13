@@ -43,7 +43,8 @@ export class CreateInvoiceCostProjectController {
                         file = await uploadFileToS3_2(req.file, ''); // Usar a função reutilizável
                     } else {
 
-                        file = await uploadImageWebpToS3(filePath, ''); // Usar a função reutilizável
+                        const bucket = `${process.env.AMAZON_S3_BUCKET}`
+                        file = await uploadImageWebpToS3(filePath, bucket); // Usar a função reutilizável
                         
                     }
                     deleteFile(`./public/tmp/costproject/${req.file.filename}`);
