@@ -218,7 +218,7 @@ export class UserController {
         user: {
           id: user.id,
           email: user.email,
-          avatar: user.avatar,
+          avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
           name: user.name,
           office: user.office,
           company: user.company
