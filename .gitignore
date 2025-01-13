@@ -4,6 +4,6 @@ node_modules
 
 package-lok.json
 yarn.lock
-
+dist
 public
 
