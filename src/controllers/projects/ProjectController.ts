@@ -96,7 +96,7 @@ export class ProjectController {
 
     try {
       const projects = await prisma.project.findMany({
-        where:  query,
+        where: query,
         include: {
           client: true,
           serviceProject: {
@@ -253,20 +253,24 @@ export class ProjectController {
       });
 
       if (project) {
-        const costProjects = project.serviceProject.flatMap(serviceProject =>
-          Promise.all(serviceProject.costProject.map(async cost => ({
-            id: cost.id,
-            material_name: cost.material_name,
-            transaction_type: cost.transaction_type,
-            price: cost.price,
-            amout: cost.amout,
-            service_project_id: cost.ServiceProject?.id,
-            service_project_name: cost.ServiceProject?.name,
-            invoice_cost_project_id: cost.invoiceCostProject?.id,
-            invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri)) // Inclui o campo invoice_cost_project
-          }))
+        const costProjects = await Promise.all(
+          project.serviceProject.flatMap(async serviceProject =>
+            Promise.all(
+              serviceProject.costProject.map(async cost => ({
+                id: cost.id,
+                material_name: cost.material_name,
+                transaction_type: cost.transaction_type,
+                price: cost.price,
+                amout: cost.amout,
+                service_project_id: cost.ServiceProject?.id,
+                service_project_name: cost.ServiceProject?.name,
+                invoice_cost_project_id: cost.invoiceCostProject?.id,
+                invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri))
+              }))
+            )
           )
-        )
+        );
+        const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
           const costSum = invoice.costProject.reduce((subtotal, cost) => {
@@ -304,7 +308,7 @@ export class ProjectController {
 
         res.json({
           ...project,
-          costProjects,
+          costProjects: flatCostProjects,
           costofwork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
@@ -412,7 +416,7 @@ export class ProjectController {
   async deleteFiles(file: string) {
     const s3 = new S3Storage()
     await s3.deleteFile(file);
-    
+
   }
 
   async DeleteAllImgServiceProjectController(request: Request, response: Response) {
@@ -562,7 +566,7 @@ export class ProjectController {
             { company_id: { equals: String(company_id) } },
             { office_id: sellerOffice.id, }
           ]
-          
+
         },
         select: {
           id: true,
@@ -1070,7 +1074,7 @@ export class ProjectController {
   // }
 
   async getServiceProjectSchedule(req: Request, res: Response) {
-    const {company_id, seller_user_id } = req.body;
+    const { company_id, seller_user_id } = req.body;
 
     try {
       // Validação do ID da empresa
@@ -1126,7 +1130,8 @@ export class ProjectController {
           where: {
             company_id: {
               equals: company_id
-          }},
+            }
+          },
           include: {
             Project: {
               include: {
