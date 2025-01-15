@@ -134,7 +134,7 @@ export class UserServiceProjectController {
           avatar: true,
           name: true,
           office: true,
-          
+
           UserServiceProject: {
             select: {
               service_project: {
@@ -197,4 +197,247 @@ export class UserServiceProjectController {
       res.status(500).json({ error: "Error when searching for services" });
     }
   }
+
+  async getByUserWithSearch(req: Request, res: Response) {
+    try {
+      const { id } = req.params; // ID do usuário
+      const { search } = req.body; // Termo de busca
+
+      // Consulta no Prisma com joins adequados
+      const userServiceProjects = await prisma.userServiceProject.findMany({
+        where: {
+          user_id: id,
+          service_project: {
+            name: search ? { contains: search.toLowerCase() } : undefined,
+          },
+        },
+        include: {
+          service_project: {
+            include: {
+              Project: {
+                include: {
+                  client: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Formatação do resultado no formato solicitado
+      const formattedResult = userServiceProjects.map((usp) => ({
+        id_userServiceProject: usp.id,
+        name_service: usp.service_project.name,
+        address_client: usp.service_project.Project?.client?.location || "Endereço não informado",
+        selected: false
+      }));
+
+      res.status(200).json(formattedResult);
+    } catch (error) {
+      console.error(error);
+      res
+        .status(500)
+        .json({ error: "Error when searching for user service projects" });
+    }
+  }
+
+  async getServicesWithDetails(req: Request, res: Response) {
+    try {
+      const { id } = req.params; // ID do usuário
+      const { search } = req.body; // Termo de busca (opcional)
+  
+      const userServiceProjects = await prisma.userServiceProject.findMany({
+        where: {
+          user_id: id,
+          service_project: {
+            name: search ? { contains: search.toLowerCase() } : undefined,
+          },
+        },
+        include: {
+          service_project: {
+            include: {
+              stages: true, // Para contar as etapas
+              Project: {
+                include: {
+                  client: true, // Para buscar o endereço do cliente
+                },
+              },
+              UserServiceProject: {
+                include: {
+                  user_attendances: true, // Para calcular horas trabalhadas
+                },
+              },
+            },
+          },
+        },
+      });
+  
+      const formattedResult = userServiceProjects.map((usp) => {
+        const stages = usp.service_project.stages || [];
+        const totalStages = stages.length;
+        const completedStages = stages.filter((stage) => stage.check).length;
+  
+        const attendances = usp.service_project.UserServiceProject.flatMap(
+          (usp) => usp.user_attendances || []
+        );
+  
+        const workedHours = attendances.reduce((total, attendance) => {
+          if (attendance.check_out_time && attendance.check_in_time) {
+            const duration =
+              new Date(attendance.check_out_time).getTime() -
+              new Date(attendance.check_in_time).getTime();
+            return total + duration / (1000 * 60 * 60); // Convertendo para horas
+          }
+          return total;
+        }, 0);
+  
+        // Correção para tratar start_date e deadline como strings
+        const startDate = usp.service_project.start_date
+          ? new Date(`${usp.service_project.start_date}T00:00:00`)
+          : null;
+        const deadline = usp.service_project.deadline
+          ? new Date(`${usp.service_project.deadline}T00:00:00`)
+          : null;
+  
+        // Cálculo correto de daysLeft
+        const daysLeft =
+          startDate && deadline
+            ? Math.ceil((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+            : null;
+  
+        return {
+          id: usp.id,
+          service_project_id: usp.service_project_id,
+          name: usp.service_project.name,
+          address: usp.service_project.Project?.client?.location || null,
+          startDate: startDate ? startDate.toLocaleDateString("pt-BR") : null,
+          daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
+          workedHours: workedHours.toFixed(1), // Horas trabalhadas formatadas
+          stages: `${completedStages}/${totalStages}`, // Etapas completas de total
+          status: usp.service_project.status || null,
+        };
+      });
+  
+      res.status(200).json(formattedResult);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error when fetching service details" });
+    }
+  }
+
+  async getServiceProjectDetailsGeral(req: Request, res: Response) {
+    try {
+      const { id } = req.params; // ID do ServiceProject
+
+      const serviceProject = await prisma.serviceProject.findUnique({
+        where: { id },
+        include: {
+          stages: true, // Etapas
+          Project: {
+            include: {
+              client: true, // Cliente para obter o endereço
+            },
+          },
+          UserServiceProject: {
+            include: {
+              user_attendances: true, // Presenças para calcular horas trabalhadas
+            },
+          },
+          photos: true, // Fotos relacionadas ao projeto
+          Activities: true, // Atividades relacionadas ao projeto
+        },
+      });
+
+      if (!serviceProject) {
+        return res.status(404).json({ error: "ServiceProject not found" });
+      }
+
+      // Cálculo de etapas
+      const stages = serviceProject.stages || [];
+      const totalStages = stages.length;
+      const completedStages = stages.filter((stage) => stage.check).length;
+
+      // Cálculo de horas trabalhadas
+      const attendances = serviceProject.UserServiceProject.flatMap(
+        (usp) => usp.user_attendances || []
+      );
+
+      const workedHours = attendances.reduce((total, attendance) => {
+        if (attendance.check_out_time && attendance.check_in_time) {
+          const duration = new Date(attendance.check_out_time).getTime() - new Date(attendance.check_in_time).getTime();
+          return total + duration / (1000 * 60 * 60); // Convertendo para horas
+        }
+        return total;
+      }, 0);
+
+      // Cálculo de dias restantes
+      const startDate = serviceProject.start_date
+        ? new Date(serviceProject.start_date)
+        : null;
+      const deadline = serviceProject.deadline
+        ? new Date(serviceProject.deadline)
+        : null;
+
+      const daysLeft = startDate && deadline
+        ? Math.ceil((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      // Formatação do resultado
+      const formattedResult = {
+        description: serviceProject.description,
+        status: serviceProject.status || null,
+        address: serviceProject.Project?.client?.location || null,
+        start_date: startDate?.toLocaleDateString("pt-BR") || null,
+        daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
+        workedHours: workedHours.toFixed(1),
+        stages: `${completedStages}/${totalStages}`,
+        photos: serviceProject.photos || [],
+        activities: serviceProject.Activities || [],
+      };
+
+      res.status(200).json(formattedResult);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error when fetching ServiceProject details" });
+    }
+  }
+
+  async getCostsByServiceProject(req: Request, res: Response) {
+    const { serviceProjectId } = req.params;
+
+    if (!serviceProjectId) {
+      return res.status(400).json({ error: "ServiceProjectId is required." });
+    }
+
+    try {
+      const costs = await prisma.costProject.findMany({
+        where: {
+          serviceProjectId,
+        },
+        include: {
+          invoiceCostProject: true, // Inclui informações do arquivo relacionado, se houver
+        },
+      });
+
+      const formattedCosts = costs.map((cost) => ({
+        id: cost.id,
+        title: cost.material_name,
+        price: cost.price.toFixed(2),
+        quantity: cost.amout,
+        invoice: cost.invoiceCostProject
+          ? {
+              id: cost.invoiceCostProject.id,
+              fileName: cost.invoiceCostProject.original_file_name,
+              uri: cost.invoiceCostProject.uri,
+            }
+          : null,
+      }));
+
+      return res.status(200).json(formattedCosts);
+    } catch (error) {
+      console.error("Error fetching costs:", error);
+      return res.status(500).json({ error: "Internal server error." });
+    }
+  }
+
 }

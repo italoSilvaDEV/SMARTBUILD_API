@@ -8,17 +8,23 @@ datasource db {
 }
 
 model User {
-  id             String  @id @default(uuid())
-  avatar         String?
-  name           String
-  email          String  @unique
-  document       String  @unique
-  phone          String?
-  city_and_state String?
-  password       String
-  rules          Json
-  hourly_price   Float?
-  profession     String?
+  id              String  @id @default(uuid())
+  avatar          String?
+  name            String
+  email           String  @unique
+  document        String  @unique
+  phone           String?
+  phone_emergency String?
+  zip_code        String?
+  city_and_state  String?
+  state           String?
+  number_road     String?
+  number_home     String?
+  neighborhood    String?
+  password        String
+  rules           Json
+  hourly_price    Float?
+  profession      String?
 
   token_recover_password String?              @unique
   autorId                String?
@@ -287,11 +293,11 @@ model CostProject {
 
   transaction_type        String?
   userId                  String?
-  invoice_cost_project_id String?
   autorId                 String?
   date_creation           DateTime            @default(now())
   date_update             DateTime            @updatedAt
   invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
+  invoice_cost_project_id String?
   user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
 
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
@@ -325,13 +331,16 @@ model Workedhours {
 
 // Relacionamento entre User e ServiceProject
 model UserServiceProject {
-  id                 String           @id @default(uuid())
-  user_id            String
+  id          String   @id @default(uuid())
+  assigned_at DateTime @default(now())
+
+  user    User   @relation(fields: [user_id], references: [id])
+  user_id String
+
+  service_project    ServiceProject @relation(fields: [service_project_id], references: [id])
   service_project_id String
-  assigned_at        DateTime         @default(now())
-  user               User             @relation(fields: [user_id], references: [id])
-  service_project    ServiceProject   @relation(fields: [service_project_id], references: [id])
-  user_attendances   UserAttendance[]
+
+  user_attendances UserAttendance[]
 
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
   @@index([user_id], map: "user_service_project_user_id_fkey")
@@ -342,7 +351,6 @@ model UserServiceProject {
 // Tabela para registrar o ponto dos usuários
 model UserAttendance {
   id                      String             @id @default(uuid())
-  user_id                 String
   check_in_time           DateTime
   check_out_time          DateTime?
   check_in_address        String
@@ -353,6 +361,7 @@ model UserAttendance {
   check_out_longitude     Float?
   date                    DateTime           @default(now())
   user                    User               @relation(fields: [user_id], references: [id])
+  user_id                 String
   UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
   user_service_project_id String
 

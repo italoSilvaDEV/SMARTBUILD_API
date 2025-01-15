@@ -125,7 +125,7 @@ projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle
 // projectRoutes.delete("/remove_project_responsibles", checkToken, projectController.removeProjectResponsibles)
 
 const galleryProject = new GalleryProjectController()
-projectRoutes.post('/project/gallery',checkToken, galleryProject.create.bind(galleryProject))
+projectRoutes.post('/project/gallery', galleryProject.create.bind(galleryProject))
 projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
 projectRoutes.get('/project/gallery/:id', galleryProject.find)
 
@@ -141,11 +141,15 @@ projectRoutes.post("/project/services-project/activities", checkToken, createAct
 // Rota para excluir uma atividade
 projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
 
+
 projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule);
 
 projectRoutes.patch("/service-project/update/dates",  checkToken, projectController.updateDatesServiceProject);
 
 projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
+
+// Rota para buscar os ServiceProjects relacionados ao usuário
+projectRoutes.post("/service-project/scheduleById",  projectController.getServiceProjectScheduleByIdUser);
 
 projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectController.getWorkerSchedule);
 

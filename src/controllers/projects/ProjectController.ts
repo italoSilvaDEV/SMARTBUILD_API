@@ -1168,6 +1168,78 @@ export class ProjectController {
     }
   }
 
+  async getServiceProjectScheduleByIdUser(req: Request, res: Response) {
+    const { user_id } = req.body;
+  
+    try {
+      // Validação do ID do usuário
+      if (!user_id) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+  
+      // Buscar os registros na tabela UserServiceProject
+      const userServiceProjects = await prisma.userServiceProject.findMany({
+        where: {
+          user_id: user_id,
+        },
+        include: {
+          service_project: {
+            include: {
+              Project: {
+                select: {
+                  id: true,
+                  client: {
+                    select: {
+                      location: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+  
+      // Verificar se há registros encontrados
+      if (userServiceProjects.length === 0) {
+        return res.status(404).json({ error: "No service projects found for this user." });
+      }
+  
+      // Filtrar e transformar os dados no formato necessário
+      const events = userServiceProjects
+        .filter((userServiceProject) => {
+          const service = userServiceProject.service_project;
+          return service.start_date && service.deadline; // Filtra serviços com ambas as datas presentes
+        })
+        .map((userServiceProject) => {
+          const service = userServiceProject.service_project;
+  
+          const initial = service.start_date; // Formato 'YYYY-MM-DD'
+          const end = service.deadline; // Formato 'YYYY-MM-DD'
+          const description = service.Project?.client?.location
+            ? service.Project.client.location
+            : "No address available";
+  
+          return {
+            id: service.Project?.id || service.id, // Garantir que há um ID válido
+            service: service.name,
+            initial,
+            end,
+            description,
+          };
+        });
+  
+      return res.json(events);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  
+
+
   async getWorkerSchedule(req: Request, res: Response) {
     const { id } = req.params;
 
