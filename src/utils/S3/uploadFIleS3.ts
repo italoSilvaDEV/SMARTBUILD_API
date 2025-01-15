@@ -237,8 +237,8 @@ export async function uploadImageWebpToS3(filePath: string, s3Bucket: string): P
     // Compressão do arquivo (se necessário)
     compressImage(filePath);
     const fileHash = crypto.randomBytes(4).toString("hex");
-
-    const originalName = path.basename(filePath, path.extname(filePath)) + '.webp';
+    const originalName = `${filePath.split('.')[0]}.webp`.replace(/\s/g, "")
+    // const originalName = path.basename(filePath, path.extname(filePath)) + '.webp';
     const sanitizedOriginalName = iconv.decode(Buffer.from(String(originalName), 'binary'), 'utf-8').replace(/\s/g, '');
     const fileName = `${fileHash}-${sanitizedOriginalName}`;
 
