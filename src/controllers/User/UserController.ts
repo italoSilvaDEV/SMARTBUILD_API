@@ -198,6 +198,9 @@ export class UserController {
         //throw Error("User or password invalid!")
       }
 
+      // Gerar URL assinada para o avatar, se existir
+      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+
       const token = Jwt.sign(
         {
           id: user.id,
@@ -218,7 +221,9 @@ export class UserController {
         user: {
           id: user.id,
           email: user.email,
-          avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
+
+          avatar: avatarUrl,
+
           name: user.name,
           office: user.office,
           company: user.company
@@ -353,6 +358,49 @@ export class UserController {
     }
   }
 
+  async updateUserProfile(request: Request, response: Response) {
+    const {
+      id,
+      name,
+      email,
+      phone,
+      phone_emergency,
+      zip_code,
+      city_and_state,
+      state,
+      number_road,
+      number_home,
+      neighborhood,
+    } = request.body;
+  
+    try {
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return response.status(404).json({ error: "User not found" });
+  
+      await prisma.user.update({
+        where: { id },
+        data: {
+          name,
+          email,
+          phone,
+          phone_emergency,
+          zip_code,
+          city_and_state,
+          state,
+          number_road,
+          number_home,
+          neighborhood,
+        },
+      });
+  
+      return response.json({ message: "User updated successfully" });
+    } catch (error: any) {
+      return response
+        .status(500)
+        .json({ error: error.message || "Internal Server Error" });
+    }
+  }
+
   async updateImg(request: Request, response: Response) {
     try {
       const { id } = request.params;
@@ -390,7 +438,7 @@ export class UserController {
         deleteFile(`./public/tmp/user/${user.avatar}`);
       }
       deleteFile(`./public/tmp/catalog/${request.file.filename}`);
-      
+
 
       return response.status(200).json({
         avatar: updatedUser.avatar,
@@ -407,10 +455,6 @@ export class UserController {
   async searchOneUser(request: Request, response: Response) {
     try {
       let { id } = request.params;
-    
-
-      
-
       const result = await prisma.user.findUnique({
         where: { id },
         select: {
@@ -476,6 +520,48 @@ export class UserController {
         return response.json({ error: error.message });
       }
       return response.json({ error: "Erro interno do servidor" });
+    }
+  }
+
+  async getUserDetails(request: Request, response: Response) {
+    try {
+      const { id } = request.params;
+  
+      // Consulta o usuário no banco de dados
+      const result = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          name: true,
+          email: true,
+          phone: true,
+          phone_emergency: true,
+          zip_code: true,
+          city_and_state: true,
+          state: true,
+          number_road: true,
+          number_home: true,
+          neighborhood: true,
+          avatar: true,
+        },
+      });
+  
+      // Verifica se o usuário foi encontrado
+      if (!result) {
+        throw new Error("User not found!");
+      }
+  
+      // Formata o resultado e obtém o link do avatar (se houver)
+      const formattedResult = {
+        ...result,
+        avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
+      };
+  
+      return response.json(formattedResult);
+    } catch (error) {
+      if (error instanceof Error) {
+        return response.status(400).json({ error: error.message });
+      }
+      return response.status(500).json({ error: "Erro interno do servidor" });
     }
   }
 
@@ -594,7 +680,7 @@ export class UserController {
       },
     });
 
-    const SMTP_CONFIG = require("../config/smtp");
+    const SMTP_CONFIG = require("../../config/smtp");
 
     const transporter = nodemailer.createTransport({
       host: SMTP_CONFIG.host,
@@ -632,7 +718,7 @@ export class UserController {
     try {
       const result = await transporter.sendMail(mailOptions);
       console.log("e-mail enviado com sucesso!");
-      return response.json(result);
+      return response.json({ message: "Email sent successfully" });
     } catch (error) {
       console.error("Erro ao enviar e-mail:", error);
       return response.status(500).json({ error: "Erro ao enviar e-mail" });

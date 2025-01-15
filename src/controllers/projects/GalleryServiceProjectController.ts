@@ -9,6 +9,7 @@ const upload = multer({ dest: './public/tmp/gallery' }).single('file');
 export class GalleryProjectController {
     async create(request: Request, response: Response) {
         upload(request, response, async (err) => {
+
             if (err) {
                 return response.status(400).json({ error: 'Error uploading file' });
             }
@@ -16,7 +17,11 @@ export class GalleryProjectController {
                 serviceProjectId, type
             } = request.body;
             const file = request.file;
-
+            console.log("Arquivo recebido:", file);
+            console.log("Campos adicionais:", request.body);
+            console.log("Headers recebidos:", request.headers);
+            console.log("Body recebido:", request.body);
+            console.log("Arquivo recebido:", request.file);
             if (!file) {
                 return response.status(400).json({ error: 'Arquivo é obrigatório' });
             }

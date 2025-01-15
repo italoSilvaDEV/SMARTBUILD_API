@@ -111,5 +111,100 @@ export class UserAttendanceController {
             res.status(500).json({ error: 'Error while fetching user attendances.' });
         }
     }
-   
+
+    async getActiveAttendancesByUser(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+
+            const activeAttendances = await prisma.userAttendance.findMany({
+                where: {
+                    user_id: userId,
+                    check_out_time: null, // Filtra registros onde o check-out ainda não foi realizado
+                },
+                include: {
+                    user: {
+                        select: { id: true, name: true },
+                    },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                select: { name: true }, // Inclui o nome do ServiceProject
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Formata o resultado para incluir o nome do ServiceProject diretamente na resposta
+            const formattedAttendances = activeAttendances.map((attendance) => ({
+                ...attendance,
+                service_project_name:
+                    attendance.UserServiceProject?.service_project?.name || null,
+            }));
+
+            res.status(200).json(formattedAttendances);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: "Error while fetching active user attendances." });
+        }
+    }
+
+    async getAttendanceByUserAndService(req: Request, res: Response) {
+        const { userId, serviceProjectId } = req.query;
+      
+        if (!userId || !serviceProjectId) {
+          return res.status(400).json({ error: "UserId and ServiceProjectId are required." });
+        }
+      
+        try {
+          // Busca registros de frequência vinculados ao usuário e ao serviço
+          const attendanceRecords = await prisma.userAttendance.findMany({
+            where: {
+              UserServiceProject: {
+                user_id: userId as string,
+                service_project_id: serviceProjectId as string,
+              },
+            },
+          });
+      
+          // Formata os registros para o formato necessário
+          const formattedRecords = attendanceRecords.map((record) => {
+            const checkInTime = new Date(record.check_in_time).toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+      
+            const checkOutTime = record.check_out_time
+              ? new Date(record.check_out_time).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "N/A";
+      
+            const hoursWorked = record.check_out_time
+              ? Math.abs(
+                  new Date(record.check_out_time).getTime() -
+                  new Date(record.check_in_time).getTime()
+                ) / 36e5 // Converte milissegundos para horas
+              : 0;
+      
+            return {
+              id: record.id,
+              day: new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(
+                new Date(record.date)
+              ),
+              date: new Intl.DateTimeFormat("pt-BR").format(new Date(record.date)),
+              enter: checkInTime,
+              exit: checkOutTime,
+              hours: `${hoursWorked.toFixed(1)} hrs`,
+            };
+          });
+      
+          return res.status(200).json(formattedRecords);
+        } catch (error) {
+          console.error("Error fetching attendance records:", error);
+          return res.status(500).json({ error: "Internal server error." });
+        }
+      }
+
 }

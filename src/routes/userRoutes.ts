@@ -36,6 +36,9 @@ userRoutes.post("/auth", User.authenticate)
 //update user
 userRoutes.put("/user", checkToken, User.update)
 
+// app
+userRoutes.put("/user/update-profile", checkToken, User.updateUserProfile);
+
 //update imgUser
 userRoutes.put("/user/img/:id",
     checkToken,
@@ -46,6 +49,9 @@ userRoutes.put("/user/img/:id",
 
 // search one user
 userRoutes.get("/user/consulta/:id", checkToken, User.searchOneUser)
+
+// app
+userRoutes.get("/user/details/:id", checkToken, User.getUserDetails);
 
 // search one user
 userRoutes.get("/user/office", checkToken, User.serchOfficeUser)
