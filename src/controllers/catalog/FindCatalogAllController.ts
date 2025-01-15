@@ -5,17 +5,17 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 export class FindCatalogAllController {
     async handle(request: Request, response: Response) {
         try {
-            const { name, pag } = request.body;
+            const { name, pag, company_id } = request.body;
 
-            const filtro: any = {};
-            if (name) {
-                filtro.catalog_name = { contains: name };
-            }
-
-            const pageNumber = Number(pag) || 0;
+                        const pageNumber = Number(pag) || 0;
 
             const result = await prisma.catalog.findMany({
-                where: filtro,
+                where: {
+                    AND: [
+                        { catalog_name: { contains: name } },
+                        {company_id}
+                    ]
+                },
                 select: {
                     id: true,
                     catalog_name: true,
@@ -44,7 +44,12 @@ export class FindCatalogAllController {
                 }))
             );
             const total = await prisma.catalog.count({
-                where: filtro
+                where: {
+                    AND: [
+                        { catalog_name: { contains: name } },
+                        { company_id }
+                    ]
+                }
             });
 
             return response.json({ total, result: resultWithPresigned });

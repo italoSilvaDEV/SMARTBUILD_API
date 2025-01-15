@@ -97,6 +97,7 @@ export class CreateInvoiceCostProjectController {
                         throw new Error("Unable to determine file MIME type.");
                     }
 
+
                     let file = "";
 
                     // Verifica se o arquivo é uma imagem
@@ -114,6 +115,7 @@ export class CreateInvoiceCostProjectController {
                         file = await uploadFileToS3_2(req.file, "");
                     } else {
                         throw new Error("Unsupported file type. Only images and PDFs are allowed.");
+
                     }
 
                     deleteFile(filePath);
@@ -136,8 +138,13 @@ export class CreateInvoiceCostProjectController {
                 return res.json(formattedResult);
 
             } catch (error) {
-                console.error("Error processing file:", error);
-                return res.status(500).json({ error: error instanceof Error ? error.message : "Internal error" });
+
+                console.log( error)
+                if (error instanceof Error) {
+                    return res.status(500).json({ error: error.message });
+                }
+                return res.status(500).json({ error: "Internal error" });
+
             }
         });
     }

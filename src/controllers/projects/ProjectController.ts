@@ -12,6 +12,7 @@ export interface INewProject {
   price: number;
   status_project: string;
   type_category: string;
+  company_id: string;
   client: IClientData;
 }
 
@@ -37,6 +38,7 @@ export interface IServicesData {
   description: string;
   hours: number;
   price: number;
+  company_id: string;
 }
 
 export interface IputServiceData extends IServicesData {
@@ -46,9 +48,10 @@ export interface IputServiceData extends IServicesData {
 export class ProjectController {
 
   async getAllProjects(req: Request, res: Response) {
-    const { id_seller, status_project, page, search } = req.query;
+    const { company_id, id_seller, status_project, page, search } = req.query;
     const query: any = {};
-
+    if (!company_id) return res.status(404).json({ error: "Company_id is required!" })
+    if (company_id) query.company_id = { equals: String(company_id) };
 
 
     if (id_seller) query.seller_user_id = { equals: id_seller };
@@ -250,20 +253,24 @@ export class ProjectController {
       });
 
       if (project) {
-        const costProjects = project.serviceProject.flatMap(serviceProject =>
-          Promise.all(serviceProject.costProject.map(async cost => ({
-            id: cost.id,
-            material_name: cost.material_name,
-            transaction_type: cost.transaction_type,
-            price: cost.price,
-            amout: cost.amout,
-            service_project_id: cost.ServiceProject?.id,
-            service_project_name: cost.ServiceProject?.name,
-            invoice_cost_project_id: cost.invoiceCostProject?.id,
-            invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri)) // Inclui o campo invoice_cost_project
-          }))
+        const costProjects = await Promise.all(
+          project.serviceProject.flatMap(async serviceProject =>
+            Promise.all(
+              serviceProject.costProject.map(async cost => ({
+                id: cost.id,
+                material_name: cost.material_name,
+                transaction_type: cost.transaction_type,
+                price: cost.price,
+                amout: cost.amout,
+                service_project_id: cost.ServiceProject?.id,
+                service_project_name: cost.ServiceProject?.name,
+                invoice_cost_project_id: cost.invoiceCostProject?.id,
+                invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri))
+              }))
+            )
           )
-        )
+        );
+        const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
         const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
           const costSum = invoice.costProject.reduce((subtotal, cost) => {
@@ -301,7 +308,7 @@ export class ProjectController {
 
         res.json({
           ...project,
-          costProjects,
+          costProjects: flatCostProjects,
           costofwork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
@@ -331,6 +338,7 @@ export class ProjectController {
           hours: data.hours,
           name: data.name,
           price: data.price,
+          company_id: data.company_id
         }
       })
       return res.json(result);
@@ -408,7 +416,7 @@ export class ProjectController {
   async deleteFiles(file: string) {
     const s3 = new S3Storage()
     await s3.deleteFile(file);
-    
+
   }
 
   async DeleteAllImgServiceProjectController(request: Request, response: Response) {
@@ -538,7 +546,7 @@ export class ProjectController {
 
   async getUserSeller(request: Request, response: Response) {
     try {
-      const { pag } = request.query; // Alterado para request.query
+      const { pag, company_id } = request.query; // Alterado para request.query
 
       const pageNumber = Number(pag) || 0;
 
@@ -554,7 +562,11 @@ export class ProjectController {
 
       const result = await prisma.user.findMany({
         where: {
-          office_id: sellerOffice.id,
+          AND: [
+            { company_id: { equals: String(company_id) } },
+            { office_id: sellerOffice.id, }
+          ]
+
         },
         select: {
           id: true,
@@ -622,7 +634,8 @@ export class ProjectController {
           birth_date: data.client.birth_date,
           lat: data.client.lat,
           log: data.client.log,
-          radius: Number(data.client.radius)
+          radius: Number(data.client.radius),
+          company_id: data.company_id
         },
       });
       const project = await prisma.project.create({
@@ -632,7 +645,8 @@ export class ProjectController {
           status_project: data.status_project,
           client_id: result.id,
           start_date: data.client.start_date,
-          deadline: data.client.deadline
+          deadline: data.client.deadline,
+          company_id: data.company_id
         },
       });
       return res.status(201).json(project);
@@ -929,7 +943,7 @@ export class ProjectController {
   }
 
   async getSellerSchedule(req: Request, res: Response) {
-    const { seller_user_id } = req.body;
+    const { seller_user_id, company_id } = req.body;
 
     try {
       // Validação do ID do vendedor
@@ -960,6 +974,7 @@ export class ProjectController {
       } else {
         // Buscar todos os projetos
         projects = await prisma.project.findMany({
+          where: { company_id },
           include: {
             client: true, // Inclui os dados do cliente
           },
@@ -1059,9 +1074,13 @@ export class ProjectController {
   // }
 
   async getServiceProjectSchedule(req: Request, res: Response) {
-    const { seller_user_id } = req.body;
+    const { company_id, seller_user_id } = req.body;
 
     try {
+      // Validação do ID da empresa
+      if (!company_id) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
       // Validação do ID do vendedor
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
@@ -1108,7 +1127,11 @@ export class ProjectController {
       } else {
         // Buscar todos os ServiceProjects
         serviceProjects = await prisma.serviceProject.findMany({
-
+          where: {
+            company_id: {
+              equals: company_id
+            }
+          },
           include: {
             Project: {
               include: {

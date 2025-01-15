@@ -119,7 +119,7 @@ export class UserController {
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: data.email,
-        subject: "RP Pro Contracting",
+        subject: "Smart Build",
         html: templateEmail,
       };
 
@@ -135,7 +135,8 @@ export class UserController {
           office_id: data.office_id,
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
-          profession: data.profession
+          profession: data.profession,
+          company_id: data.company_id
         },
       });
 
@@ -178,6 +179,7 @@ export class UserController {
               name: true,
             },
           },
+          company: true
         },
         where: {
           email,
@@ -219,9 +221,13 @@ export class UserController {
         user: {
           id: user.id,
           email: user.email,
+
           avatar: avatarUrl,
+
           name: user.name,
           office: user.office,
+          company: user.company
+          
         },
       });
     } catch (error) {
@@ -560,7 +566,7 @@ export class UserController {
   }
 
   async serchAllUser(request: Request, response: Response) {
-    const { name, email, pag } = request.body;
+    const { name, email, pag, company_id  } = request.body;
 
     const filtro: any = {};
     const name_full: any = {};
@@ -580,7 +586,9 @@ export class UserController {
         date_creation: "desc",
       },
       where: {
-        AND: [filtro, { OR: [name_full] }],
+        AND: [filtro, { OR: [name_full] }, {
+          company_id
+        }],
       },
       select: {
         id: true,
@@ -703,7 +711,7 @@ export class UserController {
     const mailOptions = {
       from: SMTP_CONFIG.user,
       to: email,
-      subject: "RP PRO Contracting - Password Reset",
+      subject: "Smart Build - Password Reset",
       html: templateEmail,
     };
 

@@ -43,7 +43,8 @@ export class UpdateImgCategoryController {
                 let file = "";
                 if (request.file?.filename) {
                     const filePath = `./public/tmp/category/${request.file.filename}`;
-                    file = await uploadImageWebpToS3(filePath, '');
+                    const bucket = `${process.env.AMAZON_S3_BUCKET}`
+                    file = await uploadImageWebpToS3(filePath, bucket);
                     await prisma.category.update({
                         where: { id },
                         data: {

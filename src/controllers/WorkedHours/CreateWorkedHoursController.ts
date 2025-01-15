@@ -22,6 +22,7 @@ export class CreateWorkedHoursController {
         hourly_price,
         start_date,
         end_date
+
       } = req.body as CreateWorkedHoursRequest;
 
       const error: string[] = [];

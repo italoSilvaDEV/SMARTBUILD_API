@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { decodeToken } from "../../config/decodeToken";
 
 export class CreateServiceController {
     async handle(request: Request, response: Response) {
@@ -13,6 +12,7 @@ export class CreateServiceController {
                 price_fixe,
                 price_minimum,
                 price_maximum,
+                company_id
             } = request.body;
 
             if (!service_name) {
@@ -43,7 +43,8 @@ export class CreateServiceController {
                         type_variable,
                         price_type,
                         price_fixe,
-                        sub_category_id
+                        sub_category_id, 
+                        company_id
                     },
                 });
             } else if (String(price_type).toLocaleUpperCase() === "VARIABLE") {
@@ -57,7 +58,8 @@ export class CreateServiceController {
                         price_type,
                         price_minimum,
                         price_maximum,
-                        sub_category_id
+                        sub_category_id,
+                        company_id
                     },
                 });
             } else {

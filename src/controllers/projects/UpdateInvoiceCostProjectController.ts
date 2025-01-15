@@ -58,7 +58,8 @@ export class UpdateInvoiceCostProjectController {
                     // não é img
                     file = await uploadFileToS3_2(fileReq, '');
                 } else {
-                    file = await uploadImageWebpToS3(filePath, '');
+                    const bucket = `${process.env.AMAZON_S3_BUCKET}`
+                    file = await uploadImageWebpToS3(filePath, bucket);
                     deleteFile(`./public/tmp/costproject/${request.file?.filename}`);
                 }
 
