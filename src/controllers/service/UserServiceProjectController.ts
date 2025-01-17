@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { Prisma } from "@prisma/client";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class UserServiceProjectController {
   // Criar um novo UserServiceProject
@@ -419,19 +420,29 @@ export class UserServiceProjectController {
         },
       });
 
-      const formattedCosts = costs.map((cost) => ({
-        id: cost.id,
-        title: cost.material_name,
-        price: cost.price.toFixed(2),
-        quantity: cost.amout,
-        invoice: cost.invoiceCostProject
-          ? {
-              id: cost.invoiceCostProject.id,
-              fileName: cost.invoiceCostProject.original_file_name,
-              uri: cost.invoiceCostProject.uri,
-            }
-          : null,
-      }));
+      const formattedCosts = await Promise.all(
+        costs.map(async (cost) => {
+          let presignedUrl = null;
+  
+          if (cost.invoiceCostProject?.uri) {
+            presignedUrl = await getPresignedUrl(cost.invoiceCostProject.uri);
+          }
+  
+          return {
+            id: cost.id,
+            title: cost.material_name,
+            price: cost.price.toFixed(2),
+            quantity: cost.amout,
+            invoice: cost.invoiceCostProject
+              ? {
+                  id: cost.invoiceCostProject.id,
+                  fileName: cost.invoiceCostProject.original_file_name,
+                  uri: presignedUrl,
+                }
+              : null,
+          };
+        })
+      );
 
       return res.status(200).json(formattedCosts);
     } catch (error) {
