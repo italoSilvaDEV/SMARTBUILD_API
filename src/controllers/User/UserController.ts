@@ -37,9 +37,12 @@ export class UserController {
     }
     const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
     const s3Bucket = process.env.AMAZON_S3_BUCKET!;
-
+    let fileName: string | null = null;
     try {
-      const fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
+      // const fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
+      if (req.file) {
+        fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
+      }
       // console.log('Upload concluído:', fileName);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -227,7 +230,7 @@ export class UserController {
           name: user.name,
           office: user.office,
           company: user.company
-          
+
         },
       });
     } catch (error) {
@@ -372,11 +375,11 @@ export class UserController {
       number_home,
       neighborhood,
     } = request.body;
-  
+
     try {
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) return response.status(404).json({ error: "User not found" });
-  
+
       await prisma.user.update({
         where: { id },
         data: {
@@ -392,7 +395,7 @@ export class UserController {
           neighborhood,
         },
       });
-  
+
       return response.json({ message: "User updated successfully" });
     } catch (error: any) {
       return response
@@ -526,7 +529,7 @@ export class UserController {
   async getUserDetails(request: Request, response: Response) {
     try {
       const { id } = request.params;
-  
+
       // Consulta o usuário no banco de dados
       const result = await prisma.user.findUnique({
         where: { id },
@@ -544,18 +547,18 @@ export class UserController {
           avatar: true,
         },
       });
-  
+
       // Verifica se o usuário foi encontrado
       if (!result) {
         throw new Error("User not found!");
       }
-  
+
       // Formata o resultado e obtém o link do avatar (se houver)
       const formattedResult = {
         ...result,
         avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
       };
-  
+
       return response.json(formattedResult);
     } catch (error) {
       if (error instanceof Error) {
@@ -566,7 +569,7 @@ export class UserController {
   }
 
   async serchAllUser(request: Request, response: Response) {
-    const { name, email, pag, company_id  } = request.body;
+    const { name, email, pag, company_id } = request.body;
 
     const filtro: any = {};
     const name_full: any = {};
