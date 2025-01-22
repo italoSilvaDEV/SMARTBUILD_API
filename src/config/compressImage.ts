@@ -11,9 +11,11 @@ export const compressImage = (url: string) => {
     }
 
     const filePath = `./public/tmp/${url}/${req.file.filename.replace(/\s/g, "")}`;
+    console.log("Caminho do arquivo no compressImage:", filePath);
     const dimensions = getImageDimensions(filePath);
 
     if (!dimensions) {
+      console.log("Dimensões inválidas para o arquivo:", filePath);
       // Não é uma imagem válida, pule para o próximo middleware
       return next();
     }
@@ -35,6 +37,7 @@ export const compressImage = (url: string) => {
       next();
     } catch (error) {
       // Lide com o erro aqui
+      console.error("Erro no compressImage:", error);
       console.error(error);
       next(error);
     }
