@@ -499,7 +499,7 @@ export class UserController {
         throw Error("User not found!");
       }
       const formattedResult = {
-        ...result,
+        ...result, 
         avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
         seller_project: result?.seller_project.map((project) => {
           const price_project = project.serviceProject.reduce(
@@ -525,7 +525,7 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-
+// APP
   async getUserDetails(request: Request, response: Response) {
     try {
       const { id } = request.params;
@@ -556,7 +556,7 @@ export class UserController {
       // Formata o resultado e obtém o link do avatar (se houver)
       const formattedResult = {
         ...result,
-        avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
+        avatar: result.avatar && result.avatar !== "null" ? await getPresignedUrl(result.avatar) : null,
       };
 
       return response.json(formattedResult);
