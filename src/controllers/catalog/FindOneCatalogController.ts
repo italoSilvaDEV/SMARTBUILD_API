@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class FindOneCatalogController {
     async handle(request: Request, response: Response) {
@@ -29,8 +30,15 @@ export class FindOneCatalogController {
                     },
                 },
             })
-
-            return response.json(result)
+            const resultWithPresigned = {
+                ...result,
+                catalog_img: result && result.catalog_img ? await getPresignedUrl(result.catalog_img) : null,
+                imgCatalog: result && await Promise.all(result.imgCatalog.map(async (img) => ({
+                    ...img,
+                    uri: img.uri ? await getPresignedUrl(img.uri) : null, // Gera URL assinada
+                })))
+            }
+            return response.json(resultWithPresigned)
         } catch (error) {
             if (error instanceof Error) {
                 return response.json({ error: error.message });
