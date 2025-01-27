@@ -932,7 +932,6 @@ export class ProjectController {
           price: Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
         };
       });
-
       return res.json(formattedResult);
     } catch (error) {
       if (error instanceof Error) {

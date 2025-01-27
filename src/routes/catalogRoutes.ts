@@ -19,7 +19,7 @@ const catalogRoutes = Router()
 
 //criarcatalog
 const createCatalogController = new CreateCatalogController()
-const uploadPhotoCatalog = multer(uploadConfig.upload("./public/tmp/catalog"))
+// const uploadPhotoCatalog = multer(uploadConfig.upload("./public/tmp/catalog"))
 catalogRoutes.post("/catalog", 
 // uploadPhotoCatalog.single("file"), 
 //     compressImage("catalog"), 
