@@ -157,5 +157,6 @@ projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectCon
 const timeController = new TimeController()
 projectRoutes.get('/time-cards/all', checkToken, timeController.findMany)
 projectRoutes.get('/time-cards/worker_id', checkToken, timeController.findManyByIdWorker)
+projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies)
 
 export { projectRoutes };
