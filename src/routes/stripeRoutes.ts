@@ -11,4 +11,6 @@ stripeRoutes.get("/stripe/connect/:companyId",checkToken,  stripeController.conn
 // Verificar Status da conexão com Stripe
 stripeRoutes.get("/stripe/status/:companyId", checkToken, stripeController.checkStripeStatus);
 
+stripeRoutes.post("/stripe/invoice/:projectId", checkToken, stripeController.createInvoice);
+
 export { stripeRoutes };
