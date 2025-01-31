@@ -724,7 +724,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id || !isUUID(id)) {
+      if (!id) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
@@ -758,7 +758,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id || !isUUID(id)) {
+      if (!id ) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
@@ -1169,7 +1169,8 @@ export class ProjectController {
           : "No address available";
 
         return {
-          id: service.Project.id,
+          id: service.id,
+          idProject: service.Project.id,
           title: service.name,
           start,
           end,
@@ -1338,7 +1339,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id || !isUUID(id)) {
+      if (!id ) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
