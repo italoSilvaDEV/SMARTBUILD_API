@@ -11,7 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 
 export class StripeController {
 
-        async connectCompany(req: Request, res: Response) {
+    async connectCompany(req: Request, res: Response) {
         const { companyId } = req.params;
 
         try {
@@ -95,13 +95,13 @@ export class StripeController {
             const isConnected = account.details_submitted && account.charges_enabled && account.payouts_enabled;
             const pendingRequirements = account.requirements?.currently_due || [];
             const requiresOnboarding = !isConnected || pendingRequirements.length > 0;
-            
+
             console.log("StripeAccountId: ", company.stripeAccountId)
             console.log("details_submitted: ", account.details_submitted)
             console.log("charges_enabled: ", account.charges_enabled)
             console.log("payouts_enabled: ", account.payouts_enabled)
             console.log("Requirements: ", account.requirements?.currently_due)
-            
+
 
             return res.status(200).json({
                 hasStripeAccount: true,
@@ -120,7 +120,7 @@ export class StripeController {
         const { projectId } = req.params;
 
         try {
-            console.log("🔍 Buscando o projeto no banco de dados...");
+            console.log("Buscando o projeto no banco de dados...");
             const project = await prisma.project.findUnique({
                 where: { id: projectId },
                 include: {
@@ -178,7 +178,7 @@ export class StripeController {
             }
 
 
-            console.log("🛒 Criando Invoice Items...");
+            console.log(" Criando Invoice Items...");
             for (const service of project.serviceProject) {
                 console.log(` Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
                 await stripe.invoiceItems.create(
@@ -192,7 +192,7 @@ export class StripeController {
                 );
             }
 
-            console.log("📄 Criando a Invoice no Stripe...");
+            console.log(" Criando a Invoice no Stripe...");
             const invoice = await stripe.invoices.create(
                 {
                     customer: stripeCustomerId,
@@ -256,10 +256,10 @@ export class StripeController {
 
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
-    
+
         try {
             console.log(" Buscando invoices do projeto:", projectId);
-    
+
             // Buscar invoices relacionadas ao ProjectId com a empresa associada
             const invoices = await prisma.invoice.findMany({
                 where: { projectId },
@@ -268,14 +268,14 @@ export class StripeController {
                     company: true, // Inclui a empresa para obter o stripeAccountId
                 },
             });
-    
+
             if (invoices.length === 0) {
                 console.log(" Nenhuma invoice encontrada para este projeto.");
                 return res.status(404).json({ message: "No invoices found for this project." });
             }
-    
-            console.log(`✅ ${invoices.length} invoices encontradas.`);
-    
+
+            console.log(` ${invoices.length} invoices encontradas.`);
+
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
                     try {
@@ -284,30 +284,30 @@ export class StripeController {
                             console.warn(` Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
                             return invoice;
                         }
-    
+
                         const stripeAccountId = invoice.company.stripeAccountId;
-    
+
                         // Buscar o status da fatura na conta conectada do Stripe
                         const stripeInvoice = await stripe.invoices.retrieve(
                             invoice.stripeInvoiceId,
                             { stripeAccount: stripeAccountId }
                         );
-    
+
                         const status = stripeInvoice.status ?? "draft";
-    
+
                         // Atualizar o status no banco de dados, se necessário
                         if (invoice.status !== status) {
                             await prisma.invoice.update({
                                 where: { id: invoice.id },
                                 data: { status },
                             });
-    
+
                             console.log(` Status da fatura ${invoice.stripeInvoiceId} atualizado para ${status}`);
                             return { ...invoice, status };
                         }
-    
+
                         return invoice;
-    
+
                     } catch (stripeError: any) {
                         if (stripeError.code === 'resource_missing') {
                             console.warn(` Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
@@ -317,15 +317,15 @@ export class StripeController {
                                 error: stripeError.message,
                             };
                         }
-    
+
                         console.error(` Erro ao buscar invoice ${invoice.stripeInvoiceId} no Stripe:`, stripeError);
                         return invoice;
                     }
                 })
             );
-    
+
             return res.status(200).json(updatedInvoices);
-    
+
         } catch (error) {
             console.error(" Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
