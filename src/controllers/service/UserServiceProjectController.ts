@@ -115,20 +115,30 @@ export class UserServiceProjectController {
 
   async getById(req: Request, res: Response) {
     try {
-      const { id } = req.params; // ID do ServiceProject
+      const { id, id_company } = req.params; // ID do ServiceProject
       // Obter todos os usuários da empresa (employees)
       const employees = await prisma.user.findMany({
         where: {
-          office: {
-            OR: [
-              {
-                name: "Employee"
-              },
-              {
-                name: "Worker"
+          AND: [
+            {
+              office: {
+                OR: [
+                  {
+                    name: "Employee"
+                  },
+                  {
+                    name: "Worker"
+                  }
+                ]
               }
-            ]
-          }
+            },
+            {
+              company_id: {
+                equals: id_company
+              }
+            }
+          ]
+
         },
         select: {
           id: true,
@@ -246,7 +256,7 @@ export class UserServiceProjectController {
     try {
       const { id } = req.params; // ID do usuário
       const { search } = req.body; // Termo de busca (opcional)
-  
+
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
           user_id: id,
@@ -272,16 +282,16 @@ export class UserServiceProjectController {
           },
         },
       });
-  
+
       const formattedResult = userServiceProjects.map((usp) => {
         const stages = usp.service_project.stages || [];
         const totalStages = stages.length;
         const completedStages = stages.filter((stage) => stage.check).length;
-  
+
         const attendances = usp.service_project.UserServiceProject.flatMap(
           (usp) => usp.user_attendances || []
         );
-  
+
         const workedHours = attendances.reduce((total, attendance) => {
           if (attendance.check_out_time && attendance.check_in_time) {
             const duration =
@@ -291,7 +301,7 @@ export class UserServiceProjectController {
           }
           return total;
         }, 0);
-  
+
         // Correção para tratar start_date e deadline como strings
         const startDate = usp.service_project.start_date
           ? new Date(`${usp.service_project.start_date}T00:00:00`)
@@ -299,13 +309,13 @@ export class UserServiceProjectController {
         const deadline = usp.service_project.deadline
           ? new Date(`${usp.service_project.deadline}T00:00:00`)
           : null;
-  
+
         // Cálculo correto de daysLeft
         const daysLeft =
           startDate && deadline
             ? Math.ceil((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
             : null;
-  
+
         return {
           id: usp.id,
           service_project_id: usp.service_project_id,
@@ -318,7 +328,7 @@ export class UserServiceProjectController {
           status: usp.service_project.status || null,
         };
       });
-  
+
       res.status(200).json(formattedResult);
     } catch (error) {
       console.error(error);
@@ -423,11 +433,11 @@ export class UserServiceProjectController {
       const formattedCosts = await Promise.all(
         costs.map(async (cost) => {
           let presignedUrl = null;
-  
+
           if (cost.invoiceCostProject?.uri) {
             presignedUrl = await getPresignedUrl(cost.invoiceCostProject.uri);
           }
-  
+
           return {
             id: cost.id,
             title: cost.material_name,
@@ -435,10 +445,10 @@ export class UserServiceProjectController {
             quantity: cost.amout,
             invoice: cost.invoiceCostProject
               ? {
-                  id: cost.invoiceCostProject.id,
-                  fileName: cost.invoiceCostProject.original_file_name,
-                  uri: presignedUrl,
-                }
+                id: cost.invoiceCostProject.id,
+                fileName: cost.invoiceCostProject.original_file_name,
+                uri: presignedUrl,
+              }
               : null,
           };
         })
