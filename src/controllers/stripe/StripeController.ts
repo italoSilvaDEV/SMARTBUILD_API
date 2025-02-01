@@ -10,8 +10,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 });
 
 export class StripeController {
-  
-    async connectCompany(req: Request, res: Response) {
+
+        async connectCompany(req: Request, res: Response) {
         const { companyId } = req.params;
 
         try {
@@ -26,7 +26,6 @@ export class StripeController {
             let stripeAccountId = company.stripeAccountId;
 
             if (!stripeAccountId) {
-                // Criar uma nova conta se o usuário não tiver uma ainda
                 const account = await stripe.accounts.create({ type: "standard" });
                 stripeAccountId = account.id;
 
@@ -36,15 +35,13 @@ export class StripeController {
                 });
             }
 
-            // Recupera o status da conta no Stripe
             const account = await stripe.accounts.retrieve(stripeAccountId);
 
-            // Se a conta já está ativa, não precisa fazer onboarding
             if (!account.requirements?.disabled_reason) {
                 return res.status(400).json({ error: "Account already connected" });
             }
 
-            // Gerar um novo link de onboarding
+            // Redireciona para o onboarding existente
             const accountLink = await stripe.accountLinks.create({
                 account: stripeAccountId,
                 refresh_url: `${process.env.URL_FRONT}/stripe-config`,
@@ -59,105 +56,6 @@ export class StripeController {
         }
     }
 
-    //   Verificar status da conexão Stripe
-    // async checkStripeStatus(req: Request, res: Response) {
-    //     const { companyId } = req.params;
-
-    //     try {
-    //         const company = await prisma.company.findUnique({
-    //             where: { id: companyId },
-    //         });
-
-    //         if (!company) {
-    //             return res.status(404).json({ error: "Company not found" });
-    //         }
-
-    //         if (!company.stripeAccountId) {
-    //             return res.status(200).json({ connected: false, requiresOnboarding: false });
-    //         }
-
-    //         // Verifica o status real da conta no Stripe
-    //         const account = await stripe.accounts.retrieve(company.stripeAccountId);
-
-    //         // Se `requirements.disabled_reason` estiver vazio, significa que a conta está ativa
-    //         const isConnected = !account.requirements?.disabled_reason;
-    //         const requiresOnboarding = !!account.requirements?.disabled_reason;
-
-    //         return res.status(200).json({ connected: isConnected, requiresOnboarding });
-    //     } catch (error) {
-    //         console.error("Erro ao verificar status do Stripe:", error);
-    //         return res.status(500).json({ error: "Internal Server Error" });
-    //     }
-    // }
-
-    // async checkStripeStatus(req: Request, res: Response) {
-    //     const { companyId } = req.params;
-
-    //     try {
-    //         const company = await prisma.company.findUnique({
-    //             where: { id: companyId },
-    //         });
-
-    //         if (!company) {
-    //             return res.status(404).json({ error: "Company not found" });
-    //         }
-
-    //         if (!company.stripeAccountId) {
-    //             return res.status(200).json({ connected: false, requiresOnboarding: false });
-    //         }
-
-    //         // Recupera os detalhes da conta Stripe conectada
-    //         const account = await stripe.accounts.retrieve(company.stripeAccountId);
-
-    //         // 🚀 Nova lógica para verificar se a conta está ativa:
-    //         const isConnected = account.charges_enabled && account.payouts_enabled;
-    //         const requiresOnboarding = !isConnected; // Se não está conectada, ainda precisa de onboarding
-
-    //         return res.status(200).json({ connected: isConnected, requiresOnboarding });
-    //     } catch (error) {
-    //         console.error("Erro ao verificar status do Stripe:", error);
-    //         return res.status(500).json({ error: "Internal Server Error" });
-    //     }
-    // }
-
-    // async checkStripeStatus(req: Request, res: Response) {
-    //     const { companyId } = req.params;
-
-    //     try {
-    //         const company = await prisma.company.findUnique({
-    //             where: { id: companyId },
-    //         });
-
-    //         if (!company) {
-    //             return res.status(404).json({ error: "Company not found" });
-    //         }
-
-    //         if (!company.stripeAccountId) {
-    //             return res.status(200).json({ connected: false, requiresOnboarding: false });
-    //         }
-
-    //         // Recupera os detalhes da conta Stripe conectada
-    //         const account = await stripe.accounts.retrieve(company.stripeAccountId);
-
-    //         // 🚀 Verificando estados diferentes:
-    //         const isConnected = account.charges_enabled && account.payouts_enabled;
-    //         const requiresOnboarding = !isConnected;
-
-    //         // 📌 NOVO: Verifica se há pendências na conta:
-    //         const pendingRequirements = account.requirements?.currently_due || [];
-
-    //         return res.status(200).json({ 
-    //             connected: isConnected, 
-    //             requiresOnboarding, 
-    //             pendingRequirements 
-    //         });
-
-    //     } catch (error) {
-    //         console.error("Erro ao verificar status do Stripe:", error);
-    //         return res.status(500).json({ error: "Internal Server Error" });
-    //     }
-    // }
-
     async checkStripeStatus(req: Request, res: Response) {
         const { companyId } = req.params;
 
@@ -170,32 +68,52 @@ export class StripeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
-            if (!company.stripeAccountId) {
+            // Verifica se a empresa já tem um stripeAccountId
+            const hasStripeAccount = !!company.stripeAccountId;
+
+            if (!hasStripeAccount) {
                 return res.status(200).json({
+                    hasStripeAccount: false,
                     connected: false,
-                    requiresOnboarding: false,
+                    requiresOnboarding: true,
                     pendingRequirements: []
                 });
             }
 
-            // 🔹 Recupera os detalhes da conta Stripe conectada
+            if (!company.stripeAccountId) {
+                return res.status(400).json({ error: "Stripe account ID is missing" });
+            }
+
+            // Recupera os detalhes da conta Stripe
             const account = await stripe.accounts.retrieve(company.stripeAccountId);
 
-            // 🔹 Verifica se a conta está ativa
-            const isConnected = account.charges_enabled && account.payouts_enabled;
-            const requiresOnboarding = !isConnected;
+            // account.details_submitted === false indica que o onboarding nao foi concluido
+            // account.charges_enabled → true (habilitado para receber pagamentos)
+            // account.payouts_enabled → true (habilitado para receber transferências)
+            // account.requirements.currently_due.length === 0 (nenhum requisito pendente)
+
+            const isConnected = account.details_submitted && account.charges_enabled && account.payouts_enabled;
+            const pendingRequirements = account.requirements?.currently_due || [];
+            const requiresOnboarding = !isConnected || pendingRequirements.length > 0;
+            
+            console.log("StripeAccountId: ", company.stripeAccountId)
+            console.log("details_submitted: ", account.details_submitted)
+            console.log("charges_enabled: ", account.charges_enabled)
+            console.log("payouts_enabled: ", account.payouts_enabled)
+            console.log("Requirements: ", account.requirements?.currently_due)
+            
 
             return res.status(200).json({
+                hasStripeAccount: true,
                 connected: isConnected,
                 requiresOnboarding,
-                pendingRequirements: account.requirements?.currently_due || []
+                pendingRequirements
             });
         } catch (error) {
             console.error("Erro ao verificar status do Stripe:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
-
 
     // funcionou mais duplicou cliente
     async createInvoice(req: Request, res: Response) {
@@ -213,31 +131,31 @@ export class StripeController {
             });
 
             if (!project) {
-                console.error("❌ Projeto não encontrado!");
+                console.error(" Projeto não encontrado!");
                 return res.status(404).json({ error: "Project not found" });
             }
 
             if (!project.client) {
-                console.error("❌ Cliente não encontrado para este projeto!");
+                console.error(" Cliente não encontrado para este projeto!");
                 return res.status(400).json({ error: "Client not found" });
             }
 
             if (!project.company || !project.company.stripeAccountId) {
-                console.error("❌ Empresa não conectada ao Stripe!");
+                console.error(" Empresa não conectada ao Stripe!");
                 return res.status(400).json({ error: "Company not connected to Stripe" });
             }
 
-            console.log("✅ Projeto, cliente e empresa encontrados com sucesso!");
+            console.log(" Projeto, cliente e empresa encontrados com sucesso!");
 
             // 🔑 Pegar StripeAccountId da empresa
             const stripeAccountId = project.company.stripeAccountId;
-            console.log("🔑 StripeAccountId da empresa:", stripeAccountId);
+            console.log(" StripeAccountId da empresa:", stripeAccountId);
 
             // 🔍 Verificar se o cliente já tem StripeCustomerId armazenado
             let stripeCustomerId = project.client.stripeCustomerId;
 
             if (!stripeCustomerId) {
-                console.log("📌 Criando cliente no Stripe...");
+                console.log(" Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
                     {
                         name: project.client.name,
@@ -247,22 +165,22 @@ export class StripeController {
                     { stripeAccount: stripeAccountId }
                 );
                 stripeCustomerId = customer.id;
-    
-                // 💾 Atualizar o cliente no banco de dados com o novo StripeCustomerId
+
+                //  Atualizar o cliente no banco de dados com o novo StripeCustomerId
                 await prisma.client.update({
                     where: { id: project.client.id },
                     data: { stripeCustomerId },
                 });
-    
-                console.log(`✅ Cliente criado no Stripe com ID: ${stripeCustomerId}`);
+
+                console.log(` Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             } else {
-                console.log(`✅ Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
+                console.log(` Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
             }
 
 
             console.log("🛒 Criando Invoice Items...");
             for (const service of project.serviceProject) {
-                console.log(`📌 Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
+                console.log(` Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
                 await stripe.invoiceItems.create(
                     {
                         customer: stripeCustomerId,
@@ -295,17 +213,17 @@ export class StripeController {
 
             console.log("Itens da Fatura:", invoiceWithItems.lines.data);
 
-            console.log("✅ Invoice criada com ID:", invoice.id);
+            console.log(" Invoice criada com ID:", invoice.id);
 
-            console.log("📤 Finalizando a Invoice...");
+            console.log(" Finalizando a Invoice...");
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
-            console.log("📧 Enviando Invoice por e-mail...");
+            console.log(" Enviando Invoice por e-mail...");
             await stripe.invoices.sendInvoice(finalizedInvoice.id, { stripeAccount: stripeAccountId });
 
-            console.log("✅ Invoice enviada por e-mail para:", project.client.email);
+            console.log(" Invoice enviada por e-mail para:", project.client.email);
 
-            console.log("📝 Salvando Invoice no banco de dados...");
+            console.log(" Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalizedInvoice.id,
@@ -316,12 +234,12 @@ export class StripeController {
                         0
                     ),
                     status: finalizedInvoice.status ?? "draft",
-                    invoiceUrl: finalizedInvoice.hosted_invoice_url, // ✅ Link salvo corretamente
+                    invoiceUrl: finalizedInvoice.hosted_invoice_url, //  Link salvo corretamente
                     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
                 },
             });
 
-            console.log("✅ Invoice salva no banco com ID:", newInvoice.id);
+            console.log(" Invoice salva no banco com ID:", newInvoice.id);
 
             return res.status(200).json({
                 message: "Invoice created, sent, and recorded successfully",
@@ -336,7 +254,83 @@ export class StripeController {
         }
     }
 
-
+    async getInvoicesByProject(req: Request, res: Response) {
+        const { projectId } = req.params;
+    
+        try {
+            console.log(" Buscando invoices do projeto:", projectId);
+    
+            // Buscar invoices relacionadas ao ProjectId com a empresa associada
+            const invoices = await prisma.invoice.findMany({
+                where: { projectId },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    company: true, // Inclui a empresa para obter o stripeAccountId
+                },
+            });
+    
+            if (invoices.length === 0) {
+                console.log(" Nenhuma invoice encontrada para este projeto.");
+                return res.status(404).json({ message: "No invoices found for this project." });
+            }
+    
+            console.log(`✅ ${invoices.length} invoices encontradas.`);
+    
+            const updatedInvoices = await Promise.all(
+                invoices.map(async (invoice) => {
+                    try {
+                        // Verificar se a empresa possui um stripeAccountId
+                        if (!invoice.company || !invoice.company.stripeAccountId) {
+                            console.warn(` Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
+                            return invoice;
+                        }
+    
+                        const stripeAccountId = invoice.company.stripeAccountId;
+    
+                        // Buscar o status da fatura na conta conectada do Stripe
+                        const stripeInvoice = await stripe.invoices.retrieve(
+                            invoice.stripeInvoiceId,
+                            { stripeAccount: stripeAccountId }
+                        );
+    
+                        const status = stripeInvoice.status ?? "draft";
+    
+                        // Atualizar o status no banco de dados, se necessário
+                        if (invoice.status !== status) {
+                            await prisma.invoice.update({
+                                where: { id: invoice.id },
+                                data: { status },
+                            });
+    
+                            console.log(` Status da fatura ${invoice.stripeInvoiceId} atualizado para ${status}`);
+                            return { ...invoice, status };
+                        }
+    
+                        return invoice;
+    
+                    } catch (stripeError: any) {
+                        if (stripeError.code === 'resource_missing') {
+                            console.warn(` Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
+                            return {
+                                ...invoice,
+                                status: "not_found_in_stripe",
+                                error: stripeError.message,
+                            };
+                        }
+    
+                        console.error(` Erro ao buscar invoice ${invoice.stripeInvoiceId} no Stripe:`, stripeError);
+                        return invoice;
+                    }
+                })
+            );
+    
+            return res.status(200).json(updatedInvoices);
+    
+        } catch (error) {
+            console.error(" Erro ao buscar invoices:", error);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+    }
 
 
 

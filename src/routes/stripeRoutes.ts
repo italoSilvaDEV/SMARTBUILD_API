@@ -13,4 +13,7 @@ stripeRoutes.get("/stripe/status/:companyId", checkToken, stripeController.check
 
 stripeRoutes.post("/stripe/invoice/:projectId", checkToken, stripeController.createInvoice);
 
+// Buscar Invoices relacionadas a um ProjectId
+stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.getInvoicesByProject);
+
 export { stripeRoutes };
