@@ -115,7 +115,145 @@ export class StripeController {
         }
     }
 
-    // funcionou mais duplicou cliente
+    // funcionou menos o link
+    // async createInvoice(req: Request, res: Response) {
+    //     const { projectId } = req.params;
+
+    //     try {
+    //         console.log("Buscando o projeto no banco de dados...");
+    //         const project = await prisma.project.findUnique({
+    //             where: { id: projectId },
+    //             include: {
+    //                 client: true,
+    //                 serviceProject: true,
+    //                 company: true,
+    //             },
+    //         });
+
+    //         if (!project) {
+    //             console.error(" Projeto não encontrado!");
+    //             return res.status(404).json({ error: "Project not found" });
+    //         }
+
+    //         if (!project.client) {
+    //             console.error(" Cliente não encontrado para este projeto!");
+    //             return res.status(400).json({ error: "Client not found" });
+    //         }
+
+    //         if (!project.company || !project.company.stripeAccountId) {
+    //             console.error(" Empresa não conectada ao Stripe!");
+    //             return res.status(400).json({ error: "Company not connected to Stripe" });
+    //         }
+
+    //         console.log(" Projeto, cliente e empresa encontrados com sucesso!");
+
+    //         // 🔑 Pegar StripeAccountId da empresa
+    //         const stripeAccountId = project.company.stripeAccountId;
+    //         console.log(" StripeAccountId da empresa:", stripeAccountId);
+
+    //         // 🔍 Verificar se o cliente já tem StripeCustomerId armazenado
+    //         let stripeCustomerId = project.client.stripeCustomerId;
+
+    //         if (!stripeCustomerId) {
+    //             console.log(" Criando cliente no Stripe...");
+    //             const customer = await stripe.customers.create(
+    //                 {
+    //                     name: project.client.name,
+    //                     email: project.client.email,
+    //                     phone: project.client.phone ?? undefined,
+    //                 },
+    //                 { stripeAccount: stripeAccountId }
+    //             );
+    //             stripeCustomerId = customer.id;
+
+    //             //  Atualizar o cliente no banco de dados com o novo StripeCustomerId
+    //             await prisma.client.update({
+    //                 where: { id: project.client.id },
+    //                 data: { stripeCustomerId },
+    //             });
+
+    //             console.log(` Cliente criado no Stripe com ID: ${stripeCustomerId}`);
+    //         } else {
+    //             console.log(` Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
+    //         }
+
+
+    //         console.log(" Criando Invoice Items...");
+    //         for (const service of project.serviceProject) {
+    //             console.log(` Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
+    //             await stripe.invoiceItems.create(
+    //                 {
+    //                     customer: stripeCustomerId,
+    //                     amount: Number(service.hours) * Number(service.price) * 100,
+    //                     currency: "brl",
+    //                     description: service.name,
+    //                 },
+    //                 { stripeAccount: stripeAccountId }
+    //             );
+    //         }
+
+    //         console.log(" Criando a Invoice no Stripe...");
+    //         const invoice = await stripe.invoices.create(
+    //             {
+    //                 customer: stripeCustomerId,
+    //                 collection_method: "send_invoice",
+    //                 days_until_due: 7,
+    //                 auto_advance: true,
+    //                 metadata: {
+    //                     projectId: projectId,
+    //                 },
+    //                 pending_invoice_items_behavior: "include" // Inclui itens pendentes
+    //             },
+    //             { stripeAccount: stripeAccountId }
+    //         );
+
+    //         const invoiceWithItems = await stripe.invoices.retrieve(invoice.id, {
+    //             expand: ["lines"],
+    //         }, { stripeAccount: stripeAccountId });
+
+    //         console.log("Itens da Fatura:", invoiceWithItems.lines.data);
+
+    //         console.log(" Invoice criada com ID:", invoice.id);
+
+    //         console.log(" Finalizando a Invoice...");
+    //         const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
+
+    //         console.log(" Enviando Invoice por e-mail...");
+    //         await stripe.invoices.sendInvoice(finalizedInvoice.id, { stripeAccount: stripeAccountId });
+
+    //         console.log(" Invoice enviada por e-mail para:", project.client.email);
+
+    //         console.log(" Salvando Invoice no banco de dados...");
+    //         const newInvoice = await prisma.invoice.create({
+    //             data: {
+    //                 stripeInvoiceId: finalizedInvoice.id,
+    //                 projectId: project.id,
+    //                 companyId: project.company_id,
+    //                 totalAmount: project.serviceProject.reduce(
+    //                     (sum, service) => sum + (Number(service.hours) * Number(service.price)),
+    //                     0
+    //                 ),
+    //                 status: finalizedInvoice.status ?? "draft",
+    //                 invoiceUrl: finalizedInvoice.hosted_invoice_url, //  Link salvo corretamente
+    //                 dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    //             },
+    //         });
+
+    //         console.log(" Invoice salva no banco com ID:", newInvoice.id);
+
+    //         return res.status(200).json({
+    //             message: "Invoice created, sent, and recorded successfully",
+    //             invoiceUrl: finalizedInvoice.hosted_invoice_url,
+    //             invoiceId: finalizedInvoice.id,
+    //             databaseInvoice: newInvoice,
+    //         });
+
+    //     } catch (error) {
+    //         console.error(" Erro ao criar Invoice:", error);
+    //         return res.status(500).json({ error: "Internal Server Error" });
+    //     }
+    // }
+
     async createInvoice(req: Request, res: Response) {
         const { projectId } = req.params;
 
@@ -131,31 +269,29 @@ export class StripeController {
             });
 
             if (!project) {
-                console.error(" Projeto não encontrado!");
+                console.error("Projeto não encontrado!");
                 return res.status(404).json({ error: "Project not found" });
             }
 
             if (!project.client) {
-                console.error(" Cliente não encontrado para este projeto!");
+                console.error("Cliente não encontrado para este projeto!");
                 return res.status(400).json({ error: "Client not found" });
             }
 
             if (!project.company || !project.company.stripeAccountId) {
-                console.error(" Empresa não conectada ao Stripe!");
+                console.error("Empresa não conectada ao Stripe!");
                 return res.status(400).json({ error: "Company not connected to Stripe" });
             }
 
-            console.log(" Projeto, cliente e empresa encontrados com sucesso!");
+            console.log("Projeto, cliente e empresa encontrados com sucesso!");
 
-            // 🔑 Pegar StripeAccountId da empresa
             const stripeAccountId = project.company.stripeAccountId;
-            console.log(" StripeAccountId da empresa:", stripeAccountId);
+            console.log("StripeAccountId da empresa:", stripeAccountId);
 
-            // 🔍 Verificar se o cliente já tem StripeCustomerId armazenado
             let stripeCustomerId = project.client.stripeCustomerId;
 
             if (!stripeCustomerId) {
-                console.log(" Criando cliente no Stripe...");
+                console.log("Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
                     {
                         name: project.client.name,
@@ -166,21 +302,19 @@ export class StripeController {
                 );
                 stripeCustomerId = customer.id;
 
-                //  Atualizar o cliente no banco de dados com o novo StripeCustomerId
                 await prisma.client.update({
                     where: { id: project.client.id },
                     data: { stripeCustomerId },
                 });
 
-                console.log(` Cliente criado no Stripe com ID: ${stripeCustomerId}`);
+                console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             } else {
-                console.log(` Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
+                console.log(`Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
             }
 
-
-            console.log(" Criando Invoice Items...");
+            console.log("Criando Invoice Items...");
             for (const service of project.serviceProject) {
-                console.log(` Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
+                console.log(`Adicionando serviço: ${service.name} - ${service.hours}h x R$${service.price}`);
                 await stripe.invoiceItems.create(
                     {
                         customer: stripeCustomerId,
@@ -192,7 +326,7 @@ export class StripeController {
                 );
             }
 
-            console.log(" Criando a Invoice no Stripe...");
+            console.log("Criando a Invoice no Stripe...");
             const invoice = await stripe.invoices.create(
                 {
                     customer: stripeCustomerId,
@@ -202,28 +336,14 @@ export class StripeController {
                     metadata: {
                         projectId: projectId,
                     },
-                    pending_invoice_items_behavior: "include" // Inclui itens pendentes
+                    pending_invoice_items_behavior: "include"
                 },
                 { stripeAccount: stripeAccountId }
             );
 
-            const invoiceWithItems = await stripe.invoices.retrieve(invoice.id, {
-                expand: ["lines"],
-            }, { stripeAccount: stripeAccountId });
-
-            console.log("Itens da Fatura:", invoiceWithItems.lines.data);
-
-            console.log(" Invoice criada com ID:", invoice.id);
-
-            console.log(" Finalizando a Invoice...");
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
-            console.log(" Enviando Invoice por e-mail...");
-            await stripe.invoices.sendInvoice(finalizedInvoice.id, { stripeAccount: stripeAccountId });
-
-            console.log(" Invoice enviada por e-mail para:", project.client.email);
-
-            console.log(" Salvando Invoice no banco de dados...");
+            console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalizedInvoice.id,
@@ -234,25 +354,105 @@ export class StripeController {
                         0
                     ),
                     status: finalizedInvoice.status ?? "draft",
-                    invoiceUrl: finalizedInvoice.hosted_invoice_url, //  Link salvo corretamente
+                    invoiceUrl: finalizedInvoice.hosted_invoice_url,
                     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
                 },
             });
 
-            console.log(" Invoice salva no banco com ID:", newInvoice.id);
+            console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             return res.status(200).json({
-                message: "Invoice created, sent, and recorded successfully",
+                message: "Invoice created and recorded successfully",
                 invoiceUrl: finalizedInvoice.hosted_invoice_url,
                 invoiceId: finalizedInvoice.id,
                 databaseInvoice: newInvoice,
             });
 
         } catch (error) {
-            console.error(" Erro ao criar Invoice:", error);
+            console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
+
+    async sendInvoice(req: Request, res: Response) {
+        const { invoiceId } = req.params;
+
+        try {
+            const invoice = await prisma.invoice.findUnique({
+                where: { stripeInvoiceId: invoiceId },
+                include: {
+                    project: {
+                        include: {
+                            client: true,
+                            company: true,
+                        },
+                    },
+                },
+            });
+
+            if (!invoice || !invoice.project || !invoice.project.company || !invoice.project.client) {
+                return res.status(404).json({ error: "Invoice, project, company, or client not found" });
+            }
+
+            const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
+
+            console.log("Enviando Invoice por e-mail...");
+            await stripe.invoices.sendInvoice(invoiceId, { stripeAccount: stripeAccountId });
+
+            console.log("Invoice enviada por e-mail para:", invoice.project.client.email);
+
+            return res.status(200).json({ message: "Invoice sent successfully" });
+
+        } catch (error) {
+            console.error("Erro ao enviar Invoice:", error);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+    }
+
+    async cancelInvoice(req: Request, res: Response) {
+        const { invoiceId } = req.params;
+
+        try {
+            const invoice = await prisma.invoice.findUnique({
+                where: { stripeInvoiceId: invoiceId },
+                include: {
+                    project: {
+                        include: {
+                            company: true,
+                        },
+                    },
+                },
+            });
+
+            if (!invoice || !invoice.project || !invoice.project.company) {
+                return res.status(404).json({ error: "Invoice, project, or company not found" });
+            }
+
+            const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
+
+            console.log("Cancelando a Invoice no Stripe...");
+            const canceledInvoice = await stripe.invoices.voidInvoice(invoiceId, { stripeAccount: stripeAccountId });
+
+            console.log("Atualizando status da Invoice no banco de dados...");
+            const updatedInvoice = await prisma.invoice.update({
+                where: { stripeInvoiceId: invoiceId },
+                data: { status: "void" },
+            });
+
+            console.log("Invoice cancelada com sucesso!");
+
+            return res.status(200).json({
+                message: "Invoice canceled successfully",
+                updatedInvoice,
+            });
+
+        } catch (error) {
+            console.error("Erro ao cancelar Invoice:", error);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+    }
+
+
 
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
@@ -331,8 +531,5 @@ export class StripeController {
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
-
-
-
 
 }

@@ -12,6 +12,8 @@ stripeRoutes.get("/stripe/connect/:companyId",checkToken,  stripeController.conn
 stripeRoutes.get("/stripe/status/:companyId", checkToken, stripeController.checkStripeStatus);
 
 stripeRoutes.post("/stripe/invoice/:projectId", checkToken, stripeController.createInvoice);
+stripeRoutes.post("/stripe/invoice/:invoiceId/send", checkToken, stripeController.sendInvoice);
+stripeRoutes.post("/stripe/invoice/:invoiceId/cancel", checkToken, stripeController.cancelInvoice);
 
 // Buscar Invoices relacionadas a um ProjectId
 stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.getInvoicesByProject);
