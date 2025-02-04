@@ -41,6 +41,8 @@ model User {
   UserAttendance         UserAttendance[]
   Activities             Activities[]
 
+  InvoiceSendHistory InvoiceSendHistory[]
+
   company    Company? @relation(fields: [company_id], references: [id])
   company_id String?
 
@@ -304,24 +306,24 @@ model PdfProject {
 }
 
 model Client {
-  id             String    @id @default(uuid())
-  avatar         String?
-  name           String
-  email          String
-  document       String?
-  phone          String?
-  city_and_state String?
-  birth_date     String?
-  location       String?   @db.Text
-  lat            String?
-  log            String?
-  radius         Float?
-  autorId        String?
-  date_creation  DateTime  @default(now())
-  date_update    DateTime  @updatedAt
-  projects       Project[]
-  company        Company?  @relation(fields: [company_id], references: [id])
-  company_id     String?
+  id               String    @id @default(uuid())
+  avatar           String?
+  name             String
+  email            String
+  document         String?
+  phone            String?
+  city_and_state   String?
+  birth_date       String?
+  location         String?   @db.Text
+  lat              String?
+  log              String?
+  radius           Float?
+  autorId          String?
+  date_creation    DateTime  @default(now())
+  date_update      DateTime  @updatedAt
+  projects         Project[]
+  company          Company?  @relation(fields: [company_id], references: [id])
+  company_id       String?
   stripeCustomerId String?
 }
 
@@ -444,4 +446,20 @@ model Invoice {
 
   company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id])
   companyId String?
+  
+
+  InvoiceSendHistory InvoiceSendHistory[]
+}
+
+model InvoiceSendHistory {
+  id        String   @id @default(uuid())
+  sentAt    DateTime @default(now())
+  recipient String
+
+  // Relacionamento com Invoice
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  user    User?   @relation(fields: [user_id], references: [id])
+  user_id String?
 }
