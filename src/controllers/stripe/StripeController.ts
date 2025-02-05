@@ -442,4 +442,98 @@ export class StripeController {
         }
     }
 
+    async getInvoicesByCompany(req: Request, res: Response) {
+        const { companyId } = req.params;
+    
+        try {
+            console.log("Buscando invoices da empresa:", companyId);
+    
+            // Buscar invoices relacionadas ao companyId
+            const invoices = await prisma.invoice.findMany({
+                where: { companyId },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    company: true, // Inclui a empresa para obter o stripeAccountId
+                    InvoiceSendHistory: {
+                        orderBy: { sentAt: "desc" } // Ordenar pelo último envio
+                    },
+                    project:{
+                        include:{
+                            client:{
+                                select:{
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                }
+                            }
+                        }
+                    }
+                },
+            });
+    
+            if (invoices.length === 0) {
+                console.log("Nenhuma invoice encontrada para esta empresa.");
+                return res.status(404).json({ message: "No invoices found for this company." });
+            }
+    
+            console.log(`${invoices.length} invoices encontradas.`);
+    
+            const updatedInvoices = await Promise.all(
+                invoices.map(async (invoice) => {
+                    try {
+                        if (!invoice.company || !invoice.company.stripeAccountId) {
+                            console.warn(`Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
+                            return invoice;
+                        }
+    
+                        const stripeAccountId = invoice.company.stripeAccountId;
+    
+                        // Buscar o status da fatura na conta conectada do Stripe
+                        const stripeInvoice = await stripe.invoices.retrieve(
+                            invoice.stripeInvoiceId,
+                            { stripeAccount: stripeAccountId }
+                        );
+    
+                        const status = stripeInvoice.status ?? "draft";
+    
+                        // Atualizar o status no banco de dados, se necessário
+                        if (invoice.status !== status) {
+                            await prisma.invoice.update({
+                                where: { id: invoice.id },
+                                data: { status },
+                            });
+    
+                            console.log(`Status da fatura ${invoice.stripeInvoiceId} atualizado para ${status}`);
+                            return { ...invoice, status };
+                        }
+    
+                        // Pegando a data do último envio
+                        const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
+    
+                        return { ...invoice, lastSentAt: lastSend };
+    
+                    } catch (stripeError: any) {
+                        if (stripeError.code === 'resource_missing') {
+                            console.warn(`Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
+                            return {
+                                ...invoice,
+                                status: "not_found_in_stripe",
+                                error: stripeError.message,
+                            };
+                        }
+    
+                        console.error(`Erro ao buscar invoice ${invoice.stripeInvoiceId} no Stripe:`, stripeError);
+                        return invoice;
+                    }
+                })
+            );
+    
+            return res.status(200).json(updatedInvoices);
+    
+        } catch (error) {
+            console.error("Erro ao buscar invoices:", error);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+    }
+
 }

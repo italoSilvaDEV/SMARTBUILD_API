@@ -18,4 +18,6 @@ stripeRoutes.post("/stripe/invoice/:invoiceId/cancel", checkToken, stripeControl
 // Buscar Invoices relacionadas a um ProjectId
 stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.getInvoicesByProject);
 
+stripeRoutes.get("/stripe/company-invoices/:companyId", checkToken, stripeController.getInvoicesByCompany);
+
 export { stripeRoutes };
