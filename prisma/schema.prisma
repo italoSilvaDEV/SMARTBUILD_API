@@ -43,8 +43,9 @@ model User {
 
   InvoiceSendHistory InvoiceSendHistory[]
 
-  company    Company? @relation(fields: [company_id], references: [id])
+  company    Company?  @relation(fields: [company_id], references: [id])
   company_id String?
+  Invoice    Invoice[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -440,13 +441,18 @@ model Invoice {
   updatedAt       DateTime  @updatedAt
   invoiceUrl      String?
 
+  percentageCoefficient Decimal?
+  description String? @db.Text
+
   // Relacionamento com Project e Company
   project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
   projectId String
 
   company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id])
   companyId String?
-  
+
+  user_create    User?   @relation(fields: [user_id], references: [id])
+  user_id String?
 
   InvoiceSendHistory InvoiceSendHistory[]
 }
@@ -460,6 +466,6 @@ model InvoiceSendHistory {
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id])
 
-  user    User?   @relation(fields: [user_id], references: [id])
+  user_create    User?   @relation(fields: [user_id], references: [id])
   user_id String?
 }
