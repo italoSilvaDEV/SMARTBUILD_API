@@ -41,8 +41,11 @@ model User {
   UserAttendance         UserAttendance[]
   Activities             Activities[]
 
-  company   Company? @relation(fields: [company_id], references: [id])
+  InvoiceSendHistory InvoiceSendHistory[]
+
+  company    Company?  @relation(fields: [company_id], references: [id])
   company_id String?
+  Invoice    Invoice[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -62,6 +65,25 @@ model Company {
   Project        Project[]
   Client         Client[]
   UserAttendance UserAttendance[]
+
+  invoices Invoice[] @relation(name: "CompanyToInvoice")
+
+  // novo campo
+  stripeAccountId String? @unique
+}
+
+model Webhooks {
+  id        String   @id @default(uuid())
+  name      String // Nome do webhook
+  event     String // Evento monitorado (ex.: checkout.session.completed)
+  secret    String // Segredo do webhook
+  url       String // URL associada ao webhook
+  status    String // Status do webhook (ex.: "enabled", "disabled")
+  stripeId  String   @unique // ID do webhook no Stripe
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("webhooks")
 }
 
 model Office {
@@ -90,7 +112,7 @@ model Category {
   type_category   String
   sub_category    SubCategory[]
   company         Company?      @relation(fields: [company_id], references: [id])
-  company_id       String?
+  company_id      String?
 
   @@map("service")
 }
@@ -106,7 +128,7 @@ model SubCategory {
   subcategory        Category  @relation(fields: [category_id], references: [id])
   service            Service[]
   company            Company?  @relation(fields: [company_id], references: [id])
-  company_id          String?
+  company_id         String?
 
   @@index([category_id], map: "subcategory_category_id_fkey")
   @@map("subcategory")
@@ -127,7 +149,7 @@ model Service {
   sub_category_id String
   ServiceProject  ServiceProject[]
   company         Company?         @relation(fields: [company_id], references: [id])
-  company_id       String?
+  company_id      String?
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
@@ -158,7 +180,7 @@ model ServiceProject {
   UserServiceProject UserServiceProject[]
   Activities         Activities[]
   company            Company?             @relation(fields: [company_id], references: [id])
-  company_id          String?
+  company_id         String?
 }
 
 model Activities {
@@ -193,7 +215,7 @@ model Catalog {
 
   imgCatalog ImgCatalog[]
   company    Company?     @relation(fields: [company_id], references: [id])
-  company_id  String?
+  company_id String?
 
   @@map("catalog")
 }
@@ -225,13 +247,15 @@ model Project {
   workedHours        Workedhours[]
   pdfproject         PdfProject[]
 
+  invoices Invoice[] @relation(name: "ProjectToInvoice")
+
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
 
   user           User?    @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
   company        Company? @relation(fields: [company_id], references: [id])
-  company_id      String?
+  company_id     String?
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -283,24 +307,25 @@ model PdfProject {
 }
 
 model Client {
-  id             String    @id @default(uuid())
-  avatar         String?
-  name           String
-  email          String
-  document       String?
-  phone          String?
-  city_and_state String?
-  birth_date     String?
-  location       String?   @db.Text
-  lat            String?
-  log            String?
-  radius         Float?
-  autorId        String?
-  date_creation  DateTime  @default(now())
-  date_update    DateTime  @updatedAt
-  projects       Project[]
-  company        Company?  @relation(fields: [company_id], references: [id])
-  company_id      String?
+  id               String    @id @default(uuid())
+  avatar           String?
+  name             String
+  email            String
+  document         String?
+  phone            String?
+  city_and_state   String?
+  birth_date       String?
+  location         String?   @db.Text
+  lat              String?
+  log              String?
+  radius           Float?
+  autorId          String?
+  date_creation    DateTime  @default(now())
+  date_update      DateTime  @updatedAt
+  projects         Project[]
+  company          Company?  @relation(fields: [company_id], references: [id])
+  company_id       String?
+  stripeCustomerId String?
 }
 
 model InvoiceCostProject {
@@ -399,9 +424,48 @@ model UserAttendance {
   UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
   user_service_project_id String
   company                 Company?           @relation(fields: [company_id], references: [id])
-  company_id               String?
+  company_id              String?
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")
+}
+
+model Invoice {
+  id              String    @id @default(uuid())
+  stripeInvoiceId String    @unique
+  status          String // Status do invoice: draft, open, paid, void, uncollectible
+  totalAmount     Decimal
+  dueDate         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  invoiceUrl      String?
+
+  percentageCoefficient Decimal?
+  description String? @db.Text
+
+  // Relacionamento com Project e Company
+  project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
+  projectId String
+
+  company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id])
+  companyId String?
+
+  user_create    User?   @relation(fields: [user_id], references: [id])
+  user_id String?
+
+  InvoiceSendHistory InvoiceSendHistory[]
+}
+
+model InvoiceSendHistory {
+  id        String   @id @default(uuid())
+  sentAt    DateTime @default(now())
+  recipient String
+
+  // Relacionamento com Invoice
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  user_create    User?   @relation(fields: [user_id], references: [id])
+  user_id String?
 }

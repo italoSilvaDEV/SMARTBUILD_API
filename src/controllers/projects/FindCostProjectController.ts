@@ -4,7 +4,7 @@ import { prisma } from "../../utils/prisma";
 export class FindCostProjectController {
     async handle(request: Request, response: Response) {
         try {
-            const { material_name, pag } = request.body;
+            const { material_name, pag } = request.body; 
 
             const filtro: any = {};
             if (material_name) {

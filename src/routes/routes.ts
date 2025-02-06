@@ -7,8 +7,13 @@ import { clientRoutes } from './clientRoutes'
 import { workedRours } from './workedHours'
 import {serviceStageRoutes} from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
+import { stripeRoutes } from './stripeRoutes'
+import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 
 const router = Router()
+
+// Importante: Colocar o webhook antes dos middlewares JSON
+router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
 router.use(userRoutes)
 router.use(serviceRoutes)
@@ -18,6 +23,8 @@ router.use(clientRoutes)
 router.use(workedRours)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
+
+router.use(stripeRoutes)
 
 export { router }
 
