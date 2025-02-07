@@ -24,63 +24,7 @@ export class TimeController {
             let totalPrice = 0;
             let totalHours = 0;
 
-            // Buscar dados de presenças de usuários
-            // const result = await prisma.userAttendance.findMany({
-            //     where: {
-            //         AND: [
-            //             search ? {
-            //                 user: {
-            //                     name: {
-            //                         contains: String(search), // Se search for fornecido, filtra pelos nomes dos usuários
-            //                     }
-            //                 },
-            //             } : {},
-            //             {
-            //                 date: {
-            //                     gte: new Date(String(start_date)), // Converter para formato Date
-            //                     lte: new Date(String(deadline)),
-            //                 },
-            //             },
-            //             {
-            //                 company_id: { equals: String(id) },
-            //             },
-            //         ],
-            //     },
-            //     include: {
-            //         UserServiceProject: {
-            //             select: {
-            //                 service_project: {
-            //                     select: {
-            //                         price: true,
-            //                         Project: {
-            //                             select: {
-            //                                 client: {
-            //                                     select: {
-            //                                         name: true
-            //                                     }
-            //                                 }
-            //                             }
-            //                         }
-            //                     },
-            //                 },
-            //             },
-            //         },
-            //         user: {
-            //             select: {
-            //                 id: true,
-            //                 name: true,
-            //                 avatar: true,
-            //                 hourly_price: true,
-            //             },
-            //         },
-
-            //     },
-            //     orderBy: {
-            //         check_in_time: "desc"
-            //     },
-            //     skip: Number(page) * 10,
-            //     take: 10,
-            // });
+          
             const resultCount = await prisma.userAttendance.count({
                 where: {
                     AND: [
@@ -245,31 +189,7 @@ export class TimeController {
                         )
                     )
             );            
-                // result.map((attendance) => {
-                // let hoursWorked = 0;
-
-                // if (attendance.check_out_time && attendance.check_in_time) {
-                //     hoursWorked = dayjs(attendance.check_out_time).diff(
-                //         dayjs(attendance.check_in_time),
-                //         "hour",
-                //         true
-                //     );
-                // }
-
-                // const roundedHours = parseFloat(hoursWorked.toFixed(2));
-                // const calculatedPrice = attendance.user.hourly_price
-                //     ? attendance.user.hourly_price * roundedHours
-                //     : 0;
-
-                // totalPrice += calculatedPrice;
-                // totalHours += roundedHours;
-
-            //     return {
-            //         ...attendance,
-            //         hours_worked: roundedHours,
-            //         price: calculatedPrice,
-            //     };
-            // });
+                
 
             const projectFormatted = projects.map(i => ({
                 clientData: i.client?.name + ' - ' + i.client?.location,
@@ -309,8 +229,8 @@ export class TimeController {
             return res.json(
                 {
                     indicators: {
-                        totalPrice: parseFloat(totalPrice.toFixed(2)),
-                        totalHours: parseFloat(totalHours.toFixed(2)),
+                        totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
+                        totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
                         totalServices: serviceCount,
                         totalProjects: projects.length,
                     },
