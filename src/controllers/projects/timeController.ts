@@ -217,7 +217,7 @@ export class TimeController {
             });
 
             // Formatar e calcular horas trabalhadas
-            const formattedResult = projects.map(i => i.serviceProject
+            const formattedResult = projects.flatMap(i => i.serviceProject
                     .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
                     .flatMap(s => s.UserServiceProject
                         .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
