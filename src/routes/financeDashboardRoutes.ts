@@ -1,0 +1,15 @@
+import { Router } from "express"
+import { checkToken } from "../middlewares/checkToken";
+import { FinanceDashboardController } from "../controllers/dashboard/FinanceDashboardController";
+
+const financeDashboard = Router()
+const financeDashboardController = new FinanceDashboardController();
+financeDashboard.get("/cashflow", checkToken, financeDashboardController.cashflow);
+financeDashboard.get("/expenses", checkToken, financeDashboardController.expenses);
+financeDashboard.get("/profit-loss", checkToken, financeDashboardController.profitLoss);
+financeDashboard.get("/sales", checkToken, financeDashboardController.sales);
+
+export { financeDashboard }
+
+
+

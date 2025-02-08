@@ -9,6 +9,7 @@ import {serviceStageRoutes} from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
+import { financeDashboard } from './financeDashboardRoutes'
 
 const router = Router()
 
@@ -23,8 +24,8 @@ router.use(clientRoutes)
 router.use(workedRours)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
-
 router.use(stripeRoutes)
+router.use("/finance-dashboard", financeDashboard);
 
 export { router }
 

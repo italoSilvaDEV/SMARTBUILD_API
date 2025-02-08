@@ -1,7 +1,4 @@
 import { Router } from "express"
-import multer from "multer";
-import uploadConfig from "../config/upload";
-import { compressImage } from "../config/compressImage";
 import { checkToken } from "../middlewares/checkToken";
 import { CreateCatalogController } from "../controllers/catalog/CreateCatalogController";
 import { UpdateCatalogController } from "../controllers/catalog/UpdateCatalogController";
