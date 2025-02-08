@@ -184,9 +184,9 @@ export class TimeController {
                     AND: [
                         {
                             UserServiceProject: {
-                                some: {
+                                every: {
                                     user_attendances: {
-                                        some: {
+                                        every: {
                                             AND: [
                                                 search ? {
                                                     user: {
@@ -210,7 +210,9 @@ export class TimeController {
 
                         },
                         {
-                            company_id: String(id),
+                            Project: {
+                                company_id: { equals: String(id) },
+                            }
                         },
                     ],
                 },
