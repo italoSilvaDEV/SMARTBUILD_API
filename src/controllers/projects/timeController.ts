@@ -527,7 +527,22 @@ export class TimeController {
             if (!existCompany) {
                 return res.status(404).json({ error: "Company not found" });
             }
-
+            const resultCount = await prisma.userAttendance.count({
+                where: {
+                    AND: [
+                        {
+                            date: {
+                                gte: new Date(String(start_date)), // Converter para formato Date
+                                lte: new Date(String(deadline)),
+                            },
+                        },
+                        {
+                            company_id: { equals: String(id) },
+                        },
+                        
+                    ],
+                },
+            })
             // Contar serviços dentro do período
             const serviceCount = await countServiceProject({
                 company_id: String(id),
@@ -571,7 +586,7 @@ export class TimeController {
                         totalProjects: projectsCount,
                     },
                     workers: formattedResult,
-                    totalPages: Math.ceil(formattedResult.length / 10)
+                    totalPages: Math.ceil(resultCount / 10)
                 }
             );
         } catch (error) {
