@@ -15,7 +15,7 @@ async function findProject(data: IFindProject) {
         AND: [
             {
                 status_project: {
-                    in: ["Pre-Start", "In Progress", "Final walkthrough"],
+                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                 },
             },
             {
@@ -93,41 +93,6 @@ async function findProject(data: IFindProject) {
 
     return { projects, projectsCount };
 }
-interface ICountServiceProject {
-    company_id: string,    
-    start_date: string,
-    deadline: string,
-}
-
-async function countServiceProject(data: ICountServiceProject) {
-    // Contar serviços dentro do período
-    const serviceCount = await prisma.serviceProject.count({
-        where: {
-            AND: [
-                {
-                    UserServiceProject: {
-                        some: {
-                            user_attendances: {
-                                some: {
-                                    date: {
-                                        gte: new Date(String(data.start_date)),
-                                        lte: new Date(String(data.deadline)),
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    Project: {
-                        company_id: { equals: String(data.company_id) },
-                    }
-                },
-            ],
-        },
-    });
-    return serviceCount
-}
 
 export class TimeController {
     async findMany(req: Request, res: Response) {
@@ -178,44 +143,8 @@ export class TimeController {
                 },
             })
 
-            // Contar serviços dentro do período
-            const serviceCount = await prisma.serviceProject.count({
-                where: {
-                    AND: [
-                        {
-                            UserServiceProject: {
-                                some: {
-                                    user_attendances: {
-                                        some: {
-                                            AND: [
-                                                search ? {
-                                                    user: {
-                                                        name: {
-                                                            contains: String(search), // Filtra pelos nomes dos usuários, se search for fornecido
-                                                        }
-                                                    },
-                                                } : {},
-                                                {
-                                                    date: {
-                                                        gte: new Date(String(start_date)), // Converter para formato Date
-                                                        lte: new Date(String(deadline)),
-                                                    },
-                                                }
-                                            ]
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            Project: {
-                                company_id: { equals: String(id) },
-                            }
-                        },
-                    ],
-                },
-                distinct: ['id'] as never// Evita contar serviços duplicados
-            });
+
+
 
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
@@ -255,7 +184,22 @@ export class TimeController {
                     )
                 )
             );
+            const uniqueUserServiceProjectIds = new Set(
+                projects.flatMap(i =>
+                    i.serviceProject
+                        .filter(s => s.UserServiceProject.length > 0) // Garante que há dados em UserServiceProject
+                        .flatMap(s =>
+                            s.UserServiceProject
+                                .filter(user => user.user_attendances.length > 0)
+                                .flatMap(user =>
+                                    user.user_attendances.map(x => x.user_service_project_id)
+                                )
+                        )
+                )
+            );
 
+            // Contagem dos IDs únicos
+            const serviceCount = uniqueUserServiceProjectIds.size;
 
             const projectFormatted = projects.map(i => ({
                 clientData: i.client?.name + ' - ' + i.client?.location,
@@ -336,7 +280,7 @@ export class TimeController {
             const existWorker = await prisma.user.findUnique({
                 where: { id: String(worker_id) }, include: { office: true }
             });
-            
+
             const resultCount = await prisma.userAttendance.count({
                 where: {
                     AND: [
@@ -398,7 +342,7 @@ export class TimeController {
                 },
             });
 
-            
+
             // Contar projetos com status específicos dentro do período
             const projects = await prisma.project.findMany({
                 where: {
@@ -563,16 +507,11 @@ export class TimeController {
                                 }
                             }
                         },
-                        
+
                     ],
                 },
             })
-            // Contar serviços dentro do período
-            const serviceCount = await countServiceProject({
-                company_id: String(id),
-                deadline: String(deadline),
-                start_date: String(start_date)                
-            })
+
 
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
@@ -599,7 +538,22 @@ export class TimeController {
                 )
             );
 
+            const uniqueUserServiceProjectIds = new Set(
+                projects.flatMap(i =>
+                    i.serviceProject
+                        .filter(s => s.UserServiceProject.length > 0) // Garante que há dados em UserServiceProject
+                        .flatMap(s =>
+                            s.UserServiceProject
+                                .filter(user => user.user_attendances.length > 0)
+                                .flatMap(user =>
+                                    user.user_attendances.map(x => x.user_service_project_id)
+                                )
+                        )
+                )
+            );
 
+            // Contagem dos IDs únicos
+            const serviceCount = uniqueUserServiceProjectIds.size;
             // Retornar os indicadores e a lista de trabalhadores formatada
             return res.json(
                 {
