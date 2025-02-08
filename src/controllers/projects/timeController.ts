@@ -184,14 +184,14 @@ export class TimeController {
                     AND: [
                         {
                             UserServiceProject: {
-                                every: {
+                                some: {
                                     user_attendances: {
-                                        every: {
+                                        some: {
                                             AND: [
                                                 search ? {
                                                     user: {
                                                         name: {
-                                                            contains: String(search), // Se search for fornecido, filtra pelos nomes dos usuários
+                                                            contains: String(search), // Filtra pelos nomes dos usuários, se search for fornecido
                                                         }
                                                     },
                                                 } : {},
@@ -200,14 +200,12 @@ export class TimeController {
                                                         gte: new Date(String(start_date)), // Converter para formato Date
                                                         lte: new Date(String(deadline)),
                                                     },
-
                                                 }
                                             ]
                                         }
                                     }
                                 }
                             }
-
                         },
                         {
                             Project: {
@@ -216,7 +214,9 @@ export class TimeController {
                         },
                     ],
                 },
+                distinct: ['id'] as never// Evita contar serviços duplicados
             });
+
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
                 company_id: String(id),
