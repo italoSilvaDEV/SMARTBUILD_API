@@ -119,7 +119,9 @@ async function countServiceProject(data: ICountServiceProject) {
                     }
                 },
                 {
-                    company_id: String(data.company_id),
+                    Project: {
+                        company_id: { equals: String(data.company_id) },
+                    }
                 },
             ],
         },
@@ -379,7 +381,9 @@ export class TimeController {
 
                         },
                         {
-                            company_id: String(id),
+                            Project: {
+                                company_id: { equals: String(id) },
+                            }
                         },
                         {
                             UserServiceProject: {
