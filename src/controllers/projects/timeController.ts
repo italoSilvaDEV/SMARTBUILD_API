@@ -164,7 +164,11 @@ export class TimeController {
                             },
                         },
                         {
-                            company_id: { equals: String(id) },
+                            UserServiceProject: {
+                                service_project: {
+                                    company_id: { equals: String(id) },
+                                }
+                            }
                         },
                     ],
                 },
@@ -337,7 +341,11 @@ export class TimeController {
                             },
                         },
                         {
-                            company_id: { equals: String(id) },
+                            UserServiceProject: {
+                                service_project: {
+                                    company_id: { equals: String(id) },
+                                }
+                            }
                         },
                         {
                             user_id: { equals: String(worker_id) }
@@ -537,7 +545,11 @@ export class TimeController {
                             },
                         },
                         {
-                            company_id: { equals: String(id) },
+                            UserServiceProject: {
+                                service_project: {
+                                    company_id: { equals: String(id) },
+                                }
+                            }
                         },
                         
                     ],
