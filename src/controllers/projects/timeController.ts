@@ -333,32 +333,7 @@ export class TimeController {
                     ],
                 },
             })
-            // Formatar e calcular horas trabalhadas
-            const formattedResult = result.map((attendance) => {
-                let hoursWorked = 0;
-
-                if (attendance.check_out_time && attendance.check_in_time) {
-                    hoursWorked = dayjs(attendance.check_out_time).diff(
-                        dayjs(attendance.check_in_time),
-                        "hour",
-                        true
-                    );
-                }
-
-                const roundedHours = parseFloat(hoursWorked.toFixed(2));
-                const calculatedPrice = attendance.user.hourly_price
-                    ? attendance.user.hourly_price * roundedHours
-                    : 0;
-
-                totalPrice += calculatedPrice;
-                totalHours += roundedHours;
-
-                return {
-                    ...attendance,
-                    hours_worked: roundedHours,
-                    price: calculatedPrice,
-                };
-            });
+           
 
             // Contar serviços dentro do período
             const serviceCount = await prisma.serviceProject.count({
@@ -402,12 +377,7 @@ export class TimeController {
                                 in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                             },
                         },
-                        {
-                            date_creation: {
-                                gte: new Date(String(start_date)), // Converter para formato Date
-                                lte: new Date(String(deadline)),
-                            },
-                        },
+                        
                         {
                             company_id: String(id),
                         },
@@ -418,10 +388,18 @@ export class TimeController {
                                         some: {
                                             user_attendances: {
                                                 some: {
-                                                    date: {
-                                                        gte: new Date(String(start_date)), // Converter para formato Date
-                                                        lte: new Date(String(deadline)),
-                                                    },
+                                                    AND: [
+                                                        {
+                                                            user_id: { equals: String(worker_id) }
+                                                        },
+                                                        {
+                                                            date: {
+                                                                gte: new Date(String(start_date)), // Converter para formato Date
+                                                                lte: new Date(String(deadline)),
+                                                            },
+                                                        }
+                                                    ]
+                                                    
                                                 }
                                             }
                                         }
@@ -432,15 +410,114 @@ export class TimeController {
                     ],
                 },
             });
+            // Contar projetos com status específicos dentro do período
+            const projects = await prisma.project.findMany({
+                where: {
+                    AND: [
+                        {
+                            status_project: {
+                                in: ["Pre-Start", "In Progress", "Final walkthrough"],
+                            },
+                        },
+
+                        {
+                            company_id: String(id),
+                        },
+                        {
+                            serviceProject: {
+                                some: {
+                                    UserServiceProject: {
+                                        some: {
+                                            user_attendances: {
+                                                some: {
+                                                    AND: [
+                                                        {
+                                                            user_id: { equals: String(worker_id) }
+                                                        },
+                                                        {
+                                                            date: {
+                                                                gte: new Date(String(start_date)), // Converter para formato Date
+                                                                lte: new Date(String(deadline)),
+                                                            },
+                                                        }
+                                                    ]
+
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                },
+                include: {
+                    client: {
+                        select: {
+                            name: true,
+                            location: true,
+                            city_and_state: true,
+                        }
+                    },
+                    serviceProject: {
+                        select: {
+                            id: true,
+                            UserServiceProject: {
+                                select: {
+                                    user_attendances: {
+                                        include: {
+                                            user: {
+                                                select: {
+                                                    name: true,
+                                                    hourly_price: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            });
+            // Formatar e calcular horas trabalhadas
+            const formattedResult = projects.flatMap(i => i.serviceProject
+                .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
+                .flatMap(s => s.UserServiceProject
+                    .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
+                    .flatMap(user => user.user_attendances
+                        .map(x => {
+                            let hoursWorked = 0;
+                            if (x.check_out_time && x.check_in_time) {
+                                hoursWorked = dayjs(x.check_out_time).diff(
+                                    dayjs(x.check_in_time),
+                                    "hour",
+                                    true
+                                );
+                            }
+
+                            const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            const calculatedPrice = x.user.hourly_price
+                                ? x.user.hourly_price * roundedHours
+                                : 0;
+                            return ({
+                                ...x,
+                                hours_worked: roundedHours,
+                                price: calculatedPrice
+                            })
+                        })
+                    )
+                )
+            );        
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar))
             // Retornar os indicadores e a lista de trabalhadores formatada
             return res.json(
                 {
                     indicators: {
-                        totalPrice: parseFloat(totalPrice.toFixed(2)),
-                        totalHours: parseFloat(totalHours.toFixed(2)),
-                        totalServices: serviceCount,
-                        totalProjects: projectCount,
+                        totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
+                        totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
+                       totalServices: serviceCount,
+                        totalProjects: projects.length,
                     },
                     userWorker: {
                         id: existWorker?.id,
@@ -453,7 +530,7 @@ export class TimeController {
                 }
             );
         } catch (error) {
-            console.error("Error in findMany:", error);
+            console.error("Error in findManyByIdWorker:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
