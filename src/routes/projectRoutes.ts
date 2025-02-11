@@ -145,7 +145,10 @@ projectRoutes.delete("/project/services-project/activities/:id", checkToken, del
 
 projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule);
 
-projectRoutes.patch("/service-project/update/dates",  checkToken, projectController.updateDatesServiceProject);
+projectRoutes.patch("/service-project/update/dates", checkToken, projectController.updateDatesServiceProject);
+
+projectRoutes.patch("/service-project/update/status", checkToken, projectController.updateStatusServiceProject);
+
 
 projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
 

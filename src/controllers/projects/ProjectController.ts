@@ -1373,6 +1373,42 @@ export class ProjectController {
   }
 
 
+  async updateStatusServiceProject(req: Request, res: Response) {
+    const { id, status } = req.body;
+
+    try {
+      // Validação do ID
+      if (!id) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Verificar se o serviço existe
+      const existingService = await prisma.serviceProject.findUnique({
+        where: { id },
+      });
+
+      if (!existingService) {
+        return res.status(404).json({ error: "ServiceProject not found" });
+      }
+
+      // Atualizar as datas apenas se forem fornecidas
+      const updateData: { status?: string } = {};
+      if (status) updateData.status = status;
+
+      const updatedService = await prisma.serviceProject.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return res.json(updatedService);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
 
   // async addProjectResponsibles(req: Request, res: Response) {
   //   const { user_id, project_id } = req.body;
