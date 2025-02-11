@@ -74,9 +74,6 @@ async function findProject(data: IFindProject) {
             }
         ]
     };
-    console.log(new Date(String(data.start_date)))
-
-    console.log(new Date(String(data.deadline)))
     const [projects, projectsCount] = await Promise.all([
         prisma.project.findMany({
             where: whereCondition,
@@ -182,7 +179,16 @@ export class TimeController {
                             UserServiceProject: {
                                 service_project: {
                                     Project: {
-                                        company_id: { equals: String(id) },
+                                        AND: [
+                                            {
+                                                company_id: { equals: String(id) },
+                                            },
+                                            {
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                },
+                                            },
+                                        ]
                                     }
                                 }
                             }
@@ -366,7 +372,16 @@ export class TimeController {
                             UserServiceProject: {
                                 service_project: {
                                     Project: {
-                                        company_id: { equals: String(id) },
+                                        AND: [
+                                            {
+                                                company_id: { equals: String(id) },
+                                            },
+                                            {
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                },
+                                            },
+                                        ]
                                     }
                                 }
                             }
@@ -419,7 +434,16 @@ export class TimeController {
                         },
                         {
                             Project: {
-                                company_id: { equals: String(id) },
+                                AND: [
+                                    {
+                                        company_id: { equals: String(id) },
+                                    },
+                                    {
+                                        status_project: {
+                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                        },
+                                    },
+                                ]
                             }
                         },
                         {
@@ -635,7 +659,16 @@ export class TimeController {
                             UserServiceProject: {
                                 service_project: {
                                     Project: {
-                                        company_id: { equals: String(id) },
+                                        AND: [
+                                            {
+                                                company_id: { equals: String(id) },
+                                            },
+                                            {
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                },
+                                            },
+                                        ]
                                     }
                                 }
                             }
@@ -645,7 +678,6 @@ export class TimeController {
                 },
             })
 
-            console.log(resultCount)
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
                 company_id: String(id),
