@@ -11,6 +11,11 @@ interface IFindProject {
     pag: number
 }
 async function findProject(data: IFindProject) {
+    const startDate = new Date(String(data.start_date));
+    startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+
+    const deadline = new Date(String(data.deadline));
+    deadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
     const whereCondition = {
         AND: [
             {
@@ -37,10 +42,27 @@ async function findProject(data: IFindProject) {
                                                 },
                                             } : {},
                                             {
-                                                date: {
-                                                    gte: new Date(String(data.start_date)),
-                                                    lte: new Date(String(data.deadline)),
-                                                },
+                                                AND: [
+                                                    {
+                                                        check_in_time: {
+                                                            gte: startDate, // Converter para formato Date
+
+                                                        },
+                                                    },
+                                                    {
+                                                        OR: [
+                                                            {
+                                                                check_out_time: {
+                                                                    lte: deadline // Converter para formato Date
+                                                                },
+                                                            },
+                                                            {
+                                                                check_out_time: null
+                                                            }
+                                                        ]
+
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -52,7 +74,9 @@ async function findProject(data: IFindProject) {
             }
         ]
     };
+    console.log(new Date(String(data.start_date)))
 
+    console.log(new Date(String(data.deadline)))
     const [projects, projectsCount] = await Promise.all([
         prisma.project.findMany({
             where: whereCondition,
@@ -112,8 +136,13 @@ export class TimeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
+        
 
+            const startDate = new Date(String(start_date));
+            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
 
+            const newDeadline = new Date(String(deadline));
+            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
             const resultCount = await prisma.userAttendance.count({
                 where: {
                     AND: [
@@ -125,10 +154,29 @@ export class TimeController {
                             },
                         } : {},
                         {
-                            date: {
-                                gte: new Date(String(start_date)), // Converter para formato Date
-                                lte: new Date(String(deadline)),
-                            },
+                            AND: [
+                                {
+                                    check_in_time: {
+                                        gte: startDate, // Converter para formato Date
+
+                                    },
+                                },
+                                {
+                                    OR: [
+                                        {
+                                            check_out_time: {
+                                                lte: newDeadline, // Converter para formato Date
+
+                                            },
+                                        },
+                                        {
+                                            check_out_time: null
+                                        }
+                                    ]
+
+                                }
+                            ]
+
                         },
                         {
                             UserServiceProject: {
@@ -281,14 +329,38 @@ export class TimeController {
                 where: { id: String(worker_id) }, include: { office: true }
             });
 
+            const startDate = new Date(String(start_date));
+            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+
+            const newDeadline = new Date(String(deadline));
+            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
             const resultCount = await prisma.userAttendance.count({
                 where: {
                     AND: [
                         {
-                            date: {
-                                gte: new Date(String(start_date)), // Converter para formato Date
-                                lte: new Date(String(deadline)),
-                            },
+                            AND: [
+                                {
+                                    check_in_time: {
+                                        gte: startDate, // Converter para formato Date
+
+                                    },
+                                },
+                                {
+                                    OR: [
+                                        {
+                                            check_out_time: {
+                                                lte: newDeadline, // Converter para formato Date
+
+                                            },
+                                        },
+                                        {
+                                            check_out_time: null
+                                        }
+                                    ]
+
+                                }
+                            ]
+
                         },
                         {
                             UserServiceProject: {
@@ -316,11 +388,30 @@ export class TimeController {
                                 some: {
                                     user_attendances: {
                                         some: {
-                                            date: {
-                                                gte: new Date(String(start_date)), // Converter para formato Date
-                                                lte: new Date(String(deadline)),
-                                            },
-                                        }
+                                            AND: [
+                                                {
+                                                    check_in_time: {
+                                                        gte: startDate, // Converter para formato Date
+
+                                                    },
+                                                },
+                                                {
+                                                    OR: [
+                                                        {
+                                                            check_out_time: {
+                                                                lte: newDeadline, // Converter para formato Date
+
+                                                            },
+                                                        },
+                                                        {
+                                                            check_out_time: null
+                                                        }
+                                                    ]
+
+                                                }
+                                            ]
+
+                                        },
                                     }
                                 }
                             }
@@ -341,7 +432,6 @@ export class TimeController {
                     ],
                 },
             });
-
 
             // Contar projetos com status específicos dentro do período
             const projects = await prisma.project.findMany({
@@ -368,11 +458,30 @@ export class TimeController {
                                                             user_id: { equals: String(worker_id) }
                                                         },
                                                         {
-                                                            date: {
-                                                                gte: new Date(String(start_date)), // Converter para formato Date
-                                                                lte: new Date(String(deadline)),
-                                                            },
-                                                        }
+                                                            AND: [
+                                                                {
+                                                                    check_in_time: {
+                                                                        gte: startDate, // Converter para formato Date
+
+                                                                    },
+                                                                },
+                                                                {
+                                                                    OR: [
+                                                                        {
+                                                                            check_out_time: {
+                                                                                lte: newDeadline, // Converter para formato Date
+
+                                                                            },
+                                                                        },
+                                                                        {
+                                                                            check_out_time: null
+                                                                        }
+                                                                    ]
+
+                                                                }
+                                                            ]
+
+                                                        },
                                                     ]
 
                                                 }
@@ -489,14 +598,38 @@ export class TimeController {
             if (!existCompany) {
                 return res.status(404).json({ error: "Company not found" });
             }
+            const startDate = new Date(String(start_date));
+            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+
+            const newDeadline = new Date(String(deadline));
+            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
             const resultCount = await prisma.userAttendance.count({
                 where: {
                     AND: [
                         {
-                            date: {
-                                gte: new Date(String(start_date)), // Converter para formato Date
-                                lte: new Date(String(deadline)),
-                            },
+                            AND: [
+                                {
+                                    check_in_time: {
+                                        gte: startDate, // Converter para formato Date
+
+                                    },
+                                },
+                                {
+                                    OR: [
+                                        {
+                                            check_out_time: {
+                                                lte: newDeadline, // Converter para formato Date
+
+                                            },
+                                        },
+                                        {
+                                            check_out_time: null
+                                        }
+                                    ]
+
+                                }
+                            ]
+
                         },
                         {
                             UserServiceProject: {
@@ -512,7 +645,7 @@ export class TimeController {
                 },
             })
 
-
+            console.log(resultCount)
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
                 company_id: String(id),

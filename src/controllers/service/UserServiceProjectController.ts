@@ -98,7 +98,14 @@ export class UserServiceProjectController {
           assigned_at: assigned_at || new Date(),
         })),
       });
-
+      if (serviceProjectExists.status == null) {
+        await prisma.serviceProject.update({
+          where: { id: service_project_id },
+          data: {
+            status: 'Scheduled'
+          }
+        });
+      }
       res.status(201).json({
         message: `${newRelations.count} users successfully added to the project.`,
         addedUserIds: newUserIds,

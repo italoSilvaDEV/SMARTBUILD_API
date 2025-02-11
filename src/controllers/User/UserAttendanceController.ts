@@ -19,7 +19,11 @@ export class UserAttendanceController {
             // Verifica se o UserServiceProject existe
             const serviceProjectExists = await prisma.userServiceProject.findUnique({
                 where: { id: user_service_project_id },
-            });
+                include: {
+                    service_project: true
+                }
+            },
+            );
             if (!serviceProjectExists) {
                 res.status(400).json({ error: 'UserServiceProject not found.' });
                 return;
@@ -40,7 +44,13 @@ export class UserAttendanceController {
                 });
                 return;
             }
-
+         
+                await prisma.serviceProject.update({
+                    where: { id: serviceProjectExists.service_project_id },
+                    data: {
+                        status: 'In Progress'
+                    }
+                });
             // Cria o registro de check-in
             const attendance = await prisma.userAttendance.create({
                 data: {
