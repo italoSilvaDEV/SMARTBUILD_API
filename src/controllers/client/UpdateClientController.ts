@@ -16,7 +16,8 @@ export class UpdateClientController {
                 location,
                 birth_date,
                 lat,
-                log
+                log,
+                radius
             } = updatedData;
 
             if (!name) {
@@ -48,7 +49,8 @@ export class UpdateClientController {
                     location,
                     birth_date,
                     lat,
-                    log
+                    log,
+                    radius: Math.ceil(Number(radius))
                 },
             });
 
