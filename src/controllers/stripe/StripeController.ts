@@ -147,6 +147,14 @@ export class StripeController {
 
             console.log("Projeto, cliente e empresa encontrados com sucesso!");
 
+            const emailClient = project.client.email || "";
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+            if (!emailRegex.test(emailClient)) {
+                console.error("Endereço de email inválido!");
+                return res.status(400).json({ error: "Invalid client email address" });
+            }
+
             const stripeAccountId = project.company.stripeAccountId;
             console.log("StripeAccountId da empresa:", stripeAccountId);
 
