@@ -1,14 +1,12 @@
 
 import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
-import { decodeToken } from '../../config/decodeToken';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
 
 
 async function validCompany(request: Request) {
     const authHeader = returnPayLoad(request)
-    console.log(authHeader)
     if (authHeader == null) return {
         status: 'error',
         message: 'Token not found'
@@ -44,24 +42,140 @@ async function validCompany(request: Request) {
 export class FinanceDashboardController {
 
     async cashflow(req: Request, res: Response) {
+        const valid = await validCompany(req);
+        if (valid.status == 'error') {
+            return res.status(404).json({ error: valid.message });
+        }
         try {
-            const invoices = await prisma.invoice.findMany();
+            // 1. Buscar faturas (income)
+            const invoices = await prisma.invoice.findMany({
+                where: {
+                    companyId: valid.response?.id
+                },
+            });
 
-            const cashflow = invoices.reduce<Record<string, number>>((acc, invoice) => {
-                const month = new Date(invoice.createdAt).toLocaleString('default', { month: 'short' });
-                acc[month] = (acc[month] || 0) + Number(invoice.totalAmount);
+            // 2. Buscar custos de materiais
+            const costProjects = await prisma.costProject.findMany({
+                where: {
+                    ServiceProject: {
+                        Project: {
+                            company_id: valid.response?.id
+                        }
+                    }
+                },
+                select: {
+                    price: true,
+                    date_creation: true,
+                    ServiceProject: {
+                        select: {
+                            Project: {
+                                select: {
+                                    date_creation: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 3. Buscar projetos para calcular custos com funcionários
+            const projects = await prisma.project.findMany({
+                where: {
+                    company_id: valid.response?.id,
+                    status_project: {
+                        in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                    }
+                },
+                include: {
+                    serviceProject: {
+                        select: {
+                            UserServiceProject: {
+                                select: {
+                                    user_attendances: {
+                                        include: {
+                                            user: {
+                                                select: {
+                                                    hourly_price: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 4. Calcular custos com funcionários por mês/ano
+            const employeeCostsByMonth = projects.flatMap(project =>
+                project.serviceProject.flatMap(sp =>
+                    sp.UserServiceProject.flatMap(usp =>
+                        usp.user_attendances.map(attendance => {
+                            const hoursWorked = attendance.check_in_time && attendance.check_out_time
+                                ? dayjs(attendance.check_out_time).diff(
+                                    dayjs(attendance.check_in_time),
+                                    "hour",
+                                    true
+                                )
+                                : 0;
+
+                            return {
+                                cost: hoursWorked * Number(attendance.user.hourly_price || 0),
+                                date: attendance.check_in_time // Usamos a data do check-in
+                            };
+                        })
+                    )
+                )
+            ).reduce<Record<string, number>>((acc, { cost, date }) => {
+                if (!date) return acc;
+                const monthYear = dayjs(date).format('MMM YYYY');
+                acc[monthYear] = (acc[monthYear] || 0) + cost;
                 return acc;
             }, {});
 
+            // 5. Calcular custos de materiais por mês/ano
+            const materialCostsByMonth = costProjects.reduce<Record<string, number>>((acc, project) => {
+                const date = project.date_creation;
+                const monthYear = dayjs(date).format('MMM YYYY');
+                acc[monthYear] = (acc[monthYear] || 0) + Number(project.price);
+                return acc;
+            }, {});
+
+            // 6. Combinar todos os custos (materiais + funcionários)
+            const combinedExpensesByMonth = Object.entries(materialCostsByMonth).reduce(
+                (acc, [monthYear, amount]) => {
+                    acc[monthYear] = (acc[monthYear] || 0) + amount;
+                    return acc;
+                },
+                { ...employeeCostsByMonth }
+            );
+
+            // 7. Calcular income por mês/ano
+            const incomeByMonth = invoices.reduce<Record<string, number>>((acc, invoice) => {
+                const monthYear = dayjs(invoice.createdAt).format('MMM YYYY');
+                acc[monthYear] = (acc[monthYear] || 0) + Number(invoice.totalAmount);
+                return acc;
+            }, {});
+
+            // 8. Juntar todos os meses únicos e ordenar
+            const allMonths = Array.from(
+                new Set([...Object.keys(incomeByMonth), ...Object.keys(combinedExpensesByMonth)])
+            ).sort((a, b) =>
+                dayjs(a, 'MMM YYYY').valueOf() - dayjs(b, 'MMM YYYY').valueOf()
+            );
+
+            // 9. Formatar resposta final
+            const cashflow = allMonths.map(monthYear => ({
+                month: monthYear,
+                income: incomeByMonth[monthYear] || 0,
+                expense: combinedExpensesByMonth[monthYear] || 0,
+            }));
+
             res.json(cashflow);
         } catch (error) {
-            console.error("Error in findMany:", error);
-
-            if (error instanceof Error) {
-                return res.status(500).json({ error: error.message });
-            }
-
-            return res.status(500).json({ error: "Internal server error" });
+            console.error("Error in cashflow:", error);
+            return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
     async expenses(req: Request, res: Response) {
@@ -167,14 +281,14 @@ export class FinanceDashboardController {
 
             // Converte o objeto para um array no formato desejado
             const formattedExpenses = [{
-                label: 'Custo de material',
+                label: 'Material cost',
                 value: costProjectTotal,
                 color: "#017E76",
             }, {
-                label: 'Custo de funcionario',
+                label: 'Employee cost',
                 value: costWorkerTotal,
                 color: "#00DBD5",
-                }
+            }
             ];
 
             return res.json(formattedExpenses);
