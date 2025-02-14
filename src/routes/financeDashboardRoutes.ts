@@ -9,6 +9,7 @@ financeDashboard.get("/expenses", checkToken, financeDashboardController.expense
 financeDashboard.get("/profit-loss", checkToken, financeDashboardController.profitLoss);
 financeDashboard.get("/project", checkToken, financeDashboardController.project);
 financeDashboard.get("/sales", checkToken, financeDashboardController.sales);
+financeDashboard.get("/indicators", checkToken, financeDashboardController.indicators);
 
 export { financeDashboard }
 

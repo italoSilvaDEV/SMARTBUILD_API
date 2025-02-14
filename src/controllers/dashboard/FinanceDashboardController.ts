@@ -453,18 +453,27 @@ export class FinanceDashboardController {
     }
     async sales(req: Request, res: Response) {
         try {
-            const sales = await prisma.project.findMany({
+            const valid = await validCompany(req)
+            if (valid.status == 'error') {
+                return res.status(404).json({ error: valid.message });
+            }
+            // 1. Buscar faturas (income)
+            const sales = await prisma.invoice.findMany({
+                where: {
+                    companyId: valid.response?.id
+                },
                 select: {
-                    price: true,
-                    date_creation: true,
+                    totalAmount: true,
+                    createdAt: true,
                 },
             });
+          const profit = sales.reduce((sum, data)=>sum+Number(data.totalAmount),0)
 
             // Dicionário para armazenar as vendas por trimestre
             const salesByQuarter = sales.reduce<Record<string, number>>((acc, sale) => {
-                const month = new Date(sale.date_creation).getMonth() + 1;
+                const month = new Date(sale.createdAt).getMonth() + 1;
                 const quarter = `Q${Math.ceil(month / 3)}`;
-                acc[quarter] = (acc[quarter] || 0) + Number(sale.price);
+                acc[quarter] = (acc[quarter] || 0) + Number(sale.totalAmount);
                 return acc;
             }, {});
 
@@ -481,7 +490,7 @@ export class FinanceDashboardController {
                 value: salesData.find(s => s.quarter === q)?.value || 0,
             }));
 
-            return res.json(formattedSalesData);
+            return res.json({ profit, sales: formattedSalesData });
         } catch (error) {
             console.error("Error in findMany:", error);
 
@@ -492,6 +501,105 @@ export class FinanceDashboardController {
             return res.status(500).json({ error: "Internal server error" });
         }
     }
+    async indicators(req: Request, res: Response) {
+        try {
+            const valid = await validCompany(req)
+            if (valid.status === 'error') {
+                return res.status(404).json({ error: valid.message });
+            }
+
+            const companyId = valid.response?.id;
+
+            const [
+                estimates,
+                projects,
+                employees,
+                inProgressProjects,
+                pendingProjects,
+                completedProjects,
+                canceledProjects
+            ] = await Promise.all([
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            in: ["Pending", "Accepted", "Denied", "Waiting for Decision"]
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            notIn: ["Pending", "Accepted", "Denied", "Waiting for Decision"]
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.user.count({
+                    where: {
+                        office: {
+                            name: {
+                                equals: 'Worker'
+                            }
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            equals: "In Progress"
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            equals: "Waiting for Decision"
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            equals: "Finished"
+                        },
+                        company_id: companyId
+                    }
+                }),
+                prisma.project.count({
+                    where: {
+                        status_project: {
+                            equals: "Canceled"
+                        },
+                        company_id: companyId
+                    }
+                })
+            ]);
+
+            return res.json({
+                estimates,
+                projects,
+                employees,
+                customers: 0,
+                inProgressProjects,
+                pendingProjects,
+                completedProjects,
+                canceledProjects
+            });
+        } catch (error) {
+            console.error("Error in indicators:", error);
+
+            if (error instanceof Error) {
+                return res.status(500).json({ error: error.message });
+            }
+
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+
 }
 
 
