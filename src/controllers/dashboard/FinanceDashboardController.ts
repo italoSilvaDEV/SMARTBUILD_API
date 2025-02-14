@@ -1,8 +1,48 @@
 
 import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
+import { decodeToken } from '../../config/decodeToken';
+import { returnPayLoad } from '../../config/returnPayLoad';
+import dayjs from 'dayjs';
+
+
+async function validCompany(request: Request) {
+    const authHeader = returnPayLoad(request)
+    console.log(authHeader)
+    if (authHeader == null) return {
+        status: 'error',
+        message: 'Token not found'
+    };
+    const user = await prisma.user.findUnique({
+        where: {
+            id: authHeader.id
+        }
+    })
+    if (!user) return {
+        status: 'error',
+        message: 'User not found'
+    };
+    const response = await prisma.company.findUnique({
+        where: {
+            id: String(user.company_id)
+        }
+    })
+    if (response) {
+        return {
+            status: 'success',
+            response,
+
+        }
+    }
+
+    return {
+        status: 'error',
+        message: 'Company not found'
+    };
+}
 
 export class FinanceDashboardController {
+
     async cashflow(req: Request, res: Response) {
         try {
             const invoices = await prisma.invoice.findMany();
@@ -25,20 +65,100 @@ export class FinanceDashboardController {
         }
     }
     async expenses(req: Request, res: Response) {
+
+        const valid = await validCompany(req)
+        if (valid.status == 'error') {
+            return res.status(404).json({ error: valid.message });
+        }
         try {
-            const expenses = await prisma.costProject.findMany({
+            const costProject = await prisma.costProject.findMany({
                 select: {
                     price: true,
                     material_name: true,
                 },
+                where: {
+                    ServiceProject: {
+                        Project: {
+                            company_id: valid.response?.id
+                        }
+                    }
+                },
             });
-
+            // Contar projetos com status específicos dentro do período
+            const projects = await prisma.project.findMany({
+                where: {
+                    AND: [
+                        {
+                            status_project: {
+                                in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                            },
+                        },
+                        {
+                            company_id: valid.response?.id,
+                        },
+                    ]
+                },
+                include: {
+                    client: {
+                        select: {
+                            name: true,
+                            location: true,
+                            city_and_state: true,
+                        }
+                    },
+                    serviceProject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            UserServiceProject: {
+                                select: {
+                                    user_attendances: {
+                                        include: {
+                                            user: {
+                                                select: {
+                                                    name: true,
+                                                    hourly_price: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+            })
+            // Formatar e calcular horas trabalhadas
+            const formattedResult = projects.flatMap(i => i.serviceProject
+                .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
+                .flatMap(s => s.UserServiceProject
+                    .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
+                    .flatMap(user => user.user_attendances
+                        .map(x => {
+                            let hoursWorked = 0;
+                            if (x.check_out_time && x.check_in_time) {
+                                hoursWorked = dayjs(x.check_out_time).diff(
+                                    dayjs(x.check_in_time),
+                                    "hour",
+                                    true
+                                );
+                            }
+                            const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            const calculatedPrice = x.user.hourly_price
+                                ? x.user.hourly_price * roundedHours
+                                : 0;
+                            return ({
+                                ...x,
+                                hours_worked: roundedHours,
+                                price: calculatedPrice
+                            })
+                        })
+                    )
+                )
+            );
             // Dicionário para armazenar os totais por categoria
-            const expenseMap = expenses.reduce<Record<string, number>>((acc, exp) => {
-                const category = exp.material_name || "Other"; // Garante que não tenha categoria vazia
-                acc[category] = (acc[category] || 0) + Number(exp.price);
-                return acc;
-            }, {});
+            const costProjectTotal = costProject.reduce((sum, expense) => sum + Number(expense.price), 0);
+            const costWorkerTotal = parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2))
 
             // Gera uma cor aleatória
             const generateRandomColor = () => {
@@ -46,11 +166,16 @@ export class FinanceDashboardController {
             };
 
             // Converte o objeto para um array no formato desejado
-            const formattedExpenses = Object.entries(expenseMap).map(([label, value]) => ({
-                label,
-                value,
-                color: generateRandomColor(),
-            }));
+            const formattedExpenses = [{
+                label: 'Custo de material',
+                value: costProjectTotal,
+                color: "#017E76",
+            }, {
+                label: 'Custo de funcionario',
+                value: costWorkerTotal,
+                color: "#00DBD5",
+                }
+            ];
 
             return res.json(formattedExpenses);
         } catch (error) {
