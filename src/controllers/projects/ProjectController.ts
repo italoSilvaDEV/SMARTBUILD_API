@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-
+import nodemailer from "nodemailer";
 import { validate as isUUID } from "uuid";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
@@ -649,6 +649,27 @@ export class ProjectController {
           company_id: data.company_id
         },
       });
+      // enviar email para cliente
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: true,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+      // const templateEmail = NewUser(data.name.toUpperCase(), pass);
+      // const mailOptions = {
+      //   from: SMTP_CONFIG.user,
+      //   to: data.client.email,
+      //   subject: "Estimate from RP PRO PAINT & CONTRACTING, LLC",
+      //   html: templateEmail,
+      // };
+      // await transporter.sendMail(mailOptions);
+
       return res.status(201).json(project);
     } catch (error) {
       if (error instanceof Error) {
@@ -758,7 +779,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id ) {
+      if (!id) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
@@ -1193,13 +1214,13 @@ export class ProjectController {
 
   async getServiceProjectScheduleByIdUser(req: Request, res: Response) {
     const { user_id } = req.body;
-  
+
     try {
       // Validação do ID do usuário
       if (!user_id) {
         return res.status(400).json({ error: "User ID is required" });
       }
-  
+
       // Buscar os registros na tabela UserServiceProject
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
@@ -1222,12 +1243,12 @@ export class ProjectController {
           },
         },
       });
-  
+
       // Verificar se há registros encontrados
       if (userServiceProjects.length === 0) {
         return res.status(404).json({ error: "No service projects found for this user." });
       }
-  
+
       // Filtrar e transformar os dados no formato necessário
       const events = userServiceProjects
         .filter((userServiceProject) => {
@@ -1236,13 +1257,13 @@ export class ProjectController {
         })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
-  
+
           const initial = service.start_date; // Formato 'YYYY-MM-DD'
           const end = service.deadline; // Formato 'YYYY-MM-DD'
           const description = service.Project?.client?.location
             ? service.Project.client.location
             : "No address available";
-  
+
           return {
             id: service.Project?.id || service.id, // Garantir que há um ID válido
             service: service.name,
@@ -1251,7 +1272,7 @@ export class ProjectController {
             description,
           };
         });
-  
+
       return res.json(events);
     } catch (error) {
       if (error instanceof Error) {
@@ -1260,7 +1281,7 @@ export class ProjectController {
       return res.status(500).json({ error: "Internal server error" });
     }
   }
-  
+
 
 
   async getWorkerSchedule(req: Request, res: Response) {
@@ -1339,7 +1360,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id ) {
+      if (!id) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
