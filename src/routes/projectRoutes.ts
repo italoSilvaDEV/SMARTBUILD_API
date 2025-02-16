@@ -162,4 +162,6 @@ projectRoutes.get('/time-cards/all', checkToken, timeController.findMany)
 projectRoutes.get('/time-cards/worker_id', checkToken, timeController.findManyByIdWorker)
 projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies)
 
+projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.generateAndSendPdf);
+
 export { projectRoutes };
