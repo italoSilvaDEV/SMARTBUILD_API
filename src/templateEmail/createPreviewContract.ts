@@ -61,7 +61,7 @@ export const createPreviewContract = (name: string, value: string) => `
                                     <tr>
                                         <td align="center" bgcolor="#cfebf6" style="padding:30px;">
                                             <p style="font-size:16px;color:#333333;"><strong>Your Estimate is ready!</strong></p>
-                                            <p style="font-size:12px;color:#333333;">Total $ ${value}</p>
+                                            <p style="font-size:12px;color:#333333;">Total ${value}</p>
                                         </td>
                                     </tr>
                                 </table>

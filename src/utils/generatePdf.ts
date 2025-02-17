@@ -31,35 +31,36 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     const pdfDoc = await PDFDocument.create();
     const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
 
+    // Adicionar página
     const addPage = (): PDFPage => {
         const page = pdfDoc.addPage([600, 800]);
-        page.setFontSize(10);
+        page.setFontSize(fontSize);
         page.setFont(timesRomanFont);
         return page;
     };
 
     let page = addPage();
 
-    //  Carregar imagem local no backend
-    const imagePath = path.join(__dirname, '../../public/pdf/captura.png'); 
+    // Carrega a imagem local
+    const imagePath = path.join(__dirname, '../../public/pdf/captura.png');
     const imageBytes = loadImageAsUint8Array(imagePath);
     const image = await pdfDoc.embedPng(imageBytes);
     const imageDims = image.scale(0.5);
 
+    // Cabeçalho
     const addHeader = (page: PDFPage) => {
-        page.drawText('ESTIMATE', { x: 50, y: 750, size: 16, color: rgb(0, 0, 1) });
-        page.drawText('RP PRO CONTRACTION, LLC', { x: 50, y: 735, size: 10, color: rgb(0, 0, 0) })
-        page.drawText('7 Hansom Dr', { x: 50, y: 725, size: 10, color: rgb(0, 0, 0) })
-        page.drawText('Merrimack, NH 03054', { x: 50, y: 715, size: 10, color: rgb(0, 0, 0) })
+        page.drawText("ESTIMATE", { x: 50, y: 750, size: 16, color: rgb(0, 0, 1) });
+        page.drawText("RP PRO CONTRACTION, LLC", { x: 50, y: 735, size: fontSize, color: rgb(0, 0, 0) });
+        page.drawText("7 Hansom Dr", { x: 50, y: 725, size: fontSize, color: rgb(0, 0, 0) });
+        page.drawText("Merrimack, NH 03054", { x: 50, y: 715, size: fontSize, color: rgb(0, 0, 0) });
 
         page.drawImage(image, { x: 370, y: 680, width: imageDims.width, height: imageDims.height });
 
         const contactText = [
-            'info@rpprocontracting.com',
-            '+1 (603) 557-2292',
-            'http://www.rpprocontracting.com'
+            "info@rpprocontracting.com",
+            "+1 (603) 557-2292",
+            "http://www.rpprocontracting.com",
         ];
-
         contactText.forEach((line, index) => {
             page.drawText(line, {
                 x: 230,
@@ -73,19 +74,8 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
 
     addHeader(page);
 
-    const initialY = 630;
-    const textInitialY = initialY + 30;
-    const spacing = 14;
-
-    page.drawRectangle({
-        x: 0,
-        y: initialY - spacing * 4,
-        width: 600,
-        height: spacing * 6 + 20,
-        color: rgb(0.89, 0.97, 1),
-    });
-
-    const wrapTextStandard = (text: string, maxWidth: number) => {
+    // Função de quebra de texto (igual ao front)
+    const wrapText = (text: string, maxWidth: number) => {
         const words = text.replace(/\n/g, ' \n ').split(' ');
         let lines: string[] = [];
         let line = '';
@@ -108,88 +98,227 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
         return lines;
     };
 
-    data.columnText1.forEach((text, index) => {
-        const wrappedText = wrapTextStandard(text, 150);
-        wrappedText.forEach((line, lineIndex) => {
-            page.drawText(line, {
-                x: 50,
-                y: textInitialY - (index * spacing) - (lineIndex * fontSize),
-                size: 10,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-        });
-    });
+    // Sessão das colunas (nome, endereço, etc.)
+    const initialY = 630;
+    const textInitialY = initialY + 30;
+    const spacing = 6;
+    let currentLocY = textInitialY;
 
-    data.columnText2.forEach((text, index) => {
-        const wrappedText = wrapTextStandard(text, 150);
-        wrappedText.forEach((line, lineIndex) => {
-            page.drawText(line, {
-                x: 300,
-                y: textInitialY - (index * spacing) - (lineIndex * fontSize),
-                size: 10,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-        });
-    });
+    const maxItems = Math.max(data.columnText1.length, data.columnText2.length);
+    const renderedItems: {
+        wrappedText1: string[];
+        wrappedText2: string[];
+        linesCount: number;
+    }[] = [];
 
-    //  Adicionar Tabela
+    for (let i = 0; i < maxItems; i++) {
+        const text1 = data.columnText1[i] || "";
+        const text2 = data.columnText2[i] || "";
+        const wrappedText1 = wrapText(text1, 150); // usa a função wrapText já definida
+        const wrappedText2 = wrapText(text2, 150);
+        const linesCount = Math.max(wrappedText1.length, wrappedText2.length);
+        renderedItems.push({ wrappedText1, wrappedText2, linesCount });
+        // Atualiza o currentY para cada item
+        currentLocY -= linesCount * fontSize + spacing;
+    }
+
+    // Agora, definimos o retângulo com altura dinâmica
+    const rectangleTop = textInitialY + 25;      // margem superior (pode ajustar)
+    const rectangleBottom = currentLocY - 0;         // margem inferior
+    const rectangleHeight = rectangleTop - rectangleBottom;
+
+    page.drawRectangle({
+        x: 0,
+        y: rectangleBottom,
+        width: 600,
+        height: rectangleHeight,
+        color: rgb(0.89, 0.97, 1),
+      });
+  
+      // Agora, renderizamos os textos das duas colunas dentro do retângulo
+      let renderY = textInitialY;
+      renderedItems.forEach(({ wrappedText1, wrappedText2, linesCount }) => {
+        // Para cada item, desenhamos todas as linhas, garantindo que ambas as colunas fiquem alinhadas
+        for (let i = 0; i < linesCount; i++) {
+          const line1 = wrappedText1[i] || "";
+          const line2 = wrappedText2[i] || "";
+          page.drawText(line1, {
+            x: 50,
+            y: renderY - i * fontSize,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+          });
+          page.drawText(line2, {
+            x: 300,
+            y: renderY - i * fontSize + 3,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+          });
+        }
+        // Atualiza a posição para o próximo item
+        renderY -= linesCount * fontSize + spacing;
+      });
+
+    // Seção da Tabela
+    const marginX = 50;
+
     const tableHeaders = [
         { text: '#', x: 50 },
-        // { text: 'Date', x: 80 },
-        { text: 'Product or Service', x: 140 },
-        { text: 'Description', x: 240 },
+        { text: 'Product or Service', x: 80 },
+        { text: 'Description', x: 180 },
         { text: 'Qty', x: 400 },
         { text: 'Rate', x: 450 },
         { text: 'Amount', x: 500 },
     ];
 
     let tableY = 480;
-    page.drawLine({ start: { x: 50, y: tableY - 5 }, end: { x: 550, y: tableY - 5 }, thickness: 1, color: rgb(0, 0, 0) });
 
+    // Desenha os cabeçalhos da tabela
     tableHeaders.forEach(header => {
         page.drawText(header.text, {
-            x: header.x,
-            y: tableY,
+          x: header.x,
+          y: tableY,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
+      });
+
+    // Linha horizontal abaixo do cabeçalho
+    page.drawLine({
+        start: { x: marginX, y: tableY - spacing / 2 },
+        end: { x: 550, y: tableY - spacing / 2 },
+        thickness: 0.5,
+        color: rgb(0.8, 0.8, 0.8),
+    });
+
+    // Função para adicionar nova página na tabela
+    const addNewPageAndContinueTable = () => {
+        page = addPage();
+        tableY = 750;
+    };
+
+    let currentY = tableY - spacing - spacing;
+
+    // Renderiza as linhas da tabela
+    data.tableData.forEach((row) => {
+        // Quebra de texto para "Product or Service" (80) e "Description" (150)
+        const productLines = wrapText(row.productOrService, 80);
+        const descriptionLines = wrapText(row.description, 150);
+        const maxLines = Math.max(productLines.length, descriptionLines.length, 1);
+        const rowHeight = maxLines * fontSize + spacing;
+
+        // Nova página se não couber
+        if (currentY - rowHeight < 50) {
+            addNewPageAndContinueTable();
+            currentY = 750 - spacing;
+        }
+
+        // Offsets de centralização vertical
+        const offsetSingle = (rowHeight - fontSize) / 2;
+        const offsetProduct = (rowHeight - productLines.length * fontSize) / 2;
+        const offsetDescription = (rowHeight - descriptionLines.length * fontSize) / 2;
+
+        // Coluna "#"
+        page.drawText(row.id.toString(), {
+            x: 50,
+            y: currentY - offsetSingle,
             size: fontSize,
             font: timesRomanFont,
             color: rgb(0, 0, 0),
         });
-    });
 
-    let currentY = tableY - spacing - spacing;
+        // Coluna "Product or Service"
+        productLines.forEach((line, index) => {
+            page.drawText(line, {
+                x: 80,
+                y: currentY - offsetProduct - (index * fontSize),
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+        });
 
-    data.tableData.forEach((row) => {
-        const rowHeight = 20;
+        // Coluna "Description"
+        descriptionLines.forEach((line, index) => {
+            page.drawText(line, {
+                x: 180,
+                y: currentY - offsetDescription - (index * fontSize),
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+        });
 
-        if (currentY - rowHeight < 50) {
-            page = addPage();
-            currentY = 750 - spacing;
-        }
+        // Colunas "Qty", "Rate", "Amount"
+        page.drawText(row.qty.toString(), {
+            x: 400,
+            y: currentY - offsetSingle,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+        });
 
-        page.drawText(row.id.toString(), { x: 50, y: currentY, size: fontSize, font: timesRomanFont });
-        page.drawText(row.productOrService, { x: 140, y: currentY, size: fontSize, font: timesRomanFont });
-        page.drawText(row.description, { x: 240, y: currentY, size: fontSize, font: timesRomanFont });
-        page.drawText(row.qty.toString(), { x: 400, y: currentY, size: fontSize, font: timesRomanFont });
-        page.drawText(row.rate.toFixed(2), { x: 450, y: currentY, size: fontSize, font: timesRomanFont });
-        page.drawText(row.amount.toFixed(2), { x: 500, y: currentY, size: fontSize, font: timesRomanFont });
+        page.drawText(row.rate.toFixed(2), {
+            x: 450,
+            y: currentY - offsetSingle,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+        });
 
-        // Linha horizontal
-        page.drawLine({ start: { x: 50, y: currentY - 5 }, end: { x: 550, y: currentY - 5 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText(row.amount.toFixed(2), {
+            x: 500,
+            y: currentY - offsetSingle,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+        });
+
+        // Linha horizontal para separar
+        page.drawLine({
+            start: { x: marginX, y: currentY - rowHeight + spacing / 2 },
+            end: { x: 550, y: currentY - rowHeight + spacing / 2 },
+            thickness: 0.5,
+            color: rgb(0.8, 0.8, 0.8),
+        });
 
         currentY -= rowHeight + spacing;
     });
 
-    page.drawText(`Total:`, { x: 350, y: currentY - 20, size: 12, color: rgb(0, 0, 0) });
-    page.drawText(`${data.total}`, { x: 500, y: currentY - 20, size: 12, color: rgb(0, 0, 0) });
+    // Se não couber no final
+    if (currentY < 50) {
+        addNewPageAndContinueTable();
+        currentY = 750 - spacing;
+    }
+
+    // Sessão do Total
+    page.drawText('Total', {
+        x: 350,
+        y: currentY - 20,
+        size: fontSize,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+    });
+
+    page.drawText(data.total, {
+        x: 500,
+        y: currentY - 20,
+        size: fontSize,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+    });
+
     page.drawLine({
         start: { x: 350, y: currentY - 30 },
         end: { x: 550, y: currentY - 30 },
         thickness: 0.5,
         color: rgb(0, 0, 0),
-    })
+    });
 
+    // Texto final (nota ao cliente)
     const noteText = `
   Note to customer
 1. Deposit - A non-refundable deposit of 30% is due upon signing
@@ -217,58 +346,24 @@ We are fully insured, should you require any proof of insurance
 please feel free to ask.
   `;
 
-  const addNewPageAndContinueTable = () => {
-    page = addPage();
-    tableY = 750;
-};
+    // Renderizar o texto final com quebra de linha
+    let noteY = currentY - 60;
+    const noteLines = wrapText(noteText, 500);
 
-const wrapText = (text: string, maxWidth: number) => {
-    const paragraphs = text.split("\n"); // Mantém parágrafos separados
-    let lines: string[] = [];
-
-    paragraphs.forEach((paragraph) => {
-        if (paragraph.trim() === "") {
-            lines.push(""); // Mantém espaçamentos entre seções
-            return;
+    noteLines.forEach((line) => {
+        if (noteY < 50) {
+            addNewPageAndContinueTable();
+            noteY = 750 - spacing;
         }
-
-        let words = paragraph.split(" ");
-        let line = "";
-
-        words.forEach((word) => {
-            let testLine = line + word + " ";
-            let testWidth = timesRomanFont.widthOfTextAtSize(testLine, fontSize);
-            if (testWidth > maxWidth) {
-                lines.push(line.trim());
-                line = word + " ";
-            } else {
-                line = testLine;
-            }
+        page.drawText(line, {
+            x: 50,
+            y: noteY,
+            size: fontSize - 2,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
         });
-
-        lines.push(line.trim()); // Adiciona a última linha do parágrafo
+        noteY -= fontSize;
     });
-
-    return lines;
-};
-
-const noteLines = wrapText(noteText, 500);
-let noteY = currentY - 60;
-
-noteLines.forEach((line) => {
-    if (noteY < 50) {
-        addNewPageAndContinueTable();
-        noteY = 750 - spacing;
-    }
-    page.drawText(line, {
-        x: 50,
-        y: noteY,
-        size: fontSize - 2,
-        font: timesRomanFont,
-        color: rgb(0, 0, 0),
-    });
-    noteY -= fontSize;
-});
 
     // Salvar o PDF na pasta temporária
     const pdfBytes = await pdfDoc.save();
