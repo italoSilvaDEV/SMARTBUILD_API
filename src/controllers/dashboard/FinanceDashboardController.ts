@@ -220,6 +220,19 @@ export class FinanceDashboardController {
                             city_and_state: true,
                         }
                     },
+
+                    workedHours: {
+                        select: {
+                            id: true,
+                            project_id: true,
+                            name_user: true,
+                            amount_of_hours: true,
+                            hourly_price: true,
+                            date_creation: true,
+                            start_date: true,
+                            end_date: true
+                        }
+                    },
                     serviceProject: {
                         select: {
                             id: true,
@@ -270,14 +283,22 @@ export class FinanceDashboardController {
                     )
                 )
             );
+
+            // Formatar e calcular horas trabalhadas
+            const workerCost = projects.flatMap(i => i.workedHours.map(item => {
+                return ({
+                    id: item.id,
+                    price: item.amount_of_hours !== null
+                        ? Number(item.amount_of_hours) * Number(item.hourly_price)
+                        : Number(item.hourly_price)
+                })
+            }
+
+            )
+            );
             // Dicionário para armazenar os totais por categoria
             const costProjectTotal = costProject.reduce((sum, expense) => sum + Number(expense.price), 0);
-            const costWorkerTotal = parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2))
-
-            // Gera uma cor aleatória
-            const generateRandomColor = () => {
-                return `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`;
-            };
+            const costWorkerTotal = parseFloat((formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2))+(workerCost.reduce((sum, expense)=> sum + Number(expense.price),0)))
 
             // Converte o objeto para um array no formato desejado
             const formattedExpenses = [{
@@ -467,7 +488,7 @@ export class FinanceDashboardController {
                     createdAt: true,
                 },
             });
-          const profit = sales.reduce((sum, data)=>sum+Number(data.totalAmount),0)
+            const profit = sales.reduce((sum, data) => sum + Number(data.totalAmount), 0)
 
             // Dicionário para armazenar as vendas por trimestre
             const salesByQuarter = sales.reduce<Record<string, number>>((acc, sale) => {
