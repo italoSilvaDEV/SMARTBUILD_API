@@ -164,14 +164,14 @@ export class FinanceDashboardController {
             const materialCostsByMonth = costProjects.reduce<Record<string, number>>((acc, project) => {
                 const date = project.date_creation;
                 const monthYear = dayjs(date).format('MMM YYYY');
-                acc[monthYear] = (acc[monthYear] || 0) + Number(project.price);
+                acc[monthYear] = Number(Number((acc[monthYear] || 0) + Number(project.price)).toFixed(2));
                 return acc;
             }, {});
 
             // 6. Combinar todos os custos (materiais + funcionários)
             const combinedExpensesByMonth = Object.entries(materialCostsByMonth).reduce(
                 (acc, [monthYear, amount]) => {
-                    acc[monthYear] = (acc[monthYear] || 0) + amount;
+                    acc[monthYear] = Number(Number((acc[monthYear] || 0) + amount).toFixed(2));
                     return acc;
                 },
                 { ...employeeCostsByMonth }
@@ -180,8 +180,8 @@ export class FinanceDashboardController {
             // 7. Calcular income por mês/ano
             const incomeByMonth = invoices.reduce<Record<string, number>>((acc, invoice) => {
                 const monthYear = dayjs(invoice.createdAt).format('MMM YYYY');
-                acc[monthYear] = (acc[monthYear] || 0) + Number(invoice.totalAmount);
-                return acc;
+                acc[monthYear] = Number(Number((acc[monthYear] || 0) + Number(invoice.totalAmount)).toFixed(2));
+                return (acc);
             }, {});
 
             // 8. Juntar todos os meses únicos e ordenar
@@ -194,8 +194,8 @@ export class FinanceDashboardController {
             // 9. Formatar resposta final
             const cashflow = allMonths.map(monthYear => ({
                 month: monthYear,
-                income: Number(incomeByMonth[monthYear]).toFixed(2) || 0,
-                expense: Number(combinedExpensesByMonth[monthYear]).toFixed(2) || 0,
+                income: (incomeByMonth[monthYear]) || 0,
+                expense: (combinedExpensesByMonth[monthYear]) || 0,
             }));
 
             res.json(cashflow);
