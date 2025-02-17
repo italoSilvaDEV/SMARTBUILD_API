@@ -87,6 +87,18 @@ export class FinanceDashboardController {
                     }
                 },
                 include: {
+                    workedHours: {
+                        select: {
+                            id: true,
+                            project_id: true,
+                            name_user: true,
+                            amount_of_hours: true,
+                            hourly_price: true,
+                            date_creation: true,
+                            start_date: true,
+                            end_date: true
+                        }
+                    },
                     serviceProject: {
                         select: {
                             UserServiceProject: {
@@ -107,9 +119,10 @@ export class FinanceDashboardController {
                 }
             });
 
-            // 4. Calcular custos com funcionários por mês/ano
-            const employeeCostsByMonth = projects.flatMap(project =>
-                project.serviceProject.flatMap(sp =>
+            // 4. Calcular custos com funcionários por mês/ano (agora incluindo workedHours)
+            const employeeCostsByMonth = projects.flatMap(project => {
+                // Custos de user_attendances
+                const attendanceCosts = project.serviceProject.flatMap(sp =>
                     sp.UserServiceProject.flatMap(usp =>
                         usp.user_attendances.map(attendance => {
                             const hoursWorked = attendance.check_in_time && attendance.check_out_time
@@ -122,12 +135,25 @@ export class FinanceDashboardController {
 
                             return {
                                 cost: hoursWorked * Number(attendance.user.hourly_price || 0),
-                                date: attendance.check_in_time // Usamos a data do check-in
+                                date: attendance.check_in_time
                             };
                         })
                     )
-                )
-            ).reduce<Record<string, number>>((acc, { cost, date }) => {
+                );
+
+                // Custos de workedHours
+                const workedHoursCosts = project.workedHours.map(item => {
+                    const cost = item.amount_of_hours !== null
+                        ? Number(item.amount_of_hours) * Number(item.hourly_price)
+                        : Number(item.hourly_price)
+                    return {
+                        cost,
+                        date: item.date_creation // Usamos a data de criação do registro
+                    };
+                });
+
+                return [...attendanceCosts, ...workedHoursCosts];
+            }).reduce<Record<string, number>>((acc, { cost, date }) => {
                 if (!date) return acc;
                 const monthYear = dayjs(date).format('MMM YYYY');
                 acc[monthYear] = (acc[monthYear] || 0) + cost;
@@ -220,7 +246,6 @@ export class FinanceDashboardController {
                             city_and_state: true,
                         }
                     },
-
                     workedHours: {
                         select: {
                             id: true,
