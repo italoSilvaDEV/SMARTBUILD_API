@@ -513,7 +513,7 @@ export class FinanceDashboardController {
             }));
             // Dicionário para armazenar os totais por categoria
             const costProjectTotal = costProject.reduce((sum, expense) => sum + Number(expense.price), 0);
-            const costWorkerTotal = Number(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0))).toFixed(2)
+            const costWorkerTotal = Number(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0)))
             const profit = Number(costProjectTotal + costWorkerTotal).toFixed(2)
 
             const cost = costWorkerTotal
