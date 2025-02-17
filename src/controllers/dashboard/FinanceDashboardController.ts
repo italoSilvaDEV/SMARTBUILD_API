@@ -516,11 +516,10 @@ export class FinanceDashboardController {
             const costWorkerTotal = Number(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0)))
             const profit = Number(costProjectTotal + costWorkerTotal).toFixed(2)
 
-            const cost = costWorkerTotal
             return res.json({
                 countProject,
-                profit,
-                cost
+                profit: Number(profit),
+                cost: Number(costWorkerTotal.toFixed(2))
             })
         } catch (error) {
             console.error("Error in project:", error);
