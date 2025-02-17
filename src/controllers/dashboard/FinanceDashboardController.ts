@@ -194,8 +194,8 @@ export class FinanceDashboardController {
             // 9. Formatar resposta final
             const cashflow = allMonths.map(monthYear => ({
                 month: monthYear,
-                income: incomeByMonth[monthYear] || 0,
-                expense: combinedExpensesByMonth[monthYear] || 0,
+                income: incomeByMonth[monthYear].toFixed(2) || 0,
+                expense: combinedExpensesByMonth[monthYear].toFixed(2) || 0,
             }));
 
             res.json(cashflow);
@@ -319,9 +319,26 @@ export class FinanceDashboardController {
                 })
             }));
             // Dicionário para armazenar os totais por categoria
-            const costProjectTotal = costProject.reduce((sum, expense) => sum + Number(expense.price), 0);
-            const costWorkerTotal = parseFloat((formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0)))
+            const costProjectTotal = parseFloat(
+                costProject
+                    .reduce((sum, expense) => sum + Number(expense.price), 0)
+                    .toFixed(2) // Fixa em 2 casas decimais
+            );
 
+            const formattedResultTotal = parseFloat(
+                formattedResult
+                    .reduce((acc, i) => acc + (i.price || 0), 0)
+                    .toFixed(2)
+            );
+
+            const workerCostTotal = parseFloat(
+                workerCost
+                    .reduce((sum, expense) => sum + Number(expense.price), 0)
+                    .toFixed(2)
+            );
+            const costWorkerTotal = parseFloat(
+                (formattedResultTotal + workerCostTotal).toFixed(2)
+            );
             // Converte o objeto para um array no formato desejado
             const formattedExpenses = [{
                 label: 'Material cost',
@@ -496,8 +513,8 @@ export class FinanceDashboardController {
             }));
             // Dicionário para armazenar os totais por categoria
             const costProjectTotal = costProject.reduce((sum, expense) => sum + Number(expense.price), 0);
-            const costWorkerTotal = parseFloat((formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0)))
-            const profit = costProjectTotal + costWorkerTotal
+            const costWorkerTotal = Number(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0) + (workerCost.reduce((sum, expense) => sum + Number(expense.price), 0))).toFixed(2)
+            const profit = Number(costProjectTotal + costWorkerTotal).toFixed(2)
 
             const cost = costWorkerTotal
             return res.json({
