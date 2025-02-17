@@ -2,11 +2,16 @@ import dayjs from "dayjs";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-
+import nodemailer from "nodemailer";
 import { validate as isUUID } from "uuid";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
+import { createPreviewContract } from "../../templateEmail/createPreviewContract";
+import { generatePdf } from "../../utils/generatePdf";
+import fs from "fs";
+import path from "path";
+
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -758,7 +763,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id ) {
+      if (!id) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
@@ -1193,13 +1198,13 @@ export class ProjectController {
 
   async getServiceProjectScheduleByIdUser(req: Request, res: Response) {
     const { user_id } = req.body;
-  
+
     try {
       // Validação do ID do usuário
       if (!user_id) {
         return res.status(400).json({ error: "User ID is required" });
       }
-  
+
       // Buscar os registros na tabela UserServiceProject
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
@@ -1222,12 +1227,12 @@ export class ProjectController {
           },
         },
       });
-  
+
       // Verificar se há registros encontrados
       if (userServiceProjects.length === 0) {
         return res.status(404).json({ error: "No service projects found for this user." });
       }
-  
+
       // Filtrar e transformar os dados no formato necessário
       const events = userServiceProjects
         .filter((userServiceProject) => {
@@ -1236,13 +1241,13 @@ export class ProjectController {
         })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
-  
+
           const initial = service.start_date; // Formato 'YYYY-MM-DD'
           const end = service.deadline; // Formato 'YYYY-MM-DD'
           const description = service.Project?.client?.location
             ? service.Project.client.location
             : "No address available";
-  
+
           return {
             id: service.Project?.id || service.id, // Garantir que há um ID válido
             service: service.name,
@@ -1251,7 +1256,7 @@ export class ProjectController {
             description,
           };
         });
-  
+
       return res.json(events);
     } catch (error) {
       if (error instanceof Error) {
@@ -1260,7 +1265,7 @@ export class ProjectController {
       return res.status(500).json({ error: "Internal server error" });
     }
   }
-  
+
 
 
   async getWorkerSchedule(req: Request, res: Response) {
@@ -1339,7 +1344,7 @@ export class ProjectController {
 
     try {
       // Validação do ID
-      if (!id ) {
+      if (!id) {
         return res.status(400).json({ error: "Invalid or missing 'id'" });
       }
 
@@ -1487,6 +1492,106 @@ export class ProjectController {
   //     return res.json({ error: "Erro interno do servidor" });
   //   }
   // }
+
+  async generateAndSendPdf(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Buscar todas as informações do projeto com base no ID
+      const project = await prisma.project.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          serviceProject: true,
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.client) {
+        return res.status(400).json({ error: "Client information is missing" });
+      }
+
+      // Transformar os dados do projeto no formato esperado por generatePdf
+      const tableData = project.serviceProject.map((service, index) => {
+        const rate = Number(service.price) * Number(service.hours);
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: service.name,
+          description: service.description,
+          qty: Number(service.hours),
+          rate,
+          amount: rate,
+        };
+      });
+
+      const total = `$${tableData.reduce((sum, row) => sum + row.amount, 0).toFixed(2)}`;
+
+      const columnText1 = [
+        project.client?.name || "",
+        "Bill to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      const columnText2 = [
+        "",
+        "Ship to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      const data = { tableData, total, columnText1, columnText2 };
+
+      // Gerar o PDF
+      const pdfPath = await generatePdf(data, project.client.name);
+
+      // Configurar transporte de e-mail
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: false, // ⚠️ Alterado para `false` para evitar problemas com certificados SSL/TLS
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Criar template do e-mail
+      const templateEmail = createPreviewContract(project.client?.name.toUpperCase(), total);
+
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: project.client.email,
+        subject: "Estimate from RP PRO PAINT & CONTRACTING, LLC",
+        html: templateEmail,
+        attachments: [
+          {
+            filename: "estimate.pdf",
+            path: pdfPath,
+          },
+        ],
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      // Remover o PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 5000);
+
+      return res.status(200).json({ message: "PDF enviado com sucesso para o cliente!" });
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : "Erro interno do servidor" });
+    }
+  }
+
 
 
 }

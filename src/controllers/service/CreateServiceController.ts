@@ -10,6 +10,7 @@ export class CreateServiceController {
                 type_variable,
                 price_type,
                 price_fixe,
+                description,
                 price_minimum,
                 price_maximum,
                 company_id
@@ -42,6 +43,7 @@ export class CreateServiceController {
                         service_name,
                         type_variable,
                         price_type,
+                        description,
                         price_fixe,
                         sub_category_id, 
                         company_id
@@ -56,6 +58,7 @@ export class CreateServiceController {
                         service_name,
                         type_variable,
                         price_type,
+                        description,
                         price_minimum,
                         price_maximum,
                         sub_category_id,
@@ -66,7 +69,7 @@ export class CreateServiceController {
                 return response.status(400).json({ error: "Invalid price type" });
             }
 
-            return response.status(201).json({ error: "Service created successfully" });
+            return response.status(201).json({ message: "Service created successfully" });
         } catch (error) {
             if (error instanceof Error) {
                 return response.status(500).json({ error: error.message });

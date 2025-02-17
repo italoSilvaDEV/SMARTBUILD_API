@@ -150,6 +150,7 @@ model Service {
   ServiceProject  ServiceProject[]
   company         Company?         @relation(fields: [company_id], references: [id])
   company_id      String?
+  description     String? @db.Text
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
@@ -442,7 +443,7 @@ model Invoice {
   invoiceUrl      String?
 
   percentageCoefficient Decimal?
-  description String? @db.Text
+  description           String?  @db.Text
 
   // Relacionamento com Project e Company
   project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
@@ -451,8 +452,8 @@ model Invoice {
   company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id])
   companyId String?
 
-  user_create    User?   @relation(fields: [user_id], references: [id])
-  user_id String?
+  user_create User?   @relation(fields: [user_id], references: [id])
+  user_id     String?
 
   InvoiceSendHistory InvoiceSendHistory[]
 }
@@ -466,6 +467,6 @@ model InvoiceSendHistory {
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id])
 
-  user_create    User?   @relation(fields: [user_id], references: [id])
-  user_id String?
+  user_create User?   @relation(fields: [user_id], references: [id])
+  user_id     String?
 }
