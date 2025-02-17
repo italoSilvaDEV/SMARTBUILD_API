@@ -194,8 +194,8 @@ export class FinanceDashboardController {
             // 9. Formatar resposta final
             const cashflow = allMonths.map(monthYear => ({
                 month: monthYear,
-                income: incomeByMonth[monthYear].toFixed(2) || 0,
-                expense: combinedExpensesByMonth[monthYear].toFixed(2) || 0,
+                income: Number(incomeByMonth[monthYear]).toFixed(2) || 0,
+                expense: Number(combinedExpensesByMonth[monthYear]).toFixed(2) || 0,
             }));
 
             res.json(cashflow);
