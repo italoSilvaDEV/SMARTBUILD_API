@@ -69,6 +69,11 @@ export class ProjectController {
     if (search) {
       query.OR = [
         {
+          contract_number: {
+            equals: Number(search)
+          }
+        },
+        {
           client: {
             name: {
               contains: search,
@@ -643,6 +648,17 @@ export class ProjectController {
           company_id: data.company_id
         },
       });
+
+      // Obter o maior número de contrato para a empresa especificada
+      const latestProject = await prisma.project.findFirst({
+        where: { company_id: data.company_id, contract_number: { not: null } },
+        orderBy: { contract_number: 'desc' }, // Ordenar de forma decrescente
+      });
+
+      // Definir o número do contrato como o próximo número após o maior encontrado, ou 1000 se não houver
+      const contractNumber = latestProject && latestProject.contract_number ? latestProject.contract_number + 1 : 1000;
+
+      // Criação do projeto
       const project = await prisma.project.create({
         data: {
           seller_user_id: data.seller_user_id,
@@ -651,7 +667,8 @@ export class ProjectController {
           client_id: result.id,
           start_date: data.client.start_date,
           deadline: data.client.deadline,
-          company_id: data.company_id
+          company_id: data.company_id,
+          contract_number: contractNumber // Atribui o número de contrato gerado
         },
       });
       return res.status(201).json(project);
