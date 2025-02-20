@@ -1571,7 +1571,7 @@ export class ProjectController {
       const transporter = nodemailer.createTransport({
         host: SMTP_CONFIG.host,
         port: SMTP_CONFIG.port,
-        secure: false, // ⚠️ Alterado para `false` para evitar problemas com certificados SSL/TLS
+        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
         auth: {
           user: SMTP_CONFIG.user,
           pass: SMTP_CONFIG.pass,
