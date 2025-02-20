@@ -42,7 +42,7 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     let page = addPage();
 
     // Carrega a imagem local
-    const imagePath = path.join(__dirname, '../../public/pdf/captura.png');
+    const imagePath = path.join(__dirname, '../img/captura.png');
     const imageBytes = loadImageAsUint8Array(imagePath);
     const image = await pdfDoc.embedPng(imageBytes);
     const imageDims = image.scale(0.5);
@@ -367,7 +367,7 @@ please feel free to ask.
 
     // Salvar o PDF na pasta temporária
     const pdfBytes = await pdfDoc.save();
-    const filePath = path.join(__dirname, `../../public/pdf/${clientName.replace(/\s+/g, '_')}_estimate.pdf`);
+    const filePath = path.join(__dirname, `../../public/tmp/estimate/${clientName.replace(/\s+/g, '_')}_estimate.pdf`);
 
     fs.writeFileSync(filePath, pdfBytes);
     return filePath;

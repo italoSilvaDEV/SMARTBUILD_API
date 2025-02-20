@@ -3,14 +3,13 @@ import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import nodemailer from "nodemailer";
-import { validate as isUUID } from "uuid";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
-import path from "path";
+
 
 export interface INewProject {
   seller_user_id: string;
