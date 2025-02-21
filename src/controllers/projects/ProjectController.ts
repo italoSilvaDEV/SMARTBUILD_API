@@ -10,7 +10,6 @@ import { createPreviewContract } from "../../templateEmail/createPreviewContract
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 
-
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -46,22 +45,24 @@ export interface IServicesData {
 }
 
 export interface IputServiceData extends IServicesData {
-  id: string
+  id: string;
 }
 
 export class ProjectController {
-
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search } = req.query;
     const query: any = {};
-    if (!company_id) return res.status(404).json({ error: "Company_id is required!" })
+    if (!company_id)
+      return res.status(404).json({ error: "Company_id is required!" });
     if (company_id) query.company_id = { equals: String(company_id) };
-
 
     if (id_seller) query.seller_user_id = { equals: id_seller };
 
     if (status_project) {
-      const statusArray = typeof status_project === 'string' ? status_project.split(',') : [status_project];
+      const statusArray =
+        typeof status_project === "string"
+          ? status_project.split(",")
+          : [status_project];
       query.status_project = { in: statusArray };
     }
 
@@ -69,14 +70,13 @@ export class ProjectController {
       query.OR = [
         {
           contract_number: {
-            equals: Number(search)
-          }
+            equals: Number(search),
+          },
         },
         {
           client: {
             name: {
               contains: search,
-
             },
           },
         },
@@ -84,7 +84,6 @@ export class ProjectController {
           user: {
             name: {
               contains: search,
-
             },
           },
         },
@@ -95,7 +94,6 @@ export class ProjectController {
             },
           },
         },
-
       ];
     }
 
@@ -112,13 +110,13 @@ export class ProjectController {
             include: {
               service: true,
               stages: true,
-            }
+            },
           },
           workedHours: true,
           invoiceCostProject: {
             include: {
-              costProject: true
-            }
+              costProject: true,
+            },
           },
           user: {
             select: {
@@ -126,23 +124,29 @@ export class ProjectController {
               avatar: true,
               email: true,
               name: true,
-            }
-          }
+            },
+          },
         },
         skip,
         take,
         orderBy: {
-          date_update: "desc"
+          date_update: "desc",
         },
       });
 
-      const projectsWithCalculations = projects.map(project => {
+      const projectsWithCalculations = projects.map((project) => {
         // Calcula o custo total do trabalho
-        const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-          return total + invoice.costProject.reduce((subtotal, cost) => {
-            return subtotal + Number(cost.price) * Number(cost.amout);
-          }, 0);
-        }, 0);
+        const costofwork = project.invoiceCostProject.reduce(
+          (total, invoice) => {
+            return (
+              total +
+              invoice.costProject.reduce((subtotal, cost) => {
+                return subtotal + Number(cost.price) * Number(cost.amout);
+              }, 0)
+            );
+          },
+          0
+        );
 
         // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
         let totalCostOfServiceHours = 0;
@@ -150,9 +154,11 @@ export class ProjectController {
 
         const uniqueUsers = new Set();
 
-        project.workedHours.forEach(workedHour => {
+        project.workedHours.forEach((workedHour) => {
           if (workedHour.amount_of_hours !== null) {
-            totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+            totalCostOfServiceHours +=
+              Number(workedHour.amount_of_hours) *
+              Number(workedHour.hourly_price);
             totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
           } else {
             totalCostOfServiceHours += Number(workedHour.hourly_price);
@@ -177,9 +183,9 @@ export class ProjectController {
           total_number_of_hours_worked: totalNumberOfHoursWorked,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject,
-          serviceProject: project.serviceProject.map(service => ({
+          serviceProject: project.serviceProject.map((service) => ({
             ...service,
-            stages: service.stages
+            stages: service.stages,
           })),
         };
       });
@@ -188,7 +194,7 @@ export class ProjectController {
         where: query,
       });
 
-      let amount = (pageNumber * take) + projectsWithCalculations.length;
+      let amount = pageNumber * take + projectsWithCalculations.length;
 
       // Se amount exceder total, ajustar amount para ser igual a total
       if (amount > total) {
@@ -221,9 +227,9 @@ export class ProjectController {
                       name: true,
                       id: true,
                       avatar: true,
-                    }
-                  }
-                }
+                    },
+                  },
+                },
               },
               galleryAlfter: true,
               galleryBefore: true,
@@ -238,16 +244,16 @@ export class ProjectController {
                   ServiceProject: {
                     include: {
                       service: true,
-                    }
-                  }
-                }
-              }
-            }
+                    },
+                  },
+                },
+              },
+            },
           },
           invoiceCostProject: {
             include: {
-              costProject: true
-            }
+              costProject: true,
+            },
           },
           workedHours: true,
           user: {
@@ -256,16 +262,16 @@ export class ProjectController {
               avatar: true,
               email: true,
               name: true,
-            }
+            },
           },
         },
       });
 
       if (project) {
         const costProjects = await Promise.all(
-          project.serviceProject.flatMap(async serviceProject =>
+          project.serviceProject.flatMap(async (serviceProject) =>
             Promise.all(
-              serviceProject.costProject.map(async cost => ({
+              serviceProject.costProject.map(async (cost) => ({
                 id: cost.id,
                 material_name: cost.material_name,
                 transaction_type: cost.transaction_type,
@@ -274,33 +280,39 @@ export class ProjectController {
                 service_project_id: cost.ServiceProject?.id,
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
-                invoice_cost_project: await getPresignedUrl(String(cost.invoiceCostProject?.uri))
+                invoice_cost_project: await getPresignedUrl(
+                  String(cost.invoiceCostProject?.uri)
+                ),
               }))
             )
           )
         );
         const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
-        const costofwork = project.invoiceCostProject.reduce((total, invoice) => {
-          const costSum = invoice.costProject.reduce((subtotal, cost) => {
-            if (cost.transaction_type === "Cost") {
-              return subtotal + Number(cost.price) * Number(cost.amout);
-            } else if (cost.transaction_type === "Credit") {
-              return subtotal - Number(cost.price) * Number(cost.amout);
-            }
-            return subtotal;
-          }, 0);
-          return total + costSum;
-        }, 0);
-
+        const costofwork = project.invoiceCostProject.reduce(
+          (total, invoice) => {
+            const costSum = invoice.costProject.reduce((subtotal, cost) => {
+              if (cost.transaction_type === "Cost") {
+                return subtotal + Number(cost.price) * Number(cost.amout);
+              } else if (cost.transaction_type === "Credit") {
+                return subtotal - Number(cost.price) * Number(cost.amout);
+              }
+              return subtotal;
+            }, 0);
+            return total + costSum;
+          },
+          0
+        );
 
         let totalCostOfServiceHours = 0;
         let totalNumberOfHoursWorked = 0;
         const uniqueUsers = new Set();
 
-        project.workedHours.forEach(workedHour => {
+        project.workedHours.forEach((workedHour) => {
           if (workedHour.amount_of_hours !== null) {
-            totalCostOfServiceHours += Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price);
+            totalCostOfServiceHours +=
+              Number(workedHour.amount_of_hours) *
+              Number(workedHour.hourly_price);
             totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
           } else {
             totalCostOfServiceHours += Number(workedHour.hourly_price);
@@ -317,15 +329,21 @@ export class ProjectController {
 
         res.json({
           ...project,
+          user: {
+            ...project.user,
+            avatar: project.user?.avatar
+              ? await getPresignedUrl(String(project.user?.avatar))
+              : null,
+          },
           costProjects: flatCostProjects,
           costofwork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
           workers_on_this_project: workersOnThisProject,
-          price_project: priceProject // Adiciona o novo campo price_project
+          price_project: priceProject, // Adiciona o novo campo price_project
         });
       } else {
-        res.status(404).json({ error: 'Project not found' });
+        res.status(404).json({ error: "Project not found" });
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -336,7 +354,7 @@ export class ProjectController {
   }
 
   async createServiceProject(req: Request, res: Response) {
-    const data: IServicesData = req.body
+    const data: IServicesData = req.body;
 
     try {
       const result = await prisma.serviceProject.create({
@@ -347,9 +365,9 @@ export class ProjectController {
           hours: data.hours,
           name: data.name,
           price: data.price,
-          company_id: data.company_id
-        }
-      })
+          company_id: data.company_id,
+        },
+      });
       return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -362,13 +380,13 @@ export class ProjectController {
   //novo updateserviceProject
   async updateServiceProject(req: Request, res: Response) {
     const data: IputServiceData = req.body;
-    console.log(data)
+    console.log(data);
     try {
       // Verificar se o id_service existe na tabela referenciada
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
-        }
+        },
       });
 
       if (!serviceExists) {
@@ -385,7 +403,7 @@ export class ProjectController {
             description: data.description,
             hours: data.hours,
             price: data.price,
-          }
+          },
         });
         return res.json(result);
       } else {
@@ -396,7 +414,7 @@ export class ProjectController {
           data: {
             description: data.description,
             hours: data.hours,
-          }
+          },
         });
         return res.json(result);
       }
@@ -410,7 +428,8 @@ export class ProjectController {
   // novo delete imgServiceProject
   constructor() {
     this.deleteFiles = this.deleteFiles.bind(this);
-    this.DeleteAllImgServiceProjectController = this.DeleteAllImgServiceProjectController.bind(this);
+    this.DeleteAllImgServiceProjectController =
+      this.DeleteAllImgServiceProjectController.bind(this);
     this.deleteServiceProject = this.deleteServiceProject.bind(this);
   }
   // constructor() {
@@ -423,34 +442,43 @@ export class ProjectController {
   //   deleteFile(`./public/tmp/service-project${requestFile}`);
   // }
   async deleteFiles(file: string) {
-    const s3 = new S3Storage()
+    const s3 = new S3Storage();
     await s3.deleteFile(file);
-
   }
 
-  async DeleteAllImgServiceProjectController(request: Request, response: Response) {
+  async DeleteAllImgServiceProjectController(
+    request: Request,
+    response: Response
+  ) {
     try {
       const { id } = request.params;
       const imgServiceProjectIds = request.body; // Expecting an array of ids directly
 
       if (!id) {
-        return response.status(400).json({ error: "Service project ID is required!" });
+        return response
+          .status(400)
+          .json({ error: "Service project ID is required!" });
       }
 
       const serviceProject = await prisma.serviceProject.findUnique({
-        where: { id }
+        where: { id },
       });
 
       if (!serviceProject) {
         return response.status(400).json({ error: "Service project invalid!" });
       }
 
-      if (!Array.isArray(imgServiceProjectIds) || imgServiceProjectIds.length === 0) {
-        return response.status(400).json({ error: "Array of ids is required!" });
+      if (
+        !Array.isArray(imgServiceProjectIds) ||
+        imgServiceProjectIds.length === 0
+      ) {
+        return response
+          .status(400)
+          .json({ error: "Array of ids is required!" });
       }
 
       const imgServiceProjects = await prisma.imgServiceProject.findMany({
-        where: { id: { in: imgServiceProjectIds }, serviceProjectId: id }
+        where: { id: { in: imgServiceProjectIds }, serviceProjectId: id },
       });
 
       // Deletar todos os arquivos de imgServiceProject
@@ -461,7 +489,7 @@ export class ProjectController {
       // Deletar registros de imgServiceProject do banco de dados
       if (imgServiceProjects.length > 0) {
         await prisma.imgServiceProject.deleteMany({
-          where: { id: { in: imgServiceProjectIds }, serviceProjectId: id }
+          where: { id: { in: imgServiceProjectIds }, serviceProjectId: id },
         });
       }
 
@@ -482,7 +510,7 @@ export class ProjectController {
   // deleteFiles(file: string) {
   //   deleteFile(`./public/tmp/service-project/${file}`);
   // }
-  // ja estava funcionando tenho que testar se mudou pelo fato de comentar 
+  // ja estava funcionando tenho que testar se mudou pelo fato de comentar
   //o conteudo acima
   //
   async deleteServiceProject(request: Request, response: Response) {
@@ -492,12 +520,12 @@ export class ProjectController {
       // Verificação da existência do ServiceProject
       const serviceProject = await prisma.serviceProject.findFirst({
         where: {
-          id: id
+          id: id,
         },
         include: {
           photos: true,
-          costProject: true
-        }
+          costProject: true,
+        },
       });
 
       if (!serviceProject) {
@@ -512,18 +540,21 @@ export class ProjectController {
       // Exclusão de todos os CostProjects associados ao ServiceProject
       await prisma.costProject.deleteMany({
         where: {
-          serviceProjectId: id
-        }
+          serviceProjectId: id,
+        },
       });
 
       // Exclusão do ServiceProject
       await prisma.serviceProject.delete({
         where: {
-          id: id
-        }
+          id: id,
+        },
       });
 
-      return response.json({ message: "Service Project and its photos and cost projects deleted successfully" });
+      return response.json({
+        message:
+          "Service Project and its photos and cost projects deleted successfully",
+      });
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
@@ -532,7 +563,6 @@ export class ProjectController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-
 
   async getServicesByProjectId(req: Request, res: Response) {
     const { id } = req.params;
@@ -562,7 +592,7 @@ export class ProjectController {
       // Find office with name 'Seller'
       const sellerOffice = await prisma.office.findFirst({
         select: { id: true },
-        where: { name: 'Seller' },
+        where: { name: "Seller" },
       });
 
       if (!sellerOffice) {
@@ -573,9 +603,8 @@ export class ProjectController {
         where: {
           AND: [
             { company_id: { equals: String(company_id) } },
-            { office_id: sellerOffice.id, }
-          ]
-
+            { office_id: sellerOffice.id },
+          ],
         },
         select: {
           id: true,
@@ -591,7 +620,7 @@ export class ProjectController {
         skip: pageNumber * 20,
         take: 20,
         orderBy: {
-          date_creation: "desc"
+          date_creation: "desc",
         },
       });
 
@@ -617,7 +646,7 @@ export class ProjectController {
       const project = await prisma.project.update({
         where: { id },
         data: {
-          seller_user_id: seller_user_id
+          seller_user_id: seller_user_id,
         },
       });
       return res.json(project);
@@ -632,7 +661,6 @@ export class ProjectController {
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
     try {
-
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -644,18 +672,21 @@ export class ProjectController {
           lat: data.client.lat,
           log: data.client.log,
           radius: Number(data.client.radius),
-          company_id: data.company_id
+          company_id: data.company_id,
         },
       });
 
       // Obter o maior número de contrato para a empresa especificada
       const latestProject = await prisma.project.findFirst({
         where: { company_id: data.company_id, contract_number: { not: null } },
-        orderBy: { contract_number: 'desc' }, // Ordenar de forma decrescente
+        orderBy: { contract_number: "desc" }, // Ordenar de forma decrescente
       });
 
       // Definir o número do contrato como o próximo número após o maior encontrado, ou 1000 se não houver
-      const contractNumber = latestProject && latestProject.contract_number ? latestProject.contract_number + 1 : 1000;
+      const contractNumber =
+        latestProject && latestProject.contract_number
+          ? latestProject.contract_number + 1
+          : 1000;
 
       // Criação do projeto
       const project = await prisma.project.create({
@@ -667,7 +698,7 @@ export class ProjectController {
           start_date: data.client.start_date,
           deadline: data.client.deadline,
           company_id: data.company_id,
-          contract_number: contractNumber // Atribui o número de contrato gerado
+          contract_number: contractNumber, // Atribui o número de contrato gerado
         },
       });
       return res.status(201).json(project);
@@ -685,7 +716,10 @@ export class ProjectController {
     deleteFile(`./public/tmp/service-project/${req.file?.filename}`);
     const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
     const s3Bucket = process.env.AMAZON_S3_BUCKET!;
-    const fileName = await uploadImageWebpToS3(`./public/tmp/service-project/${filePath}`, s3Bucket);
+    const fileName = await uploadImageWebpToS3(
+      `./public/tmp/service-project/${filePath}`,
+      s3Bucket
+    );
 
     await prisma.imgServiceProject.create({
       data: {
@@ -727,7 +761,7 @@ export class ProjectController {
       const project = await prisma.project.update({
         where: { id },
         data: {
-          status_project: status
+          status_project: status,
         },
       });
       return res.json(project);
@@ -738,7 +772,6 @@ export class ProjectController {
       return res.json({ error: "Erro interno do servidor" });
     }
   }
-
 
   async startDateProject(req: Request, res: Response) {
     const { id, start_date } = req.body;
@@ -808,8 +841,6 @@ export class ProjectController {
     }
   }
 
-
-
   async deleteProject(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -839,15 +870,15 @@ export class ProjectController {
         include: {
           Project: {
             select: {
-              id: true
-            }
+              id: true,
+            },
           },
           photos: {
             select: {
               uri: true,
               id: true,
-              date_creation: true
-            }
+              date_creation: true,
+            },
           },
           stages: true,
           Activities: true,
@@ -858,14 +889,13 @@ export class ProjectController {
                 select: {
                   id: true,
                   name: true,
-                  avatar: true
-                }
-              }
-            }
-          }
-        }
+                  avatar: true,
+                },
+              },
+            },
+          },
+        },
       });
-
 
       // Processar URLs assinadas
       const processedResult = await Promise.all(
@@ -882,7 +912,9 @@ export class ProjectController {
               ...userService,
               user: {
                 ...userService.user,
-                avatar: userService.user.avatar ? await getPresignedUrl(userService.user.avatar) : null, // Assina o campo `avatar`
+                avatar: userService.user.avatar
+                  ? await getPresignedUrl(userService.user.avatar)
+                  : null, // Assina o campo `avatar`
               },
             }))
           ),
@@ -913,9 +945,9 @@ export class ProjectController {
         where: {
           UserServiceProject: {
             service_project_id: {
-              equals: id
-            }
-          }
+              equals: id,
+            },
+          },
         },
         include: {
           UserServiceProject: {
@@ -923,34 +955,40 @@ export class ProjectController {
               service_project: {
                 select: {
                   price: true,
-                }
-              }
-            }
+                },
+              },
+            },
           },
           user: {
             select: {
               id: true,
               name: true,
               avatar: true,
-              hourly_price: true
-            }
-          }
+              hourly_price: true,
+            },
+          },
         },
         orderBy: {
-          check_in_time: "desc"
-        }
+          check_in_time: "desc",
+        },
       });
 
       // Calcular as horas trabalhadas
       const formattedResult = result.map((attendance) => {
         let hoursWorked = 0;
         if (attendance.check_out_time) {
-          hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+          hoursWorked = dayjs(attendance.check_out_time).diff(
+            dayjs(attendance.check_in_time),
+            "hour",
+            true
+          );
         }
         return {
           ...attendance,
           hours_worked: parseFloat(hoursWorked.toFixed(2)), // Formata para 2 casas decimais
-          price: Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
+          price:
+            Number(attendance.user.hourly_price) *
+            parseFloat(hoursWorked.toFixed(2)),
         };
       });
       return res.json(formattedResult);
@@ -972,17 +1010,17 @@ export class ProjectController {
       }
       const user = await prisma.user.findUnique({
         where: {
-          id: seller_user_id
+          id: seller_user_id,
         },
         select: {
           office: {
             select: {
-              name: true
-            }
-          }
-        }
-      })
-      let projects: any = []
+              name: true,
+            },
+          },
+        },
+      });
+      let projects: any = [];
       if (user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os projetos do vendedor
         projects = await prisma.project.findMany({
@@ -1001,11 +1039,14 @@ export class ProjectController {
         });
       }
 
-
       // Transformar os projetos no formato necessário
       const events = projects.map((project: any) => {
-        const start = project.start_date ? new Date(`${project.start_date}T00:00:00`) : project.start_date;
-        const end = project.deadline ? new Date(`${project.deadline}T23:59:59`) : project.deadline; // Inclui o último dia
+        const start = project.start_date
+          ? new Date(`${project.start_date}T00:00:00`)
+          : project.start_date;
+        const end = project.deadline
+          ? new Date(`${project.deadline}T23:59:59`)
+          : project.deadline; // Inclui o último dia
 
         // Formatar endereço do cliente
         const description = project.client?.location
@@ -1107,17 +1148,17 @@ export class ProjectController {
       }
       const user = await prisma.user.findUnique({
         where: {
-          id: seller_user_id
+          id: seller_user_id,
         },
         select: {
           office: {
             select: {
-              name: true
-            }
-          }
-        }
-      })
-      let serviceProjects: any = []
+              name: true,
+            },
+          },
+        },
+      });
+      let serviceProjects: any = [];
       if (user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os ServiceProjects relacionados ao vendedor
         serviceProjects = await prisma.serviceProject.findMany({
@@ -1149,8 +1190,8 @@ export class ProjectController {
         serviceProjects = await prisma.serviceProject.findMany({
           where: {
             company_id: {
-              equals: company_id
-            }
+              equals: company_id,
+            },
           },
           include: {
             Project: {
@@ -1172,17 +1213,22 @@ export class ProjectController {
         });
       }
 
-
       // Transformar os dados no formato necessário para o calendário
       const events = serviceProjects.map((service: any) => {
-        const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
-        const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
+        const start = service.start_date
+          ? new Date(`${service.start_date}T00:00:00`)
+          : null;
+        const end = service.deadline
+          ? new Date(`${service.deadline}T23:59:59`)
+          : null;
 
         // Array de imagens dos usuários vinculados
-        const userImages = service.UserServiceProject.map((userService: any) => ({
-          name: userService.user.name,
-          avatar: userService.user.avatar || "/default_avatar.png",
-        }));
+        const userImages = service.UserServiceProject.map(
+          (userService: any) => ({
+            name: userService.user.name,
+            avatar: userService.user.avatar || "/default_avatar.png",
+          })
+        );
 
         // Formatar descrição e informações adicionais
         const description = service.Project?.client?.location
@@ -1201,7 +1247,9 @@ export class ProjectController {
       });
 
       // Filtrar eventos válidos (com datas de início e fim)
-      const filteredEvents = events.filter((event: any) => event.start && event.end);
+      const filteredEvents = events.filter(
+        (event: any) => event.start && event.end
+      );
 
       return res.json(filteredEvents);
     } catch (error) {
@@ -1246,7 +1294,9 @@ export class ProjectController {
 
       // Verificar se há registros encontrados
       if (userServiceProjects.length === 0) {
-        return res.status(404).json({ error: "No service projects found for this user." });
+        return res
+          .status(404)
+          .json({ error: "No service projects found for this user." });
       }
 
       // Filtrar e transformar os dados no formato necessário
@@ -1282,8 +1332,6 @@ export class ProjectController {
     }
   }
 
-
-
   async getWorkerSchedule(req: Request, res: Response) {
     const { id } = req.params;
 
@@ -1294,27 +1342,29 @@ export class ProjectController {
       }
       const user = await prisma.user.findUnique({
         where: {
-          id
+          id,
         },
         select: {
           office: {
             select: {
-              name: true
-            }
-          }
-        }
-      })
+              name: true,
+            },
+          },
+        },
+      });
       if (user?.office.name.toLocaleLowerCase() !== "worker") {
-        return res.status(400).json({ error: "The id entered must be that of a worker" });
+        return res
+          .status(400)
+          .json({ error: "The id entered must be that of a worker" });
         // Buscar os ServiceProjects relacionados ao vendedor
       }
       const serviceProjects = await prisma.serviceProject.findMany({
         where: {
           UserServiceProject: {
             some: {
-              user_id: id
-            }
-          }
+              user_id: id,
+            },
+          },
         },
         include: {
           Project: {
@@ -1327,8 +1377,12 @@ export class ProjectController {
 
       // Transformar os dados no formato necessário para o calendário
       const events = serviceProjects.map((service) => {
-        const start = service.start_date ? new Date(`${service.start_date}T00:00:00`) : null;
-        const end = service.deadline ? new Date(`${service.deadline}T23:59:59`) : null;
+        const start = service.start_date
+          ? new Date(`${service.start_date}T00:00:00`)
+          : null;
+        const end = service.deadline
+          ? new Date(`${service.deadline}T23:59:59`)
+          : null;
 
         // Formatar descrição e informações adicionais
         const description = service.Project?.client?.location
@@ -1344,7 +1398,9 @@ export class ProjectController {
       });
 
       // Filtrar eventos válidos (com datas de início e fim)
-      const filteredEvents = events.filter((event: any) => event.start && event.end);
+      const filteredEvents = events.filter(
+        (event: any) => event.start && event.end
+      );
 
       return res.json(filteredEvents);
     } catch (error) {
@@ -1392,7 +1448,6 @@ export class ProjectController {
       return res.status(500).json({ error: "Internal server error" });
     }
   }
-
 
   async updateStatusServiceProject(req: Request, res: Response) {
     const { id, status } = req.body;
@@ -1543,7 +1598,9 @@ export class ProjectController {
         };
       });
 
-      const total = `$${tableData.reduce((sum, row) => sum + row.amount, 0).toFixed(2)}`;
+      const total = `$${tableData
+        .reduce((sum, row) => sum + row.amount, 0)
+        .toFixed(2)}`;
 
       const columnText1 = [
         project.client?.name || "",
@@ -1580,7 +1637,10 @@ export class ProjectController {
       });
 
       // Criar template do e-mail
-      const templateEmail = createPreviewContract(project.client?.name.toUpperCase(), total);
+      const templateEmail = createPreviewContract(
+        project.client?.name.toUpperCase(),
+        total
+      );
 
       const mailOptions = {
         from: SMTP_CONFIG.user,
@@ -1602,12 +1662,14 @@ export class ProjectController {
         fs.unlinkSync(pdfPath);
       }, 5000);
 
-      return res.status(200).json({ message: "PDF enviado com sucesso para o cliente!" });
+      return res
+        .status(200)
+        .json({ message: "PDF enviado com sucesso para o cliente!" });
     } catch (error) {
-      return res.status(500).json({ error: error instanceof Error ? error.message : "Erro interno do servidor" });
+      return res.status(500).json({
+        error:
+          error instanceof Error ? error.message : "Erro interno do servidor",
+      });
     }
   }
-
-
-
 }
