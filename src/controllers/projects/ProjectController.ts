@@ -222,6 +222,15 @@ export class ProjectController {
               UserServiceProject: {
                 select: {
                   id: true,
+                  user_attendances: {
+                    include: {
+                      user: {
+                        select: {
+                          hourly_price: true
+                        },
+                      }
+                    }
+                  },
                   user: {
                     select: {
                       name: true,
@@ -289,7 +298,7 @@ export class ProjectController {
         );
         const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
-        const costofwork = project.invoiceCostProject.reduce(
+        let costofwork = project.invoiceCostProject.reduce(
           (total, invoice) => {
             const costSum = invoice.costProject.reduce((subtotal, cost) => {
               if (cost.transaction_type === "Cost") {
@@ -303,6 +312,34 @@ export class ProjectController {
           },
           0
         );
+        const userAttendance = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let hoursWorked = 0;
+              if (attendance.check_out_time) {
+                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              }
+              return sub + Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
+
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0)
+        const userAttendanceHours = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let hoursWorked = 0;
+              if (attendance.check_out_time) {
+                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              }
+              return sub + parseFloat(hoursWorked.toFixed(2))
+
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0)
 
         let totalCostOfServiceHours = 0;
         let totalNumberOfHoursWorked = 0;
@@ -319,9 +356,9 @@ export class ProjectController {
           }
           uniqueUsers.add(workedHour.name_user);
         });
-
+        
         const workersOnThisProject = uniqueUsers.size;
-
+        costofwork += userAttendance
         // Calcula o somatório de hours * price
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
@@ -337,8 +374,8 @@ export class ProjectController {
           },
           costProjects: flatCostProjects,
           costofwork,
-          cost_of_service_hours: totalCostOfServiceHours,
-          total_number_of_hours_worked: totalNumberOfHoursWorked,
+          cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject, // Adiciona o novo campo price_project
         });
