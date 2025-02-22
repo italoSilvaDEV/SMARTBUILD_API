@@ -70,10 +70,24 @@ export class FindWorkedHoursProjectController {
                                 }
                             },
                         },
-                        
+                        date_initial && date_final ? {
+                            AND: [{
+                                check_in_time: {
+                                    gte: dateStart.toISOString(),
+                                }
+                            },
+                            {
+                                check_out_time: {
+                                    lte: dateEnd.toISOString(),
+                                }
+                            }]
+                        } : {
+                            
+                        }
+                       
                     ]
-                   
-                    
+
+
                 },
                 include: {
                     UserServiceProject: {
