@@ -1,28 +1,17 @@
 import { Router } from "express"
 import { UserController } from "../controllers/User/UserController"
 import { checkToken } from "../middlewares/checkToken"
-
-
 import { compressImage } from "../config/compressImage";
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
-import { CompanyController } from "../controllers/company/CompanyController";
+
 const userRoutes = Router()
 
 const User = new UserController()
-const Company = new CompanyController()
+
 //criar usuario
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
 //criar
-userRoutes.post("/company",
-    checkToken,
-    uploadPhoto.single("avatar"),
-    compressImage("user"),
-    Company.create)
-    
-userRoutes.get("/company",
-    checkToken,
-    Company.findMany)
 
 userRoutes.post("/user",
     checkToken,
@@ -46,7 +35,7 @@ userRoutes.put("/user/img/:id",
     (req, res, next) => {
         console.log("Arquivo recebido pelo multer:", req.file);
         next();
-      },
+    },
     compressImage("user"),
     User.updateImg
 )

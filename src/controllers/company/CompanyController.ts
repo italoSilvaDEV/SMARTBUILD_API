@@ -144,6 +144,128 @@ export class CompanyController {
         // })
     }
 
+    async updateCompanyData(req: Request, res: Response): Promise<Response> {
+        const { id } = req.params;
+        const { address, district, numberHouse, complement } = req.body;
+        const file = req.file;
+
+        try {
+            const company = await prisma.company.findUnique({ where: { id } });
+            if (!company) {
+                return res.status(404).json({ error: "Company not found" });
+            }
+
+            let avatarUrl = company.avatar;
+
+            if (file) {
+                const newAvatarUrl = await uploadImageWebpToS3(`./public/tmp/user/${file.filename}`, process.env.AMAZON_S3_BUCKET!);
+                avatarUrl = newAvatarUrl;
+                // Optionally delete old avatar from S3 if needed
+            }
+
+            const updatedCompany = await prisma.company.update({
+                where: { id },
+                data: {
+                    address,
+                    district,
+                    numberHouse,
+                    complement,
+                    avatar: avatarUrl,
+                },
+            });
+
+            return res.status(200).json({ company: updatedCompany });
+        } catch (error: any) {
+            console.error("Error updating company data:", error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        } finally {
+            // Clean up the uploaded file
+            if (file) {
+                deleteFile(`./public/tmp/user/${file.filename}`);
+            }
+        }
+    }
+
+    async searchOneCompany(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: {
+                    avatar: true,
+                    address: true,
+                    district: true,
+                    numberHouse: true,
+                    complement: true
+                }
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            // Get presigned URL for the avatar if it exists
+            const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
+
+            const formattedCompany = {
+                ...company,
+                avatar: avatarUrl
+            };
+
+            return response.json(formattedCompany);
+        } catch (error) {
+            console.error('Error searching for company:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    async searchOneCompanyNotes(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: {
+                    avatar: true,
+                    address: true,
+                    district: true,
+                    numberHouse: true,
+                    complement: true,
+                    NotesContrac: {
+                        select: {
+                            id: true,
+                            notes: true
+                        }
+                    }
+                }
+            });
+    
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+    
+            // Get presigned URL for the avatar if it exists
+            const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
+    
+            const formattedCompany = {
+                avatar: avatarUrl,
+                address: company.address,
+                district: company.district,
+                numberHouse: company.numberHouse,
+                complement: company.complement,
+                ContractNotes: company.NotesContrac.map(note => ({
+                    id: note.id,
+                    notes: note.notes
+                }))
+            };
+    
+            return response.json(formattedCompany);
+        } catch (error) {
+            console.error('Error searching for company:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+    
+
     async findMany(req: Request, res: Response) {
         try {
             const response = await prisma.company.findMany({
@@ -177,4 +299,65 @@ export class CompanyController {
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
+
+    async createNote(req: Request, res: Response) {
+        const { companyId } = req.params;
+        const { notes } = req.body;
+        try {
+            const note = await prisma.contractNotes.create({
+                data: {
+                    notes: notes,
+                    company_id: companyId,
+                },
+            });
+            res.status(201).json(note);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+    async updateNote(req: Request, res: Response) {
+        const { noteId } = req.params;
+        const { notes } = req.body;
+        try {
+            const updatedNote = await prisma.contractNotes.update({
+                where: { id: noteId },
+                data: { notes: notes },
+            });
+            res.status(200).json(updatedNote);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+    async deleteNote(req: Request, res: Response) {
+        const { noteId } = req.params;
+        try {
+            await prisma.contractNotes.delete({
+                where: { id: noteId },
+            });
+            res.status(204).send();
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+    async listNotes(req: Request, res: Response) {
+        const { companyId } = req.params;
+        try {
+            const notes = await prisma.contractNotes.findMany({
+                where: { company_id: companyId },
+                orderBy: { createdAt: 'desc' },
+            });
+            res.status(200).json(notes);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+
 }

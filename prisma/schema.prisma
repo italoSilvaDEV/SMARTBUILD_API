@@ -56,6 +56,10 @@ model Company {
   name           String
   date_creation  DateTime         @default(now())
   date_update    DateTime         @updatedAt
+  address        String?
+  district       String?
+  numberHouse    String?
+  complement     String?
   User           User[]
   Category       Category[]
   SubCategory    SubCategory[]
@@ -68,8 +72,22 @@ model Company {
 
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
+  NotesContrac ContractNotes[]
+
   // novo campo
   stripeAccountId String? @unique
+}
+
+model ContractNotes {
+  id String @id @default(uuid())
+
+  notes String @db.Text
+
+  company          Company?  @relation(fields: [company_id], references: [id])
+  company_id       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Webhooks {
