@@ -87,7 +87,6 @@ export class CompanyController {
                 }
             })
 
-
             // Senha temporária
             const pass = crypto.randomBytes(3).toString("hex").toUpperCase();
             const hashedPassword = bcrypt.hashSync(pass, 10);
@@ -154,6 +153,7 @@ export class CompanyController {
             email,
             phone,
             webSiteUrl,
+            name
          } = req.body;
         const file = req.file;
 
@@ -181,6 +181,7 @@ export class CompanyController {
                     email,
                     phone,
                     webSiteUrl,
+                    name,
                     avatar: avatarUrl,
                 },
             });
@@ -190,7 +191,6 @@ export class CompanyController {
             console.error("Error updating company data:", error);
             return res.status(500).json({ error: error.message || "Internal error" });
         } finally {
-            // Clean up the uploaded file
             if (file) {
                 deleteFile(`./public/tmp/user/${file.filename}`);
             }
@@ -210,7 +210,8 @@ export class CompanyController {
                     complement: true,
                     email: true,
                     phone: true,
-                    webSiteUrl: true
+                    webSiteUrl: true,
+                    name: true
                 }
             });
 
@@ -233,58 +234,13 @@ export class CompanyController {
         }
     }
 
-    // async searchOneCompanyNotes(request: Request, response: Response) {
-    //     try {
-    //         const { id } = request.params;
-    //         const company = await prisma.company.findUnique({
-    //             where: { id },
-    //             select: {
-    //                 avatar: true,
-    //                 address: true,
-    //                 district: true,
-    //                 numberHouse: true,
-    //                 complement: true,
-    //                 NotesContrac: {
-    //                     select: {
-    //                         id: true,
-    //                         notes: true
-    //                     }
-    //                 }
-    //             }
-    //         });
-
-    //         if (!company) {
-    //             return response.status(404).json({ error: "Company not found!" });
-    //         }
-
-    //         // Get presigned URL for the avatar if it exists
-    //         const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
-
-    //         const formattedCompany = {
-    //             avatar: avatarUrl,
-    //             address: company.address,
-    //             district: company.district,
-    //             numberHouse: company.numberHouse,
-    //             complement: company.complement,
-    //             ContractNotes: company.NotesContrac.map(note => ({
-    //                 id: note.id,
-    //                 notes: note.notes
-    //             }))
-    //         };
-
-    //         return response.json(formattedCompany);
-    //     } catch (error) {
-    //         console.error('Error searching for company:', error);
-    //         return response.status(500).json({ error: "Internal server error" });
-    //     }
-    // }
-
     async searchOneCompanyNotes(request: Request, response: Response) {
         try {
           const { id } = request.params;
           const company = await prisma.company.findUnique({
             where: { id },
             select: {
+              name: true,  
               avatar: true,
               address: true,
               district: true,
@@ -295,12 +251,12 @@ export class CompanyController {
               webSiteUrl: true,
               NotesContrac: {
                 orderBy: {
-                  updatedAt: 'asc', // Ordena de forma crescente pela data de atualização
+                  updatedAt: 'asc', 
                 },
                 select: {
                   id: true,
                   notes: true,
-                  updatedAt: true, // Opcional: se você quiser enviar também a data de atualização
+                  updatedAt: true, 
                 },
               },
             },
@@ -310,7 +266,6 @@ export class CompanyController {
             return response.status(404).json({ error: "Company not found!" });
           }
       
-          // Obter o presigned URL para o avatar, se existir
           const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
       
           const formattedCompany = {
@@ -322,10 +277,11 @@ export class CompanyController {
             email: company.email,
             phone: company.phone,
             webSiteUrl: company.webSiteUrl,
+            name: company.name,
             ContractNotes: company.NotesContrac.map(note => ({
               id: note.id,
               notes: note.notes,
-              updatedAt: note.updatedAt, // opcional
+              updatedAt: note.updatedAt, 
             })),
           };
       
@@ -335,8 +291,6 @@ export class CompanyController {
           return response.status(500).json({ error: "Internal server error" });
         }
       }
-      
-
 
     async findMany(req: Request, res: Response) {
         try {
@@ -410,7 +364,7 @@ export class CompanyController {
             await prisma.contractNotes.delete({
                 where: { id: noteId },
             });
-            res.status(204).send();
+            return res.status(201).json({ message: "Note deleted successfully" });
         } catch (error: any) {
             console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
@@ -422,7 +376,7 @@ export class CompanyController {
         try {
             const notes = await prisma.contractNotes.findMany({
                 where: { company_id: companyId },
-                orderBy: { createdAt: 'desc' },
+                orderBy: { updatedAt: 'asc' },
             });
             res.status(200).json(notes);
         } catch (error: any) {
@@ -430,49 +384,6 @@ export class CompanyController {
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
-
-    // async proxyImage(req: Request, res: Response) {
-    //     try {
-    //         console.log("req.query:", req.query);
-    //         const { url } = req.query;
-    //         if (!url) {
-    //             return res.status(400).json({ error: "Missing 'url' query param" });
-    //         }
-
-    //         // Supondo que 'url' seja uma URL completa, extraímos a key do S3.
-    //         // Exemplo de URL: 
-    //         // https://xmentoria.s3.us-east-2.amazonaws.com/37c6e93b-.webp?X-Amz-Algorithm=...
-    //         const rawUrl = url as string;
-    //         const parsedUrl = new URL(rawUrl);
-    //         const key = parsedUrl.pathname.substring(1); // Remove a '/' inicial, ex: "37c6e93b-.webp"
-    //         console.log("Extracted key:", key);
-
-    //         // Gerar o presigned URL usando apenas a key
-    //         const presignedUrl = await getPresignedUrl(key);
-    //         console.log("Generated presignedUrl:", presignedUrl);
-
-    //         // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
-    //         const fetch = await import('node-fetch').then(mod => mod.default || mod);
-    //         const response = await fetch(presignedUrl);
-
-    //         if (!response.ok) {
-    //             const errorText = await response.text();
-    //             console.error("Error fetching image from S3, response text:", errorText);
-    //             return res.status(500).json({ error: "Failed to fetch image from S3" });
-    //         }
-
-    //         // Obter os dados da imagem e converter para base64
-    //         const arrayBuffer = await response.arrayBuffer();
-    //         const buffer = Buffer.from(arrayBuffer);
-    //         // Aqui assumimos que a imagem é webp. Se for PNG ou JPEG, ajuste o MIME type.
-    //         const base64 = `data:image/webp;base64,${buffer.toString("base64")}`;
-
-    //         return res.json({ base64 });
-    //     } catch (error) {
-    //         console.error("Erro no proxy de imagem:", error);
-    //         return res.status(500).json({ error: "Internal server error" });
-    //     }
-    // }
 
     async proxyImage(req: Request, res: Response) {
         try {
@@ -519,9 +430,5 @@ export class CompanyController {
         }
       }
       
-
-
-
-
 
 }

@@ -17,7 +17,6 @@ companyRoutes.post("/company",
     compressImage("user"),
     Company.create)
 
-// Assuming the use of Express.js and a middleware that handles authentication and file uploads
 companyRoutes.put(
     "/company/update/:id",
     checkToken,
