@@ -38,4 +38,7 @@ companyRoutes.put('/company/:companyId/notes/:noteId', checkToken, Company.updat
 companyRoutes.delete('/company/:companyId/notes/:noteId', checkToken, Company.deleteNote);
 companyRoutes.get('/company/:companyId/notes', checkToken, Company.listNotes);
 
+companyRoutes.get("/company/proxy/image",  Company.proxyImage);
+
+
 export {companyRoutes}

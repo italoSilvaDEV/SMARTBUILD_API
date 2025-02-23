@@ -60,6 +60,9 @@ model Company {
   district       String?
   numberHouse    String?
   complement     String?
+  email          String?
+  phone          String?
+  webSiteUrl     String?
   User           User[]
   Category       Category[]
   SubCategory    SubCategory[]
@@ -83,8 +86,8 @@ model ContractNotes {
 
   notes String @db.Text
 
-  company          Company?  @relation(fields: [company_id], references: [id])
-  company_id       String?
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
