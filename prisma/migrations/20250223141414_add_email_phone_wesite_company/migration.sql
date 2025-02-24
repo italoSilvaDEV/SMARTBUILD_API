@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `Company` ADD COLUMN `email` VARCHAR(191) NULL,
+    ADD COLUMN `phone` VARCHAR(191) NULL,
+    ADD COLUMN `webSiteUrl` VARCHAR(191) NULL;

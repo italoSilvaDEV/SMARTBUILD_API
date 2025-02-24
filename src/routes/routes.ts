@@ -10,6 +10,7 @@ import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
+import { companyRoutes } from './companyRoutes'
 
 const router = Router()
 
@@ -17,6 +18,7 @@ const router = Router()
 router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
 router.use(userRoutes)
+router.use(companyRoutes)
 router.use(serviceRoutes)
 router.use(catalogRoutes)
 router.use(projectRoutes)

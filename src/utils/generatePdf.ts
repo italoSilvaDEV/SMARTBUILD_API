@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 
 interface TableRow {
     id: number;
@@ -17,19 +18,33 @@ interface DataProps {
     total: string;
     columnText1: string[];
     columnText2: string[];
+    address: string;      // ex: "Rua X, Bairro Y, Complemento Z, Número W"
+    logoUrl?: string;     // URL dinâmica do logo/avatar da empresa
+    notes: string[];      // array de notas
+    phone: string;
+    email: string;
+    webSiteUrl: string;
+    name: string;
 }
-
+ 
 const fontSize = 10;
 
 // Função para carregar imagem localmente no backend
-const loadImageAsUint8Array = (filePath: string): Uint8Array => {
+const loadLocalImageAsUint8Array = (filePath: string): Uint8Array => {
     const imageBuffer = fs.readFileSync(filePath);
     return new Uint8Array(imageBuffer);
-};
+  };
 
 export async function generatePdf(data: DataProps, clientName: string): Promise<string> {
     const pdfDoc = await PDFDocument.create();
     const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+
+    pdfDoc.setTitle(`Estimate`);
+    pdfDoc.setAuthor(data.name);
+    pdfDoc.setSubject("Contract Estimate");
+    pdfDoc.setKeywords(["Estimate", "Contract"]);
+    pdfDoc.setCreator("pdf-lib (https://github.com/Hopding/pdf-lib)");
+    pdfDoc.setProducer("pdf-lib");
 
     // Adicionar página
     const addPage = (): PDFPage => {
@@ -41,41 +56,51 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
 
     let page = addPage();
 
-    // Carrega a imagem local
-    const imagePath = path.join(__dirname, '../img/captura.png');
-    const imageBytes = loadImageAsUint8Array(imagePath);
-    const image = await pdfDoc.embedPng(imageBytes);
-    const imageDims = image.scale(0.5);
-
-    // Cabeçalho
-    const addHeader = (page: PDFPage) => {
-        page.drawText("ESTIMATE", { x: 50, y: 750, size: 16, color: rgb(0, 0, 1) });
-        page.drawText("RP PRO CONTRACTION, LLC", { x: 50, y: 735, size: fontSize, color: rgb(0, 0, 0) });
-        page.drawText("7 Hansom Dr", { x: 50, y: 725, size: fontSize, color: rgb(0, 0, 0) });
-        page.drawText("Merrimack, NH 03054", { x: 50, y: 715, size: fontSize, color: rgb(0, 0, 0) });
-
-        page.drawImage(image, { x: 370, y: 680, width: imageDims.width, height: imageDims.height });
-
-        const contactText = [
-            "info@rpprocontracting.com",
-            "+1 (603) 557-2292",
-            "http://www.rpprocontracting.com",
-        ];
-        contactText.forEach((line, index) => {
-            page.drawText(line, {
-                x: 230,
-                y: 737 - index * 11,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
+    // --- LOGO ---
+    if (data.logoUrl) {
+        try {
+          const response = await fetch(data.logoUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to load logo from URL: ${data.logoUrl}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          // Converter a imagem (que pode estar em WebP) para PNG usando Sharp
+          const pngBuffer = await sharp(buffer).png().toBuffer();
+          // Embutir a imagem PNG no PDF
+          const logoImage = await pdfDoc.embedPng(pngBuffer);
+          const imageDims = logoImage.scale(0.5);
+          page.drawImage(logoImage, {
+            x: 420,
+            y: 680,
+            width: imageDims.width,
+            height: imageDims.height,
+          });
+        } catch (error) {
+          console.error("Error loading logo from URL:", error);
+        }
+      } else {
+        // Fallback: usa a imagem local
+        const imagePath = path.join(__dirname, '../img/captura.png');
+        const imageBytes = loadLocalImageAsUint8Array(imagePath);
+        const localImage = await pdfDoc.embedPng(imageBytes);
+        const imageDims = localImage.scale(0.5);
+        page.drawImage(localImage, {
+          x: 370,
+          y: 680,
+          width: imageDims.width,
+          height: imageDims.height,
         });
-    };
+      }
 
-    addHeader(page);
+    // Carrega a imagem local
+    // const imagePath = path.join(__dirname, '../img/captura.png');
+    // const imageBytes = loadImageAsUint8Array(imagePath);
+    // const image = await pdfDoc.embedPng(imageBytes);
+    // const imageDims = image.scale(0.5);
 
-    // Função de quebra de texto (igual ao front)
-    const wrapText = (text: string, maxWidth: number) => {
+    // --- FUNÇÃO DE QUEBRA DE TEXTO (igual ao front) ---
+    const wrapText = (text: string, maxWidth: number): string[] => {
         const words = text.replace(/\n/g, ' \n ').split(' ');
         let lines: string[] = [];
         let line = '';
@@ -85,8 +110,8 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
                 line = '';
                 continue;
             }
-            let testLine = line + word + ' ';
-            let testWidth = timesRomanFont.widthOfTextAtSize(testLine, fontSize);
+            const testLine = line + word + ' ';
+            const testWidth = timesRomanFont.widthOfTextAtSize(testLine, fontSize);
             if (testWidth > maxWidth) {
                 lines.push(line.trim());
                 line = word + ' ';
@@ -97,6 +122,54 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
         lines.push(line.trim());
         return lines;
     };
+
+    // Cabeçalho
+    const addHeader = (page: PDFPage) => {
+        // Título principal
+        page.drawText("ESTIMATE", {
+            x: 50,
+            y: 750,
+            size: 16,
+            color: rgb(0, 0, 1)
+        });
+        // Nome da empresa (dinâmico)
+        page.drawText(data.name, {
+            x: 50,
+            y: 735,
+            size: fontSize,
+            color: rgb(0, 0, 0)
+        });
+        // Endereço
+        const addressLines = wrapText(data.address, 120);
+        let currentAddressY = 725;
+        addressLines.forEach((line) => {
+            page.drawText(line, {
+                x: 50,
+                y: currentAddressY,
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+            currentAddressY -= fontSize;
+        });
+        // Contatos dinâmicos (email, phone e website)
+        const contactText = [
+            data.email || "info@rpprocontracting.com",
+            data.phone || "+1 (603) 557-2292",
+            data.webSiteUrl || "http://www.rpprocontracting.com",
+        ];
+        contactText.forEach((line, index) => {
+            page.drawText(line, {
+                x: 230,
+                y: 737 - index * 11,
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0)
+            });
+        });
+    };
+
+    addHeader(page);
 
     // Sessão das colunas (nome, endereço, etc.)
     const initialY = 630;
@@ -133,33 +206,33 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
         width: 600,
         height: rectangleHeight,
         color: rgb(0.89, 0.97, 1),
-      });
-  
-      // Agora, renderizamos os textos das duas colunas dentro do retângulo
-      let renderY = textInitialY;
-      renderedItems.forEach(({ wrappedText1, wrappedText2, linesCount }) => {
+    });
+
+    // Agora, renderizamos os textos das duas colunas dentro do retângulo
+    let renderY = textInitialY;
+    renderedItems.forEach(({ wrappedText1, wrappedText2, linesCount }) => {
         // Para cada item, desenhamos todas as linhas, garantindo que ambas as colunas fiquem alinhadas
         for (let i = 0; i < linesCount; i++) {
-          const line1 = wrappedText1[i] || "";
-          const line2 = wrappedText2[i] || "";
-          page.drawText(line1, {
-            x: 50,
-            y: renderY - i * fontSize,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-          });
-          page.drawText(line2, {
-            x: 300,
-            y: renderY - i * fontSize + 3,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-          });
+            const line1 = wrappedText1[i] || "";
+            const line2 = wrappedText2[i] || "";
+            page.drawText(line1, {
+                x: 50,
+                y: renderY - i * fontSize,
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+            page.drawText(line2, {
+                x: 300,
+                y: renderY - i * fontSize + 3,
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
         }
         // Atualiza a posição para o próximo item
         renderY -= linesCount * fontSize + spacing;
-      });
+    });
 
     // Seção da Tabela
     const marginX = 50;
@@ -178,13 +251,13 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     // Desenha os cabeçalhos da tabela
     tableHeaders.forEach(header => {
         page.drawText(header.text, {
-          x: header.x,
-          y: tableY,
-          size: fontSize,
-          font: timesRomanFont,
-          color: rgb(0, 0, 0),
+            x: header.x,
+            y: tableY,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
         });
-      });
+    });
 
     // Linha horizontal abaixo do cabeçalho
     page.drawLine({
@@ -319,50 +392,25 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     });
 
     // Texto final (nota ao cliente)
-    const noteText = `
-  Note to customer
-1. Deposit - A non-refundable deposit of 30% is due upon signing
-this agreement to secure the project start date
-
-2. Final Payment - The final payment of any remaining balance will be
-due upon completion of the project and satisfactory inspection by
-the client.
-
-3. Payment Method - Payments can be made via cash, check, credit
-card (3% fee), or electronic transfer.
-
-4. Additional Costs - Any additional costs incurred due to changes in
-project scope will be discussed and agreed upon in writing before
-implementation.
-
-5. Warranty - Our company provides a 3-year warranty on labor and
-materials used in the project.
-
-6. Acceptance - By signing this estimate, the client acknowledges
-and agrees to the terms and conditions outlined as a binding
-agreement.
-
-We are fully insured, should you require any proof of insurance
-please feel free to ask.
-  `;
-
-    // Renderizar o texto final com quebra de linha
-    let noteY = currentY - 60;
-    const noteLines = wrapText(noteText, 500);
-
-    noteLines.forEach((line) => {
-        if (noteY < 50) {
-            addNewPageAndContinueTable();
-            noteY = 750 - spacing;
-        }
-        page.drawText(line, {
-            x: 50,
-            y: noteY,
-            size: fontSize - 2,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
+    // --- NOTAS DINÂMICAS ---
+    let notesY = currentY - 60;
+    data.notes.forEach((note) => {
+        const noteLines = wrapText(note, 280);
+        noteLines.forEach((line) => {
+            if (notesY < 50) {
+                addNewPageAndContinueTable();
+                notesY = 750 - spacing;
+            }
+            page.drawText(line, {
+                x: 50,
+                y: notesY,
+                size: fontSize - 2,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+            notesY -= fontSize;
         });
-        noteY -= fontSize;
+        notesY -= 10; // Espaço extra entre notas
     });
 
     // Salvar o PDF na pasta temporária
