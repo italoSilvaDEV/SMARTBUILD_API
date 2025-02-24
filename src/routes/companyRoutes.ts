@@ -17,10 +17,14 @@ companyRoutes.post("/company",
     compressImage("user"),
     Company.create)
 
-companyRoutes.put(
+companyRoutes.put( 
     "/company/update/:id",
     checkToken,
     uploadPhoto.single("avatar"), // Handles the file upload and stores it temporarily
+    (req, res, next) => {
+        console.log("Arquivo recebido pelo multer:", req.file);
+        next();
+    },
     compressImage("user"),
     Company.updateCompanyData
 );

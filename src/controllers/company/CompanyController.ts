@@ -145,13 +145,13 @@ export class CompanyController {
 
     async updateCompanyData(req: Request, res: Response): Promise<Response> {
         const { id } = req.params;
-        const { 
-            address, 
+        const {
+            address,
             email,
             phone,
             webSiteUrl,
             name
-         } = req.body;
+        } = req.body;
         const file = req.file;
 
         try {
@@ -163,7 +163,10 @@ export class CompanyController {
             let avatarUrl = company.avatar;
 
             if (file) {
-                const newAvatarUrl = await uploadImageWebpToS3(`./public/tmp/user/${file.filename}`, process.env.AMAZON_S3_BUCKET!);
+
+                // const newAvatarUrl = await uploadImageWebpToS3(`./public/tmp/user/${file.filename}`, process.env.AMAZON_S3_BUCKET!);
+                const filePath = `./public/tmp/user/${file.filename.split('.')[0]}.webp`;
+                const newAvatarUrl = await uploadImageWebpToS3(filePath, process.env.AMAZON_S3_BUCKET!);
                 avatarUrl = newAvatarUrl;
                 // Optionally delete old avatar from S3 if needed
             }
@@ -230,61 +233,61 @@ export class CompanyController {
 
     async searchOneCompanyNotes(request: Request, response: Response) {
         try {
-          const { id } = request.params;
-          const company = await prisma.company.findUnique({
-            where: { id },
-            select: {
-              name: true,  
-              avatar: true,
-              address: true,
-              district: true,
-              numberHouse: true,
-              complement: true,
-              email: true,
-              phone: true,
-              webSiteUrl: true,
-              NotesContrac: {
-                orderBy: {
-                  updatedAt: 'asc', 
-                },
+            const { id } = request.params;
+            const company = await prisma.company.findUnique({
+                where: { id },
                 select: {
-                  id: true,
-                  notes: true,
-                  updatedAt: true, 
+                    name: true,
+                    avatar: true,
+                    address: true,
+                    district: true,
+                    numberHouse: true,
+                    complement: true,
+                    email: true,
+                    phone: true,
+                    webSiteUrl: true,
+                    NotesContrac: {
+                        orderBy: {
+                            updatedAt: 'asc',
+                        },
+                        select: {
+                            id: true,
+                            notes: true,
+                            updatedAt: true,
+                        },
+                    },
                 },
-              },
-            },
-          });
-      
-          if (!company) {
-            return response.status(404).json({ error: "Company not found!" });
-          }
-      
-          const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
-      
-          const formattedCompany = {
-            avatar: avatarUrl,
-            address: company.address,
-            district: company.district,
-            numberHouse: company.numberHouse,
-            complement: company.complement,
-            email: company.email,
-            phone: company.phone,
-            webSiteUrl: company.webSiteUrl,
-            name: company.name,
-            ContractNotes: company.NotesContrac.map(note => ({
-              id: note.id,
-              notes: note.notes,
-              updatedAt: note.updatedAt, 
-            })),
-          };
-      
-          return response.json(formattedCompany);
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            const avatarUrl = company.avatar ? await getPresignedUrl(company.avatar) : null;
+
+            const formattedCompany = {
+                avatar: avatarUrl,
+                address: company.address,
+                district: company.district,
+                numberHouse: company.numberHouse,
+                complement: company.complement,
+                email: company.email,
+                phone: company.phone,
+                webSiteUrl: company.webSiteUrl,
+                name: company.name,
+                ContractNotes: company.NotesContrac.map(note => ({
+                    id: note.id,
+                    notes: note.notes,
+                    updatedAt: note.updatedAt,
+                })),
+            };
+
+            return response.json(formattedCompany);
         } catch (error) {
-          console.error('Error searching for company:', error);
-          return response.status(500).json({ error: "Internal server error" });
+            console.error('Error searching for company:', error);
+            return response.status(500).json({ error: "Internal server error" });
         }
-      }
+    }
 
     async findMany(req: Request, res: Response) {
         try {
@@ -381,48 +384,48 @@ export class CompanyController {
 
     async proxyImage(req: Request, res: Response) {
         try {
-          console.log("req.query:", req.query);
-          const { url } = req.query;
-          if (!url) {
-            return res.status(400).json({ error: "Missing 'url' query param" });
-          }
-      
-          // Supondo que 'url' seja uma URL completa, extraímos a key do S3.
-          // Exemplo de URL: https://xmentoria.s3.us-east-2.amazonaws.com/37c6e93b-.webp?X-Amz-Algorithm=...
-          const rawUrl = url as string;
-          const parsedUrl = new URL(rawUrl);
-          const key = parsedUrl.pathname.substring(1); // Remove a '/' inicial
-          console.log("Extracted key:", key);
-      
-          // Gerar o presigned URL usando apenas a key
-          const presignedUrl = await getPresignedUrl(key);
-          console.log("Generated presignedUrl:", presignedUrl);
-      
-          // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
-          const fetch = await import("node-fetch").then((mod) => mod.default || mod);
-          const response = await fetch(presignedUrl);
-      
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Error fetching image from S3, response text:", errorText);
-            return res.status(500).json({ error: "Failed to fetch image from S3" });
-          }
-      
-          // Obter os dados da imagem e converter para base64
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-      
-          // Converter a imagem de WebP para PNG usando Sharp
-          const sharp = require("sharp");
-          const pngBuffer = await sharp(buffer).png().toBuffer();
-          const base64 = `data:image/png;base64,${pngBuffer.toString("base64")}`;
-      
-          return res.json({ base64 });
+            console.log("req.query:", req.query);
+            const { url } = req.query;
+            if (!url) {
+                return res.status(400).json({ error: "Missing 'url' query param" });
+            }
+
+            // Supondo que 'url' seja uma URL completa, extraímos a key do S3.
+            // Exemplo de URL: https://xmentoria.s3.us-east-2.amazonaws.com/37c6e93b-.webp?X-Amz-Algorithm=...
+            const rawUrl = url as string;
+            const parsedUrl = new URL(rawUrl);
+            const key = parsedUrl.pathname.substring(1); // Remove a '/' inicial
+            console.log("Extracted key:", key);
+
+            // Gerar o presigned URL usando apenas a key
+            const presignedUrl = await getPresignedUrl(key);
+            console.log("Generated presignedUrl:", presignedUrl);
+
+            // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
+            const fetch = await import("node-fetch").then((mod) => mod.default || mod);
+            const response = await fetch(presignedUrl);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Error fetching image from S3, response text:", errorText);
+                return res.status(500).json({ error: "Failed to fetch image from S3" });
+            }
+
+            // Obter os dados da imagem e converter para base64
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Converter a imagem de WebP para PNG usando Sharp
+            const sharp = require("sharp");
+            const pngBuffer = await sharp(buffer).png().toBuffer();
+            const base64 = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+
+            return res.json({ base64 });
         } catch (error) {
-          console.error("Erro no proxy de imagem:", error);
-          return res.status(500).json({ error: "Internal server error" });
+            console.error("Erro no proxy de imagem:", error);
+            return res.status(500).json({ error: "Internal server error" });
         }
-      }
-      
+    }
+
 
 }
