@@ -1226,9 +1226,11 @@ export class ProjectController {
         // Buscar todos os ServiceProjects
         serviceProjects = await prisma.serviceProject.findMany({
           where: {
-            company_id: {
-              equals: company_id,
-            },
+            Project: {
+              company_id: {
+                equals: company_id,
+              },
+            }           
           },
           include: {
             Project: {
