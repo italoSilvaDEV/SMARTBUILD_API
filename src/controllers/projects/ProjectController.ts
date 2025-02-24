@@ -1695,9 +1695,7 @@ export class ProjectController {
         : null;
   
       // Montar o endereço completo
-      const fullAddress = `${companyData.address}, ${
-        companyData.complement || ""
-      }, ${companyData.numberHouse} - ${companyData.district}`;
+      const fullAddress = `${companyData.address}`;
   
       // Extrair as notas (apenas o texto)
       const notesArray = companyData.NotesContrac.map((note) => note.notes);

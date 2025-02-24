@@ -147,9 +147,6 @@ export class CompanyController {
         const { id } = req.params;
         const { 
             address, 
-            district, 
-            numberHouse, 
-            complement,
             email,
             phone,
             webSiteUrl,
@@ -175,9 +172,6 @@ export class CompanyController {
                 where: { id },
                 data: {
                     address,
-                    district,
-                    numberHouse,
-                    complement,
                     email,
                     phone,
                     webSiteUrl,
