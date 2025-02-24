@@ -1263,9 +1263,9 @@ export class ProjectController {
 
         // Array de imagens dos usuários vinculados
         const userImages = service.UserServiceProject.map(
-          (userService: any) => ({
+          async (userService: any) => ({
             name: userService.user.name,
-            avatar: userService.user.avatar? getPresignedUrl(userService.user.avatar ): "/default_avatar.png",
+            avatar: userService.user.avatar? await getPresignedUrl(userService.user.avatar ): "/default_avatar.png",
           })
         );
 
