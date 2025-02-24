@@ -1183,6 +1183,7 @@ export class ProjectController {
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
       }
+
       const user = await prisma.user.findUnique({
         where: {
           id: seller_user_id,
@@ -1195,6 +1196,7 @@ export class ProjectController {
           },
         },
       });
+
       let serviceProjects: any = [];
       if (user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os ServiceProjects relacionados ao vendedor
@@ -1230,7 +1232,7 @@ export class ProjectController {
               company_id: {
                 equals: company_id,
               },
-            }           
+            },
           },
           include: {
             Project: {
@@ -1253,7 +1255,7 @@ export class ProjectController {
       }
 
       // Transformar os dados no formato necessário para o calendário
-      const events = serviceProjects.map((service: any) => {
+      const events = await Promise.all(serviceProjects.map(async (service: any) => {
         const start = service.start_date
           ? new Date(`${service.start_date}T00:00:00`)
           : null;
@@ -1262,11 +1264,13 @@ export class ProjectController {
           : null;
 
         // Array de imagens dos usuários vinculados
-        const userImages = service.UserServiceProject.map(
-          async (userService: any) => ({
+        const userImages = await Promise.all(
+          service.UserServiceProject.map(async (userService: any) => ({
             name: userService.user.name,
-            avatar: userService.user.avatar? await getPresignedUrl(userService.user.avatar ): "/default_avatar.png",
-          })
+            avatar: typeof userService.user.avatar === 'string' && userService.user.avatar.trim() !== ''
+              ? await getPresignedUrl(userService.user.avatar)
+              : null,
+          }))
         );
 
         // Formatar descrição e informações adicionais
@@ -1283,7 +1287,7 @@ export class ProjectController {
           description,
           userImages, // Array de imagens e nomes
         };
-      });
+      }));
 
       // Filtrar eventos válidos (com datas de início e fim)
       const filteredEvents = events.filter(
@@ -1298,6 +1302,7 @@ export class ProjectController {
       return res.status(500).json({ error: "Internal server error" });
     }
   }
+
 
   async getServiceProjectScheduleByIdUser(req: Request, res: Response) {
     const { user_id } = req.body;
@@ -1690,7 +1695,6 @@ export class ProjectController {
       if (!companyData) {
         return res.status(404).json({ error: "Company not found" });
       }
-      console.log("logo antes de comprimir: ",companyData.avatar )
       // Converter o avatar para um presigned URL, se existir
       const logoUrl = companyData.avatar
         ? await getPresignedUrl(companyData.avatar)
