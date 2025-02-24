@@ -21,6 +21,7 @@ companyRoutes.put(
     "/company/update/:id",
     checkToken,
     uploadPhoto.single("avatar"), // Handles the file upload and stores it temporarily
+    compressImage("user"),
     Company.updateCompanyData
 );
 
