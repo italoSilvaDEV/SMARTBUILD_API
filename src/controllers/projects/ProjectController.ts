@@ -1262,12 +1262,16 @@ export class ProjectController {
           : null;
 
         // Array de imagens dos usuários vinculados
-        const userImages = Promise.all(service.UserServiceProject.map(
-          async (userService: any) => ({
-            name: userService.user.name,
-            avatar: await getPresignedUrl(userService.user.avatar) || "/default_avatar.png",
+        const userImages = Promise.all(
+          service.UserServiceProject.map(async (userService: any) => {
+            const { name, avatar } = userService.user;
+            return {
+              name,
+              avatar: avatar ? await getPresignedUrl(avatar) : "/default_avatar.png",
+            };
           })
-        ));
+        );
+
 
         // Formatar descrição e informações adicionais
         const description = service.Project?.client?.location
