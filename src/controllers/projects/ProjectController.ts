@@ -1267,7 +1267,7 @@ export class ProjectController {
         const userImages = await Promise.all(
           service.UserServiceProject.map(async (userService: any) => ({
             name: userService.user.name,
-            avatar: typeof userService.user.avatar === 'string' && userService.user.avatar.trim() !== ''
+            avatar: typeof userService.user.avatar === 'string' && userService.user.avatar !== null
               ? await getPresignedUrl(userService.user.avatar)
               : null,
           }))
