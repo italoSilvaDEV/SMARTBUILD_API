@@ -356,7 +356,7 @@ export class ProjectController {
           }
           uniqueUsers.add(workedHour.name_user);
         });
-        
+
         const workersOnThisProject = uniqueUsers.size;
         costofwork += userAttendance
         // Calcula o somatório de hours * price
@@ -1655,7 +1655,67 @@ export class ProjectController {
         project.client?.city_and_state || "",
       ];
 
-      const data = { tableData, total, columnText1, columnText2 };
+      // --- Buscar os dados da empresa (para os dados do cabeçalho) ---
+      // Assumindo que o projeto possua um campo company_id (relacionado à empresa que gera o contrato)
+      const companyId = project.company_id;
+      if (!companyId) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const companyData = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: {
+          name: true,
+          avatar: true,
+          address: true,
+          district: true,
+          numberHouse: true,
+          complement: true,
+          email: true,
+          phone: true,
+          webSiteUrl: true,
+          NotesContrac: {
+            orderBy: { updatedAt: "asc" },
+            select: {
+              id: true,
+              notes: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+  
+      if (!companyData) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      console.log("logo antes de comprimir: ",companyData.avatar )
+      // Converter o avatar para um presigned URL, se existir
+      const logoUrl = companyData.avatar
+        ? await getPresignedUrl(companyData.avatar)
+        : null;
+  
+      // Montar o endereço completo
+      const fullAddress = `${companyData.address}, ${
+        companyData.complement || ""
+      }, ${companyData.numberHouse} - ${companyData.district}`;
+  
+      // Extrair as notas (apenas o texto)
+      const notesArray = companyData.NotesContrac.map((note) => note.notes);
+      console.log("logo depois de comprimir: ",logoUrl )
+      // Preparar o objeto de dados a ser enviado para a função generatePdf
+      const data = {
+        tableData,
+        total,
+        columnText1,
+        columnText2,
+        address: fullAddress || "",
+        logoUrl: logoUrl || undefined,
+        notes: notesArray,
+        phone: companyData.phone || "",
+        email: companyData.email|| "",
+        webSiteUrl: companyData.webSiteUrl|| "",
+        name: companyData.name,
+      };
 
       // Gerar o PDF
       const pdfPath = await generatePdf(data, project.client.name);
