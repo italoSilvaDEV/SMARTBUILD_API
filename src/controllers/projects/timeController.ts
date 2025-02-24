@@ -96,7 +96,8 @@ async function findProject(data: IFindProject) {
                                         user: {
                                             select: {
                                                 name: true,
-                                                hourly_price: true
+                                                hourly_price: true,
+                                                id: true
                                             }
                                         }
                                     }
@@ -685,38 +686,79 @@ export class TimeController {
                 start_date: String(start_date),
                 pag: Number(page)
             })
-            // Formatar e calcular horas trabalhadas
-            const formattedResult = projects.flatMap(i => i.serviceProject
-                .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
-                .flatMap(s => s.UserServiceProject
-                    .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
-                    .flatMap(user => user.user_attendances
-                        .map(x => {
-                            return {
-                                name: x.user.name,
-                                serviceName: s.name,
-                                address: x.check_in_address,
-                                status: x.check_out_time ? 'Out' : 'In'
-                            };
-                        })
+            // // Formatar e calcular horas trabalhadas
+            // const formattedResult = projects.flatMap(i => i.serviceProject
+            //     .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
+            //     .flatMap(s => s.UserServiceProject
+            //         .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
+            //         .flatMap(user => user.user_attendances
+            //             .map(x => {
+            //                 return {
+            //                     name: x.user.name,
+            //                     serviceName: s.name,
+            //                     address: x.check_in_address,
+            //                     status: x.check_out_time ? 'Out' : 'In'
+            //                 };
+            //             })
+            //         )
+            //     )
+            // );
+
+            // const uniqueUserServiceProjectIds = new Set(
+            //     projects.flatMap(i =>
+            //         i.serviceProject
+            //             .filter(s => s.UserServiceProject.length > 0) // Garante que há dados em UserServiceProject
+            //             .flatMap(s =>
+            //                 s.UserServiceProject
+            //                     .filter(user => user.user_attendances.length > 0)
+            //                     .flatMap(user =>
+            //                         user.user_attendances.map(x => x.user_service_project_id)
+            //                     )
+            //             )
+            //     )
+            // );
+            // Coletar todas as entradas de attendance com informações necessárias
+            const allEntries = projects.flatMap(project =>
+                project.serviceProject
+                    .filter(service => service.UserServiceProject.length > 0)
+                    .flatMap(service =>
+                        service.UserServiceProject
+                            .filter(userService => userService.user_attendances.length > 0)
+                            .flatMap(userService =>
+                                userService.user_attendances.map(attendance => ({
+                                    name: attendance.user.name,
+                                    serviceName: service.name,
+                                    address: attendance.check_in_address,
+                                    status: attendance.check_out_time ? 'Out' : 'In',
+                                    check_in_time: attendance.check_in_time,
+                                    userId: attendance.user.id,
+                                    user_service_project_id: attendance.user_service_project_id
+                                }))
+                            )
                     )
-                )
             );
 
+            // Reduzir para obter o attendance mais recente por usuário
+            const latestEntriesMap = allEntries.reduce((map, entry) => {
+                const existing = map.get(entry.userId);
+                if (!existing || new Date(entry.check_in_time) > new Date(existing.check_in_time)) {
+                    map.set(entry.userId, entry);
+                }
+                return map;
+            }, new Map());
+
+            // Formatar o resultado final
+            const formattedResult = Array.from(latestEntriesMap.values()).map(entry => ({
+                name: entry.name,
+                serviceName: entry.serviceName,
+                address: entry.address,
+                status: entry.status
+            }));
+
+            // Obter os IDs únicos de UserServiceProject dos registros mais recentes
             const uniqueUserServiceProjectIds = new Set(
-                projects.flatMap(i =>
-                    i.serviceProject
-                        .filter(s => s.UserServiceProject.length > 0) // Garante que há dados em UserServiceProject
-                        .flatMap(s =>
-                            s.UserServiceProject
-                                .filter(user => user.user_attendances.length > 0)
-                                .flatMap(user =>
-                                    user.user_attendances.map(x => x.user_service_project_id)
-                                )
-                        )
-                )
+                Array.from(latestEntriesMap.values()).map(entry => entry.user_service_project_id)
             );
-
             // Contagem dos IDs únicos
             const serviceCount = uniqueUserServiceProjectIds.size;
             // Retornar os indicadores e a lista de trabalhadores formatada
