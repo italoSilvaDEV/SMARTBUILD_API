@@ -1230,7 +1230,7 @@ export class ProjectController {
               company_id: {
                 equals: company_id,
               },
-            }           
+            }
           },
           include: {
             Project: {
@@ -1262,12 +1262,12 @@ export class ProjectController {
           : null;
 
         // Array de imagens dos usuários vinculados
-        const userImages = service.UserServiceProject.map(
-          (userService: any) => ({
+        const userImages = Promise.all(service.UserServiceProject.map(
+          async (userService: any) => ({
             name: userService.user.name,
-            avatar: userService.user.avatar || "/default_avatar.png",
+            avatar: await getPresignedUrl(userService.user.avatar) || "/default_avatar.png",
           })
-        );
+        ));
 
         // Formatar descrição e informações adicionais
         const description = service.Project?.client?.location
@@ -1686,22 +1686,22 @@ export class ProjectController {
           },
         },
       });
-  
+
       if (!companyData) {
         return res.status(404).json({ error: "Company not found" });
       }
-      console.log("logo antes de comprimir: ",companyData.avatar )
+      console.log("logo antes de comprimir: ", companyData.avatar)
       // Converter o avatar para um presigned URL, se existir
       const logoUrl = companyData.avatar
         ? await getPresignedUrl(companyData.avatar)
         : null;
-  
+
       // Montar o endereço completo
       const fullAddress = `${companyData.address}`;
-  
+
       // Extrair as notas (apenas o texto)
       const notesArray = companyData.NotesContrac.map((note) => note.notes);
-      console.log("logo depois de comprimir: ",logoUrl )
+      console.log("logo depois de comprimir: ", logoUrl)
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
@@ -1712,8 +1712,8 @@ export class ProjectController {
         logoUrl: logoUrl || undefined,
         notes: notesArray,
         phone: companyData.phone || "",
-        email: companyData.email|| "",
-        webSiteUrl: companyData.webSiteUrl|| "",
+        email: companyData.email || "",
+        webSiteUrl: companyData.webSiteUrl || "",
         name: companyData.name,
       };
 
