@@ -217,4 +217,41 @@ export class UserAttendanceController {
         }
       }
 
+    async updateAttendanceTimes(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { check_in_time, check_out_time } = req.body;
+
+            // Verifica se o registro existe
+            const attendance = await prisma.userAttendance.findUnique({ where: { id } });
+            if (!attendance) {
+                res.status(404).json({ error: 'Attendance record not found.' });
+                return;
+            }
+            
+            // Valida se as datas são válidas
+            const checkInDate = new Date(check_in_time);
+            const checkOutDate = check_out_time ? new Date(check_out_time) : null;
+
+            if (checkOutDate && checkInDate > checkOutDate) {
+                res.status(400).json({ error: 'Check-in time cannot be later than check-out time.' });
+                return;
+            }
+
+            // Atualiza os horários
+            const updatedAttendance = await prisma.userAttendance.update({
+                where: { id },
+                data: {
+                    check_in_time: checkInDate,
+                    check_out_time: checkOutDate,
+                },
+            });
+
+            res.status(200).json(updatedAttendance);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: 'Error while updating attendance times.' });
+        }
+    }
+
 }

@@ -21,4 +21,6 @@ userAttendanceRoutes.get(
     userAttendanceControlller.getAttendanceByUserAndService
 );
 
+userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceControlller.updateAttendanceTimes);
+
 export { userAttendanceRoutes };

@@ -1010,25 +1010,34 @@ export class ProjectController {
         },
       });
 
-      // Calcular as horas trabalhadas
-      const formattedResult = result.map((attendance) => {
-        let hoursWorked = 0;
-        if (attendance.check_out_time) {
-          hoursWorked = dayjs(attendance.check_out_time).diff(
-            dayjs(attendance.check_in_time),
-            "hour",
-            true
-          );
-        }
-        return {
-          ...attendance,
-          hours_worked: parseFloat(hoursWorked.toFixed(2)), // Formata para 2 casas decimais
-          price:
-            Number(attendance.user.hourly_price) *
-            parseFloat(hoursWorked.toFixed(2)),
-        };
-      });
-      return res.json(formattedResult);
+      // Processar URLs assinadas e calcular horas trabalhadas
+      const processedResult = await Promise.all(
+        result.map(async (attendance) => {
+          let hoursWorked = 0;
+          if (attendance.check_out_time) {
+            hoursWorked = dayjs(attendance.check_out_time).diff(
+              dayjs(attendance.check_in_time),
+              "hour",
+              true
+            );
+          }
+          return {
+            ...attendance,
+            user: {
+              ...attendance.user,
+              avatar: attendance.user.avatar
+                ? await getPresignedUrl(attendance.user.avatar)
+                : null,
+            },
+            hours_worked: parseFloat(hoursWorked.toFixed(2)),
+            price:
+              Number(attendance.user.hourly_price) *
+              parseFloat(hoursWorked.toFixed(2)),
+          };
+        })
+      );
+
+      return res.json(processedResult);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
