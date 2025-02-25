@@ -1749,6 +1749,8 @@ export class ProjectController {
       // Criar template do e-mail
       const templateEmail = createPreviewContract(
         project.client?.name.toUpperCase(),
+        logoUrl || '',
+        companyData.name,
         total
       );
 

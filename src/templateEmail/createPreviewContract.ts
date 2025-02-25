@@ -1,4 +1,4 @@
-export const createPreviewContract = (name: string, value: string) => `
+export const createPreviewContract = (name: string,logo: string,company: string, value: string) => `
 <!DOCTYPE html>
 <html lang="en" dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -47,7 +47,7 @@ export const createPreviewContract = (name: string, value: string) => `
                                 <table class="bb" cellspacing="0" cellpadding="0" bgcolor="#ffffff" align="center" width="600">
                                     <tr>
                                         <td align="center" style="padding:20px;font-size:0px">
-                                            <img class="adapt-img" src="https://eidbjcl.stripocdn.email/content/guids/CABINET_22c0206a7ab4f3bb167ef9de9cabaff89a7485451211a3261b98df46805529ec/images/logoside.png" width="143" height="54">
+                                            <img class="adapt-img" src="${logo}" width="143" height="54">
                                         </td>
                                     </tr>
                                 </table>
@@ -78,7 +78,7 @@ export const createPreviewContract = (name: string, value: string) => `
                                             <p style="font-size:14px;color:#333333;">We appreciate your business. Find your budget details in the attached file.</p>
                                             <p style="font-size:14px;color:#333333;">Feel free to contact us if you have any questions.</p>
                                             <p style="font-size:14px;color:#333333;">Have a great day!</p>
-                                            <p style="font-size:14px;color:#333333;">RP PRO PAINT & CONTRACTING, LLC</p>
+                                            <p style="font-size:14px;color:#333333;">${company}</p>
                                         </td>
                                     </tr>
                                 </table>
