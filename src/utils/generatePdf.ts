@@ -26,14 +26,14 @@ interface DataProps {
     webSiteUrl: string;
     name: string;
 }
- 
+
 const fontSize = 10;
 
 // Função para carregar imagem localmente no backend
 const loadLocalImageAsUint8Array = (filePath: string): Uint8Array => {
     const imageBuffer = fs.readFileSync(filePath);
     return new Uint8Array(imageBuffer);
-  };
+};
 
 export async function generatePdf(data: DataProps, clientName: string): Promise<string> {
     const pdfDoc = await PDFDocument.create();
@@ -57,41 +57,84 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     let page = addPage();
 
     // --- LOGO ---
+    // if (data.logoUrl) {
+    //     try {
+    //       const response = await fetch(data.logoUrl);
+    //       if (!response.ok) {
+    //         throw new Error(`Failed to load logo from URL: ${data.logoUrl}`);
+    //       }
+    //       const arrayBuffer = await response.arrayBuffer();
+    //       const buffer = Buffer.from(arrayBuffer);
+    //       // Converter a imagem (que pode estar em WebP) para PNG usando Sharp
+    //       const pngBuffer = await sharp(buffer).png().toBuffer();
+    //       // Embutir a imagem PNG no PDF
+    //       const logoImage = await pdfDoc.embedPng(pngBuffer);
+    //       const imageDims = logoImage.scale(0.5);
+    //       page.drawImage(logoImage, {
+    //         x: 420,
+    //         y: 680,
+    //         width: imageDims.width,
+    //         height: imageDims.height,
+    //       });
+    //     } catch (error) {
+    //       console.error("Error loading logo from URL:", error);
+    //     }
+    //   } else {
+    //     // Fallback: usa a imagem local
+    //     const imagePath = path.join(__dirname, '../img/captura.png');
+    //     const imageBytes = loadLocalImageAsUint8Array(imagePath);
+    //     const localImage = await pdfDoc.embedPng(imageBytes);
+    //     const imageDims = localImage.scale(0.5);
+    //     page.drawImage(localImage, {
+    //       x: 370,
+    //       y: 680,
+    //       width: imageDims.width,
+    //       height: imageDims.height,
+    //     });
+    //   }
+
     if (data.logoUrl) {
         try {
-          const response = await fetch(data.logoUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to load logo from URL: ${data.logoUrl}`);
-          }
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          // Converter a imagem (que pode estar em WebP) para PNG usando Sharp
-          const pngBuffer = await sharp(buffer).png().toBuffer();
-          // Embutir a imagem PNG no PDF
-          const logoImage = await pdfDoc.embedPng(pngBuffer);
-          const imageDims = logoImage.scale(0.5);
-          page.drawImage(logoImage, {
-            x: 420,
-            y: 680,
-            width: imageDims.width,
-            height: imageDims.height,
-          });
+            const response = await fetch(data.logoUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to load logo from URL: ${data.logoUrl}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            // Converter a imagem (que pode estar em WebP) para PNG usando Sharp
+            const pngBuffer = await sharp(buffer).png().toBuffer();
+            // Embutir a imagem PNG no PDF
+            const logoImage = await pdfDoc.embedPng(pngBuffer);
+
+            // limites máximos para a logo
+            const maxLogoWidth = 100;
+            const maxLogoHeight = 100;
+
+            // dimensões originais da imagem
+            const originalWidth = logoImage.width;
+            const originalHeight = logoImage.height;
+
+            // fator de escala para manter a proporção
+            const scaleFactor = Math.min(
+                maxLogoWidth / originalWidth,
+                maxLogoHeight / originalHeight,
+                1 // não ampliar se a imagem for menor
+            );
+
+            const logoWidth = originalWidth * scaleFactor;
+            const logoHeight = originalHeight * scaleFactor;
+
+            page.drawImage(logoImage, {
+                x: 420,
+                y: 700,
+                width: logoWidth,
+                height: logoHeight,
+            });
         } catch (error) {
-          console.error("Error loading logo from URL:", error);
+            console.error("Error loading logo from URL:", error);
         }
-      } else {
-        // Fallback: usa a imagem local
-        const imagePath = path.join(__dirname, '../img/captura.png');
-        const imageBytes = loadLocalImageAsUint8Array(imagePath);
-        const localImage = await pdfDoc.embedPng(imageBytes);
-        const imageDims = localImage.scale(0.5);
-        page.drawImage(localImage, {
-          x: 370,
-          y: 680,
-          width: imageDims.width,
-          height: imageDims.height,
-        });
-      }
+    }
+
 
     // Carrega a imagem local
     // const imagePath = path.join(__dirname, '../img/captura.png');
