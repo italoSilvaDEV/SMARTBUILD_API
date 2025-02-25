@@ -14,7 +14,7 @@ export class UpdateWorkedHoursController {
 
     // Função de validação
     function validateWorkedHoursData(data: any): string | null {
-      if (!data.id) return "ID is required";
+      if (!data.id) return "You cannot change the data coming from the worker's APP!";
       if (!data.name_user) return "Name user is required";
       if (!data.amount_of_hours && data.amount_of_hours !== null) return "Amount of hours is required";
       if (!data.hourly_price) return "Hourly price is required";
