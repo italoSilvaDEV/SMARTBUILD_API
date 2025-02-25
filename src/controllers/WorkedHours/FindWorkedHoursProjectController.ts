@@ -123,8 +123,8 @@ export class FindWorkedHoursProjectController {
                     id: '',
                     project_id: '',
                     name_user: attendance.user.name,
-                    amount_of_hours: String(attendance.user.hourly_price),
-                    hourly_price: String(Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))),
+                    amount_of_hours: String(parseFloat(hoursWorked.toFixed(2))) ,
+                    hourly_price:  String(attendance.user.hourly_price),
                     data_creation: attendance.check_in_time,
                     start_date: attendance.check_in_time,
                     end_date: attendance.check_out_time
