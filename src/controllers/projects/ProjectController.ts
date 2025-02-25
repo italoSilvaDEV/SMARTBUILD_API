@@ -1700,7 +1700,7 @@ export class ProjectController {
           },
         },
       });
-  
+
       if (!companyData) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -1708,13 +1708,13 @@ export class ProjectController {
       const logoUrl = companyData.avatar
         ? await getPresignedUrl(companyData.avatar)
         : null;
-  
+
       // Montar o endereço completo
       const fullAddress = `${companyData.address}`;
-  
+
       // Extrair as notas (apenas o texto)
       const notesArray = companyData.NotesContrac.map((note) => note.notes);
-      console.log("logo depois de comprimir: ",logoUrl )
+      console.log("logo depois de comprimir: ", logoUrl)
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
@@ -1725,8 +1725,8 @@ export class ProjectController {
         logoUrl: logoUrl || undefined,
         notes: notesArray,
         phone: companyData.phone || "",
-        email: companyData.email|| "",
-        webSiteUrl: companyData.webSiteUrl|| "",
+        email: companyData.email || "",
+        webSiteUrl: companyData.webSiteUrl || "",
         name: companyData.name,
       };
 
@@ -1757,7 +1757,7 @@ export class ProjectController {
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: project.client.email,
-        subject: "Estimate from RP PRO PAINT & CONTRACTING, LLC",
+        subject: `Estimate from ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
           {
