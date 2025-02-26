@@ -118,13 +118,7 @@ export class UserController {
         },
         tls: { rejectUnauthorized: false },
       });
-      const templateEmail = NewUser(data.name.toUpperCase(), pass);
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
-        to: data.email,
-        subject: "Smart Build",
-        html: templateEmail,
-      };
+      
 
       await prisma.user.create({
         data: {
@@ -143,6 +137,23 @@ export class UserController {
         },
       });
 
+
+      const company = await prisma.company.findUnique({
+        where: {
+          id: data.company_id
+        },
+        select: {
+          avatar: true
+        }
+      });
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
+      const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: data.email,
+        subject: "Smart Build",
+        html: templateEmail,
+      };
       deleteFile(`./public/tmp/user/${req.file?.filename}`);
       await transporter.sendMail(mailOptions);
 
@@ -668,6 +679,9 @@ export class UserController {
       where: {
         email,
       },
+      include: {
+        company: true
+      }
     });
 
     if (!user) {
@@ -709,8 +723,9 @@ export class UserController {
         );
       }
     });
+    const logo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
 
-    const templateEmail = RecoverPassword(user.name.toUpperCase(), token);
+    const templateEmail = RecoverPassword(user.name.toUpperCase(), logo, token);
     const mailOptions = {
       from: SMTP_CONFIG.user,
       to: email,

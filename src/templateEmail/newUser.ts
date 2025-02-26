@@ -1,4 +1,4 @@
-    export const NewUser = (name: string, code: string) => `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+export const NewUser = (name: string, logo: string, code: string) => `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
     <html dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office" lang="en">
     <head>
     <meta charset="UTF-8">
@@ -67,7 +67,7 @@
     <td align="center" valign="top" style="padding:0;Margin:0;width:560px">
     <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px">
     <tr>
-    <td align="center" class="es-infoblock" style="padding:0;Margin:0;line-height:14px;font-size:0px;color:#CCCCCC"><a target="_blank" href="https://app.rpprocontracting.com" style="-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;text-decoration:underline;color:#CCCCCC;font-size:12px"><img class="adapt-img" src="https://mkboon.stripocdn.email/content/guids/CABINET_fc4270c04b119edef28664f561365504e49ab8bf43fb023386c037eb01576044/images/whatsapp_image_20240715_at_143751.jpeg" alt style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic" width="560"></a></td>
+    <td align="center" class="es-infoblock" style="padding:0;Margin:0;line-height:14px;font-size:0px;color:#CCCCCC"><a target="_blank" href="https://app.rpprocontracting.com" style="-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;text-decoration:underline;color:#CCCCCC;font-size:12px"><img class="adapt-img" src="${logo}" alt style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic" width="560"></a></td>
     </tr>
     </table></td>
     </tr>

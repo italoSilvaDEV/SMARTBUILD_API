@@ -103,7 +103,8 @@ export class CompanyController {
                 },
                 tls: { rejectUnauthorized: false },
             });
-            const templateEmail = NewUser(data.name.toUpperCase(), pass);
+            const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
+            const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
             const mailOptions = {
                 from: SMTP_CONFIG.user,
                 to: data.email,
