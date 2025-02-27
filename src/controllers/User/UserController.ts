@@ -111,14 +111,14 @@ export class UserController {
       const transporter = nodemailer.createTransport({
         host: SMTP_CONFIG.host,
         port: SMTP_CONFIG.port,
-        secure: true,
+        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
         auth: {
           user: SMTP_CONFIG.user,
           pass: SMTP_CONFIG.pass,
         },
         tls: { rejectUnauthorized: false },
       });
-      
+
 
       await prisma.user.create({
         data: {
@@ -510,7 +510,7 @@ export class UserController {
         throw Error("User not found!");
       }
       const formattedResult = {
-        ...result, 
+        ...result,
         avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
         seller_project: result?.seller_project.map((project) => {
           const price_project = project.serviceProject.reduce(
@@ -536,7 +536,7 @@ export class UserController {
       return response.json({ error: "Erro interno do servidor" });
     }
   }
-// APP
+  // APP
   async getUserDetails(request: Request, response: Response) {
     try {
       const { id } = request.params;
