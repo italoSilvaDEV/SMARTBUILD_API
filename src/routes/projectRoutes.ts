@@ -109,9 +109,7 @@ const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
 projectRoutes.put(
   "/invoicecostproject/:id",
-  checkToken,
-  uploadPhoto.single("file"),
-  compressImage("costproject"),
+  checkToken, 
   updateInvoiceCostProjectController.handle
 );
 
