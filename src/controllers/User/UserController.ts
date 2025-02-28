@@ -187,6 +187,7 @@ export class UserController {
           password: true,
           email: true,
           rules: true,
+          isDisabled: true,
           office: {
             select: {
               id: true,
@@ -202,14 +203,16 @@ export class UserController {
 
       if (!user) {
         return res.status(400).json({ error: "User or password invalid!" });
-        //throw Error("User or password invalid!")
+      }
+
+      if (user.isDisabled) {
+        return res.status(403).json({ error: "Access denied!" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
 
       if (!isValidPassword) {
         return res.status(400).json({ error: "User or password invalid!" });
-        //throw Error("User or password invalid!")
       }
 
       // Gerar URL assinada para o avatar, se existir
@@ -266,6 +269,7 @@ export class UserController {
       profession,
       hourly_price,
       confirm_password,
+      isDisabled,
     } = request.body;
 
     // Função de validação
@@ -344,7 +348,8 @@ export class UserController {
             office_id: office.id,
             phone,
             hourly_price,
-            profession
+            profession,
+            isDisabled,
           },
         });
       } else {
@@ -358,7 +363,8 @@ export class UserController {
             office_id: office.id,
             phone,
             hourly_price,
-            profession
+            profession,
+            isDisabled,
           },
         });
       }
@@ -481,6 +487,7 @@ export class UserController {
           city_and_state: true,
           hourly_price: true,
           profession: true,
+          isDisabled: true,
           office: {
             select: {
               id: true,
@@ -610,6 +617,7 @@ export class UserController {
         email: true,
         avatar: true,
         document: true,
+        isDisabled: true,
         office: {
           select: {
             name: true,

@@ -25,6 +25,7 @@ model User {
   rules           Json
   hourly_price    Float?
   profession      String?
+  isDisabled      Boolean?             @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -40,6 +41,7 @@ model User {
   UserServiceProject     UserServiceProject[]
   UserAttendance         UserAttendance[]
   Activities             Activities[]
+
 
   InvoiceSendHistory InvoiceSendHistory[]
 
