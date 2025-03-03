@@ -10,6 +10,17 @@ interface IFindProject {
     deadline: string,
     pag: number
 }
+
+interface WorkerGroup {
+    user: {
+        id: string;
+        name: string;
+        hourly_price: number | null;
+    };
+    hours_worked: number;
+    price: number;
+}
+
 async function findProject(data: IFindProject) {
     const startDate = new Date(String(data.start_date));
     startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
@@ -116,12 +127,68 @@ async function findProject(data: IFindProject) {
     return { projects, projectsCount };
 }
 
+// Adicionar nova função para buscar todos os registros de attendance
+async function findAllAttendances(companyId: string, search: string | undefined, startDate: Date, deadline: Date) {
+    return await prisma.userAttendance.findMany({
+        where: {
+            AND: [
+                search ? {
+                    user: {
+                        name: {
+                            contains: String(search),
+                        }
+                    },
+                } : {},
+                {
+                    check_in_time: {
+                        gte: startDate,
+                    },
+                },
+                {
+                    OR: [
+                        {
+                            check_out_time: {
+                                lte: deadline
+                            },
+                        },
+                        {
+                            check_out_time: null
+                        }
+                    ]
+                },
+                {
+                    UserServiceProject: {
+                        service_project: {
+                            Project: {
+                                company_id: companyId,
+                                status_project: {
+                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        include: {
+            user: {
+                select: {
+                    name: true,
+                    hourly_price: true,
+                    id: true
+                }
+            }
+        }
+    });
+}
+
 export class TimeController {
     async findMany(req: Request, res: Response) {
-        const { id, search, start_date, deadline, page } = req.query;
+        const page = Number(req.query.page);
+        const { id, search, start_date, deadline } = req.query;
         try {
             // Verificar se os parâmetros obrigatórios estão presentes
-            if (!id || !start_date || !deadline || !page) {
+            if (!id || !start_date || !deadline) {
                 return res.status(400).json({ error: "Params invalid" });
             }
 
@@ -201,109 +268,120 @@ export class TimeController {
 
 
 
-            // Contar projetos com status específicos dentro do período
+            // Ajustar a paginação dos projetos
             const { projects, projectsCount } = await findProject({
                 company_id: String(id),
                 search: String(search),
                 deadline: String(deadline),
                 start_date: String(start_date),
-                pag: Number(page)
+                pag: page // Usar o valor da página diretamente
             })
 
-            // Formatar e calcular horas trabalhadas
-            const formattedResult = projects.flatMap(i => i.serviceProject
-                .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
-                .flatMap(s => s.UserServiceProject
-                    .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
-                    .flatMap(user => user.user_attendances
-                        .map(x => {
-                            let hoursWorked = 0;
-                            if (x.check_out_time && x.check_in_time) {
-                                hoursWorked = dayjs(x.check_out_time).diff(
-                                    dayjs(x.check_in_time),
-                                    "hour",
-                                    true
-                                );
-                            }
-
-                            const roundedHours = parseFloat(hoursWorked.toFixed(2));
-                            const calculatedPrice = x.user.hourly_price
-                                ? x.user.hourly_price * roundedHours
-                                : 0;
-                            return ({
-                                ...x,
-                                hours_worked: roundedHours,
-                                price: calculatedPrice
-                            })
-                        })
-                    )
-                )
-            );
-            const uniqueUserServiceProjectIds = new Set(
-                projects.flatMap(i =>
-                    i.serviceProject
-                        .filter(s => s.UserServiceProject.length > 0) // Garante que há dados em UserServiceProject
-                        .flatMap(s =>
-                            s.UserServiceProject
-                                .filter(user => user.user_attendances.length > 0)
-                                .flatMap(user =>
-                                    user.user_attendances.map(x => x.user_service_project_id)
-                                )
-                        )
-                )
+            // Buscar todos os registros de attendance
+            const allAttendances = await findAllAttendances(
+                String(id),
+                String(search),
+                startDate,
+                newDeadline
             );
 
-            // Contagem dos IDs únicos
-            const serviceCount = uniqueUserServiceProjectIds.size;
+            // Processar todos os registros
+            const allFormattedAttendances = allAttendances.map(x => {
+                let hoursWorked = 0;
+                if (x.check_out_time && x.check_in_time) {
+                    hoursWorked = dayjs(x.check_out_time).diff(
+                        dayjs(x.check_in_time),
+                        "hour",
+                        true
+                    );
+                }
 
-            const projectFormatted = projects.map(i => ({
-                clientData: i.client?.name + ' - ' + i.client?.location,
-                serviceCount: i.serviceProject.length,
-                workerData: i.serviceProject
-                    .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
-                    .flatMap(s => s.UserServiceProject
-                        .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
-                        .flatMap(user => user.user_attendances
-                            .map(x => {
-                                let hoursWorked = 0;
-                                if (x.check_out_time && x.check_in_time) {
-                                    hoursWorked = dayjs(x.check_out_time).diff(
-                                        dayjs(x.check_in_time),
-                                        "hour",
-                                        true
-                                    );
-                                }
+                const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                const calculatedPrice = x.user.hourly_price
+                    ? x.user.hourly_price * roundedHours
+                    : 0;
 
-                                const roundedHours = parseFloat(hoursWorked.toFixed(2));
-                                const calculatedPrice = x.user.hourly_price
-                                    ? x.user.hourly_price * roundedHours
-                                    : 0;
-                                return ({
-                                    nameWorker: x.user.name,
-                                    date: x.date,
-                                    in: x.check_in_time,
-                                    out: x.check_out_time,
-                                    price: calculatedPrice
-                                })
-                            })
-                        )
-                    )
+                return {
+                    user: x.user,
+                    hours_worked: roundedHours,
+                    price: calculatedPrice
+                };
+            });
+
+            // Agrupar por usuário
+            const workersGroupedByUser = allFormattedAttendances.reduce((acc: Record<string, WorkerGroup>, current) => {
+                const userId = current.user.id;
+                
+                if (!acc[userId]) {
+                    acc[userId] = {
+                        user: current.user,
+                        hours_worked: 0,
+                        price: 0
+                    };
+                }
+                
+                acc[userId].hours_worked += current.hours_worked;
+                acc[userId].price += current.price;
+                
+                return acc;
+            }, {});
+
+            const consolidatedWorkers = Object.values(workersGroupedByUser).map((worker) => ({
+                user: (worker as WorkerGroup).user,
+                hours_worked: parseFloat((worker as WorkerGroup).hours_worked.toFixed(2)),
+                price: parseFloat((worker as WorkerGroup).price.toFixed(2))
             }));
 
-            // Retornar os indicadores e a lista de trabalhadores formatada
-            return res.json(
-                {
-                    indicators: {
-                        totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
-                        totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
-                        totalServices: serviceCount,
-                        totalProjects: projectsCount,
-                    },
-                    projects: projectFormatted,
-                    workers: formattedResult,
-                    totalPages: Math.ceil(resultCount / 10)
-                }
-            );
+            // Ajustar a paginação dos workers
+            const pageSize = 10;
+            const skip = page * pageSize; // Remover o -1 pois agora usamos a página como está
+            const consolidatedWorkersPage = consolidatedWorkers
+                .sort((a, b) => a.user.name.localeCompare(b.user.name))
+                .slice(skip, skip + pageSize);
+
+            return res.json({
+                indicators: {
+                    totalPrice: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.price, 0).toFixed(2)),
+                    totalHours: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.hours_worked, 0).toFixed(2)),
+                    totalServices: resultCount,
+                    totalProjects: projectsCount,
+                },
+                projects: projects.map(i => ({
+                    clientData: i.client?.name + ' - ' + i.client?.location,
+                    serviceCount: i.serviceProject.length,
+                    workerData: i.serviceProject
+                        .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
+                        .flatMap(s => s.UserServiceProject
+                            .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
+                            .flatMap(user => user.user_attendances
+                                .map(x => {
+                                    let hoursWorked = 0;
+                                    if (x.check_out_time && x.check_in_time) {
+                                        hoursWorked = dayjs(x.check_out_time).diff(
+                                            dayjs(x.check_in_time),
+                                            "hour",
+                                            true
+                                        );
+                                    }
+
+                                    const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                                    const calculatedPrice = x.user.hourly_price
+                                        ? x.user.hourly_price * roundedHours
+                                        : 0;
+                                    return ({
+                                        nameWorker: x.user.name,
+                                        date: x.date,
+                                        in: x.check_in_time,
+                                        out: x.check_out_time,
+                                        price: calculatedPrice
+                                    })
+                                })
+                            )
+                        )
+                })),
+                workers: consolidatedWorkersPage,
+                totalPages: Math.ceil(consolidatedWorkers.length / pageSize)
+            });
         } catch (error) {
             console.error("Error in findMany:", error);
 
@@ -314,6 +392,7 @@ export class TimeController {
             return res.status(500).json({ error: "Internal server error" });
         }
     }
+    
     async findManyByIdWorker(req: Request, res: Response) {
         const { id, worker_id, start_date, deadline, page } = req.query;
         try {
@@ -331,184 +410,154 @@ export class TimeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
-            // Verificar se a empresa existe
-            const existWorker = await prisma.user.findUnique({
-                where: { id: String(worker_id) }, include: { office: true }
-            });
-
             const startDate = new Date(String(start_date));
-            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+            startDate.setHours(0, 0, 0, 0);
 
             const newDeadline = new Date(String(deadline));
-            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
-            const resultCount = await prisma.userAttendance.count({
-                where: {
-                    AND: [
-                        {
+            newDeadline.setHours(23, 59, 0, 0);
+
+            // Verificar se a empresa existe
+            const existWorker = await prisma.user.findUnique({
+                where: { id: String(worker_id) },
+                include: { 
+                    office: true,
+                    UserAttendance: {
+                        where: {
                             AND: [
                                 {
                                     check_in_time: {
-                                        gte: startDate, // Converter para formato Date
-
+                                        gte: startDate,
                                     },
                                 },
                                 {
                                     OR: [
                                         {
                                             check_out_time: {
-                                                lte: newDeadline, // Converter para formato Date
-
+                                                lte: newDeadline,
                                             },
                                         },
                                         {
                                             check_out_time: null
                                         }
                                     ]
-
                                 }
                             ]
+                        }
+                    }
+                }
+            });
 
+            // Contagem de atendimentos do worker específico
+            const resultCount = await prisma.userAttendance.count({
+                where: {
+                    AND: [
+                        { user_id: String(worker_id) },
+                        {
+                            check_in_time: {
+                                gte: startDate,
+                            },
+                        },
+                        {
+                            OR: [
+                                {
+                                    check_out_time: {
+                                        lte: newDeadline,
+                                    },
+                                },
+                                {
+                                    check_out_time: null
+                                }
+                            ]
                         },
                         {
                             UserServiceProject: {
                                 service_project: {
                                     Project: {
-                                        AND: [
-                                            {
-                                                company_id: { equals: String(id) },
-                                            },
-                                            {
-                                                status_project: {
-                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
-                                                },
-                                            },
-                                        ]
+                                        company_id: String(id),
+                                        status_project: {
+                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                        }
                                     }
                                 }
                             }
-                        },
-                        {
-                            user_id: { equals: String(worker_id) }
                         }
-                    ],
-                },
-            })
+                    ]
+                }
+            });
 
-
-            // Contar serviços dentro do período
+            // Contagem de serviços do worker específico
             const serviceCount = await prisma.serviceProject.count({
                 where: {
                     AND: [
                         {
                             UserServiceProject: {
                                 some: {
+                                    user_id: String(worker_id),
                                     user_attendances: {
                                         some: {
-                                            AND: [
+                                            check_in_time: {
+                                                gte: startDate,
+                                            },
+                                            OR: [
                                                 {
-                                                    check_in_time: {
-                                                        gte: startDate, // Converter para formato Date
-
+                                                    check_out_time: {
+                                                        lte: newDeadline,
                                                     },
                                                 },
                                                 {
-                                                    OR: [
-                                                        {
-                                                            check_out_time: {
-                                                                lte: newDeadline, // Converter para formato Date
-
-                                                            },
-                                                        },
-                                                        {
-                                                            check_out_time: null
-                                                        }
-                                                    ]
-
+                                                    check_out_time: null
                                                 }
                                             ]
-
-                                        },
+                                        }
                                     }
                                 }
                             }
-
                         },
                         {
                             Project: {
-                                AND: [
-                                    {
-                                        company_id: { equals: String(id) },
-                                    },
-                                    {
-                                        status_project: {
-                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
-                                        },
-                                    },
-                                ]
-                            }
-                        },
-                        {
-                            UserServiceProject: {
-                                every: {
-                                    user_id: String(worker_id)
+                                company_id: String(id),
+                                status_project: {
+                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                                 }
                             }
                         }
-                    ],
-                },
+                    ]
+                }
             });
 
-            // Contar projetos com status específicos dentro do período
+            // Buscar projetos específicos do worker
             const projects = await prisma.project.findMany({
                 where: {
                     AND: [
                         {
+                            company_id: String(id),
+                        },
+                        {
                             status_project: {
                                 in: ["Pre-Start", "In Progress", "Final walkthrough"],
                             },
-                        },
-
-                        {
-                            company_id: String(id),
                         },
                         {
                             serviceProject: {
                                 some: {
                                     UserServiceProject: {
                                         some: {
+                                            user_id: String(worker_id),
                                             user_attendances: {
                                                 some: {
-                                                    AND: [
+                                                    check_in_time: {
+                                                        gte: startDate,
+                                                    },
+                                                    OR: [
                                                         {
-                                                            user_id: { equals: String(worker_id) }
+                                                            check_out_time: {
+                                                                lte: newDeadline,
+                                                            },
                                                         },
                                                         {
-                                                            AND: [
-                                                                {
-                                                                    check_in_time: {
-                                                                        gte: startDate, // Converter para formato Date
-
-                                                                    },
-                                                                },
-                                                                {
-                                                                    OR: [
-                                                                        {
-                                                                            check_out_time: {
-                                                                                lte: newDeadline, // Converter para formato Date
-
-                                                                            },
-                                                                        },
-                                                                        {
-                                                                            check_out_time: null
-                                                                        }
-                                                                    ]
-
-                                                                }
-                                                            ]
-
-                                                        },
+                                                            check_out_time: null
+                                                        }
                                                     ]
-
                                                 }
                                             }
                                         }
@@ -516,7 +565,7 @@ export class TimeController {
                                 }
                             }
                         }
-                    ],
+                    ]
                 },
                 include: {
                     client: {
@@ -530,6 +579,9 @@ export class TimeController {
                         select: {
                             id: true,
                             UserServiceProject: {
+                                where: {
+                                    user_id: String(worker_id)
+                                },
                                 select: {
                                     user_attendances: {
                                         include: {
@@ -547,11 +599,12 @@ export class TimeController {
                     }
                 }
             });
-            // Formatar e calcular horas trabalhadas
+
+            // Calcular horas trabalhadas apenas para o worker específico
             const formattedResult = projects.flatMap(i => i.serviceProject
-                .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
+                .filter(s => s.UserServiceProject.length > 0)
                 .flatMap(s => s.UserServiceProject
-                    .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
+                    .filter(user => user.user_attendances.length > 0)
                     .flatMap(user => user.user_attendances
                         .map(x => {
                             let hoursWorked = 0;
@@ -569,6 +622,7 @@ export class TimeController {
                                 : 0;
                             return ({
                                 ...x,
+                                userId: x.user_id,
                                 hours_worked: roundedHours,
                                 price: calculatedPrice
                             })
@@ -576,33 +630,31 @@ export class TimeController {
                     )
                 )
             );
-            const urlAvatar = await getPresignedUrl(String(existWorker?.avatar))
-            // Retornar os indicadores e a lista de trabalhadores formatada
-            return res.json(
-                {
-                    indicators: {
-                        totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
-                        totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
-                        totalServices: serviceCount,
-                        totalProjects: projects.length,
-                    },
-                    userWorker: {
-                        id: existWorker?.id,
-                        name: existWorker?.name,
-                        avatar: urlAvatar,
-                        office: existWorker?.office.name
-                    },
-                    workers: formattedResult,
-                    totalPages: Math.ceil(resultCount / 10)
-                }
-            );
+
+            const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
+
+            return res.json({
+                indicators: {
+                    totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
+                    totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
+                    totalServices: serviceCount,
+                    totalProjects: projects.length,
+                },
+                userWorker: {
+                    id: existWorker?.id,
+                    name: existWorker?.name,
+                    avatar: urlAvatar,
+                    office: existWorker?.office.name
+                },
+                workers: formattedResult,
+                totalPages: Math.ceil(resultCount / 10)
+            });
+
         } catch (error) {
             console.error("Error in findManyByIdWorker:", error);
-
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
-
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -611,7 +663,7 @@ export class TimeController {
         const { id, start_date, deadline, page } = req.query;
         try {
             // Verificar se os parâmetros obrigatórios estão presentes
-            if (!id || !page) {
+            if (!id || !start_date || !deadline) {
                 return res.status(400).json({ error: "Params invalid" });
             }
 
