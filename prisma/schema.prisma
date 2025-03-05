@@ -8,11 +8,11 @@ datasource db {
 }
 
 model User {
-  id              String  @id @default(uuid())
+  id              String   @id @default(uuid())
   avatar          String?
   name            String
-  email           String  @unique
-  document        String  @unique
+  email           String   @unique
+  document        String   @unique
   phone           String?
   phone_emergency String?
   zip_code        String?
@@ -25,7 +25,7 @@ model User {
   rules           Json
   hourly_price    Float?
   profession      String?
-  isDisabled      Boolean?             @default(false)
+  isDisabled      Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -42,12 +42,12 @@ model User {
   UserAttendance         UserAttendance[]
   Activities             Activities[]
 
-
   InvoiceSendHistory InvoiceSendHistory[]
 
-  company    Company?  @relation(fields: [company_id], references: [id])
+  company    Company?   @relation(fields: [company_id], references: [id])
   company_id String?
   Invoice    Invoice[]
+  TimeLine   TimeLine[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -205,6 +205,7 @@ model ServiceProject {
   Activities         Activities[]
   company            Company?             @relation(fields: [company_id], references: [id])
   company_id         String?
+  TimeLine           TimeLine[]
 }
 
 model Activities {
@@ -425,6 +426,7 @@ model UserServiceProject {
   service_project_id String
 
   user_attendances UserAttendance[]
+  TimeLine         TimeLine[]
 
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
   @@index([user_id], map: "user_service_project_user_id_fkey")
@@ -454,6 +456,23 @@ model UserAttendance {
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")
+}
+
+model TimeLine {
+  id                   String              @id @default(uuid())
+  check_in_time        DateTime
+  check_in_address     String
+  check_in_latitude    Float
+  check_in_longitude   Float
+  is_local_work        Boolean
+  date_creation        DateTime            @default(now())
+  date_update          DateTime            @updatedAt
+  user                 User                @relation(fields: [user_id], references: [id])
+  user_id              String
+  service_project      ServiceProject      @relation(fields: [service_project_id], references: [id])
+  service_project_id   String
+  UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id])
+  userServiceProjectId String
 }
 
 model Invoice {
