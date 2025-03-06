@@ -792,6 +792,7 @@ export class TimeController {
                                     address: attendance.check_in_address,
                                     status: attendance.check_out_time ? 'Out' : 'In',
                                     check_in_time: attendance.check_in_time,
+                                    check_out_time: attendance.check_out_time,
                                     userId: attendance.user.id,
                                     user_service_project_id: attendance.user_service_project_id
                                 }))
