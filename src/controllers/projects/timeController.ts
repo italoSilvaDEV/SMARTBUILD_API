@@ -589,7 +589,7 @@ export class TimeController {
                                 where: {
                                     user_id: String(worker_id)
                                 },
-                                select: {
+                                include: {
                                     user_attendances: {
                                         include: {
                                             user: {
