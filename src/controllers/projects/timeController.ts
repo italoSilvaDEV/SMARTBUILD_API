@@ -113,7 +113,7 @@ async function findProject(data: IFindProject) {
                                         }
                                     },
                                     orderBy: {
-                                        check_in_time: 'desc'
+                                        check_in_time: 'asc'
                                     }
                                 }
                             }
@@ -183,7 +183,7 @@ async function findAllAttendances(companyId: string, search: string | undefined,
             }
         },
         orderBy: {
-            check_in_time: 'desc'
+            check_in_time: 'asc'
         }
     });
 }
@@ -600,7 +600,7 @@ export class TimeController {
                                             }
                                         },
                                         orderBy: {
-                                            check_in_time: 'desc'
+                                            check_in_time: 'asc'
                                         }
                                     }
                                 }
