@@ -113,7 +113,7 @@ async function findProject(data: IFindProject) {
                                         }
                                     },
                                     orderBy: {
-                                        check_in_time: 'asc'
+                                        check_in_time: 'desc'
                                     }
                                 }
                             }
@@ -183,7 +183,7 @@ async function findAllAttendances(companyId: string, search: string | undefined,
             }
         },
         orderBy: {
-            check_in_time: 'asc'
+            check_in_time: 'desc'
         }
     });
 }
@@ -600,7 +600,7 @@ export class TimeController {
                                             }
                                         },
                                         orderBy: {
-                                            check_in_time: 'asc'
+                                            check_in_time: 'desc'
                                         }
                                     }
                                 }
@@ -656,7 +656,7 @@ export class TimeController {
                     avatar: urlAvatar,
                     office: existWorker?.office.name
                 },
-                workers: formattedResult,
+                workers: formattedResult.sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()),
                 totalPages: Math.ceil(resultCount / 10)
             });
 
