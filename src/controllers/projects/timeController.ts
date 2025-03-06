@@ -111,6 +111,9 @@ async function findProject(data: IFindProject) {
                                                 id: true
                                             }
                                         }
+                                    },
+                                    orderBy: {
+                                        check_in_time: 'desc'
                                     }
                                 }
                             }
@@ -178,6 +181,9 @@ async function findAllAttendances(companyId: string, search: string | undefined,
                     id: true
                 }
             }
+        },
+        orderBy: {
+            check_in_time: 'desc'
         }
     });
 }
@@ -482,7 +488,8 @@ export class TimeController {
                             }
                         }
                     ]
-                }
+                },
+                
             });
 
             // Contagem de serviços do worker específico
@@ -591,6 +598,9 @@ export class TimeController {
                                                     hourly_price: true
                                                 }
                                             }
+                                        },
+                                        orderBy: {
+                                            check_in_time: 'desc'
                                         }
                                     }
                                 }
