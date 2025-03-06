@@ -813,6 +813,8 @@ export class TimeController {
                 name: entry.name,
                 serviceName: entry.serviceName,
                 address: entry.address,
+                check_in_time: entry.check_in_time, 
+                check_out_time: entry.check_out_time,
                 status: entry.status
             }));
 
