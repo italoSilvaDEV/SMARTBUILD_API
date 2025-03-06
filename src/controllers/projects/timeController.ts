@@ -833,7 +833,7 @@ export class TimeController {
                         totalProjects: projectsCount,
                     },
                     workers: formattedResult,
-                    totalPages: Math.ceil(resultCount / 10)
+                    totalPages: Math.ceil(formattedResult.length / 10)
                 }
             );
         } catch (error) {
