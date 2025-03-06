@@ -214,7 +214,7 @@ export class TimeController {
 
             const newDeadline = new Date(String(deadline));
             newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
-            const resultCount = await prisma.userAttendance.count({
+            const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
                         search ? {
@@ -269,7 +269,9 @@ export class TimeController {
                         },
                     ],
                 },
-            })
+                distinct: ['user_id'] as const,
+                select: { user_id: true }
+            }).then(results => results.length);
 
 
 
@@ -690,33 +692,29 @@ export class TimeController {
 
             const newDeadline = new Date(String(deadline));
             newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
-            const resultCount = await prisma.userAttendance.count({
+            const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
                         {
                             AND: [
                                 {
                                     check_in_time: {
-                                        gte: startDate, // Converter para formato Date
-
+                                        gte: startDate,
                                     },
                                 },
                                 {
                                     OR: [
                                         {
                                             check_out_time: {
-                                                lte: newDeadline, // Converter para formato Date
-
+                                                lte: newDeadline,
                                             },
                                         },
                                         {
                                             check_out_time: null
                                         }
                                     ]
-
                                 }
                             ]
-
                         },
                         {
                             UserServiceProject: {
@@ -736,10 +734,11 @@ export class TimeController {
                                 }
                             }
                         },
-
                     ],
                 },
-            })
+                distinct: ['user_id'] as const,
+                select: { user_id: true }
+            }).then(results => results.length);
 
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
@@ -833,7 +832,7 @@ export class TimeController {
                         totalProjects: projectsCount,
                     },
                     workers: formattedResult,
-                    totalPages: Math.ceil(formattedResult.length / 10)
+                    totalPages: Math.ceil(resultCount / 10)
                 }
             );
         } catch (error) {
