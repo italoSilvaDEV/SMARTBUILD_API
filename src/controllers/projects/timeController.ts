@@ -111,6 +111,9 @@ async function findProject(data: IFindProject) {
                                                 id: true
                                             }
                                         }
+                                    },
+                                    orderBy: {
+                                        check_in_time: 'desc'
                                     }
                                 }
                             }
@@ -178,6 +181,9 @@ async function findAllAttendances(companyId: string, search: string | undefined,
                     id: true
                 }
             }
+        },
+        orderBy: {
+            check_in_time: 'desc'
         }
     });
 }
@@ -208,7 +214,7 @@ export class TimeController {
 
             const newDeadline = new Date(String(deadline));
             newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
-            const resultCount = await prisma.userAttendance.count({
+            const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
                         search ? {
@@ -263,7 +269,9 @@ export class TimeController {
                         },
                     ],
                 },
-            })
+                distinct: ['user_id'] as const,
+                select: { user_id: true }
+            }).then(results => results.length);
 
 
 
@@ -482,7 +490,8 @@ export class TimeController {
                             }
                         }
                     ]
-                }
+                },
+                
             });
 
             // Contagem de serviços do worker específico
@@ -582,7 +591,7 @@ export class TimeController {
                                 where: {
                                     user_id: String(worker_id)
                                 },
-                                select: {
+                                include: {
                                     user_attendances: {
                                         include: {
                                             user: {
@@ -591,6 +600,9 @@ export class TimeController {
                                                     hourly_price: true
                                                 }
                                             }
+                                        },
+                                        orderBy: {
+                                            check_in_time: 'desc'
                                         }
                                     }
                                 }
@@ -646,7 +658,7 @@ export class TimeController {
                     avatar: urlAvatar,
                     office: existWorker?.office.name
                 },
-                workers: formattedResult,
+                workers: formattedResult.sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()),
                 totalPages: Math.ceil(resultCount / 10)
             });
 
@@ -680,7 +692,7 @@ export class TimeController {
 
             const newDeadline = new Date(String(deadline));
             newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
-            const resultCount = await prisma.userAttendance.count({
+            const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
                         {
@@ -691,12 +703,22 @@ export class TimeController {
                         {
                             OR: [
                                 {
-                                    check_out_time: {
-                                        lte: newDeadline,
+
+                                    check_in_time: {
+                                        gte: startDate,
                                     },
                                 },
                                 {
-                                    check_out_time: null
+                                    OR: [
+                                        {
+                                            check_out_time: {
+                                                lte: newDeadline,
+                                            },
+                                        },
+                                        {
+                                            check_out_time: null
+                                        }
+                                    ]
                                 }
                             ]
                         },
@@ -718,10 +740,11 @@ export class TimeController {
                                 }
                             }
                         },
-
                     ],
                 },
-            })
+                distinct: ['user_id'] as const,
+                select: { user_id: true }
+            }).then(results => results.length);
 
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
@@ -775,6 +798,7 @@ export class TimeController {
                                     address: attendance.check_in_address,
                                     status: attendance.check_out_time ? 'Out' : 'In',
                                     check_in_time: attendance.check_in_time,
+                                    check_out_time: attendance.check_out_time,
                                     userId: attendance.user.id,
                                     user_service_project_id: attendance.user_service_project_id
                                 }))
@@ -796,6 +820,8 @@ export class TimeController {
                 name: entry.name,
                 serviceName: entry.serviceName,
                 address: entry.address,
+                check_in_time: entry.check_in_time, 
+                check_out_time: entry.check_out_time,
                 status: entry.status
             }));
 
