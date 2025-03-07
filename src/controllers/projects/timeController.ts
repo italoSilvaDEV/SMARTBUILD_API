@@ -362,6 +362,7 @@ export class TimeController {
                         .flatMap(s => s.UserServiceProject
                             .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
                             .flatMap(user => user.user_attendances
+                                .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
                                 .map(x => {
                                     let hoursWorked = 0;
                                     if (x.check_out_time && x.check_in_time) {
