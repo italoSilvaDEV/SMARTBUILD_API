@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import dayjs from "dayjs";
+import { DateTime } from "luxon";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 interface IFindProject {
@@ -22,11 +22,13 @@ interface WorkerGroup {
 }
 
 async function findProject(data: IFindProject) {
-    const startDate = new Date(String(data.start_date));
-    startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+    const startDate = DateTime.fromISO(String(data.start_date))
+        .startOf('day')
+        .toJSDate();
 
-    const deadline = new Date(String(data.deadline));
-    deadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
+    const deadline = DateTime.fromISO(String(data.deadline))
+        .endOf('day')
+        .toJSDate();
     const whereCondition = {
         AND: [
             {
@@ -230,11 +232,13 @@ export class TimeController {
 
 
 
-            const startDate = new Date(String(start_date));
-            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+            const startDate = DateTime.fromISO(String(start_date))
+                .startOf('day')
+                .toJSDate();
 
-            const newDeadline = new Date(String(deadline));
-            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
+            const newDeadline = DateTime.fromISO(String(deadline))
+                .endOf('day')
+                .toJSDate();
             const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
@@ -324,11 +328,9 @@ export class TimeController {
             const allFormattedAttendances = allAttendances.map(x => {
                 let hoursWorked = 0;
                 if (x.check_out_time && x.check_in_time) {
-                    hoursWorked = dayjs(x.check_out_time).diff(
-                        dayjs(x.check_in_time),
-                        "hour",
-                        true
-                    );
+                    const checkIn = DateTime.fromJSDate(x.check_in_time);
+                    const checkOut = DateTime.fromJSDate(x.check_out_time);
+                    hoursWorked = checkOut.diff(checkIn, 'hours').hours;
                 }
 
                 const roundedHours = parseFloat(hoursWorked.toFixed(2));
@@ -393,11 +395,9 @@ export class TimeController {
                                 .map(x => {
                                     let hoursWorked = 0;
                                     if (x.check_out_time && x.check_in_time) {
-                                        hoursWorked = dayjs(x.check_out_time).diff(
-                                            dayjs(x.check_in_time),
-                                            "hour",
-                                            true
-                                        );
+                                        const checkIn = DateTime.fromJSDate(x.check_in_time);
+                                        const checkOut = DateTime.fromJSDate(x.check_out_time);
+                                        hoursWorked = checkOut.diff(checkIn, 'hours').hours;
                                     }
 
                                     const roundedHours = parseFloat(hoursWorked.toFixed(2));
@@ -446,11 +446,13 @@ export class TimeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
-            const startDate = new Date(String(start_date));
-            startDate.setHours(0, 0, 0, 0);
+            const startDate = DateTime.fromISO(String(start_date))
+                .startOf('day')
+                .toJSDate();
 
-            const newDeadline = new Date(String(deadline));
-            newDeadline.setHours(23, 59, 0, 0);
+            const newDeadline = DateTime.fromISO(String(deadline))
+                .endOf('day')
+                .toJSDate();
 
             // Verificar se a empresa existe
             const existWorker = await prisma.user.findUnique({
@@ -700,11 +702,9 @@ export class TimeController {
                         .map(x => {
                             let hoursWorked = 0;
                             if (x.check_out_time && x.check_in_time) {
-                                hoursWorked = dayjs(x.check_out_time).diff(
-                                    dayjs(x.check_in_time),
-                                    "hour",
-                                    true
-                                );
+                                const checkIn = DateTime.fromJSDate(x.check_in_time);
+                                const checkOut = DateTime.fromJSDate(x.check_out_time);
+                                hoursWorked = checkOut.diff(checkIn, 'hours').hours;
                             }
 
                             const roundedHours = parseFloat(hoursWorked.toFixed(2));
@@ -766,11 +766,13 @@ export class TimeController {
             if (!existCompany) {
                 return res.status(404).json({ error: "Company not found" });
             }
-            const startDate = new Date(String(start_date));
-            startDate.setHours(0, 0, 0, 0); // Ajusta para 00:00 no horário local
+            const startDate = DateTime.fromISO(String(start_date))
+                .startOf('day')
+                .toJSDate();
 
-            const newDeadline = new Date(String(deadline));
-            newDeadline.setHours(23, 59, 0, 0); // Ajusta para 23:59 no horário local
+            const newDeadline = DateTime.fromISO(String(deadline))
+                .endOf('day')
+                .toJSDate();
             const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
