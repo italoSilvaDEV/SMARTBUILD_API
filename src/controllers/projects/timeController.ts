@@ -56,31 +56,20 @@ async function findProject(data: IFindProject) {
                                             } : {},
                                             {
 
-                                                OR: [
+                                                AND: [
                                                     {
-                                                        AND: [{
-                                                            check_in_time: {
-                                                                gte: startDate,
-                                                            },
+                                                        check_in_time: {
+                                                            gte: startDate,
                                                         },
-                                                        {
-                                                            check_out_time: {
-                                                                lte: deadline,
-                                                            },
-                                                        },
-                                                        ]
-                                                    },
-                                                    {
-                                                        AND: [
+                                                    }, {
+                                                        OR: [
                                                             {
-                                                                check_in_time: {
-                                                                    gte: startDate,
-                                                                }
-                                                            }, {
+                                                                check_out_time: { lte: deadline, },
+                                                            },
+                                                            {
                                                                 check_out_time: null
                                                             }
-
-                                                        ]
+                                                        ],
                                                     }
                                                 ]
                                             }
@@ -153,35 +142,24 @@ async function findAllAttendances(companyId: string, search: string | undefined,
                 } : {},
                 {
 
-                    OR: [
+                    AND: [
                         {
-                            AND: [{
-                                check_in_time: {
-                                    gte: startDate,
-                                },
+                            check_in_time: {
+                                gte: startDate,
                             },
-                            {
-                                check_out_time: {
-                                    lte: deadline,
-                                },
-                            },
-                            ]
-                        },
-                        {
-                            AND: [
+                        }, {
+                            OR: [
                                 {
-                                    check_in_time: {
-                                        gte: startDate,
-                                    }
-                                }, {
+                                    check_out_time: { lte: deadline, },
+                                },
+                                {
                                     check_out_time: null
                                 }
-
-                            ]
+                            ],
                         }
                     ]
                 },
-               
+
                 {
                     UserServiceProject: {
                         service_project: {
@@ -500,31 +478,20 @@ export class TimeController {
                     AND: [
                         { user_id: String(worker_id) },
                         {
-                            OR: [
+                            AND: [
                                 {
-                                    AND: [{
-                                        check_in_time: {
-                                            gte: startDate,
-                                        },
+                                    check_in_time: {
+                                        gte: startDate,
                                     },
-                                    {
-                                        check_out_time: {
-                                            lte: newDeadline,
-                                        },
-                                    },
-                                    ]
-                                },
-                                {
-                                    AND: [
+                                }, {
+                                    OR: [
                                         {
-                                            check_in_time: {
-                                                gte: startDate,
-                                            }
-                                        }, {
+                                            check_out_time: { lte: newDeadline, },
+                                        },
+                                        {
                                             check_out_time: null
                                         }
-
-                                    ]
+                                    ],
                                 }
                             ]
                         },
@@ -556,33 +523,23 @@ export class TimeController {
                                     user_attendances: {
                                         some: {
 
-                                            OR: [
+                                            AND: [
                                                 {
-                                                    AND: [{
-                                                        check_in_time: {
-                                                            gte: startDate,
-                                                        },
+                                                    check_in_time: {
+                                                        gte: startDate,
                                                     },
-                                                    {
-                                                        check_out_time: {
-                                                            lte: newDeadline,
-                                                        },
-                                                    },
-                                                    ]
-                                                },
-                                                {
-                                                    AND: [
+                                                }, {
+                                                    OR: [
                                                         {
-                                                            check_in_time: {
-                                                                gte: startDate,
-                                                            }
-                                                        }, {
+                                                            check_out_time: { lte: newDeadline, },
+                                                        },
+                                                        {
                                                             check_out_time: null
                                                         }
-
-                                                    ]
-                                                }
+                                                    ],
+                                                }     
                                             ]
+                                            
                                         }
                                     }
                                 }
@@ -620,32 +577,20 @@ export class TimeController {
                                             user_id: String(worker_id),
                                             user_attendances: {
                                                 some: {
-                                                    
-                                                    OR: [
+                                                    AND: [
                                                         {
-                                                            AND: [{
-                                                                check_in_time: {
-                                                                    gte: startDate,
-                                                                },
+                                                            check_in_time: {
+                                                                gte: startDate,
                                                             },
-                                                            {
-                                                                check_out_time: {
-                                                                    lte: newDeadline,
-                                                                },
-                                                            },
-                                                            ]
-                                                        },
-                                                        {
-                                                            AND: [
+                                                        }, {
+                                                            OR: [
                                                                 {
-                                                                    check_in_time: {
-                                                                        gte: startDate,
-                                                                    }
-                                                                }, {
+                                                                    check_out_time: { lte: newDeadline, },
+                                                                },
+                                                                {
                                                                     check_out_time: null
                                                                 }
-
-                                                            ]
+                                                            ],
                                                         }
                                                     ]
                                                 }
@@ -782,34 +727,23 @@ export class TimeController {
                             },
                         },
                         {
-
-                            OR: [
+                            AND: [
                                 {
-                                    AND: [{
-                                        check_in_time: {
-                                            gte: startDate,
-                                        },
+                                    check_in_time: {
+                                        gte: startDate,
                                     },
-                                    {
-                                        check_out_time: {
-                                            lte: newDeadline,
-                                        },
-                                    },
-                                    ]
-                                },
-                                {
-                                    AND: [
+                                }, {
+                                    OR: [
                                         {
-                                            check_in_time: {
-                                                gte: startDate,
-                                            }
-                                        }, {
+                                            check_out_time: { lte: newDeadline, },
+                                        },
+                                        {
                                             check_out_time: null
                                         }
-
-                                    ]
+                                    ],
                                 }
                             ]
+                            
                         },
                         {
                             UserServiceProject: {
