@@ -696,8 +696,14 @@ export class TimeController {
                 where: {
                     AND: [
                         {
-                            AND: [
+                            check_in_time: {
+                                gte: startDate,
+                            },
+                        },
+                        {
+                            OR: [
                                 {
+
                                     check_in_time: {
                                         gte: startDate,
                                     },

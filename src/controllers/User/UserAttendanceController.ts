@@ -138,7 +138,7 @@ export class UserAttendanceController {
                     UserServiceProject: {
                         include: {
                             service_project: {
-                                select: { name: true }, // Inclui o nome do ServiceProject
+                                select: { name: true, id: true }, // Inclui o nome do ServiceProject
                             },
                         },
                     },
@@ -151,7 +151,7 @@ export class UserAttendanceController {
                 service_project_name:
                     attendance.UserServiceProject?.service_project?.name || null,
             }));
-
+            console.log('formattedAttendances',formattedAttendances)
             res.status(200).json(formattedAttendances);
         } catch (error) {
             console.error(error);
