@@ -684,29 +684,21 @@ export class TimeController {
                 where: {
                     AND: [
                         {
-                            AND: [
+                            check_in_time: {
+                                gte: startDate,
+                            },
+                        },
+                        {
+                            OR: [
                                 {
-                                    check_in_time: {
-                                        gte: startDate, // Converter para formato Date
-
+                                    check_out_time: {
+                                        lte: newDeadline,
                                     },
                                 },
                                 {
-                                    OR: [
-                                        {
-                                            check_out_time: {
-                                                lte: newDeadline, // Converter para formato Date
-
-                                            },
-                                        },
-                                        {
-                                            check_out_time: null
-                                        }
-                                    ]
-
+                                    check_out_time: null
                                 }
                             ]
-
                         },
                         {
                             UserServiceProject: {
