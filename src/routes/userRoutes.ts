@@ -31,11 +31,7 @@ userRoutes.put("/user/update-profile", checkToken, User.updateUserProfile);
 //update imgUser
 userRoutes.put("/user/img/:id",
     checkToken,
-    uploadPhoto.single("file"),
-    (req, res, next) => {
-        console.log("Arquivo recebido pelo multer:", req.file);
-        next();
-    },
+    uploadPhoto.single("file"),    
     compressImage("user"),
     User.updateImg
 )

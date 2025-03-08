@@ -260,7 +260,6 @@ export class UserController {
       id,
       name,
       email,
-      document,
       city_and_state,
       office,
       phone,
@@ -276,7 +275,6 @@ export class UserController {
     function validateUserData(data: any): string | null {
       if (!data.name) return "Name is required";
       if (!data.email) return "Email is required";
-      if (!data.document) return "Document is required";
       if (!data.office.id) return "Office ID is required";
       return null;
     }
@@ -311,17 +309,7 @@ export class UserController {
         }
       }
 
-      // Check if document is different and already in use
-      if (document !== user.document) {
-        const documentExists = await prisma.user.findUnique({
-          where: { document },
-        });
-        if (documentExists) {
-          return response
-            .status(400)
-            .json({ error: "Document already registered" });
-        }
-      }
+      
 
       if (current_password && password) {
         const checkPassword = await bcrypt.compare(
@@ -343,7 +331,6 @@ export class UserController {
             name,
             email,
             password: hashedPassword,
-            document,
             city_and_state,
             office_id: office.id,
             phone,
@@ -358,7 +345,6 @@ export class UserController {
           data: {
             name,
             email,
-            document,
             city_and_state,
             office_id: office.id,
             phone,
@@ -458,10 +444,10 @@ export class UserController {
         deleteFile(`./public/tmp/user/${user.avatar}`);
       }
       deleteFile(`./public/tmp/catalog/${request.file.filename}`);
-
+      const urlAvatar = updatedUser.avatar ? await getPresignedUrl(updatedUser.avatar) : null
 
       return response.status(200).json({
-        avatar: updatedUser.avatar,
+        avatar: urlAvatar,
         message: "Avatar updated successfully",
       });
     } catch (error: any) {
