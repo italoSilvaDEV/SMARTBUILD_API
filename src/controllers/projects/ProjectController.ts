@@ -1071,7 +1071,12 @@ export class ProjectController {
       if (user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os projetos do vendedor
         projects = await prisma.project.findMany({
-          where: { seller_user_id },
+          where: {
+            seller_user_id,
+            status_project: {
+              equals: "Accepted",
+            },
+          },
           include: {
             client: true, // Inclui os dados do cliente
           },
@@ -1079,7 +1084,12 @@ export class ProjectController {
       } else {
         // Buscar todos os projetos
         projects = await prisma.project.findMany({
-          where: { company_id },
+          where: {
+            company_id,
+            status_project: {
+              equals: "Accepted",
+            },
+          },
           include: {
             client: true, // Inclui os dados do cliente
           },
