@@ -9,12 +9,12 @@ const companyRoutes = Router()
 
 const Company = new CompanyController()
 
-const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
+const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/company"))
 //criar
 companyRoutes.post("/company",
     checkToken,
     uploadPhoto.single("avatar"),
-    compressImage("user"),
+    compressImage("company"),
     Company.create)
 
 companyRoutes.put( 
@@ -44,5 +44,13 @@ companyRoutes.get('/company/:companyId/notes', checkToken, Company.listNotes);
 
 companyRoutes.get("/company/proxy/image",  Company.proxyImage);
 
+// Atualizar company e usuário administrador
+companyRoutes.put(
+    "/company/:id",
+    checkToken,
+    uploadPhoto.single("avatar"),
+    compressImage("company"),
+    Company.updateCompanyAndUser
+);
 
 export {companyRoutes}

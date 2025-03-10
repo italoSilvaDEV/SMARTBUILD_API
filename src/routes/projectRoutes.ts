@@ -16,6 +16,9 @@ import { FindPdfProjectAllController } from "../controllers/projects/FindPdfProj
 import { GalleryProjectController } from "../controllers/projects/GalleryServiceProjectController";
 import { createActivity, deleteActivity, listActivities } from "../controllers/projects/activitiesController";
 import { TimeController } from "../controllers/projects/timeController";
+import { CreatePdContractfProjectController } from "../controllers/projects/CreatePdfProjectUploadContractController";
+import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController copy";
+
 
 const projectRoutes = Router();
 
@@ -85,6 +88,23 @@ projectRoutes.post(
   createPdfProjectController.handle.bind(createPdfProjectController)
 );
 
+const createContractProjectController = new CreatePdContractfProjectController();
+const uploadpdfContract = multer(
+  uploadConfigUtf8.uploadUtf8("./public/tmp/pdfcontractproject")
+);
+// Rota para fazer upload do PDF do contrato
+projectRoutes.post("/project/upload-contract", 
+  checkToken,
+  // uploadpdfContract.single('file'), 
+  createContractProjectController.handle.bind(createContractProjectController)
+);
+
+export { projectRoutes };
+
+
+
+
+
 const createCostProjectController = new CreateCostProjectController();
 projectRoutes.post(
   "/costproject",
@@ -105,6 +125,14 @@ projectRoutes.post(
   checkToken,
   findPdfProjectAllController.handle
 );
+
+const findPdfContractProjectAllController = new FindPdfContractProjectAllController();
+projectRoutes.post(
+  "/pdfcontractproject/find",
+  checkToken,
+  findPdfContractProjectAllController.handle
+);
+
 const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
 projectRoutes.put(
@@ -162,4 +190,4 @@ projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies)
 
 projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.generateAndSendPdf);
 
-export { projectRoutes };
+

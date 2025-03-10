@@ -114,7 +114,11 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
         throw error; // Repassar o erro para ser tratado onde a função for usada
     }
 }
-export async function uploadFileToS3_2(file: Express.Multer.File, userId: string) {
+export async function uploadFileToS3_2(
+    file: Express.Multer.File, 
+    userId: string,
+    isDeleteFile: boolean = true
+) {
     const s3 = new S3Client({
         region: process.env.AMAZON_S3_REGION,
         credentials: {
@@ -201,7 +205,9 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
 
         await s3.send(completeMultipartUploadCommand);
         // statusUpload(userId, 100);
-        fs.unlinkSync(filePath); // Deletar o arquivo local após o upload
+        if (isDeleteFile) {
+            fs.unlinkSync(filePath); // Deletar o arquivo local após o upload
+        }
         return fileName; // Retorna o nome do arquivo para armazenar no banco de dados
 
     } catch (error) {
@@ -221,6 +227,7 @@ export async function uploadFileToS3_2(file: Express.Multer.File, userId: string
         throw error; // Repassar o erro para ser tratado onde a função for usada
     }
 }
+
 export async function uploadImageWebpToS3(filePath: string, s3Bucket: string): Promise<string> {
     if (!filePath || !fs.existsSync(filePath)) {
         throw new Error(`O caminho do arquivo é inválido ou o arquivo não existe: ${filePath}`);

@@ -443,7 +443,7 @@ export class UserController {
       if (user.avatar) {
         deleteFile(`./public/tmp/user/${user.avatar}`);
       }
-      deleteFile(`./public/tmp/catalog/${request.file.filename}`);
+      deleteFile(`./public/tmp/user/${request.file.filename}`);
       const urlAvatar = updatedUser.avatar ? await getPresignedUrl(updatedUser.avatar) : null
 
       return response.status(200).json({

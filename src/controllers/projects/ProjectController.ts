@@ -10,6 +10,7 @@ import { createPreviewContract } from "../../templateEmail/createPreviewContract
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 
+
 export interface INewProject {
   seller_user_id: string;
   price: number;
@@ -698,7 +699,8 @@ export class ProjectController {
 
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
-    try {
+
+    try { 
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -736,9 +738,10 @@ export class ProjectController {
           start_date: data.client.start_date,
           deadline: data.client.deadline,
           company_id: data.company_id,
-          contract_number: contractNumber, // Atribui o número de contrato gerado
+          contract_number: contractNumber,
         },
       });
+
       return res.status(201).json(project);
     } catch (error) {
       if (error instanceof Error) {
@@ -1540,83 +1543,7 @@ export class ProjectController {
     }
   }
 
-  // async addProjectResponsibles(req: Request, res: Response) {
-  //   const { user_id, project_id } = req.body;
-
-  //   try {
-  //     const project = await prisma.project.findUnique({
-  //       where: { id: project_id },
-  //       select: {
-  //         projectResponsibles: { select: { id: true } }
-  //       }
-  //     });
-
-  //     if (!project) {
-  //       return res.status(404).json({ error: "Projeto não encontrado" });
-  //     }
-
-  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
-  //     if (!currentResponsibles.includes(user_id)) {
-  //       currentResponsibles.push(user_id);
-  //     }
-
-  //     await prisma.project.update({
-  //       where: {
-  //         id: project_id,
-  //       },
-  //       data: {
-  //         projectResponsibles: {
-  //           set: currentResponsibles.map((id) => ({ id }))
-  //         }
-  //       }
-  //     });
-
-  //     return res.status(204).end();
-  //   } catch (error) {
-  //     if (error instanceof Error) {
-  //       return res.json({ error: error.message });
-  //     }
-  //     return res.json({ error: "Erro interno do servidor" });
-  //   }
-  // }
-
-  // async removeProjectResponsibles(req: Request, res: Response) {
-  //   const { user_id, project_id } = req.body;
-
-  //   try {
-  //     const project = await prisma.project.findUnique({
-  //       where: { id: project_id },
-  //       select: {
-  //         projectResponsibles: { select: { id: true } }
-  //       }
-  //     });
-
-  //     if (!project) {
-  //       return res.status(404).json({ error: "Projeto não encontrado" });
-  //     }
-
-  //     const currentResponsibles = project.projectResponsibles.map((responsible) => responsible.id);
-  //     const updatedResponsibles = currentResponsibles.filter((id) => id !== user_id);
-
-  //     await prisma.project.update({
-  //       where: {
-  //         id: project_id,
-  //       },
-  //       data: {
-  //         projectResponsibles: {
-  //           set: updatedResponsibles.map((id) => ({ id }))
-  //         }
-  //       }
-  //     });
-
-  //     return res.status(204).end();
-  //   } catch (error) {
-  //     if (error instanceof Error) {
-  //       return res.json({ error: error.message });
-  //     }
-  //     return res.json({ error: "Erro interno do servidor" });
-  //   }
-  // }
+ 
 
   async generateAndSendPdf(req: Request, res: Response) {
     const { id } = req.params;
@@ -1626,7 +1553,32 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: true,
+          serviceProject: {
+            include: {
+              photos: true // Incluindo as fotos dos serviços
+            }
+          },
+          company: {
+            select: {
+              name: true,
+              avatar: true,
+              address: true,
+              district: true,
+              numberHouse: true,
+              complement: true,
+              email: true,
+              phone: true,
+              webSiteUrl: true,
+              NotesContrac: {
+                orderBy: { updatedAt: "asc" },
+                select: {
+                  id: true,
+                  notes: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -1649,6 +1601,9 @@ export class ProjectController {
           qty: Number(service.hours),
           rate,
           amount: rate,
+          photos: service.photos.map(photo => ({
+            uri: photo.uri
+          }))
         };
       });
 
@@ -1719,7 +1674,7 @@ export class ProjectController {
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
-        total,
+        total, 
         columnText1,
         columnText2,
         address: fullAddress || "",
@@ -1752,13 +1707,13 @@ export class ProjectController {
         project.client?.name.toUpperCase(),
         logoUrl || '',
         companyData.name,
-        total
+        Number(total)
       );
 
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: project.client.email,
-        subject: `Estimate from ${project.client?.name.toUpperCase()}`,
+        subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
           {
