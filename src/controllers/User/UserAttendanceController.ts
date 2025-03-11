@@ -122,14 +122,14 @@ export class UserAttendanceController {
         }
     }
 
-    async getActiveAttendancesByUser(req: Request, res: Response): Promise<Response | void> {
+    async getActiveAttendancesByUser(req: Request, res: Response): Promise<void> {
         try {
             const { userId } = req.params;
 
-            const activeAttendance = await prisma.userAttendance.findFirst({
+            const activeAttendances = await prisma.userAttendance.findMany({
                 where: {
                     user_id: userId,
-                    check_out_time: null,
+                    check_out_time: null, // Filtra registros onde o check-out ainda não foi realizado
                 },
                 include: {
                     user: {
@@ -138,27 +138,25 @@ export class UserAttendanceController {
                     UserServiceProject: {
                         include: {
                             service_project: {
-                                select: { name: true, id: true },
+                                select: { name: true, id: true }, // Inclui o nome do ServiceProject
                             },
                         },
                     },
                 },
             });
 
-            if (!activeAttendance) {
-                return res.status(200).json(null);
-            }
-
-            const formattedAttendance = {
-                ...activeAttendance,
-                idServiceProject: activeAttendance.UserServiceProject?.service_project?.id || null,                 
-                service_project_name: activeAttendance.UserServiceProject?.service_project?.name || null,
-            };
-
-            res.status(200).json(formattedAttendance);
+            // Formata o resultado para incluir o nome do ServiceProject diretamente na resposta
+            const formattedAttendances = activeAttendances.map((attendance) => ({
+                ...attendance,
+                idServiceProject: attendance.UserServiceProject?.service_project?.id || null,         
+                service_project_name:
+                    attendance.UserServiceProject?.service_project?.name || null,
+            }));
+            console.log('formattedAttendances',formattedAttendances)
+            res.status(200).json(formattedAttendances);
         } catch (error) {
             console.error(error);
-            return res.status(500).json({ error: "Error while fetching active user attendances." });
+            res.status(500).json({ error: "Error while fetching active user attendances." });
         }
     }
 
