@@ -42,7 +42,14 @@ export class CreateCatalogController {
                 // Verificação de Existência do Catálogo pelo Nome
                 const catalogExists = await prisma.catalog.findFirst({
                     where: {
-                        catalog_name: catalog_name,
+                        AND: [
+                            {
+                                catalog_name: catalog_name,
+                            },
+                            {
+                                company_id
+                            }
+                        ]
                     }
                 });
 

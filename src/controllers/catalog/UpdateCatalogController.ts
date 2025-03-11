@@ -55,9 +55,16 @@ export class UpdateCatalogController {
                 }
 
                 if (catalog.catalog_name !== catalog_name) {
-                    const catalogWithName = await prisma.catalog.findUnique({
+                    const catalogWithName = await prisma.catalog.findFirst({
                         where: {
-                            catalog_name: catalog_name,
+                            AND: [
+                                {
+                                    catalog_name: catalog_name,
+                                },
+                                {
+                                    company_id: catalog.company_id
+                                }
+                            ]
                         },
                     });
                     if (catalogWithName) {

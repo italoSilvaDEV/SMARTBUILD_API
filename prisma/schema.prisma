@@ -233,7 +233,7 @@ model ImgServiceProject {
 model Catalog {
   id            String   @id @default(uuid())
   catalog_img   String?
-  catalog_name  String   @unique
+  catalog_name  String   
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
