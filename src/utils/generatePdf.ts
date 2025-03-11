@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { getPresignedUrl } from './S3/getPresignedUrl';
 
 interface TableRow {
     id: number;
@@ -11,6 +12,7 @@ interface TableRow {
     qty: number;
     rate: number;
     amount: number;
+    photos?: { uri: string }[];
 }
 
 interface DataProps {
@@ -455,6 +457,82 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
         });
         notesY -= 10; // Espaço extra entre notas
     });
+
+    // Título das fotos
+    page.drawText("Photo attachment", {
+        x: 50,
+        y: notesY - 30,
+        size: 12,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+    });
+    notesY -= 50;
+
+    // Renderizar fotos de cada serviço
+    for (const service of data.tableData) {
+        if (service.photos && service.photos.length > 0) {
+            // Nome do serviço
+            page.drawText(service.productOrService, {
+                x: 50,
+                y: notesY,
+                size: fontSize,
+                font: timesRomanFont,
+                color: rgb(0, 0, 0),
+            });
+            notesY -= 20;
+
+            const imagesPerRow = 3;
+            const maxImageWidth = 150;
+            const maxImageHeight = 100;
+            const horizontalSpacing = 20;
+
+            for (let i = 0; i < service.photos.length; i++) {
+                if (notesY < 100) {
+                    page = addPage();
+                    notesY = 750;
+                }
+
+                try {
+                    const imageUrl = await getPresignedUrl(service.photos[i].uri);
+                    const response = await fetch(imageUrl);
+                    const imageBuffer = await response.arrayBuffer();
+                    
+                    // Converter para PNG usando sharp
+                    const pngBuffer = await sharp(Buffer.from(imageBuffer))
+                        .png()
+                        .toBuffer();
+                    
+                    const image = await pdfDoc.embedPng(pngBuffer);
+
+                    const scaleFactor = Math.min(
+                        maxImageWidth / image.width,
+                        maxImageHeight / image.height,
+                        1
+                    );
+
+                    const width = image.width * scaleFactor;
+                    const height = image.height * scaleFactor;
+
+                    const xPosition = 50 + (i % imagesPerRow) * (maxImageWidth + horizontalSpacing);
+
+                    if (i > 0 && i % imagesPerRow === 0) {
+                        notesY -= maxImageHeight + 20;
+                    }
+
+                    page.drawImage(image, {
+                        x: xPosition,
+                        y: notesY - height,
+                        width,
+                        height,
+                    });
+
+                } catch (error) {
+                    console.error("Erro ao carregar imagem:", error);
+                }
+            }
+            notesY -= maxImageHeight + 40;
+        }
+    }
 
     // Salvar o PDF na pasta temporária
     const pdfBytes = await pdfDoc.save();

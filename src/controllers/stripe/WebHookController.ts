@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
+import { stripeConfig } from "../../config/stripe";
 import { prisma } from '../../utils/prisma';
 
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: "2025-01-27.acacia",
-});
+const stripe = stripeConfig.getClient();
 
 export class StripeWebHooksController {
     async handleWebhook(req: Request, res: Response) {

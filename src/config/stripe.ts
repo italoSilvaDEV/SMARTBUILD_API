@@ -1,7 +1,9 @@
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2025-01-27.acacia", // Use a versão mais recente
-});
+export const STRIPE_API_VERSION = "2025-02-24.acacia" as const;
 
-export default stripe;
+export const stripeConfig = {
+    getClient: () => new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+        apiVersion: STRIPE_API_VERSION,
+    })
+};

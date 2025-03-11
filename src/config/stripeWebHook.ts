@@ -1,10 +1,7 @@
-import Stripe from 'stripe';
+import { stripeConfig } from "./stripe";
 import { prisma } from '../utils/prisma';
 
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: "2025-01-27.acacia",
-});
+const stripe = stripeConfig.getClient();
 
 export async function setupWebhook() {
     const webhookUrl = `${process.env.URL_API}/webhook`;
