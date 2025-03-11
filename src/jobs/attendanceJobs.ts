@@ -10,19 +10,19 @@ export const setupAttendanceJobs = () => {
                 where: { check_out_time: null }
             });
 
-            for (const attendance of openAttendances) {
-                await prisma.userAttendance.update({
+            await Promise.all(openAttendances.map(attendance => 
+                prisma.userAttendance.update({
                     where: { id: attendance.id },
                     data: {
                         check_out_time: new Date(),
-                        check_out_address: 'Automatic clockout',
+                        check_out_address: 'Automatic Clock-out',
                         check_out_latitude: attendance.check_in_latitude,
                         check_out_longitude: attendance.check_in_longitude,
                     },
-                });
-            }
+                })
+            ));
         } catch (error) {
-            console.error('Automatic checkout error:', error);
+            console.error('Automatic Clock-out error:', error);
         }
     });
-}; 
+};
