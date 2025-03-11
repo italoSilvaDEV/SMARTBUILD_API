@@ -609,25 +609,25 @@ export class CompanyController {
                 }
             }
 
-            // Verificar documento duplicado (se foi alterado)
-            if (document && document !== user.document) {
-                const documentExists = await prisma.user.findFirst({
-                    where: {
-                        document,
-                        id: { not: userId }
-                    }
-                });
+            // // Verificar documento duplicado (se foi alterado)
+            // if (document && document !== user.document) {
+            //     const documentExists = await prisma.user.findFirst({
+            //         where: {
+            //             document,
+            //             id: { not: userId }
+            //         }
+            //     });
 
-                if (documentExists) {
-                    if (req.file) {
-                        this.deleteFiles(
-                            req.file.filename?.split(".")[0] + ".webp",
-                            req.file.filename
-                        );
-                    }
-                    return res.status(400).json({ error: "Document already exists" });
-                }
-            }
+            //     if (documentExists) {
+            //         if (req.file) {
+            //             this.deleteFiles(
+            //                 req.file.filename?.split(".")[0] + ".webp",
+            //                 req.file.filename
+            //             );
+            //         }
+            //         return res.status(400).json({ error: "Document already exists" });
+            //     }
+            // }
 
             let avatarUrl = company.avatar;
 
