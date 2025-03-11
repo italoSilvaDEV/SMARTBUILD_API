@@ -3,6 +3,7 @@ import { router } from './routes/routes';
 import path from 'path';
 import dotenv from 'dotenv';
 import { setupWebhook } from './config/stripeWebHook';
+import { setupAttendanceJobs } from './jobs/attendanceJobs';
 const cors = require('cors');
 
 
@@ -25,6 +26,7 @@ app.use(express.static('public'));
 
 (async () => {
   await setupWebhook();
+  setupAttendanceJobs();
 })();
 
 app.listen(4003, () =>
