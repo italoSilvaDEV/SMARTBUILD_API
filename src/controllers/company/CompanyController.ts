@@ -224,7 +224,7 @@ export class CompanyController {
             if (file) {
 
                 // const newAvatarUrl = await uploadImageWebpToS3(`./public/tmp/user/${file.filename}`, process.env.AMAZON_S3_BUCKET!);
-                const filePath = `./public/tmp/user/${file.filename.split('.')[0]}.webp`;
+                const filePath = `./public/tmp/company/${file.filename.split('.')[0]}.webp`;
                 const newAvatarUrl = await uploadImageWebpToS3(filePath, process.env.AMAZON_S3_BUCKET!);
                 avatarUrl = newAvatarUrl;
                 // Optionally delete old avatar from S3 if needed
@@ -248,7 +248,7 @@ export class CompanyController {
             return res.status(500).json({ error: error.message || "Internal error" });
         } finally {
             if (file) {
-                deleteFile(`./public/tmp/user/${file.filename}`);
+                deleteFile(`./public/tmp/company/${file.filename}`);
             }
         }
     }

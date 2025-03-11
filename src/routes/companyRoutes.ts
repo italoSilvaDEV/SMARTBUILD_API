@@ -20,12 +20,8 @@ companyRoutes.post("/company",
 companyRoutes.put( 
     "/company/update/:id",
     checkToken,
-    uploadPhoto.single("avatar"), // Handles the file upload and stores it temporarily
-    (req, res, next) => {
-        console.log("Arquivo recebido pelo multer:", req.file);
-        next();
-    },
-    compressImage("user"),
+    uploadPhoto.single("avatar"), // Handles the file upload and stores it temporarily    
+    compressImage("company"),
     Company.updateCompanyData
 );
 
