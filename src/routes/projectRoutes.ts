@@ -17,7 +17,8 @@ import { GalleryProjectController } from "../controllers/projects/GalleryService
 import { createActivity, deleteActivity, listActivities } from "../controllers/projects/activitiesController";
 import { TimeController } from "../controllers/projects/timeController";
 import { CreatePdContractfProjectController } from "../controllers/projects/CreatePdfProjectUploadContractController";
-import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController copy";
+import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController";
+
 
 
 const projectRoutes = Router();
