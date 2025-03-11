@@ -12,7 +12,7 @@ model User {
   avatar          String?
   name            String
   email           String   @unique
-  document        String   @unique
+  document        String?   
   phone           String?
   phone_emergency String?
   zip_code        String?

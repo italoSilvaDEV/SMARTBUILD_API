@@ -96,21 +96,21 @@ export class CompanyController {
             }
 
             console.log("19. Verificando documento duplicado");
-            const documentExists = await prisma.user.findUnique({
-                where: { document: data.document },
-            });
-            console.log("20. Documento existente:", documentExists);
+            // const documentExists = await prisma.user.findUnique({
+            //     where: { document: data.document },
+            // });
+            // console.log("20. Documento existente:", documentExists);
 
-            if (documentExists) {
-                console.log("21. Documento já registrado");
-                this.deleteFiles(
-                    req.file?.filename?.split(".")[0] + ".webp",
-                    req.file?.filename
-                );
-                return res.status(400).json({
-                    error: "Document has already been registered in the system",
-                });
-            }
+            // if (documentExists) {
+            //     console.log("21. Documento já registrado");
+            //     this.deleteFiles(
+            //         req.file?.filename?.split(".")[0] + ".webp",
+            //         req.file?.filename
+            //     );
+            //     return res.status(400).json({
+            //         error: "Document has already been registered in the system",
+            //     });
+            // }
 
             console.log("22. Buscando cargo de administrador");
             const office = await prisma.office.findFirst({
@@ -363,18 +363,20 @@ export class CompanyController {
                         take: 1
                     }
                 }
-            })
-            // Processar URLs dos avatares
+            });
+
+            // Processar URLs dos avatares com verificação de null/undefined
             const companyWithPresignedAvatar = await Promise.all(
                 response.map(async (company) => ({
                     ...company,
-                    avatar: company.avatar ? await getPresignedUrl(company.avatar) : null, // Gera URL assinada
-                    User: {
+                    avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
+                    User: company.User[0] ? {
                         ...company.User[0],
-                        avatar: company.User[0].avatar ? await getPresignedUrl(company.User[0].avatar) : null
-                    }
+                        avatar: company.User[0]?.avatar ? await getPresignedUrl(company.User[0].avatar) : null
+                    } : null
                 }))
             );
+
             return res.status(200).json(companyWithPresignedAvatar);
         } catch (error: any) {
             console.error(error);
@@ -520,7 +522,7 @@ export class CompanyController {
                 .resize(800) // Redimensionar para largura máxima de 800px
                 .png({ quality: 80 }) // Comprimir com qualidade 80%
                 .toBuffer();
-            
+
             const base64 = `data:image/png;base64,${pngBuffer.toString("base64")}`;
 
             return res.json({ base64 });
@@ -571,7 +573,7 @@ export class CompanyController {
 
             // Buscar o usuário específico
             const user = await prisma.user.findUnique({
-                where: { 
+                where: {
                     id: userId,
                     company_id: id // Garantir que o usuário pertence à empresa
                 }
@@ -684,8 +686,8 @@ export class CompanyController {
                     req.file.filename
                 );
             }
-            return res.status(500).json({ 
-                error: error instanceof Error ? error.message : "Internal server error" 
+            return res.status(500).json({
+                error: error instanceof Error ? error.message : "Internal server error"
             });
         } finally {
             // Limpar arquivos temporários

@@ -77,18 +77,18 @@ export class UserController {
           .json({ error: "Email has already been registered in the system" });
       }
 
-      const documentExists = await prisma.user.findUnique({
-        where: { document: data.document },
-      });
-      if (documentExists) {
-        this.deleteFiles(
-          req.file?.filename?.split(".")[0] + ".webp",
-          req.file?.filename
-        );
-        return res.status(400).json({
-          error: "Document has already been registered in the system",
-        });
-      }
+      // const documentExists = await prisma.user.findUnique({
+      //   where: { document: data.document },
+      // });
+      // if (documentExists) {
+      //   this.deleteFiles(
+      //     req.file?.filename?.split(".")[0] + ".webp",
+      //     req.file?.filename
+      //   );
+      //   return res.status(400).json({
+      //     error: "Document has already been registered in the system",
+      //   });
+      // }
 
       // Verificar se o office existe
       const office = await prisma.user.findMany({
