@@ -486,6 +486,50 @@ export class CompanyController {
         }
     }
 
+    async proxyImageByUri(req: Request, res: Response) {
+        try {
+            const { uri } = req.query;
+
+            if (!uri || typeof uri !== 'string') {
+                return res.status(400).json({ error: "URI parameter is required" });
+            }
+
+            console.log("URI recebida:", uri);
+
+            // Gerar o presigned URL usando a URI
+            const presignedUrl = await getPresignedUrl(uri);
+            console.log("Generated presignedUrl:", presignedUrl);
+
+            // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
+            const fetch = await import("node-fetch").then((mod) => mod.default || mod);
+            const response = await fetch(presignedUrl);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Error fetching image from S3, response text:", errorText);
+                return res.status(500).json({ error: "Failed to fetch image from S3" });
+            }
+
+            // Obter os dados da imagem e converter para base64
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Converter a imagem de WebP para PNG usando Sharp
+            const sharp = require("sharp");
+            const pngBuffer = await sharp(buffer)
+                .resize(800) // Redimensionar para largura máxima de 800px
+                .png({ quality: 80 }) // Comprimir com qualidade 80%
+                .toBuffer();
+            
+            const base64 = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+
+            return res.json({ base64 });
+        } catch (error) {
+            console.error("Erro no proxy de imagem por URI:", error);
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+
     async updateCompanyAndUser(req: Request, res: Response) {
         try {
             const { id } = req.params; // ID da company

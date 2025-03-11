@@ -44,6 +44,9 @@ companyRoutes.get('/company/:companyId/notes', checkToken, Company.listNotes);
 
 companyRoutes.get("/company/proxy/image",  Company.proxyImage);
 
+// Proxy de imagem por URI
+companyRoutes.get("/company/proxy/image-by-uri", Company.proxyImageByUri);
+
 // Atualizar company e usuário administrador
 companyRoutes.put(
     "/company/:id",
