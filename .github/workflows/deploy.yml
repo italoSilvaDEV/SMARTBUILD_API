@@ -1,0 +1,64 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - SASS
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    - name: Ensure target directory exists
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p /projetos/backend/temp"
+
+    - name: Copy files to VPS
+      run: |
+        rsync -avz --delete \
+          -e "ssh -o StrictHostKeyChecking=no" \
+          ./ \
+          ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/projetos/backend/temp
+
+    - name: Install dependencies, run Prisma commands and build
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd /projetos/backend/temp
+          npm install
+          npx prisma generate
+          npm run build
+        EOF
+
+    - name: Swap directories, run Prisma migrate and restart PM2
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} << 'EOF'
+          rm -rf /projetos/backend/old_dist
+          mv /projetos/backend/dist /projetos/backend/old_dist || true
+          mv /projetos/backend/temp/dist /projetos/backend/dist
+          cp /projetos/backend/.env /projetos/backend/dist/.env
+          
+          # Execute Prisma migrate
+          cd /projetos/backend/temp
+          npx prisma migrate deploy
+          
+          # Restart application
+          cd /projetos/backend/dist
+          pm2 restart sass-api || pm2 start dist/server.js --name "sass-api"
+          rm -rf /projetos/backend/temp
+        EOF
+
+    - name: Clear cache
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} << 'EOF'
+          pm2 flush
+          pm2 save
+        EOF 
