@@ -173,4 +173,107 @@ export class TimeLineController {
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
+
+
+    // Check-in do usuário
+    handleTimeLineClient = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const {
+                user_id,
+                user_service_project_id,
+                check_in_address,
+                check_in_latitude,
+                check_in_longitude,
+                service_project_id,
+                is_local_work
+            } = req.body;
+            // Verifica se o usuário existe
+            const userExists = await prisma.user.findUnique({ where: { id: user_id } });
+            if (!userExists) {
+                console.log('error', 'User not found.')
+                res.status(400).json({ error: 'User not found.' });
+                return;
+            }
+
+            // Verifica se o ServiceProject existe e obtém suas coordenadas
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: {
+                    Project: {
+                        include: {
+                            client: true
+                        }
+                    }
+                }
+            });
+
+            if (!serviceProject) {
+                console.log('error', 'ServiceProject not found.')
+                res.status(400).json({ error: 'ServiceProject not found.' });
+                return;
+            }
+
+            // Verifica se o UserServiceProject existe
+            const serviceProjectExists = await prisma.userServiceProject.findUnique({
+                where: { id: user_service_project_id },
+                include: {
+                    service_project: true
+                }
+            });
+
+            if (!serviceProjectExists) {
+                console.log('error', 'UserServiceProject not found.')
+                res.status(400).json({ error: 'UserServiceProject not found.' });
+                return;
+            }
+
+            // Verifica se já existe um registro aberto
+            const openAttendance = await prisma.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    user_service_project_id,
+                    check_out_time: null,
+                },
+            });
+
+            if (!openAttendance) {
+                console.log('error', 'There is already an open attendance for this project. Please check out before creating a new one.')
+                res.status(400).json({
+                    error: 'There is already an open attendance for this project. Please check out before creating a new one.',
+                });
+                return;
+            }
+
+            
+
+            // Cria o registro de check-in
+            const attendance = await prisma.timeLine.create({
+                data: {
+                    user_id,
+                    service_project_id,
+                    userServiceProjectId: user_service_project_id,
+                    check_in_time: new Date(),
+                    check_in_address,
+                    check_in_latitude,
+                    check_in_longitude,
+                    is_local_work,
+                },
+            });
+
+            // Verifica e realiza check-out automático se for 18:00 ou mais
+            await this.performAutoCheckOut(
+                user_id,
+                user_service_project_id,
+                check_in_address,
+                check_in_latitude,
+                check_in_longitude
+            );
+
+            res.status(201).json(attendance);
+        } catch (error) {
+            console.log('error', error)
+            console.error(error);
+            res.status(500).json({ error: 'Error while checking in.' });
+        }
+    }
 }
