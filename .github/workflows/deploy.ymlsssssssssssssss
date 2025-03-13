@@ -18,19 +18,21 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-    - name: Create .env file
+    - name: Check and setup project
       run: |
-        echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-        echo "AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}" >> .env
-        # ... outras variáveis
-
-    - name: Copy files to VPS
-      run: |
-        rsync -avz --delete \
-          -e "ssh -o StrictHostKeyChecking=no" \
-          ./ \
-          root@${{ secrets.SSH_HOST }}:/projetos/backend/
+        ssh -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} << 'EOF'
+          # Verifica se o diretório existe
+          if [ ! -d "/projetos/backend" ]; then
+            mkdir -p /projetos/backend
+            cd /projetos/backend
+            git clone https://github.com/seu-usuario/seu-repositorio.git .
+          else
+            cd /projetos/backend
+            # Stash de alterações locais se houver
+            git stash
+            git pull origin SASS
+          fi
+        EOF
 
     - name: Install dependencies and build
       run: |
