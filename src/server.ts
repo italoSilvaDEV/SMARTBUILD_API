@@ -25,7 +25,7 @@ app.use(router)
 app.use(express.static('public'));
 
 (async () => {
-  await setupWebhook(); 
+  await setupWebhook();
   setupAttendanceJobs(); 
 })();
 
