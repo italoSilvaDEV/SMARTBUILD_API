@@ -64,7 +64,6 @@ export class TimeLineController {
                 check_in_latitude,
                 check_in_longitude,
                 service_project_id,
-                is_local_work
             } = req.body;
             // Verifica se o usuário existe
             const userExists = await prisma.user.findUnique({ where: { id: user_id } });
@@ -123,26 +122,26 @@ export class TimeLineController {
                 return;
             }
 
-           
+            let isLocalWork = false;
 
-            // // Verifica se as coordenadas foram fornecidas
-            // if (check_in_latitude && check_in_longitude && 
-            //     serviceProject.Project?.client?.lat && 
-            //     serviceProject.Project?.client?.log && 
-            //     serviceProject.Project?.client?.radius) {
+            // Verifica se as coordenadas foram fornecidas
+            if (check_in_latitude && check_in_longitude && 
+                serviceProject.Project?.client?.lat && 
+                serviceProject.Project?.client?.log && 
+                serviceProject.Project?.client?.radius) {
                 
-            //     // Calcula a distância entre os pontos
-            //     const distance = this.calculateDistance(
-            //         Number(check_in_latitude),
-            //         Number(check_in_longitude),
-            //         Number(serviceProject.Project.client.lat),
-            //         Number(serviceProject.Project.client.log)
-            //     );
+                // Calcula a distância entre os pontos
+                const distance = this.calculateDistance(
+                    Number(check_in_latitude),
+                    Number(check_in_longitude),
+                    Number(serviceProject.Project.client.lat),
+                    Number(serviceProject.Project.client.log)
+                );
 
-            //     // Verifica se está dentro do raio (convertendo o raio para km)
-            //     const radiusInKm = Number(serviceProject.Project.client.radius) / 1000;
-            //     isLocalWork = distance <= radiusInKm;
-            // }
+                // Verifica se está dentro do raio (convertendo o raio para km)
+                const radiusInKm = Number(serviceProject.Project.client.radius) / 1000;
+                isLocalWork = distance <= radiusInKm;
+            }
 
             // Cria o registro de check-in
             const attendance = await prisma.timeLine.create({
@@ -154,7 +153,7 @@ export class TimeLineController {
                     check_in_address,
                     check_in_latitude,
                     check_in_longitude,
-                    is_local_work,
+                    is_local_work: isLocalWork,
                 },
             });
 
