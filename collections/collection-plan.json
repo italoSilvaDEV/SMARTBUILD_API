@@ -1,464 +1,879 @@
 {
-  "info": {
-    "_postman_id": "e5a7b8c9-d0e1-4f2g-h3i4-j5k6l7m8n9o0",
-    "name": "Sistema de Planos e Permissões",
-    "description": "Coleção para testar as APIs de planos, permissões, grupos de permissões e assinaturas",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "item": [
-    {
-      "name": "Permissões",
-      "item": [
+    "info": {
+        "_postman_id": "e5a7b8c9-d0e1-4f2g-h3i4-j5k6l7m8n9o0",
+        "name": "Sistema de Planos e Permissões",
+        "description": "Coleção para testar as APIs de planos, permissões, grupos de permissões e assinaturas",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
         {
-          "name": "Listar todas as permissões",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permissions"]
-            },
-            "description": "Lista todas as permissões cadastradas no sistema"
-          }
+            "name": "Autenticação",
+            "item": [
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.token) {",
+                                    "    pm.environment.set(\"token\", jsonData.token);",
+                                    "    console.log(\"Token salvo com sucesso!\");",
+                                    "} else {",
+                                    "    console.log(\"Falha ao obter token. Resposta:\", jsonData);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/auth",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "auth"
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"master@user.com\",\n    \"password\": \"CodelabsMaster\"\n}"
+                        },
+                        "description": "Autenticação para obter o token JWT"
+                    }
+                }
+            ]
         },
         {
-          "name": "Buscar permissão por ID",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/permissions/{{permission_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permissions", "{{permission_id}}"]
-            },
-            "description": "Busca uma permissão específica pelo ID"
-          }
-        },
-        {
-          "name": "Criar nova permissão",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permissions"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
+            "name": "Permissões",
+            "item": [
+                {
+                    "name": "Listar todas as permissões",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/permissions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permissions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todas as permissões cadastradas no sistema"
+                    }
+                },
+                {
+                    "name": "Buscar permissão por ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/permissions/{{permission_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permissions",
+                                "{{permission_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Busca uma permissão específica pelo ID"
+                    }
+                },
+                {
+                    "name": "Criar nova permissão",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/permissions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permissions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"description\": \"Visualizar Dashboard\"\n}"
+                        },
+                        "description": "Cria uma nova permissão no sistema"
+                    }
+                },
+                {
+                    "name": "Atualizar permissão",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/permissions/{{permission_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permissions",
+                                "{{permission_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"description\": \"Visualizar Dashboard Financeiro\"\n}"
+                        },
+                        "description": "Atualiza uma permissão existente"
+                    }
+                },
+                {
+                    "name": "Excluir permissão",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{base_url}}/permissions/{{permission_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permissions",
+                                "{{permission_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Remove uma permissão do sistema"
+                    }
+                }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"description\": \"Visualizar Dashboard\"\n}"
-            },
-            "description": "Cria uma nova permissão no sistema"
-          }
+            "description": "Operações relacionadas a permissões individuais"
         },
         {
-          "name": "Atualizar permissão",
-          "request": {
-            "method": "PUT",
-            "url": {
-              "raw": "{{base_url}}/permissions/{{permission_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permissions", "{{permission_id}}"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
+            "name": "Grupos de Permissões",
+            "item": [
+                {
+                    "name": "Listar todos os grupos",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todos os grupos de permissões"
+                    }
+                },
+                {
+                    "name": "Buscar grupo por ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups/{{group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups",
+                                "{{group_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Busca um grupo específico pelo ID"
+                    }
+                },
+                {
+                    "name": "Criar novo grupo",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"description\": \"Grupo Básico\"\n}"
+                        },
+                        "description": "Cria um novo grupo de permissões"
+                    }
+                },
+                {
+                    "name": "Atualizar grupo",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups/{{group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups",
+                                "{{group_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"description\": \"Grupo Premium\"\n}"
+                        },
+                        "description": "Atualiza um grupo de permissões existente"
+                    }
+                },
+                {
+                    "name": "Adicionar permissões ao grupo",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups/{{group_id}}/permissions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups",
+                                "{{group_id}}",
+                                "permissions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"permissionIds\": [\"{{permission_id}}\", \"{{permission_id_2}}\"]\n}"
+                        },
+                        "description": "Adiciona permissões a um grupo existente"
+                    }
+                },
+                {
+                    "name": "Remover permissões do grupo",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups/{{group_id}}/permissions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups",
+                                "{{group_id}}",
+                                "permissions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"permissionIds\": [\"{{permission_id}}\"]\n}"
+                        },
+                        "description": "Remove permissões de um grupo existente"
+                    }
+                },
+                {
+                    "name": "Excluir grupo",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{base_url}}/permission-groups/{{group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "permission-groups",
+                                "{{group_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Remove um grupo de permissões"
+                    }
+                }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"description\": \"Visualizar Dashboard Financeiro\"\n}"
-            },
-            "description": "Atualiza uma permissão existente"
-          }
+            "description": "Operações relacionadas a grupos de permissões"
         },
         {
-          "name": "Excluir permissão",
-          "request": {
-            "method": "DELETE",
-            "url": {
-              "raw": "{{base_url}}/permissions/{{permission_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permissions", "{{permission_id}}"]
-            },
-            "description": "Remove uma permissão do sistema (se não estiver em uso)"
-          }
+            "name": "Planos",
+            "item": [
+                {
+                    "name": "Listar todos os planos",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/plans",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "plans"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todos os planos disponíveis"
+                    }
+                },
+                {
+                    "name": "Buscar plano por ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/plans/{{plan_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "plans",
+                                "{{plan_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Busca um plano específico pelo ID"
+                    }
+                },
+                {
+                    "name": "Criar novo plano",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/plans",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "plans"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Plano Básico\",\n    \"description\": \"Plano com recursos básicos\",\n    \"validityType\": \"MONTHLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
+                        },
+                        "description": "Cria um novo plano"
+                    }
+                },
+                {
+                    "name": "Atualizar plano",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/plans/{{plan_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "plans",
+                                "{{plan_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Plano Premium\",\n    \"description\": \"Plano com recursos avançados\",\n    \"validityType\": \"YEARLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
+                        },
+                        "description": "Atualiza um plano existente"
+                    }
+                },
+                {
+                    "name": "Excluir plano",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{base_url}}/plans/{{plan_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "plans",
+                                "{{plan_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Remove um plano"
+                    }
+                }
+            ],
+            "description": "Operações relacionadas a planos"
+        },
+        {
+            "name": "Assinaturas",
+            "item": [
+                {
+                    "name": "Listar todas as assinaturas",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todas as assinaturas"
+                    }
+                },
+                {
+                    "name": "Buscar assinatura por ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions/{{subscription_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions",
+                                "{{subscription_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Busca uma assinatura específica pelo ID"
+                    }
+                },
+                {
+                    "name": "Listar assinaturas de uma empresa",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/companies/{{company_id}}/subscriptions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "companies",
+                                "{{company_id}}",
+                                "subscriptions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todas as assinaturas de uma empresa específica"
+                    }
+                },
+                {
+                    "name": "Criar nova assinatura",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"companyId\": \"{{company_id}}\",\n    \"planId\": \"{{plan_id}}\",\n    \"startDate\": \"2023-01-01T00:00:00Z\",\n    \"endDate\": \"2023-12-31T23:59:59Z\"\n}"
+                        },
+                        "description": "Cria uma nova assinatura para uma empresa"
+                    }
+                },
+                {
+                    "name": "Atualizar assinatura",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions/{{subscription_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions",
+                                "{{subscription_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"planId\": \"{{plan_id}}\",\n    \"startDate\": \"2023-01-01T00:00:00Z\",\n    \"endDate\": \"2024-12-31T23:59:59Z\",\n    \"isActive\": true\n}"
+                        },
+                        "description": "Atualiza uma assinatura existente"
+                    }
+                },
+                {
+                    "name": "Cancelar assinatura",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions/{{subscription_id}}/cancel",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions",
+                                "{{subscription_id}}",
+                                "cancel"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Cancela uma assinatura ativa"
+                    }
+                },
+                {
+                    "name": "Renovar assinatura",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "{{base_url}}/subscriptions/{{subscription_id}}/renew",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "subscriptions",
+                                "{{subscription_id}}",
+                                "renew"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"newEndDate\": \"2025-12-31T23:59:59Z\"\n}"
+                        },
+                        "description": "Renova uma assinatura com nova data de término"
+                    }
+                }
+            ],
+            "description": "Operações relacionadas a assinaturas de empresas"
         }
-      ],
-      "description": "Operações relacionadas a permissões individuais"
-    },
-    {
-      "name": "Grupos de Permissões",
-      "item": [
+    ],
+    "variable": [
         {
-          "name": "Listar todos os grupos",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/permission-groups",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups"]
-            },
-            "description": "Lista todos os grupos de permissões cadastrados"
-          }
+            "key": "base_url",
+            "value": "http://localhost:4003",
+            "type": "string"
         },
         {
-          "name": "Buscar grupo por ID",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/permission-groups/{{group_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups", "{{group_id}}"]
-            },
-            "description": "Busca um grupo de permissões específico pelo ID"
-          }
+            "key": "permission_id",
+            "value": "",
+            "type": "string"
         },
         {
-          "name": "Criar novo grupo",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/permission-groups",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"description\": \"Grupo Básico\"\n}"
-            },
-            "description": "Cria um novo grupo de permissões"
-          }
+            "key": "permission_id_2",
+            "value": "",
+            "type": "string"
         },
         {
-          "name": "Atualizar grupo",
-          "request": {
-            "method": "PUT",
-            "url": {
-              "raw": "{{base_url}}/permission-groups/{{group_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups", "{{group_id}}"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"description\": \"Grupo Premium\"\n}"
-            },
-            "description": "Atualiza um grupo de permissões existente"
-          }
+            "key": "group_id",
+            "value": "",
+            "type": "string"
         },
         {
-          "name": "Adicionar permissões ao grupo",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/permission-groups/{{group_id}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups", "{{group_id}}", "permissions"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"permissionIds\": [\"permission_id_1\", \"permission_id_2\"]\n}"
-            },
-            "description": "Adiciona permissões a um grupo existente"
-          }
+            "key": "plan_id",
+            "value": "",
+            "type": "string"
         },
         {
-          "name": "Remover permissões do grupo",
-          "request": {
-            "method": "DELETE",
-            "url": {
-              "raw": "{{base_url}}/permission-groups/{{group_id}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups", "{{group_id}}", "permissions"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"permissionIds\": [\"permission_id_1\"]\n}"
-            },
-            "description": "Remove permissões de um grupo existente"
-          }
+            "key": "subscription_id",
+            "value": "",
+            "type": "string"
         },
         {
-          "name": "Excluir grupo",
-          "request": {
-            "method": "DELETE",
-            "url": {
-              "raw": "{{base_url}}/permission-groups/{{group_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permission-groups", "{{group_id}}"]
-            },
-            "description": "Remove um grupo de permissões (se não estiver em uso)"
-          }
+            "key": "company_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
         }
-      ],
-      "description": "Operações relacionadas a grupos de permissões"
-    },
-    {
-      "name": "Planos",
-      "item": [
-        {
-          "name": "Listar todos os planos",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/plans",
-              "host": ["{{base_url}}"],
-              "path": ["plans"]
-            },
-            "description": "Lista todos os planos disponíveis"
-          }
-        },
-        {
-          "name": "Buscar plano por ID",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/plans/{{plan_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["plans", "{{plan_id}}"]
-            },
-            "description": "Busca um plano específico pelo ID"
-          }
-        },
-        {
-          "name": "Criar novo plano",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/plans",
-              "host": ["{{base_url}}"],
-              "path": ["plans"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"name\": \"Plano Básico\",\n    \"description\": \"Plano com recursos básicos\",\n    \"validityType\": \"MONTHLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
-            },
-            "description": "Cria um novo plano de assinatura"
-          }
-        },
-        {
-          "name": "Atualizar plano",
-          "request": {
-            "method": "PUT",
-            "url": {
-              "raw": "{{base_url}}/plans/{{plan_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["plans", "{{plan_id}}"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"name\": \"Plano Premium\",\n    \"description\": \"Plano com recursos avançados\",\n    \"validityType\": \"YEARLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
-            },
-            "description": "Atualiza um plano existente"
-          }
-        },
-        {
-          "name": "Excluir plano",
-          "request": {
-            "method": "DELETE",
-            "url": {
-              "raw": "{{base_url}}/plans/{{plan_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["plans", "{{plan_id}}"]
-            },
-            "description": "Remove um plano (se não estiver em uso)"
-          }
-        }
-      ],
-      "description": "Operações relacionadas a planos de assinatura"
-    },
-    {
-      "name": "Assinaturas",
-      "item": [
-        {
-          "name": "Listar todas as assinaturas",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/subscriptions",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions"]
-            },
-            "description": "Lista todas as assinaturas cadastradas"
-          }
-        },
-        {
-          "name": "Buscar assinatura por ID",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/subscriptions/{{subscription_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions", "{{subscription_id}}"]
-            },
-            "description": "Busca uma assinatura específica pelo ID"
-          }
-        },
-        {
-          "name": "Listar assinaturas de uma empresa",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/companies/{{company_id}}/subscriptions",
-              "host": ["{{base_url}}"],
-              "path": ["companies", "{{company_id}}", "subscriptions"]
-            },
-            "description": "Lista todas as assinaturas de uma empresa específica"
-          }
-        },
-        {
-          "name": "Criar nova assinatura",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/subscriptions",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"companyId\": \"{{company_id}}\",\n    \"planId\": \"{{plan_id}}\",\n    \"startDate\": \"2023-01-01T00:00:00Z\",\n    \"endDate\": \"2023-12-31T23:59:59Z\"\n}"
-            },
-            "description": "Cria uma nova assinatura para uma empresa"
-          }
-        },
-        {
-          "name": "Atualizar assinatura",
-          "request": {
-            "method": "PUT",
-            "url": {
-              "raw": "{{base_url}}/subscriptions/{{subscription_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions", "{{subscription_id}}"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"planId\": \"{{plan_id}}\",\n    \"startDate\": \"2023-01-01T00:00:00Z\",\n    \"endDate\": \"2024-12-31T23:59:59Z\",\n    \"isActive\": true\n}"
-            },
-            "description": "Atualiza uma assinatura existente"
-          }
-        },
-        {
-          "name": "Cancelar assinatura",
-          "request": {
-            "method": "PATCH",
-            "url": {
-              "raw": "{{base_url}}/subscriptions/{{subscription_id}}/cancel",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions", "{{subscription_id}}", "cancel"]
-            },
-            "description": "Cancela uma assinatura ativa"
-          }
-        },
-        {
-          "name": "Renovar assinatura",
-          "request": {
-            "method": "PATCH",
-            "url": {
-              "raw": "{{base_url}}/subscriptions/{{subscription_id}}/renew",
-              "host": ["{{base_url}}"],
-              "path": ["subscriptions", "{{subscription_id}}", "renew"]
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"newEndDate\": \"2025-12-31T23:59:59Z\"\n}"
-            },
-            "description": "Renova uma assinatura com nova data de término"
-          }
-        }
-      ],
-      "description": "Operações relacionadas a assinaturas de empresas"
-    }
-  ],
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:3000",
-      "type": "string"
-    },
-    {
-      "key": "permission_id",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "group_id",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "plan_id",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "subscription_id",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "company_id",
-      "value": "",
-      "type": "string"
-    }
-  ]
+    ]
 }
