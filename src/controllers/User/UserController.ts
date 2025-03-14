@@ -176,7 +176,6 @@ export class UserController {
 
       if (!email || !password) {
         return res.status(400).json({ error: "User or password is required!" });
-        //throw new Error("Fill in the mandatory fields")
       }
 
       const user = await prisma.user.findUnique({
@@ -194,7 +193,13 @@ export class UserController {
               name: true,
             },
           },
-          company: true
+          company: {
+            select: {
+              id: true,
+              name: true,
+              planId: true,
+            }
+          }
         },
         where: {
           email,
@@ -218,6 +223,67 @@ export class UserController {
       // Gerar URL assinada para o avatar, se existir
       const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
 
+      // Buscar informações do plano e assinatura
+      let planInfo = null;
+      let subscriptionInfo = null;
+      let isExpired = false;
+
+      if (user.company?.id) {
+        // Buscar o plano da empresa
+        if (user.company.planId) {
+          const plan = await prisma.plan.findUnique({
+            where: { id: user.company.planId },
+            include: {
+              permissionGroup: true
+            }
+          });
+          
+          planInfo = plan;
+        }
+
+        // Buscar a assinatura ativa mais recente
+        const subscription = await prisma.subscription.findFirst({
+          where: { 
+            companyId: user.company.id,
+            isActive: true
+          },
+          orderBy: {
+            endDate: 'desc'
+          },
+          include: {
+            plan: true
+          }
+        });
+
+        subscriptionInfo = subscription;
+        
+        // Verificar se o plano expirou
+        if (subscription) {
+          isExpired = new Date(subscription.endDate) < new Date();
+        } else if (planInfo && planInfo.validityType === 'DAYS') {
+          // Para planos trial, verificar se já passou o período de validade
+          const company = await prisma.company.findUnique({
+            where: { id: user.company.id }
+          });
+          
+          if (company && company.date_creation) {
+            const trialEndDate = new Date(company.date_creation);
+            trialEndDate.setDate(trialEndDate.getDate() + planInfo.validityDuration);
+            isExpired = trialEndDate < new Date();
+          }
+        }
+        
+        // Se o plano expirou, retornar erro
+        if (isExpired) {
+          return res.status(403).json({ 
+            error: "Your subscription has expired. Please renew your plan to continue using the system.",
+            isExpired: true,
+            plan: planInfo,
+            subscription: subscriptionInfo
+          });
+        }
+      }
+
       const token = Jwt.sign(
         {
           id: user.id,
@@ -230,7 +296,6 @@ export class UserController {
         }
       );
 
-      // return res.json({ user, token });
       return res.json({
         msg: "Authentication completed successfully!",
         token,
@@ -238,14 +303,14 @@ export class UserController {
         user: {
           id: user.id,
           email: user.email,
-
           avatar: avatarUrl,
-
           name: user.name,
           office: user.office,
           company: user.company
-
         },
+        plan: planInfo,
+        subscription: subscriptionInfo,
+        isExpired: false
       });
     } catch (error) {
       if (error instanceof Error) {

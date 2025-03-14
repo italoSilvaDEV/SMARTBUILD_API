@@ -12,7 +12,7 @@ model User {
   avatar          String?
   name            String
   email           String   @unique
-  document        String?   
+  document        String?
   phone           String?
   phone_emergency String?
   zip_code        String?
@@ -81,6 +81,10 @@ model Company {
 
   // novo campo
   stripeAccountId String? @unique
+
+  Subscription Subscription[]
+  Plan         Plan?          @relation(fields: [planId], references: [id])
+  planId       String?
 }
 
 model ContractNotes {
@@ -233,7 +237,7 @@ model ImgServiceProject {
 model Catalog {
   id            String   @id @default(uuid())
   catalog_img   String?
-  catalog_name  String   
+  catalog_name  String
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -526,4 +530,70 @@ model InvoiceSendHistory {
 
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
+}
+
+model Permissions {
+  id String @id @default(uuid())
+
+  description          String
+  GroupPermissionsList GroupPermissionsList[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+}
+
+model PermissionGroup {
+  id String @id @default(uuid())
+
+  description String
+
+  GroupPermissionsList GroupPermissionsList[]
+  plans                Plan[]
+  date_creation        DateTime               @default(now())
+  date_update          DateTime               @updatedAt
+}
+
+model GroupPermissionsList {
+  id String @id @default(uuid())
+
+  Permissions      Permissions     @relation(fields: [permission_id], references: [id])
+  permission_id    String
+  PermissionGroup  PermissionGroup @relation(fields: [permission_group], references: [id])
+  permission_group String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  startDate DateTime // Data de início da assinatura (quando o plano foi comprado)
+  endDate   DateTime // Data de fim do plano (quando o plano expira)
+  isActive  Boolean  @default(true) // Indica se o plano está ativo ou expirado
+}
+
+enum ValidityType {
+  FREE
+  MONTHLY
+  ANNUAL
+  CUSTOM
+  DAYS
+}
+
+model Plan {
+  id                String          @id @default(uuid())
+  name              String
+  description       String
+  validityType      ValidityType // Tipo de validade (gratuito, mensal, etc.)
+  validityDuration  Int // Duração da validade (ex: 15 para gratuito, 30 para mensal)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  permissionGroup   PermissionGroup @relation(fields: [permissionGroupId], references: [id])
+  permissionGroupId String
+  subscriptions     Subscription[] // Relaciona-se com as assinaturas
+  Company           Company[]
 }
