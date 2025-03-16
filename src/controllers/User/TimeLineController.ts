@@ -281,15 +281,14 @@ export class TimeLineController {
     // Atualização do método para buscar timeline por worker
     async handleTimeLineByWorker(req: Request, res: Response) {
         try {
-            const { user_service_project_id } = req.params;
-            const { date } = req.query;
+            const { user_service_project_id, date } = req.params;
             
             if (!user_service_project_id) {
                 return res.status(400).json({ error: "user_service_project_id is required" });
             }
             
             // Buscar o UserServiceProject para verificar se existe
-            const userServiceProject = await prisma.userServiceProject.findUnique({
+            const userServiceProject = await prisma.userServiceProject.findFirst({
                 where: {
                     id: String(user_service_project_id)
                 },
@@ -307,6 +306,7 @@ export class TimeLineController {
             });
             
             if (!userServiceProject) {
+                console.log(user_service_project_id, 'UserServiceProject not found')
                 return res.status(404).json({ error: "UserServiceProject not found" });
             }
             
