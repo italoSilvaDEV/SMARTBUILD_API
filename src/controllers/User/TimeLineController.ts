@@ -282,6 +282,7 @@ export class TimeLineController {
     async handleTimeLineByWorker(req: Request, res: Response) {
         try {
             const { user_service_project_id } = req.params;
+            const { date } = req.query;
             
             if (!user_service_project_id) {
                 return res.status(400).json({ error: "user_service_project_id is required" });
@@ -315,10 +316,26 @@ export class TimeLineController {
                 userWithPresignedAvatar.avatar = await getPresignedUrl(userServiceProject.user.avatar);
             }
             
-            // Buscar todas as timelines associadas a este UserServiceProject
+            // Preparar filtro de data se fornecido
+            let dateFilter = {};
+            if (date) {
+                const selectedDate = new Date(date as string);
+                const nextDay = new Date(selectedDate);
+                nextDay.setDate(nextDay.getDate() + 1);
+                
+                dateFilter = {
+                    check_in_time: {
+                        gte: selectedDate,
+                        lt: nextDay
+                    }
+                };
+            }
+            
+            // Buscar todas as timelines associadas a este UserServiceProject com filtro de data opcional
             const timelines = await prisma.timeLine.findMany({
                 where: {
-                    userServiceProjectId: String(user_service_project_id)
+                    userServiceProjectId: String(user_service_project_id),
+                    ...dateFilter
                 },
                 orderBy: {
                     check_in_time: 'desc'
@@ -330,7 +347,8 @@ export class TimeLineController {
                     ...userServiceProject,
                     user: userWithPresignedAvatar
                 },
-                timelines
+                timelines,
+                dateFilter: date ? new Date(date as string).toISOString().split('T')[0] : null
             });
         } catch (error) {
             console.error("Error fetching timeline by worker:", error);
