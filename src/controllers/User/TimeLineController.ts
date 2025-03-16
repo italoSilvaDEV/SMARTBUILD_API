@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 
 const prisma = new PrismaClient();
 
@@ -274,6 +275,66 @@ export class TimeLineController {
             console.log('error', error)
             console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
+        }
+    }
+
+    // Atualização do método para buscar timeline por worker
+    async handleTimeLineByWorker(req: Request, res: Response) {
+        try {
+            const { user_service_project_id } = req.params;
+            
+            if (!user_service_project_id) {
+                return res.status(400).json({ error: "user_service_project_id is required" });
+            }
+            
+            // Buscar o UserServiceProject para verificar se existe
+            const userServiceProject = await prisma.userServiceProject.findUnique({
+                where: {
+                    id: String(user_service_project_id)
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            avatar: true
+                        }
+                    },
+                    service_project: true
+                }
+            });
+            
+            if (!userServiceProject) {
+                return res.status(404).json({ error: "UserServiceProject not found" });
+            }
+            
+            // Gerar URL assinada para o avatar do usuário, se existir
+            let userWithPresignedAvatar = { ...userServiceProject.user };
+            if (userServiceProject.user?.avatar) {
+                userWithPresignedAvatar.avatar = await getPresignedUrl(userServiceProject.user.avatar);
+            }
+            
+            // Buscar todas as timelines associadas a este UserServiceProject
+            const timelines = await prisma.timeLine.findMany({
+                where: {
+                    userServiceProjectId: String(user_service_project_id)
+                },
+                orderBy: {
+                    check_in_time: 'desc'
+                }
+            });
+            
+            return res.status(200).json({
+                userServiceProject: {
+                    ...userServiceProject,
+                    user: userWithPresignedAvatar
+                },
+                timelines
+            });
+        } catch (error) {
+            console.error("Error fetching timeline by worker:", error);
+            return res.status(500).json({ error: "Internal server error" });
         }
     }
 }
