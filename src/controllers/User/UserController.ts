@@ -227,6 +227,7 @@ export class UserController {
       let planInfo = null;
       let subscriptionInfo = null;
       let isExpired = false;
+      let permissions: string[] = [];
 
       if (user.company?.id) {
         // Buscar o plano da empresa
@@ -234,11 +235,24 @@ export class UserController {
           const plan = await prisma.plan.findUnique({
             where: { id: user.company.planId },
             include: {
-              permissionGroup: true
+              permissionGroup: {
+                include: {
+                  GroupPermissionsList: {
+                    include: {
+                      Permissions: true
+                    }
+                  }
+                }
+              }
             }
           });
           
           planInfo = plan;
+          
+          // Obter as permissões do grupo de permissões associado ao plano
+          if (plan?.permissionGroup?.GroupPermissionsList) {
+            permissions = plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+          }
         }
 
         // Buscar a assinatura ativa mais recente
@@ -306,11 +320,11 @@ export class UserController {
           avatar: avatarUrl,
           name: user.name,
           office: user.office,
-          company: user.company
+          company: user.company,
+          permissions: permissions
         },
-        plan: planInfo,
         subscription: subscriptionInfo,
-        isExpired: false
+        isExpired: isExpired
       });
     } catch (error) {
       if (error instanceof Error) {

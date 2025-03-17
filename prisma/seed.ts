@@ -86,7 +86,7 @@ async function main() {
         { description: "Job Schedule" },
         { description: "Job Dispatch" },
         { description: "Projects" },
-        { description: "Activies" },
+        { description: "Activities" },
         { description: "Estimates" },
         { description: "Invoice" },
         { description: "Time Cards" },
