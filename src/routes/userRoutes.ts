@@ -56,5 +56,7 @@ userRoutes.post('/recover-password', User.sendMailRecover)
 userRoutes.post('/valid-code', User.validCode)
 userRoutes.post('/create-password', User.updatePassword)
 
+// Atualizar email do usuário e enviar nova senha
+userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPassword);
 
 export { userRoutes }
