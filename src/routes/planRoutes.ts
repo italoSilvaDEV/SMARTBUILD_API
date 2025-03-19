@@ -10,8 +10,8 @@ const planController = new PlanController(planService);
 
 // Rotas para planos
 planRoutes.post('/plans', checkToken, (req, res) => planController.createPlan(req, res));
-planRoutes.get('/plans', checkToken, (req, res) => planController.getAllPlans(req, res));
-planRoutes.get('/plans/:id', checkToken, (req, res) => planController.getPlanById(req, res));
+planRoutes.get('/plans', (req, res) => planController.getAllPlans(req, res));
+planRoutes.get('/plans/:id',  (req, res) => planController.getPlanById(req, res));
 planRoutes.put('/plans/:id', checkToken, (req, res) => planController.updatePlan(req, res));
 planRoutes.delete('/plans/:id', checkToken, (req, res) => planController.deletePlan(req, res));
 

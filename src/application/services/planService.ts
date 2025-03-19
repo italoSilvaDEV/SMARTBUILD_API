@@ -12,6 +12,8 @@ export class PlanService {
   async createPlan(planData: {
     name: string;
     description: string;
+    price?: number | null;
+    features?: any;
     validityType: ValidityType;
     validityDuration: number;
     permissionGroupId: string;
@@ -29,7 +31,14 @@ export class PlanService {
       throw new Error('Validity duration must be greater than zero'); // Duração da validade deve ser maior que zero
     }
 
-    return this.planRepository.create(planData);
+    // Set default values for optional fields
+    const planToCreate = {
+      ...planData,
+      price: planData.price || null,
+      features: planData.features || JSON.stringify([])
+    };
+
+    return this.planRepository.create(planToCreate);
   }
 
   /**
@@ -58,6 +67,8 @@ export class PlanService {
   async updatePlan(id: string, planData: Partial<{
     name: string;
     description: string;
+    price?: number | null;
+    features?: any;
     validityType: ValidityType;
     validityDuration: number;
     permissionGroupId: string;
@@ -70,7 +81,12 @@ export class PlanService {
 
     // Validação dos dados atualizados
     if (planData.validityDuration !== undefined && planData.validityDuration <= 0) {
-      throw new Error('Validity duration must be greater than zero'); // Duração da validade deve ser maior que zero
+      throw new Error('Validity duration must be greater than zero');
+    }
+
+    // Process features if provided
+    if (planData.features && typeof planData.features !== 'string') {
+      planData.features = JSON.stringify(planData.features);
     }
 
     return this.planRepository.update(id, planData);

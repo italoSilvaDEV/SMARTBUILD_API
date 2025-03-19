@@ -535,7 +535,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Plano Básico\",\n    \"description\": \"Plano com recursos básicos\",\n    \"price\": 29.99,\n    \"features\": [\"Feature 1\", \"Feature 2\", \"Feature 3\"],\n    \"validityType\": \"MONTHLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
+                            "raw": "{\n    \"name\": \"Plano Básico\",\n    \"description\": \"Plano com recursos básicos\",\n    \"validityType\": \"MONTHLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
                         },
                         "description": "Cria um novo plano"
                     }
@@ -572,7 +572,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Plano Premium\",\n    \"description\": \"Plano com recursos avançados\",\n    \"price\": 99.99,\n    \"features\": [\"Feature 1\", \"Feature 2\", \"Feature 3\", \"Feature 4\", \"Feature 5\"],\n    \"validityType\": \"YEARLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
+                            "raw": "{\n    \"name\": \"Plano Premium\",\n    \"description\": \"Plano com recursos avançados\",\n    \"validityType\": \"YEARLY\",\n    \"validityDuration\": 1,\n    \"permissionGroupId\": \"{{group_id}}\"\n}"
                         },
                         "description": "Atualiza um plano existente"
                     }

@@ -287,14 +287,22 @@ export class UserController {
           }
         }
         
-        // Se o plano expirou, retornar erro
+        // Se o plano expirou, verificar se o usuário é administrador
         if (isExpired) {
-          return res.status(403).json({ 
-            error: "Your subscription has expired. Please renew your plan to continue using the system.",
-            isExpired: true,
-            plan: planInfo,
-            subscription: subscriptionInfo
-          });
+          // Verificar se o usuário é administrador
+          const isAdmin = user.office.name.toLowerCase() === 'administrador' || 
+                          user.office.name.toLowerCase() === 'administrator';
+          
+          // Se não for administrador, bloquear o acesso
+          if (!isAdmin) {
+            return res.status(403).json({ 
+              error: "Your subscription has expired. Please renew your plan to continue using the system.",
+              isExpired: true,
+              plan: planInfo,
+              subscription: subscriptionInfo
+            });
+          }
+          // Se for administrador, continua o login mas informa sobre a expiração
         }
       }
 

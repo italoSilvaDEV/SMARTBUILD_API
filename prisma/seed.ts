@@ -260,9 +260,11 @@ async function main() {
         basicPlan = await prisma.plan.create({
             data: {
                 name: "Basic",
-                description: "Basic plan with essential features",
+                description: "Basic features for small businesses",
+                price: 29.99,
+                features: JSON.stringify(['Feature 1', 'Feature 2', 'Feature 3']),
                 validityType: "MONTHLY",
-                validityDuration: 1,
+                validityDuration: 30,
                 permissionGroupId: basicGroup.id
             }
         });

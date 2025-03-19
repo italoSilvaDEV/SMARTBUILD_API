@@ -10,7 +10,7 @@ const subscriptionService = new SubscriptionService(subscriptionRepository);
 const subscriptionController = new SubscriptionController(subscriptionService);
 
 // Rotas para assinaturas
-subscriptionRoutes.post('/subscriptions', checkToken, (req, res) => subscriptionController.createSubscription(req, res));
+subscriptionRoutes.post('/subscriptions',  (req, res) => subscriptionController.createSubscription(req, res));
 subscriptionRoutes.get('/subscriptions', checkToken, (req, res) => subscriptionController.getAllSubscriptions(req, res));
 subscriptionRoutes.get('/subscriptions/:id', checkToken, (req, res) => subscriptionController.getSubscriptionById(req, res));
 subscriptionRoutes.get('/companies/:companyId/subscriptions', checkToken, (req, res) => subscriptionController.getSubscriptionsByCompany(req, res));

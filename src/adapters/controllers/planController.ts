@@ -11,15 +11,24 @@ export class PlanController {
    */
   async createPlan(req: Request, res: Response): Promise<void> {
     try {
-      const { name, description, validityType, validityDuration, permissionGroupId } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId } = req.body;
       
-      const plan = await this.planService.createPlan({
+      // Process features if it's an array
+      const processedFeatures = features ? 
+        (typeof features === 'string' ? features : JSON.stringify(features)) : 
+        JSON.stringify([]);
+
+      const planData = {
         name,
         description,
+        price: price || null,
+        features: processedFeatures,
         validityType,
         validityDuration,
         permissionGroupId
-      });
+      };
+
+      const plan = await this.planService.createPlan(planData);
       
       res.status(201).json(plan);
     } catch (error: unknown) {
@@ -77,11 +86,18 @@ export class PlanController {
   async updatePlan(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { name, description, validityType, validityDuration, permissionGroupId } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId } = req.body;
       
+      // Process features if it's an array
+      const processedFeatures = features ? 
+        (typeof features === 'string' ? features : JSON.stringify(features)) : 
+        JSON.stringify([]);
+
       const updatedPlan = await this.planService.updatePlan(id, {
         name,
         description,
+        price: price || null,
+        features: processedFeatures,
         validityType,
         validityDuration,
         permissionGroupId

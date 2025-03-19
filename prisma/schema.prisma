@@ -588,6 +588,8 @@ model Plan {
   id                String          @id @default(uuid())
   name              String
   description       String
+  price             Decimal?
+  features          Json? // Array de strings para armazenar as features do plano
   validityType      ValidityType // Tipo de validade (gratuito, mensal, etc.)
   validityDuration  Int // Duração da validade (ex: 15 para gratuito, 30 para mensal)
   createdAt         DateTime        @default(now())
