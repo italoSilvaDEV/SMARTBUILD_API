@@ -229,31 +229,20 @@ export class TimeController {
                         } : {},
                         {
 
-                            OR: [
+                            AND: [
                                 {
-                                    AND: [{
-                                        check_in_time: {
-                                            gte: startDate,
-                                        },
+                                    check_in_time: {
+                                        gte: startDate,
                                     },
-                                    {
-                                        check_out_time: {
-                                            lte: newDeadline,
-                                        },
-                                    },
-                                    ]
-                                },
-                                {
-                                    AND: [
+                                }, {
+                                    OR: [
                                         {
-                                            check_in_time: {
-                                                gte: startDate,
-                                            }
-                                        }, {
+                                            check_out_time: { lte: newDeadline, },
+                                        },
+                                        {
                                             check_out_time: null
                                         }
-
-                                    ]
+                                    ],
                                 }
                             ]
 
@@ -440,31 +429,20 @@ export class TimeController {
                     UserAttendance: {
                         where: {
 
-                            OR: [
+                            AND: [
                                 {
-                                    AND: [{
-                                        check_in_time: {
-                                            gte: startDate,
-                                        },
+                                    check_in_time: {
+                                        gte: startDate,
                                     },
-                                    {
-                                        check_out_time: {
-                                            lte: newDeadline,
-                                        },
-                                    },
-                                    ]
-                                },
-                                {
-                                    AND: [
+                                }, {
+                                    OR: [
                                         {
-                                            check_in_time: {
-                                                gte: startDate,
-                                            }
-                                        }, {
+                                            check_out_time: { lte: newDeadline, },
+                                        },
+                                        {
                                             check_out_time: null
                                         }
-
-                                    ]
+                                    ],
                                 }
                             ]
                         }
@@ -537,7 +515,7 @@ export class TimeController {
                                                             check_out_time: null
                                                         }
                                                     ],
-                                                }     
+                                                }
                                             ]
                                             
                                         }
