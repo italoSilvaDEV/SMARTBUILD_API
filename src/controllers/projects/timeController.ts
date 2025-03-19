@@ -428,7 +428,6 @@ export class TimeController {
                     office: true,
                     UserAttendance: {
                         where: {
-
                             AND: [
                                 {
                                     check_in_time: {
@@ -487,7 +486,6 @@ export class TimeController {
                         }
                     ]
                 },
-
             });
 
             // Contagem de serviços do worker específico
@@ -500,7 +498,6 @@ export class TimeController {
                                     user_id: String(worker_id),
                                     user_attendances: {
                                         some: {
-
                                             AND: [
                                                 {
                                                     check_in_time: {
@@ -517,7 +514,6 @@ export class TimeController {
                                                     ],
                                                 }
                                             ]
-                                            
                                         }
                                     }
                                 }
@@ -535,7 +531,7 @@ export class TimeController {
                 }
             });
 
-            // Buscar projetos específicos do worker
+            // Buscar projetos específicos do worker - CORRIGIDO PARA USAR O MESMO PADRÃO DE FILTRO DE DATA
             const projects = await prisma.project.findMany({
                 where: {
                     AND: [
@@ -544,7 +540,7 @@ export class TimeController {
                         },
                         {
                             status_project: {
-                                in: ["Pre-Start", "In Progress", "Final walkthrough"],
+                                in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                             },
                         },
                         {
@@ -591,12 +587,31 @@ export class TimeController {
                     serviceProject: {
                         select: {
                             id: true,
+                            name: true, // Adicionado o nome do serviço para exibição
                             UserServiceProject: {
                                 where: {
                                     user_id: String(worker_id)
                                 },
                                 include: {
                                     user_attendances: {
+                                        where: { // Aplicar o mesmo filtro de data aqui também
+                                            AND: [
+                                                {
+                                                    check_in_time: {
+                                                        gte: startDate,
+                                                    },
+                                                }, {
+                                                    OR: [
+                                                        {
+                                                            check_out_time: { lte: newDeadline, },
+                                                        },
+                                                        {
+                                                            check_out_time: null
+                                                        }
+                                                    ],
+                                                }
+                                            ]
+                                        },
                                         include: {
                                             user: {
                                                 select: {
@@ -638,7 +653,8 @@ export class TimeController {
                                 ...x,
                                 userId: x.user_id,
                                 hours_worked: roundedHours,
-                                price: calculatedPrice
+                                price: calculatedPrice,
+                                serviceName: s.name // Incluir o nome do serviço para melhor identificação
                             })
                         })
                     )
