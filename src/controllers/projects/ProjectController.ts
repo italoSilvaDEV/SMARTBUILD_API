@@ -564,6 +564,12 @@ export class ProjectController {
         include: {
           photos: true,
           costProject: true,
+          galleryAlfter: true,
+          galleryBefore: true,
+          Activities: true,
+          stages: true,
+          UserServiceProject: true,
+          TimeLine: true,
         },
       });
 
@@ -583,6 +589,26 @@ export class ProjectController {
         },
       });
 
+      // Exclusão de todos os registros relacionados ao ServiceProject
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.galleryBefore.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.activities.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.serviceStages.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.userServiceProject.deleteMany({
+        where: { service_project_id: id },
+      });
+      await prisma.timeLine.deleteMany({
+        where: { service_project_id: id },
+      });
+
       // Exclusão do ServiceProject
       await prisma.serviceProject.delete({
         where: {
@@ -592,7 +618,7 @@ export class ProjectController {
 
       return response.json({
         message:
-          "Service Project and its photos and cost projects deleted successfully",
+          "Service Project and its related data deleted successfully",
       });
     } catch (error) {
       console.error(error);
