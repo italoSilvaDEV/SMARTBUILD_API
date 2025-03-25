@@ -46,7 +46,18 @@ export class PlanService {
    * @returns List of plans
    */
   async getAllPlans(): Promise<Plan[]> {
-    return this.planRepository.findAll();
+    const plans = await this.planRepository.findAll();
+
+    // Fetch permission groups for each plan
+    const plansWithPermissionGroups = await Promise.all(plans.map(async (plan) => {
+      const permissionGroup = await this.planRepository.findPermissionGroupById(plan.permissionGroupId);
+      return {
+        ...plan,
+        permissionGroup
+      };
+    }));
+
+    return plansWithPermissionGroups;
   }
 
   /**

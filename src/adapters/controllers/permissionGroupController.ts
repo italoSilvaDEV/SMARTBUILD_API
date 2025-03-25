@@ -32,12 +32,11 @@ export class PermissionGroupController {
    */
   async getAllPermissionGroups(req: Request, res: Response): Promise<void> {
     try {
-      const permissionGroups = await this.permissionGroupService.getAllPermissionGroups();
-      res.status(200).json(permissionGroups);
+      const groups = await this.permissionGroupService.getAllPermissionGroups();
+      res.status(200).json(groups);
     } catch (error: unknown) {
-      // Erro ao listar grupos de permissões
-      console.error('Error listing permission groups:', error);
-      res.status(500).json({ message: 'Error listing permission groups', error: (error as Error).message });
+      console.error('Error fetching permission groups:', error);
+      res.status(500).json({ message: 'Error fetching permission groups', error: (error as Error).message });
     }
   }
 
@@ -75,17 +74,11 @@ export class PermissionGroupController {
       const { id } = req.params;
       const { permissionIds } = req.body;
       
-      const updatedGroup = await this.permissionGroupService.addPermissionsToGroup(id, permissionIds);
+      await this.permissionGroupService.addPermissionsToGroup(id, permissionIds);
       
-      if (!updatedGroup) {
-        // Grupo de permissões não encontrado
-        res.status(404).json({ message: 'Permission group not found' });
-        return;
-      }
-      
-      res.status(200).json(updatedGroup);
+      // Simply return success, no need to check result
+      res.status(200).json({ message: 'Permissions added successfully' });
     } catch (error: unknown) {
-      // Erro ao adicionar permissões ao grupo
       console.error('Error adding permissions to group:', error);
       res.status(500).json({ message: 'Error adding permissions to group', error: (error as Error).message });
     }
@@ -101,17 +94,11 @@ export class PermissionGroupController {
       const { id } = req.params;
       const { permissionIds } = req.body;
       
-      const updatedGroup = await this.permissionGroupService.removePermissionsFromGroup(id, permissionIds);
+      await this.permissionGroupService.removePermissionsFromGroup(id, permissionIds);
       
-      if (!updatedGroup) {
-        // Grupo de permissões não encontrado
-        res.status(404).json({ message: 'Permission group not found' });
-        return;
-      }
-      
-      res.status(200).json(updatedGroup);
+      // Simply return success, no need to check result
+      res.status(200).json({ message: 'Permissions removed successfully' });
     } catch (error: unknown) {
-      // Erro ao remover permissões do grupo
       console.error('Error removing permissions from group:', error);
       res.status(500).json({ message: 'Error removing permissions from group', error: (error as Error).message });
     }
@@ -125,21 +112,17 @@ export class PermissionGroupController {
   async updatePermissionGroup(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { description } = req.body;
-      
-      const updatedGroup = await this.permissionGroupService.updatePermissionGroup(id, {
-        description
+      const { description, permissionIds } = req.body;
+
+      await this.permissionGroupService.updatePermissionGroup(id, {
+        description,
+        permissionIds
       });
-      
-      if (!updatedGroup) {
-        // Grupo de permissões não encontrado
-        res.status(404).json({ message: 'Permission group not found' });
-        return;
-      }
-      
-      res.status(200).json(updatedGroup);
+
+      // Return a success response without checking for updatedGroup
+      res.status(200).send(); // No content to return
     } catch (error: unknown) {
-      // Erro ao atualizar grupo de permissões
+      // Error updating permission group
       console.error('Error updating permission group:', error);
       res.status(500).json({ message: 'Error updating permission group', error: (error as Error).message });
     }

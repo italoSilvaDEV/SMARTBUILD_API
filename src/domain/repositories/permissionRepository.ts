@@ -8,4 +8,5 @@ export interface PermissionRepository {
   update(id: string, permissionData: Partial<Omit<Permission, 'id' | 'date_creation' | 'date_update'>>): Promise<Permission | null>;
   delete(id: string): Promise<void>;
   isPermissionInUse(id: string): Promise<boolean>;
+  findByGroupId(groupId: string): Promise<Permission[]>;
 } 

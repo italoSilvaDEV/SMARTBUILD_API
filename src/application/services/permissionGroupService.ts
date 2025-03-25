@@ -35,7 +35,18 @@ export class PermissionGroupService {
    * @returns Lista de grupos
    */
   async getAllPermissionGroups(): Promise<PermissionGroup[]> {
-    return this.permissionGroupRepository.findAll();
+    const groups = await this.permissionGroupRepository.findAll();
+
+    // Fetch permissions for each group
+    const groupsWithPermissions = await Promise.all(groups.map(async (group) => {
+      const permissions = await this.permissionRepository.findByGroupId(group.id);
+      return {
+        ...group,
+        permissions
+      };
+    }));
+
+    return groupsWithPermissions;
   }
 
   /**
@@ -53,22 +64,15 @@ export class PermissionGroupService {
    * @param permissionIds IDs das permissões a adicionar
    * @returns Grupo atualizado ou null
    */
-  async addPermissionsToGroup(groupId: string, permissionIds: string[]): Promise<PermissionGroup | null> {
-    // Verifica se o grupo existe
-    const group = await this.permissionGroupRepository.findById(groupId);
-    if (!group) {
-      return null;
-    }
-
-    // Verifica se todas as permissões existem
-    for (const permissionId of permissionIds) {
-      const permission = await this.permissionRepository.findById(permissionId);
-      if (!permission) {
-        throw new Error(`Permissão com ID ${permissionId} não encontrada`);
-      }
-    }
-
-    return this.permissionGroupRepository.addPermissions(groupId, permissionIds);
+  async addPermissionsToGroup(groupId: string, permissionIds: string[]): Promise<void> {
+    await Promise.all(permissionIds.map(permissionId => {
+      return this.permissionRepository.findById(permissionId).then(permission => {
+        if (!permission) {
+          throw new Error(`Permission with ID ${permissionId} not found`);
+        }
+        return this.permissionGroupRepository.addPermissions(groupId, [permissionId]);
+      });
+    }));
   }
 
   /**
@@ -77,14 +81,15 @@ export class PermissionGroupService {
    * @param permissionIds IDs das permissões a remover
    * @returns Grupo atualizado ou null
    */
-  async removePermissionsFromGroup(groupId: string, permissionIds: string[]): Promise<PermissionGroup | null> {
-    // Verifica se o grupo existe
+  async removePermissionsFromGroup(groupId: string, permissionIds: string[]): Promise<void> {
+    // Check if the group exists
     const group = await this.permissionGroupRepository.findById(groupId);
     if (!group) {
-      return null;
+      throw new Error('Permission group not found');
     }
 
-    return this.permissionGroupRepository.removePermissions(groupId, permissionIds);
+    // Remove the permissions from the group
+    await this.permissionGroupRepository.removePermissions(groupId, permissionIds);
   }
 
   /**
@@ -95,25 +100,33 @@ export class PermissionGroupService {
    */
   async updatePermissionGroup(id: string, groupData: {
     description: string;
+    permissionIds: string[];
   }): Promise<PermissionGroup | null> {
-    // Verifica se o grupo existe
+    // Check if the group exists
     const existingGroup = await this.permissionGroupRepository.findById(id);
     if (!existingGroup) {
       return null;
     }
 
-    // Validação dos dados
+    // Validate the data
     if (!groupData.description) {
-      throw new Error('Descrição é obrigatória');
+      throw new Error('Description is required');
     }
 
-    // Verifica se já existe outro grupo com a mesma descrição
-    const duplicateGroup = await this.permissionGroupRepository.findByDescription(groupData.description);
-    if (duplicateGroup && duplicateGroup.id !== id) {
-      throw new Error('Já existe outro grupo com esta descrição');
+    // Update the group description
+    await this.permissionGroupRepository.update(id, {
+      description: groupData.description
+    });
+
+    // Remove all existing permissions if they exist
+    if (existingGroup.permissions) {
+      await this.removePermissionsFromGroup(id, existingGroup.permissions.map(p => p.id));
     }
 
-    return this.permissionGroupRepository.update(id, groupData);
+    // Add the new permissions
+    await this.addPermissionsToGroup(id, groupData.permissionIds);
+
+    return this.permissionGroupRepository.findById(id);
   }
 
   /**

@@ -48,9 +48,8 @@ export class PlanController {
       const plans = await this.planService.getAllPlans();
       res.status(200).json(plans);
     } catch (error: unknown) {
-      // Erro ao listar planos
-      console.error('Error listing plans:', error);
-      res.status(500).json({ message: 'Error listing plans', error: (error as Error).message });
+      console.error('Error fetching plans:', error);
+      res.status(500).json({ message: 'Error fetching plans', error: (error as Error).message });
     }
   }
 

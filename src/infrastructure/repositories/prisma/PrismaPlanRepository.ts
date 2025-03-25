@@ -1,6 +1,7 @@
 import { Plan, ValidityType } from '../../../domain/entities/plan';
 import { PlanRepository } from '../../../domain/repositories/planRepository';
 import { prisma } from '../../../utils/prisma';
+import { PermissionGroup } from '../../../domain/entities/permissionGroup';
 
 export class PrismaPlanRepository implements PlanRepository {
   async create(planData: Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>): Promise<Plan> {
@@ -31,7 +32,12 @@ export class PrismaPlanRepository implements PlanRepository {
   }
 
   async findAll(): Promise<Plan[]> {
-    const plans = await prisma.plan.findMany();
+    const plans = await prisma.plan.findMany({
+      include: {
+        permissionGroup: true
+      }
+    });
+
     return plans.map(plan => ({
       id: plan.id,
       name: plan.name,
@@ -41,6 +47,7 @@ export class PrismaPlanRepository implements PlanRepository {
       validityType: plan.validityType as ValidityType,
       validityDuration: plan.validityDuration,
       permissionGroupId: plan.permissionGroupId,
+      permissionGroup: plan.permissionGroup,
       createdAt: plan.createdAt,
       updatedAt: plan.updatedAt
     }));
@@ -104,5 +111,11 @@ export class PrismaPlanRepository implements PlanRepository {
     });
 
     return subscriptionsCount > 0 || companiesCount > 0;
+  }
+
+  async findPermissionGroupById(groupId: string): Promise<PermissionGroup | null> {
+    return await prisma.permissionGroup.findUnique({
+      where: { id: groupId }
+    });
   }
 } 

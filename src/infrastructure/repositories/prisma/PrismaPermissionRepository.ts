@@ -86,4 +86,22 @@ export class PrismaPermissionRepository implements PermissionRepository {
 
     return count > 0;
   }
+
+  async findByGroupId(groupId: string): Promise<Permission[]> {
+    return await prisma.groupPermissionsList.findMany({
+      where: { permission_group: groupId },
+      include: { Permissions: true } // Ensure this is correct based on your schema
+    }).then(groupPermissions => groupPermissions.map(gp => gp.Permissions));
+  }
+
+  async addPermissionsToGroup(groupId: string, permissionIds: string[]): Promise<void> {
+    await Promise.all(permissionIds.map(permissionId => {
+      return prisma.groupPermissionsList.create({
+        data: {
+          permission_id: permissionId,
+          permission_group: groupId
+        }
+      });
+    }));
+  }
 } 
