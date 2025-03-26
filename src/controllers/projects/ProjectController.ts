@@ -9,6 +9,7 @@ import S3Storage from "../../utils/S3/s3Storage";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
+import { error } from "console";
 
 
 export interface INewProject {
@@ -568,13 +569,22 @@ export class ProjectController {
           galleryBefore: true,
           Activities: true,
           stages: true,
-          UserServiceProject: true,
+          UserServiceProject: {
+            include: {
+              user_attendances: true
+            }
+          },
           TimeLine: true,
         },
       });
 
       if (!serviceProject) {
         throw new Error("Service Project not found!");
+      }
+
+      // Check if there are any user attendances or timeline entries
+      if (serviceProject.UserServiceProject.some(user => user.user_attendances.length > 0) || serviceProject.TimeLine.length > 0) {
+        return response.status(400).json({ error: "Workers have already started this service and cannot be deleted." });
       }
 
       // Exclusão de todas as fotos associadas ao ServiceProject
@@ -625,7 +635,7 @@ export class ProjectController {
       if (error instanceof Error) {
         return response.json({ error: error.message });
       }
-      return response.json({ error: "Erro interno do servidor" });
+      return response.json({ error: "Internal server error" });
     }
   }
 
