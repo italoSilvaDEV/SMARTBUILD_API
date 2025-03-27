@@ -164,8 +164,96 @@ export class UserController {
     }
     // })
   }
-
   async authenticate(req: Request, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "User or password is required!" });
+        //throw new Error("Fill in the mandatory fields")
+      }
+
+      const user = await prisma.user.findUnique({
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+          password: true,
+          email: true,
+          rules: true,
+          isDisabled: true,
+          office: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          company: true
+        },
+        where: {
+          email,
+        },
+      });
+
+      if (!user) {
+        return res.status(400).json({ error: "User or password invalid!" });
+      }
+
+      if (user.isDisabled) {
+        return res.status(403).json({ error: "Access denied!" });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+
+      if (!isValidPassword) {
+        return res.status(400).json({ error: "User or password invalid!" });
+      }
+
+      // Gerar URL assinada para o avatar, se existir
+      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+
+      const token = Jwt.sign(
+        {
+          id: user.id,
+          name: user.name,
+        },
+        String(process.env.SECRET_JWT),
+        {
+          subject: user.id,
+          expiresIn: "1d",
+        }
+      );
+
+      // return res.json({ user, token });
+      return res.json({
+        msg: "Authentication completed successfully!",
+        token,
+        rules: user.office.name,
+        user: {
+          id: user.id,
+          email: user.email,
+
+          avatar: avatarUrl,
+
+          name: user.name,
+          office: user.office,
+          company: user.company
+
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Internal error" });
+    }
+  }
+  async authenticateCOM_PERMISSOES(req: Request, res: Response) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
