@@ -218,7 +218,7 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: {
+          serviceProject: { 
             include: {
               UserServiceProject: {
                 select: {
@@ -365,6 +365,23 @@ export class ProjectController {
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
+
+        // Processar as URLs das fotos para adicionar uriTreated
+        if (project.serviceProject) {
+          for (const service of project.serviceProject) {
+            if (service.photos) {
+              service.photos = await Promise.all(
+                service.photos.map(async (photo) => {
+                  const uriTreated = await getPresignedUrl(photo.uri);
+                  return {
+                    ...photo,
+                    uriTreated
+                  };
+                })
+              );
+            }
+          }
+        }
 
         res.json({
           ...project,
