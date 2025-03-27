@@ -902,4 +902,90 @@ export class UserController {
       return response.json({ error: "Internal error" });
     }
   }
+
+  async updateUserEmailAndSendPassword(req: Request, res: Response) {
+    try {
+      const { userId, email } = req.body;
+
+      if (!userId || !email) {
+        return res.status(400).json({ error: "User ID and email are required" });
+      }
+
+      // Verificar se o usuário existe
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          company: {
+            select: {
+              avatar: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Verificar se o email já existe para outro usuário
+      const emailExists = await prisma.user.findFirst({
+        where: {
+          email,
+          id: { not: userId }
+        }
+      });
+
+      if (emailExists) {
+        return res.status(400).json({ error: "Email has already been registered in the system" });
+      }
+
+      // Gerar nova senha aleatória
+      const newPassword = crypto.randomBytes(3).toString("hex").toUpperCase();
+      const hashedPassword = bcrypt.hashSync(newPassword, 10);
+
+      // Atualizar o email e a senha do usuário
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          email,
+          password: hashedPassword
+        }
+      });
+
+      // Configurar e enviar email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Obter URL do logo da empresa
+      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+      
+      // Criar template de email
+      const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, newPassword);
+      
+      // Enviar email
+      await transporter.sendMail({
+        from: SMTP_CONFIG.user,
+        to: email,
+        subject: "Smart Build - Email Updated",
+        html: templateEmail,
+      });
+
+      return res.status(200).json({ message: "Email updated and password sent successfully" });
+    } catch (error) {
+      console.error("Error updating email:", error);
+      return res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Internal server error" 
+      });
+    }
+  }
+
 }

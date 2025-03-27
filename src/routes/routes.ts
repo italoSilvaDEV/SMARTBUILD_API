@@ -16,6 +16,11 @@ import { permissionRoutes } from './permissionRoutes'
 import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
 
+import { quickbooksRoutes } from './quickbooksRoutes'
+
+import { changeOrderRoutes } from './changeOrderRoutes'
+
+
 const router = Router()
 
 // Importante: Colocar o webhook antes dos middlewares JSON
@@ -31,7 +36,9 @@ router.use(workedRours)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
+router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
+router.use("/change-order", changeOrderRoutes);
 
 // Novas rotas para planos e permissões
 router.use(planRoutes)

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 
 const prisma = new PrismaClient();
 
@@ -274,6 +275,84 @@ export class TimeLineController {
             console.log('error', error)
             console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
+        }
+    }
+
+    // Atualização do método para buscar timeline por worker
+    async handleTimeLineByWorker(req: Request, res: Response) {
+        try {
+            const { user_service_project_id, date } = req.params;
+            
+            if (!user_service_project_id) {
+                return res.status(400).json({ error: "user_service_project_id is required" });
+            }
+            
+            // Buscar o UserServiceProject para verificar se existe
+            const userServiceProject = await prisma.userServiceProject.findFirst({
+                where: {
+                    id: String(user_service_project_id)
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            avatar: true
+                        }
+                    },
+                    service_project: true
+                }
+            });
+            
+            if (!userServiceProject) {
+                console.log(user_service_project_id, 'UserServiceProject not found')
+                return res.status(404).json({ error: "UserServiceProject not found" });
+            }
+            
+            // Gerar URL assinada para o avatar do usuário, se existir
+            let userWithPresignedAvatar = { ...userServiceProject.user };
+            if (userServiceProject.user?.avatar) {
+                userWithPresignedAvatar.avatar = await getPresignedUrl(userServiceProject.user.avatar);
+            }
+            
+            // Preparar filtro de data se fornecido
+            let dateFilter = {};
+            if (date) {
+                const selectedDate = new Date(date as string);
+                const nextDay = new Date(selectedDate);
+                nextDay.setDate(nextDay.getDate() + 1);
+                
+                dateFilter = {
+                    check_in_time: {
+                        gte: selectedDate,
+                        lt: nextDay
+                    }
+                };
+            }
+            
+            // Buscar todas as timelines associadas a este UserServiceProject com filtro de data opcional
+            const timelines = await prisma.timeLine.findMany({
+                where: {
+                    userServiceProjectId: String(user_service_project_id),
+                    ...dateFilter
+                },
+                orderBy: {
+                    check_in_time: 'desc'
+                }
+            });
+            
+            return res.status(200).json({
+                userServiceProject: {
+                    ...userServiceProject,
+                    user: userWithPresignedAvatar
+                },
+                timelines,
+                dateFilter: date ? new Date(date as string).toISOString().split('T')[0] : null
+            });
+        } catch (error) {
+            console.error("Error fetching timeline by worker:", error);
+            return res.status(500).json({ error: "Internal server error" });
         }
     }
 }

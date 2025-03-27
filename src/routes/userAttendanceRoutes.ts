@@ -27,5 +27,6 @@ userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceCont
 
 userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine);
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient);
+userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker);
 
 export { userAttendanceRoutes };

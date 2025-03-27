@@ -49,6 +49,11 @@ model User {
   Invoice    Invoice[]
   TimeLine   TimeLine[]
 
+  quickBooksAccount    QuickBooksAccount?
+  quickBooksAccount_id String?            @unique
+
+  canceledChangeOrders ChangeOrder[]      @relation("canceledChangeOrders")
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -201,15 +206,16 @@ model ServiceProject {
   galleryAlfter      GalleryAfter[]
   photos             ImgServiceProject[]
   costProject        CostProject[]
-  date_creation      DateTime             @default(now())
-  date_update        DateTime             @updatedAt
-  Project            Project?             @relation(fields: [projectId], references: [id])
+  date_creation      DateTime                    @default(now())
+  date_update        DateTime                    @updatedAt
+  Project            Project?                    @relation(fields: [projectId], references: [id])
   projectId          String?
   UserServiceProject UserServiceProject[]
   Activities         Activities[]
-  company            Company?             @relation(fields: [company_id], references: [id])
+  company            Company?                    @relation(fields: [company_id], references: [id])
   company_id         String?
   TimeLine           TimeLine[]
+  changeOrders       ChangeOrderServiceProject[]
 }
 
 model Activities {
@@ -287,6 +293,8 @@ model Project {
   seller_user_id String?
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
+
+  changeOrders ChangeOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -532,16 +540,70 @@ model InvoiceSendHistory {
   user_id     String?
 }
 
+model QuickBooksAccount {
+  id           String   @id @default(uuid())
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  realmId      String   @unique // Identificador da conta no QuickBooks
+  expiresAt    DateTime // Data de expiração do accessToken
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User?    @relation(fields: [user_id], references: [id])
+  user_id      String?  @unique
+}
+
+model ChangeOrder {
+  id              String   @id @default(uuid())
+  approvedAt      DateTime @default(now())
+  clientSignature String?
+  totalAmount     Decimal
+  description     String?  @db.Text
+  terms           String?  @db.Text
+  status          String   @default("pending")
+
+  // New fields to track cancellation
+  canceledAt         DateTime?
+  canceledById       String?
+  cancellationReason String?   @db.Text
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  // Add relation to User for the user who canceled
+  canceledBy User? @relation(name: "canceledChangeOrders", fields: [canceledById], references: [id])
+
+  serviceProjects ChangeOrderServiceProject[]
+   date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  }
 model Permissions {
   id String @id @default(uuid())
 
   description          String
   GroupPermissionsList GroupPermissionsList[]
-
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 }
 
+model ChangeOrderServiceProject {
+  id String @id @default(uuid())
+
+  changeOrder   ChangeOrder @relation(fields: [changeOrderId], references: [id])
+  changeOrderId String
+
+  serviceProject   ServiceProject @relation(fields: [serviceProjectId], references: [id])
+  serviceProjectId String
+
+  quantity  Int     @default(1)
+  unitPrice Decimal
+  lineTotal Decimal
+  notes     String? @db.Text
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([changeOrderId, serviceProjectId])
+}
 model PermissionGroup {
   id String @id @default(uuid())
 

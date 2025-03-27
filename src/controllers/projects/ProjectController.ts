@@ -9,6 +9,7 @@ import S3Storage from "../../utils/S3/s3Storage";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
+import { error } from "console";
 
 
 export interface INewProject {
@@ -218,7 +219,7 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: {
+          serviceProject: { 
             include: {
               UserServiceProject: {
                 select: {
@@ -365,6 +366,23 @@ export class ProjectController {
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
+
+        // Processar as URLs das fotos para adicionar uriTreated
+        if (project.serviceProject) {
+          for (const service of project.serviceProject) {
+            if (service.photos) {
+              service.photos = await Promise.all(
+                service.photos.map(async (photo) => {
+                  const uriTreated = await getPresignedUrl(photo.uri);
+                  return {
+                    ...photo,
+                    uriTreated
+                  };
+                })
+              );
+            }
+          }
+        }
 
         res.json({
           ...project,
@@ -564,11 +582,26 @@ export class ProjectController {
         include: {
           photos: true,
           costProject: true,
+          galleryAlfter: true,
+          galleryBefore: true,
+          Activities: true,
+          stages: true,
+          UserServiceProject: {
+            include: {
+              user_attendances: true
+            }
+          },
+          TimeLine: true,
         },
       });
 
       if (!serviceProject) {
         throw new Error("Service Project not found!");
+      }
+
+      // Check if there are any user attendances or timeline entries
+      if (serviceProject.UserServiceProject.some(user => user.user_attendances.length > 0) || serviceProject.TimeLine.length > 0) {
+        return response.status(400).json({ error: "Workers have already started this service and cannot be deleted." });
       }
 
       // Exclusão de todas as fotos associadas ao ServiceProject
@@ -583,6 +616,26 @@ export class ProjectController {
         },
       });
 
+      // Exclusão de todos os registros relacionados ao ServiceProject
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.galleryBefore.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.activities.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.serviceStages.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.userServiceProject.deleteMany({
+        where: { service_project_id: id },
+      });
+      await prisma.timeLine.deleteMany({
+        where: { service_project_id: id },
+      });
+
       // Exclusão do ServiceProject
       await prisma.serviceProject.delete({
         where: {
@@ -592,14 +645,14 @@ export class ProjectController {
 
       return response.json({
         message:
-          "Service Project and its photos and cost projects deleted successfully",
+          "Service Project and its related data deleted successfully",
       });
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
         return response.json({ error: error.message });
       }
-      return response.json({ error: "Erro interno do servidor" });
+      return response.json({ error: "Internal server error" });
     }
   }
 
