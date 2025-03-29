@@ -554,6 +554,7 @@ model QuickBooksAccount {
 
 model ChangeOrder {
   id              String   @id @default(uuid())
+  number          String   // Novo campo para o número sequencial
   approvedAt      DateTime @default(now())
   clientSignature String?
   totalAmount     Decimal
@@ -575,7 +576,10 @@ model ChangeOrder {
   serviceProjects ChangeOrderServiceProject[]
    date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-  }
+
+  @@unique([number, projectId]) // Garante que o número seja único por projeto
+}
+
 model Permissions {
   id String @id @default(uuid())
 
@@ -604,6 +608,7 @@ model ChangeOrderServiceProject {
 
   @@unique([changeOrderId, serviceProjectId])
 }
+
 model PermissionGroup {
   id String @id @default(uuid())
 

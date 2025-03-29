@@ -1,28 +1,73 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { returnPayLoad } from "../../config/returnPayLoad";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class ChangeOrderController {
   async create(req: Request, res: Response) {
     try {
-      const { projectId, description, terms, totalAmount, serviceProjects } = req.body;
+      const { projectId } = req.body;
+      
+      // Buscar o projeto com seus serviços
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          serviceProject: true,
+          client: true,
+          company: true,
+          changeOrders: {
+            orderBy: {
+              number: 'desc'
+            },
+            take: 1
+          }
+        }
+      });
 
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Gerar o próximo número sequencial
+      const lastNumber = project.changeOrders[0]?.number || '0000';
+      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+
+      // Buscar todos os termos do contrato da empresa
+      const contractNotes = await prisma.contractNotes.findMany({
+        where: { company_id: project.company_id },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // Combinar todos os termos do contrato
+      const combinedTerms = contractNotes.length > 0 
+        ? contractNotes.map(note => note.notes).join('\n\n') 
+        : "Standard terms and conditions apply.";
+
+      // Calcular o valor total com base nos serviços do projeto
+      const totalAmount = project.serviceProject.reduce(
+        (total, service) => total + (Number(service.price)*Number(service.hours)),
+        0
+      );
+
+      // Criar o change order
       const changeOrder = await prisma.changeOrder.create({
         data: {
-          description,
-          terms,
+          number: nextNumber,
+          description: `Change Order #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
+          terms: combinedTerms,
           totalAmount,
           status: "pending",
           project: {
             connect: { id: projectId }
           },
           serviceProjects: {
-            create: serviceProjects.map((sp: any) => ({
-              quantity: sp.quantity,
-              unitPrice: sp.unitPrice,
-              lineTotal: sp.lineTotal,
-              notes: sp.notes,
+            create: project.serviceProject.map(sp => ({
+              quantity: Number(sp.hours),
+              unitPrice: Number(sp.price),
+              lineTotal: Number(sp.price)*Number(sp.hours),
+              notes: sp.description,
               serviceProject: {
-                connect: { id: sp.serviceProjectId }
+                connect: { id: sp.id }
               }
             }))
           }
@@ -31,6 +76,11 @@ export class ChangeOrderController {
           serviceProjects: {
             include: {
               serviceProject: true
+            }
+          },
+          project: {
+            include: {
+              client: true
             }
           }
         }
@@ -96,12 +146,36 @@ export class ChangeOrderController {
               email: true
             }
           },
-          project: true
+          project: {
+            include: {
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true, 
+                  email: true,
+                  phone: true
+                }
+              },
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                }
+              }
+            }
+          }
         }
       });
 
       if (!changeOrder) {
         return res.status(404).json({ error: "Change order not found" });
+      }
+
+      // Generate presigned URL for company avatar if it exists
+      if (changeOrder.project?.company?.avatar) {
+        changeOrder.project.company.avatar = await getPresignedUrl(changeOrder.project.company.avatar);
       }
 
       return res.json(changeOrder);
@@ -182,8 +256,10 @@ export class ChangeOrderController {
     try {
       const { id } = req.params;
       const { cancellationReason } = req.body;
-      const userId = req.user.id; // Assuming you have user info in the request from checkToken middleware
+      const payload = returnPayLoad(req)
+      const userId = payload?.id; // Assuming you have user info in the request from checkToken middleware
 
+      if (!userId) return  res.status(401).json({ error: "Failed to cancel change order" });
       const changeOrder = await prisma.changeOrder.update({
         where: { id },
         data: {

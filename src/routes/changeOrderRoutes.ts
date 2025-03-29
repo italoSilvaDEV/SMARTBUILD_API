@@ -21,10 +21,10 @@ changeOrderRoutes.put("/:id", checkToken, changeOrderController.update);
 changeOrderRoutes.patch("/:id/status", checkToken, changeOrderController.updateStatus);
 
 // Add client signature to approve a change order
-changeOrderRoutes.patch("/:id/sign", checkToken, changeOrderController.addSignature);
+changeOrderRoutes.patch("/:id/sign", changeOrderController.addSignature);
 
 // Cancel a change order
-changeOrderRoutes.patch("/:id/cancel", checkToken, changeOrderController.cancel);
+changeOrderRoutes.put("/:id/cancel", checkToken, changeOrderController.cancel);
 
 // Add service project to change order
 changeOrderRoutes.post("/:id/service", checkToken, changeOrderController.addService);
