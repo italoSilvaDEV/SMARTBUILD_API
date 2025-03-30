@@ -361,7 +361,7 @@ export class ProjectController {
         });
 
         const workersOnThisProject = uniqueUsers.size;
-        costofwork += userAttendance
+        // costofwork += userAttendance
         // Calcula o somatório de hours * price
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
@@ -393,7 +393,7 @@ export class ProjectController {
               : null,
           },
           costProjects: flatCostProjects,
-          costofwork,
+          cost_of_materials: costofwork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
