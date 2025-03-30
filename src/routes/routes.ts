@@ -12,6 +12,8 @@ import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { companyRoutes } from './companyRoutes'
 import { quickbooksRoutes } from './quickbooksRoutes'
+import { invoiceRoutes } from "./invoiceRoutes"
+import { customInvoiceRoutes } from "./customInvoiceRoutes"
 
 const router = Router()
 
@@ -30,6 +32,8 @@ router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
+router.use(invoiceRoutes);
+router.use(customInvoiceRoutes);
 
 export { router }
 
