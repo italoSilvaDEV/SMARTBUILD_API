@@ -234,17 +234,17 @@ export class ChangeOrderController {
   async addSignature(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { clientSignature } = req.body;
+      const { signature } = req.body;
 
       const changeOrder = await prisma.changeOrder.update({
         where: { id },
         data: {
-          clientSignature,
+          clientSignature: JSON.stringify({ signature }),
           status: "approved",
           date_update: new Date()
         }
       });
-
+// console.log(changeOrder)
       return res.json(changeOrder);
     } catch (error) {
       console.error(error);

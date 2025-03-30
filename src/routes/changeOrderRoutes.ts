@@ -12,13 +12,13 @@ changeOrderRoutes.post("/", checkToken, changeOrderController.create);
 changeOrderRoutes.get("/project/:projectId", checkToken, changeOrderController.findByProject);
 
 // Get a specific change order by ID
-changeOrderRoutes.get("/:id", checkToken, changeOrderController.findById);
+changeOrderRoutes.get("/:id", changeOrderController.findById);
 
 // Update a change order
 changeOrderRoutes.put("/:id", checkToken, changeOrderController.update);
 
 // Update change order status (pending, approved, rejected)
-changeOrderRoutes.patch("/:id/status", checkToken, changeOrderController.updateStatus);
+changeOrderRoutes.patch("/:id/status",  changeOrderController.updateStatus);
 
 // Add client signature to approve a change order
 changeOrderRoutes.patch("/:id/sign", changeOrderController.addSignature);

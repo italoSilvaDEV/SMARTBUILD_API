@@ -554,9 +554,9 @@ model QuickBooksAccount {
 
 model ChangeOrder {
   id              String   @id @default(uuid())
-  number          String   // Novo campo para o número sequencial
+  number          String   
   approvedAt      DateTime @default(now())
-  clientSignature String?
+  clientSignature String?  @db.Text  // Modificado para @db.Text para suportar strings longas
   totalAmount     Decimal
   description     String?  @db.Text
   terms           String?  @db.Text
