@@ -494,8 +494,11 @@ model TimeLine {
 
 model Invoice {
   id              String    @id @default(uuid())
-  stripeInvoiceId String    @unique
-  status          String // Status do invoice: draft, open, paid, void, uncollectible
+  stripeInvoiceId String?   @unique
+  externalInvoiceId String? @unique
+  
+  invoiceType     String?   // "stripe", "quickbooks", "custom"
+  status          String    // Status do invoice: draft, open, paid, void, uncollectible
   totalAmount     Decimal
   dueDate         DateTime?
   createdAt       DateTime  @default(now())
@@ -504,7 +507,10 @@ model Invoice {
 
   percentageCoefficient Decimal?
   description           String?  @db.Text
-
+  
+  // Campos específicos para QuickBooks
+  externalDocNumber   String?
+    
   // Relacionamento com Project e Company
   project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
   projectId String
@@ -515,7 +521,12 @@ model Invoice {
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
 
+  // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
+  InvoiceItems       InvoiceItem[]        // Nova relação com InvoiceItem
+
+  // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
+  payment       InvoicePayment?
 }
 
 model InvoiceSendHistory {
@@ -532,13 +543,46 @@ model InvoiceSendHistory {
 }
 
 model QuickBooksAccount {
-  id           String   @id @default(uuid())
-  accessToken  String   @db.Text
-  refreshToken String   @db.Text
-  realmId      String   @unique // Identificador da conta no QuickBooks
-  expiresAt    DateTime // Data de expiração do accessToken
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User?    @relation(fields: [user_id], references: [id])
-  user_id      String?  @unique
+  id                   String   @id @default(uuid())
+  accessToken          String   @db.Text
+  refreshToken         String   @db.Text
+  realmId              String   @unique
+  expiresAt            DateTime
+  needsReauthorization Boolean  @default(false)
+  scopes               String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User?    @relation(fields: [user_id], references: [id])
+  user_id              String?  @unique
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  name        String   // Nome do serviço ou item
+  description String?  @db.Text // Descrição opcional do item
+  quantity    Decimal  // Quantidade
+  price       Decimal  // Preço unitário
+  totalAmount Decimal  // Valor total (quantidade * preço)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamento com Invoice
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id            String    @id @default(uuid())
+  paymentMethod String
+  notes         String? @db.Text
+  amount        Float
+  paidAt        DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relação com Invoice (um pagamento pertence a uma fatura)
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
+  invoiceId     String    @unique // Cada fatura pode ter apenas um registro de pagamento
 }
