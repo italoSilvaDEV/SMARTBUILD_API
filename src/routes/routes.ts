@@ -11,7 +11,15 @@ import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { companyRoutes } from './companyRoutes'
+import { planRoutes } from './planRoutes'
+import { permissionRoutes } from './permissionRoutes'
+import { permissionGroupRoutes } from './permissionGroupRoutes'
+import { subscriptionRoutes } from './subscriptionRoutes'
+
 import { quickbooksRoutes } from './quickbooksRoutes'
+
+import { estimateRoutes } from './estimateRoutes'
+
 
 const router = Router()
 
@@ -30,6 +38,13 @@ router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
+router.use("/estimate", estimateRoutes);
+
+// Novas rotas para planos e permissões
+router.use(planRoutes)
+router.use(permissionRoutes)
+router.use(permissionGroupRoutes)
+router.use(subscriptionRoutes)
 
 export { router }
 
