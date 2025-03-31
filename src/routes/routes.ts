@@ -18,7 +18,7 @@ import { subscriptionRoutes } from './subscriptionRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
 
-import { changeOrderRoutes } from './changeOrderRoutes'
+import { estimateRoutes } from './estimateRoutes'
 
 
 const router = Router()
@@ -38,7 +38,7 @@ router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
-router.use("/change-order", changeOrderRoutes);
+router.use("/estimate", estimateRoutes);
 
 // Novas rotas para planos e permissões
 router.use(planRoutes)

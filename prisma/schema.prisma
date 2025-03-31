@@ -52,7 +52,7 @@ model User {
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
 
-  canceledChangeOrders ChangeOrder[]      @relation("canceledChangeOrders")
+  canceledEstimates Estimate[] @relation("canceledEstimates")
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -215,7 +215,7 @@ model ServiceProject {
   company            Company?                    @relation(fields: [company_id], references: [id])
   company_id         String?
   TimeLine           TimeLine[]
-  changeOrders       ChangeOrderServiceProject[]
+  estimates          EstimateServiceProject[]
 }
 
 model Activities {
@@ -283,6 +283,7 @@ model Project {
   workedHours        Workedhours[]
   pdfproject         PdfProject[]
   contractProject    ContractProject[]
+  estimates          Estimate[]
 
   invoices Invoice[] @relation(name: "ProjectToInvoice")
 
@@ -293,8 +294,6 @@ model Project {
   seller_user_id String?
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
-
-  changeOrders ChangeOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -552,17 +551,16 @@ model QuickBooksAccount {
   user_id      String?  @unique
 }
 
-model ChangeOrder {
+model Estimate {
   id              String   @id @default(uuid())
   number          String   
   approvedAt      DateTime @default(now())
-  clientSignature String?  @db.Text  // Modificado para @db.Text para suportar strings longas
+  clientSignature String?  @db.Text
   totalAmount     Decimal
   description     String?  @db.Text
   terms           String?  @db.Text
   status          String   @default("pending")
 
-  // New fields to track cancellation
   canceledAt         DateTime?
   canceledById       String?
   cancellationReason String?   @db.Text
@@ -570,30 +568,20 @@ model ChangeOrder {
   project   Project @relation(fields: [projectId], references: [id])
   projectId String
 
-  // Add relation to User for the user who canceled
-  canceledBy User? @relation(name: "canceledChangeOrders", fields: [canceledById], references: [id])
+  canceledBy User? @relation(name: "canceledEstimates", fields: [canceledById], references: [id])
 
-  serviceProjects ChangeOrderServiceProject[]
-   date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-
-  @@unique([number, projectId]) // Garante que o número seja único por projeto
-}
-
-model Permissions {
-  id String @id @default(uuid())
-
-  description          String
-  GroupPermissionsList GroupPermissionsList[]
+  serviceProjects EstimateServiceProject[]
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+
+  @@unique([number, projectId])
 }
 
-model ChangeOrderServiceProject {
+model EstimateServiceProject {
   id String @id @default(uuid())
 
-  changeOrder   ChangeOrder @relation(fields: [changeOrderId], references: [id])
-  changeOrderId String
+  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimateId String
 
   serviceProject   ServiceProject @relation(fields: [serviceProjectId], references: [id])
   serviceProjectId String
@@ -606,8 +594,18 @@ model ChangeOrderServiceProject {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  @@unique([changeOrderId, serviceProjectId])
+  @@unique([estimateId, serviceProjectId])
 }
+
+model Permissions {
+  id String @id @default(uuid())
+
+  description          String
+  GroupPermissionsList GroupPermissionsList[]
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+}
+
 
 model PermissionGroup {
   id String @id @default(uuid())

@@ -1,8 +1,9 @@
 -- CreateTable
-CREATE TABLE `ChangeOrder` (
+CREATE TABLE `Estimate` (
     `id` VARCHAR(191) NOT NULL,
+    `number` VARCHAR(191) NOT NULL,
     `approvedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `clientSignature` VARCHAR(191) NULL,
+    `clientSignature` TEXT NULL,
     `totalAmount` DECIMAL(65, 30) NOT NULL,
     `description` TEXT NULL,
     `terms` TEXT NULL,
@@ -14,13 +15,14 @@ CREATE TABLE `ChangeOrder` (
     `date_creation` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `date_update` DATETIME(3) NOT NULL,
 
+    UNIQUE INDEX `Estimate_number_projectId_key`(`number`, `projectId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `ChangeOrderServiceProject` (
+CREATE TABLE `EstimateServiceProject` (
     `id` VARCHAR(191) NOT NULL,
-    `changeOrderId` VARCHAR(191) NOT NULL,
+    `estimateId` VARCHAR(191) NOT NULL,
     `serviceProjectId` VARCHAR(191) NOT NULL,
     `quantity` INTEGER NOT NULL DEFAULT 1,
     `unitPrice` DECIMAL(65, 30) NOT NULL,
@@ -29,18 +31,18 @@ CREATE TABLE `ChangeOrderServiceProject` (
     `date_creation` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `date_update` DATETIME(3) NOT NULL,
 
-    UNIQUE INDEX `ChangeOrderServiceProject_changeOrderId_serviceProjectId_key`(`changeOrderId`, `serviceProjectId`),
+    UNIQUE INDEX `EstimateServiceProject_estimateId_serviceProjectId_key`(`estimateId`, `serviceProjectId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- AddForeignKey
-ALTER TABLE `ChangeOrder` ADD CONSTRAINT `ChangeOrder_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Estimate` ADD CONSTRAINT `Estimate_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ChangeOrder` ADD CONSTRAINT `ChangeOrder_canceledById_fkey` FOREIGN KEY (`canceledById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `Estimate` ADD CONSTRAINT `Estimate_canceledById_fkey` FOREIGN KEY (`canceledById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ChangeOrderServiceProject` ADD CONSTRAINT `ChangeOrderServiceProject_changeOrderId_fkey` FOREIGN KEY (`changeOrderId`) REFERENCES `ChangeOrder`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `EstimateServiceProject` ADD CONSTRAINT `EstimateServiceProject_estimateId_fkey` FOREIGN KEY (`estimateId`) REFERENCES `Estimate`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ChangeOrderServiceProject` ADD CONSTRAINT `ChangeOrderServiceProject_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `EstimateServiceProject` ADD CONSTRAINT `EstimateServiceProject_serviceProjectId_fkey` FOREIGN KEY (`serviceProjectId`) REFERENCES `ServiceProject`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

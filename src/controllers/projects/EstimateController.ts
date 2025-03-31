@@ -3,7 +3,47 @@ import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
-export class ChangeOrderController {
+export class EstimateController {
+
+  private static async sendStatusUpdateEmail(estimate: any, email: string, projectNumber?: string) {
+    const SMTP_CONFIG = require("../../config/smtp");
+
+    const transporter = nodemailer.createTransport({
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.port === 465,
+      auth: {
+        user: SMTP_CONFIG.user,
+        pass: SMTP_CONFIG.pass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    // Verificar a configuração do transportador
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error("Erro ao configurar o transportador de e-mail:", error);
+      } else {
+        console.log("Transportador de e-mail configurado com sucesso:", success);
+      }
+    });
+
+    const mailOptions = {
+      from: SMTP_CONFIG.user,
+      to: email,
+      subject: "Smart Build - Estimate",
+      html: `
+        <h1>Estimate #${estimate.number} for Project ${projectNumber || 'N/A'}</h1>
+       
+        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${estimate.id}">View Estimate</a></p>
+        <p>Status: ${estimate.status} (Status has been updated)</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+  }
   async create(req: Request, res: Response) {
     try {
       const { projectId } = req.body;
@@ -15,7 +55,7 @@ export class ChangeOrderController {
           serviceProject: true,
           client: true,
           company: true,
-          changeOrders: {
+          estimates: {
             orderBy: {
               number: 'desc'
             },
@@ -29,7 +69,7 @@ export class ChangeOrderController {
       }
 
       // Gerar o próximo número sequencial
-      const lastNumber = project.changeOrders[0]?.number || '0000';
+      const lastNumber = project.estimates[0]?.number || '0000';
       const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
 
       // Buscar todos os termos do contrato da empresa
@@ -50,10 +90,10 @@ export class ChangeOrderController {
       );
 
       // Criar o change order
-      const changeOrder = await prisma.changeOrder.create({
+      const estimate = await prisma.estimate.create({
         data: {
           number: nextNumber,
-          description: `Change Order #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
+          description: `Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
           terms: combinedTerms,
           totalAmount,
           status: "pending",
@@ -118,8 +158,8 @@ export class ChangeOrderController {
         subject: "Smart Build - Estimate",
         html: `
         <h1>Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}</h1>
-        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
-        <p>Status: ${changeOrder.status}</p>
+        <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}">View Estimate</a></p>
+        <p>Status: ${estimate.status}</p>
         `,
       };
 
@@ -127,7 +167,7 @@ export class ChangeOrderController {
       await transporter.sendMail(mailOptions);
 
       console.log("e-mail enviado com sucesso!");
-      return res.status(201).json(changeOrder);
+      return res.status(201).json(estimate);
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to create change order" });
@@ -138,7 +178,7 @@ export class ChangeOrderController {
     try {
       const { projectId } = req.params;
 
-      const changeOrders = await prisma.changeOrder.findMany({
+      const estimates = await prisma.estimate.findMany({
         where: {
           projectId
         },
@@ -161,10 +201,10 @@ export class ChangeOrderController {
         }
       });
 
-      return res.json(changeOrders);
+      return res.json(estimates);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to fetch change orders" });
+      return res.status(500).json({ error: "Failed to fetch estimates" });
     }
   }
 
@@ -172,7 +212,7 @@ export class ChangeOrderController {
     try {
       const { id } = req.params;
 
-      const changeOrder = await prisma.changeOrder.findUnique({
+      const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
           serviceProjects: {
@@ -210,19 +250,19 @@ export class ChangeOrderController {
         }
       });
 
-      if (!changeOrder) {
-        return res.status(404).json({ error: "Change order not found" });
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
       }
 
       // Generate presigned URL for company avatar if it exists
-      if (changeOrder.project?.company?.avatar) {
-        changeOrder.project.company.avatar = await getPresignedUrl(changeOrder.project.company.avatar);
+      if (estimate.project?.company?.avatar) {
+        estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
 
-      return res.json(changeOrder);
+      return res.json(estimate);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to fetch change order" });
+      return res.status(500).json({ error: "Failed to fetch estimate" });
     }
   }
 
@@ -231,7 +271,7 @@ export class ChangeOrderController {
       const { id } = req.params;
       const { description, terms, totalAmount } = req.body;
 
-      const changeOrder = await prisma.changeOrder.update({
+      const estimate = await prisma.estimate.update({
         where: { id },
         data: {
           description,
@@ -241,52 +281,14 @@ export class ChangeOrderController {
         }
       });
 
-      return res.json(changeOrder);
+      return res.json(estimate);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to update change order" });
+      return res.status(500).json({ error: "Failed to update estimate" });
     }
   }
 
-  private static async sendStatusUpdateEmail(changeOrder: any, email: string, projectNumber?: string) {
-    const SMTP_CONFIG = require("../../config/smtp");
-
-    const transporter = nodemailer.createTransport({
-      host: SMTP_CONFIG.host,
-      port: SMTP_CONFIG.port,
-      secure: SMTP_CONFIG.port === 465,
-      auth: {
-        user: SMTP_CONFIG.user,
-        pass: SMTP_CONFIG.pass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    // Verificar a configuração do transportador
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error("Erro ao configurar o transportador de e-mail:", error);
-      } else {
-        console.log("Transportador de e-mail configurado com sucesso:", success);
-      }
-    });
-
-    const mailOptions = {
-      from: SMTP_CONFIG.user,
-      to: email,
-      subject: "Smart Build - Estimate",
-      html: `
-        <h1>Estimate #${changeOrder.number} for Project ${projectNumber || 'N/A'}</h1>
-       
-        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
-        <p>Status: ${changeOrder.status} (Status has been updated)</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-  }
+  
 
   async updateStatus(req: Request, res: Response) {
     try {
@@ -297,7 +299,7 @@ export class ChangeOrderController {
         return res.status(400).json({ error: "Invalid status" });
       }
 
-      const changeOrder = await prisma.changeOrder.update({
+      const estimate = await prisma.estimate.update({
         where: { id },
         data: {
           status,
@@ -306,21 +308,21 @@ export class ChangeOrderController {
       });
 
       const project = await prisma.project.findUnique({
-        where: { id: changeOrder.projectId },
+        where: { id: estimate.projectId },
         include: {
           user: true
         }
       });
 
-      await ChangeOrderController.sendStatusUpdateEmail(
-        changeOrder, 
+      await EstimateController.sendStatusUpdateEmail(
+        estimate, 
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
-      return res.json(changeOrder);
+      return res.json(estimate);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to update change order status" });
+      return res.status(500).json({ error: "Failed to update estimate status" });
     }
   }
 
@@ -329,7 +331,7 @@ export class ChangeOrderController {
       const { id } = req.params;
       const { signature } = req.body;
 
-      const changeOrder = await prisma.changeOrder.update({
+      const estimate = await prisma.estimate.update({
         where: { id },
         data: {
           clientSignature: JSON.stringify({ signature }),
@@ -339,21 +341,21 @@ export class ChangeOrderController {
       });
 
       const project = await prisma.project.findUnique({
-        where: { id: changeOrder.projectId },
+        where: { id: estimate.projectId },
         include: {
           user: true
         }
       });
 
-      await ChangeOrderController.sendStatusUpdateEmail(
-        changeOrder, 
+      await EstimateController.sendStatusUpdateEmail(
+        estimate, 
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
-      return res.json(changeOrder);
+      return res.json(estimate);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to add signature to change order" });
+      return res.status(500).json({ error: "Failed to add signature to estimate" });
     }
   }
 
@@ -364,8 +366,8 @@ export class ChangeOrderController {
       const payload = returnPayLoad(req)
       const userId = payload?.id; // Assuming you have user info in the request from checkToken middleware
 
-      if (!userId) return  res.status(401).json({ error: "Failed to cancel change order" });
-      const changeOrder = await prisma.changeOrder.update({
+      if (!userId) return  res.status(401).json({ error: "Failed to cancel estimate" });
+      const estimate = await prisma.estimate.update({
         where: { id },
         data: {
           status: "canceled",
@@ -376,20 +378,20 @@ export class ChangeOrderController {
         }
       });
       const project = await prisma.project.findUnique({
-        where: { id: changeOrder.projectId },
+        where: { id: estimate.projectId },
         include: {
           client: true
         }
       });
-      await ChangeOrderController.sendStatusUpdateEmail(
-        changeOrder,
+      await EstimateController.sendStatusUpdateEmail(
+        estimate,
         project?.client?.email || '',
         project?.contract_number?.toString() || ''
       );
-      return res.json(changeOrder);
+      return res.json(estimate);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to cancel change order" });
+      return res.status(500).json({ error: "Failed to cancel estimate" });
     }
   }
 
@@ -398,9 +400,9 @@ export class ChangeOrderController {
       const { id } = req.params;
       const { serviceProjectId, quantity, unitPrice, lineTotal, notes } = req.body;
 
-      const changeOrderServiceProject = await prisma.changeOrderServiceProject.create({
+      const estimateServiceProject = await prisma.estimateServiceProject.create({
         data: {
-          changeOrder: {
+          estimate: {
             connect: { id }
           },
           serviceProject: {
@@ -414,19 +416,19 @@ export class ChangeOrderController {
       });
 
       // Update the total amount of the change order
-      const changeOrder = await prisma.changeOrder.findUnique({
+      const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
           serviceProjects: true
         }
       });
 
-      const newTotalAmount = changeOrder?.serviceProjects.reduce(
+      const newTotalAmount = estimate?.serviceProjects.reduce(
         (total, item) => total + Number(item.lineTotal),
         0
       );
 
-      await prisma.changeOrder.update({
+      await prisma.estimate.update({
         where: { id },
         data: {
           totalAmount: newTotalAmount,
@@ -434,10 +436,10 @@ export class ChangeOrderController {
         }
       });
 
-      return res.status(201).json(changeOrderServiceProject);
+      return res.status(201).json(estimateServiceProject);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to add service to change order" });
+      return res.status(500).json({ error: "Failed to add service to estimate" });
     }
   }
 
@@ -446,9 +448,9 @@ export class ChangeOrderController {
       const { id, serviceProjectId } = req.params;
 
       // Find the record to delete
-      const record = await prisma.changeOrderServiceProject.findFirst({
+      const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          changeOrderId: id,
+          estimateId: id,
           serviceProjectId
         }
       });
@@ -458,26 +460,26 @@ export class ChangeOrderController {
       }
 
       // Delete the record
-      await prisma.changeOrderServiceProject.delete({
+      await prisma.estimateServiceProject.delete({
         where: {
           id: record.id
         }
       });
 
       // Update the total amount of the change order
-      const changeOrder = await prisma.changeOrder.findUnique({
+      const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
           serviceProjects: true
         }
       });
 
-      const newTotalAmount = changeOrder?.serviceProjects.reduce(
+      const newTotalAmount = estimate?.serviceProjects.reduce(
         (total, item) => total + Number(item.lineTotal),
         0
       ) || 0;
 
-      await prisma.changeOrder.update({
+      await prisma.estimate.update({
         where: { id },
         data: {
           totalAmount: newTotalAmount,
@@ -485,10 +487,10 @@ export class ChangeOrderController {
         }
       });
 
-      return res.json({ message: "Service removed from change order" });
+      return res.json({ message: "Service removed from estimate" });
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to remove service from change order" });
+      return res.status(500).json({ error: "Failed to remove service from estimate" });
     }
   }
 
@@ -498,9 +500,9 @@ export class ChangeOrderController {
       const { quantity, unitPrice, lineTotal, notes } = req.body;
 
       // Find the record to update
-      const record = await prisma.changeOrderServiceProject.findFirst({
+      const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          changeOrderId: id,
+          estimateId: id,
           serviceProjectId
         }
       });
@@ -510,7 +512,7 @@ export class ChangeOrderController {
       }
 
       // Update the record
-      const updatedRecord = await prisma.changeOrderServiceProject.update({
+      const updatedRecord = await prisma.estimateServiceProject.update({
         where: {
           id: record.id
         },
@@ -524,19 +526,19 @@ export class ChangeOrderController {
       });
 
       // Update the total amount of the change order
-      const changeOrder = await prisma.changeOrder.findUnique({
+      const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
           serviceProjects: true
         }
       });
 
-      const newTotalAmount = changeOrder?.serviceProjects.reduce(
+      const newTotalAmount = estimate?.serviceProjects.reduce(
         (total, item) => total + Number(item.lineTotal),
         0
       );
 
-      await prisma.changeOrder.update({
+      await prisma.estimate.update({
         where: { id },
         data: {
           totalAmount: newTotalAmount,
@@ -547,48 +549,9 @@ export class ChangeOrderController {
       return res.json(updatedRecord);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Failed to update service in change order" });
+      return res.status(500).json({ error: "Failed to update service in estimate" });
     }
   }
 
-  private async sendStatusUpdateEmail(changeOrder: any, email: string, projectNumber?: string) {
-    const SMTP_CONFIG = require("../../config/smtp");
-
-    const transporter = nodemailer.createTransport({
-      host: SMTP_CONFIG.host,
-      port: SMTP_CONFIG.port,
-      secure: SMTP_CONFIG.port === 465,
-      auth: {
-        user: SMTP_CONFIG.user,
-        pass: SMTP_CONFIG.pass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    // Verificar a configuração do transportador
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error("Erro ao configurar o transportador de e-mail:", error);
-      } else {
-        console.log("Transportador de e-mail configurado com sucesso:", success);
-      }
-    });
-
-    const mailOptions = {
-      from: SMTP_CONFIG.user,
-      to: email,
-      subject: "Smart Build - Estimate",
-      html: `
-        <h1>Estimate #${changeOrder.number} for Project ${projectNumber || 'N/A'}</h1>
-        <p>${changeOrder.terms}</p>
-        <p>Total Amount: ${changeOrder.totalAmount}</p>
-        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
-        <p>Status: ${changeOrder.status} (Status has been updated)</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-  }
+  
 } 
