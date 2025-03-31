@@ -263,7 +263,7 @@ export class ChangeOrderController {
       const changeOrder = await prisma.changeOrder.update({
         where: { id },
         data: {
-          status: "rejected",
+          status: "canceled",
           canceledAt: new Date(),
           canceledById: userId,
           cancellationReason,
