@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-
+import nodemailer from "nodemailer";
 export class ChangeOrderController {
   async create(req: Request, res: Response) {
     try {
@@ -85,7 +85,48 @@ export class ChangeOrderController {
           }
         }
       });
+      const SMTP_CONFIG = require("../../config/smtp");
 
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Verificar a configuração do transportador
+      transporter.verify((error, success) => {
+        if (error) {
+          console.error("Erro ao configurar o transportador de e-mail:", error);
+        } else {
+          console.log(
+            "Transportador de e-mail configurado com sucesso:",
+            success
+          );
+        }
+      });
+
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: project.client?.email || '',
+        subject: "Smart Build - Estimate",
+        html: `
+        <h1>Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}</h1>
+        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
+        <p>Status: ${changeOrder.status}</p>
+        `,
+      };
+
+
+      await transporter.sendMail(mailOptions);
+
+      console.log("e-mail enviado com sucesso!");
       return res.status(201).json(changeOrder);
     } catch (error) {
       console.error(error);
@@ -207,6 +248,46 @@ export class ChangeOrderController {
     }
   }
 
+  private static async sendStatusUpdateEmail(changeOrder: any, email: string, projectNumber?: string) {
+    const SMTP_CONFIG = require("../../config/smtp");
+
+    const transporter = nodemailer.createTransport({
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.port === 465,
+      auth: {
+        user: SMTP_CONFIG.user,
+        pass: SMTP_CONFIG.pass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    // Verificar a configuração do transportador
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error("Erro ao configurar o transportador de e-mail:", error);
+      } else {
+        console.log("Transportador de e-mail configurado com sucesso:", success);
+      }
+    });
+
+    const mailOptions = {
+      from: SMTP_CONFIG.user,
+      to: email,
+      subject: "Smart Build - Estimate",
+      html: `
+        <h1>Estimate #${changeOrder.number} for Project ${projectNumber || 'N/A'}</h1>
+       
+        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
+        <p>Status: ${changeOrder.status} (Status has been updated)</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+  }
+
   async updateStatus(req: Request, res: Response) {
     try {
       const { id } = req.params;
@@ -224,6 +305,18 @@ export class ChangeOrderController {
         }
       });
 
+      const project = await prisma.project.findUnique({
+        where: { id: changeOrder.projectId },
+        include: {
+          user: true
+        }
+      });
+
+      await ChangeOrderController.sendStatusUpdateEmail(
+        changeOrder, 
+        project?.user?.email || '', 
+        project?.contract_number?.toString() || ''
+      );
       return res.json(changeOrder);
     } catch (error) {
       console.error(error);
@@ -244,7 +337,19 @@ export class ChangeOrderController {
           date_update: new Date()
         }
       });
-// console.log(changeOrder)
+
+      const project = await prisma.project.findUnique({
+        where: { id: changeOrder.projectId },
+        include: {
+          user: true
+        }
+      });
+
+      await ChangeOrderController.sendStatusUpdateEmail(
+        changeOrder, 
+        project?.user?.email || '', 
+        project?.contract_number?.toString() || ''
+      );
       return res.json(changeOrder);
     } catch (error) {
       console.error(error);
@@ -270,7 +375,17 @@ export class ChangeOrderController {
           date_update: new Date()
         }
       });
-
+      const project = await prisma.project.findUnique({
+        where: { id: changeOrder.projectId },
+        include: {
+          client: true
+        }
+      });
+      await ChangeOrderController.sendStatusUpdateEmail(
+        changeOrder,
+        project?.client?.email || '',
+        project?.contract_number?.toString() || ''
+      );
       return res.json(changeOrder);
     } catch (error) {
       console.error(error);
@@ -434,5 +549,46 @@ export class ChangeOrderController {
       console.error(error);
       return res.status(500).json({ error: "Failed to update service in change order" });
     }
+  }
+
+  private async sendStatusUpdateEmail(changeOrder: any, email: string, projectNumber?: string) {
+    const SMTP_CONFIG = require("../../config/smtp");
+
+    const transporter = nodemailer.createTransport({
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.port === 465,
+      auth: {
+        user: SMTP_CONFIG.user,
+        pass: SMTP_CONFIG.pass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    // Verificar a configuração do transportador
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error("Erro ao configurar o transportador de e-mail:", error);
+      } else {
+        console.log("Transportador de e-mail configurado com sucesso:", success);
+      }
+    });
+
+    const mailOptions = {
+      from: SMTP_CONFIG.user,
+      to: email,
+      subject: "Smart Build - Estimate",
+      html: `
+        <h1>Estimate #${changeOrder.number} for Project ${projectNumber || 'N/A'}</h1>
+        <p>${changeOrder.terms}</p>
+        <p>Total Amount: ${changeOrder.totalAmount}</p>
+        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${changeOrder.id}">View Estimate</a></p>
+        <p>Status: ${changeOrder.status} (Status has been updated)</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
   }
 } 
