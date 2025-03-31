@@ -524,6 +524,9 @@ model Invoice {
   // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
   InvoiceItems       InvoiceItem[]        // Nova relação com InvoiceItem
+
+  // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
+  payment       InvoicePayment?
 }
 
 model InvoiceSendHistory {
@@ -568,4 +571,18 @@ model InvoiceItem {
   invoiceId String
 
   @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id            String    @id @default(uuid())
+  paymentMethod String
+  notes         String? @db.Text
+  amount        Float
+  paidAt        DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relação com Invoice (um pagamento pertence a uma fatura)
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
+  invoiceId     String    @unique // Cada fatura pode ter apenas um registro de pagamento
 }

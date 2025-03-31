@@ -14,7 +14,7 @@ import { companyRoutes } from './companyRoutes'
 import { quickbooksRoutes } from './quickbooksRoutes'
 import { invoiceRoutes } from "./invoiceRoutes"
 import { customInvoiceRoutes } from "./customInvoiceRoutes"
-
+import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
 const router = Router()
 
 // Importante: Colocar o webhook antes dos middlewares JSON
@@ -34,6 +34,7 @@ router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
 router.use(invoiceRoutes);
 router.use(customInvoiceRoutes);
+router.use(invoicePaymentRoutes);
 
 export { router }
 

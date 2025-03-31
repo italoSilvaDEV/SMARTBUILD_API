@@ -63,11 +63,31 @@ export class CustomInvoiceController {
         });
       }
 
+      // Obter o maior número de invoice para a empresa especificada
+      const latestInvoice = await prisma.invoice.findFirst({
+        where: { 
+          companyId: project.company_id, 
+          invoiceType: "custom",
+          externalInvoiceId: { not: null }
+        },
+        orderBy: { externalInvoiceId: "desc" }, // Ordenar de forma decrescente
+      });
+
+      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
+      let nextInvoiceNumber = 1000;
+      if (latestInvoice && latestInvoice.externalInvoiceId) {
+        // Tentar extrair o número do último invoice
+        const lastNumber = parseInt(latestInvoice.externalInvoiceId);
+        if (!isNaN(lastNumber)) {
+          nextInvoiceNumber = lastNumber + 1;
+        }
+      }
+
       // Criar a fatura personalizada no banco de dados
       const newInvoice = await prisma.invoice.create({
         data: {
           // stripeInvoiceId: `custom-${Date.now()}`, // Mantido para compatibilidade
-          externalInvoiceId: `custom-${Date.now()}`, // Mantido para compatibilidade
+          externalInvoiceId: nextInvoiceNumber.toString(), // Usar o número sequencial
           invoiceType: "custom",
           status: "open",
           totalAmount: totalAmount,
