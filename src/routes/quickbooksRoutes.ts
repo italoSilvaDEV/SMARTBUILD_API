@@ -1,19 +1,22 @@
 import { Router } from "express";
 import { QuickBooksController } from "../controllers/quickbooks/QuickBooksController";
+import { QuickBooksInvoiceController } from "../controllers/quickbooks/QuickBooksInvoiceController";
 import { checkToken } from "../middlewares/checkToken";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
+const quickbooksInvoiceController = new QuickBooksInvoiceController();
 
-// Rota para iniciar o processo de autorização
-quickbooksRoutes.get("/quickbooks/authorize/:userId", 
-    // checkToken, 
-    quickbooksController.authorize);
-
-// Rota de callback (não precisa de token pois é chamada pelo QuickBooks)
+// Rotas de autorização
+quickbooksRoutes.get("/quickbooks/authorize/:userId", quickbooksController.authorize);
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
-
-// Rota para verificar o status da conexão com QuickBooks
 quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
+quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);
+
+// Rotas de invoice
+quickbooksRoutes.post("/quickbooks/invoice/:projectId", checkToken, quickbooksInvoiceController.createInvoice);
+quickbooksRoutes.get("/quickbooks/invoices/:projectId", checkToken, quickbooksInvoiceController.getInvoicesByProject);
+quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/send", checkToken, quickbooksInvoiceController.sendInvoice);
+quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/cancel", checkToken, quickbooksInvoiceController.cancelInvoice);
 
 export { quickbooksRoutes }; 

@@ -17,6 +17,10 @@ import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
+import { invoiceRoutes } from "./invoiceRoutes"
+import { customInvoiceRoutes } from "./customInvoiceRoutes"
+import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
+import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
 
@@ -38,6 +42,10 @@ router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
+router.use(invoiceRoutes);
+router.use(customInvoiceRoutes);
+router.use(invoicePaymentRoutes);
+router.use(invoiceStatisticsRoutes);
 router.use("/estimate", estimateRoutes);
 
 // Novas rotas para planos e permissões

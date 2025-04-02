@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import axios from "axios";
 import querystring from "querystring";
+import { refreshAccessToken } from "./QuickBooksTokenService";
+import { oauthClient } from "./QuickBooksOAuthClient";
 
 export class QuickBooksController {
   async authorize(req: Request, res: Response) {
@@ -27,15 +29,32 @@ export class QuickBooksController {
       const authParams = {
         client_id: clientId,
         response_type: 'code',
-        scope: 'com.intuit.quickbooks.accounting',
+        scope: [
+          'com.intuit.quickbooks.accounting',
+          'com.intuit.quickbooks.payment',
+          'openid',
+          'profile',
+          'email',
+          'phone',
+          'address'
+        ],
         redirect_uri: redirectUri,
         state: userId // Passamos o userId como state para recuperar no callback
       };
 
       // Construir URL de autorização
-      const authUrl = `https://appcenter.intuit.com/connect/oauth2/authorize?${querystring.stringify(authParams)}`;
-      console.log("valor do authUrl", authUrl)
-      return res.status(200).json({ url: authUrl });
+      const authorizationUri = oauthClient.authorizeUri(authParams);
+      console.log("valor do authorizationUri", authorizationUri)
+      console.log("Escopos solicitados:", [
+        'com.intuit.quickbooks.accounting',
+        'com.intuit.quickbooks.payment',
+        'openid',
+        'profile',
+        'email',
+        'phone',
+        'address'
+      ].join(' '));
+      return res.status(200).json({ url: authorizationUri });
     } catch (error) {
       console.error("Erro ao iniciar autorização QuickBooks:", error);
       return res.status(500).json({ error: "Internal Server Error" });
@@ -84,8 +103,11 @@ export class QuickBooksController {
         }
       );
 
-      const { access_token, refresh_token, expires_in } = tokenResponse.data;
-      
+      const { access_token, refresh_token, expires_in, scope } = tokenResponse.data;
+      console.log("##### access_token", access_token)
+      console.log("##### refresh_token", refresh_token)
+      console.log("##### expires_in", expires_in)
+      console.log("##### scope", scope)
       // Calcular data de expiração
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
@@ -95,38 +117,43 @@ export class QuickBooksController {
         where: { user_id: userId }
       });
 
+      // Definir escopos padrão se vier undefined
+      const savedScope = scope || 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment';
+
       if (existingAccount) {
-        // Atualizar conta existente
+        // Atualizar a conta existente
         await prisma.quickBooksAccount.update({
           where: { id: existingAccount.id },
           data: {
             accessToken: access_token,
             refreshToken: refresh_token,
             realmId: realmId as string,
-            expiresAt
+            expiresAt,
+            scopes: savedScope,
+            needsReauthorization: false
           }
         });
       } else {
-        // Criar nova conta
+        // Criar uma nova conta
         await prisma.quickBooksAccount.create({
           data: {
+            user_id: userId,
+            realmId: realmId as string,
             accessToken: access_token,
             refreshToken: refresh_token,
-            realmId: realmId as string,
             expiresAt,
-            user: {
-              connect: { id: userId }
-            }
+            scopes: savedScope,
+            needsReauthorization: false
           }
         });
       }
 
       // Redirecionar para a página de configuração do Stripe no frontend
       return res.redirect(`${process.env.URL_FRONT}/stripe-config`);
-    // res.send("OK") 
-    } catch (error) {
+      // return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?success=true`);
+    } catch (error: any) {
       console.error("Erro no callback do QuickBooks:", error);
-      return res.status(500).json({ error: "Internal Server Error" });
+      return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?error=${encodeURIComponent(error.message)}`);
     }
   }
 
@@ -148,25 +175,122 @@ export class QuickBooksController {
         where: { user_id: userId }
       });
 
-      // Verificar se a conta existe e se os tokens são válidos
-      const isConnected = !!quickBooksAccount;
-      
-      // Verificar se o token está expirado
-      const isTokenExpired = quickBooksAccount 
-        ? new Date() > quickBooksAccount.expiresAt 
-        : true;
+      // Se não tem conta, retorna que não está conectado
+      if (!quickBooksAccount) {
+        return res.status(200).json({
+          isConnected: false,
+          needsReauthorization: false,
+          accountInfo: null
+        });
+      }
 
+      // Verificar se o token está expirado
+      const isTokenExpired = new Date() > quickBooksAccount.expiresAt;
+
+      // Se o token estiver expirado, tenta fazer o refresh automaticamente
+      if (isTokenExpired) {
+        try {
+          // Chamar a função de refresh token
+          const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+          
+          if (refreshResult.success) {
+            // Se o refresh foi bem-sucedido, retorna os dados atualizados
+            return res.status(200).json({
+              isConnected: true,
+              needsReauthorization: false,
+              accountInfo: {
+                realmId: quickBooksAccount.realmId,
+                expiresAt: refreshResult.expiresAt
+              },
+              tokenRefreshed: true
+            });
+          } else {
+            // Se o refresh falhou, indica que precisa de reautorização
+            return res.status(200).json({
+              isConnected: true,
+              needsReauthorization: true,
+              accountInfo: {
+                realmId: quickBooksAccount.realmId,
+                expiresAt: quickBooksAccount.expiresAt
+              },
+              refreshError: refreshResult.error
+            });
+          }
+        } catch (refreshError: any) {
+          // Se ocorreu um erro no refresh, indica que precisa de reautorização
+          return res.status(200).json({
+            isConnected: true,
+            needsReauthorization: true,
+            accountInfo: {
+              realmId: quickBooksAccount.realmId,
+              expiresAt: quickBooksAccount.expiresAt
+            },
+            refreshError: refreshError.message
+          });
+        }
+      }
+
+      //tenho que tratar isso no frontend
+      if (quickBooksAccount.needsReauthorization) {
+        return res.status(200).json({
+          isConnected: true,
+          needsReauthorization: true,
+          reason: "insufficient_permissions",
+          authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}`
+        });
+      }
+
+      // Se o token não está expirado, retorna os dados normalmente
       return res.status(200).json({
-        isConnected,
-        needsReauthorization: isConnected && isTokenExpired,
-        accountInfo: isConnected ? {
+        isConnected: true,
+        needsReauthorization: false,
+        accountInfo: {
           realmId: quickBooksAccount.realmId,
           expiresAt: quickBooksAccount.expiresAt
-        } : null
+        }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao verificar status do QuickBooks:", error);
-      return res.status(500).json({ error: "Internal Server Error" });
+      return res.status(500).json({ 
+        error: "Internal Server Error",
+        details: error.message
+      });
+    }
+  }
+
+  async refreshToken(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      
+      // Buscar a conta QuickBooks do usuário
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(404).json({ error: "QuickBooks account not found" });
+      }
+
+      // Chamar a função de refresh token
+      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+      
+      if (!refreshResult.success) {
+        return res.status(401).json({ 
+          error: "Failed to refresh token", 
+          details: refreshResult.error 
+        });
+      }
+
+      return res.status(200).json({
+        message: "Token refreshed successfully",
+        expiresAt: refreshResult.expiresAt
+      });
+    } catch (error: any) {
+      console.error("Error refreshing QuickBooks token:", error);
+      return res.status(500).json({ 
+        error: "Internal Server Error",
+        details: error.message
+      });
     }
   }
 } 
