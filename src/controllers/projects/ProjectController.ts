@@ -9,6 +9,7 @@ import S3Storage from "../../utils/S3/s3Storage";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
+import { error } from "console";
 
 
 export interface INewProject {
@@ -360,7 +361,7 @@ export class ProjectController {
         });
 
         const workersOnThisProject = uniqueUsers.size;
-        costofwork += userAttendance
+        // costofwork += userAttendance
         // Calcula o somatório de hours * price
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
@@ -392,7 +393,7 @@ export class ProjectController {
               : null,
           },
           costProjects: flatCostProjects,
-          costofwork,
+          cost_of_materials: costofwork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
@@ -581,11 +582,26 @@ export class ProjectController {
         include: {
           photos: true,
           costProject: true,
+          galleryAlfter: true,
+          galleryBefore: true,
+          Activities: true,
+          stages: true,
+          UserServiceProject: {
+            include: {
+              user_attendances: true
+            }
+          },
+          TimeLine: true,
         },
       });
 
       if (!serviceProject) {
         throw new Error("Service Project not found!");
+      }
+
+      // Check if there are any user attendances or timeline entries
+      if (serviceProject.UserServiceProject.some(user => user.user_attendances.length > 0) || serviceProject.TimeLine.length > 0) {
+        return response.status(400).json({ error: "Workers have already started this service and cannot be deleted." });
       }
 
       // Exclusão de todas as fotos associadas ao ServiceProject
@@ -600,6 +616,26 @@ export class ProjectController {
         },
       });
 
+      // Exclusão de todos os registros relacionados ao ServiceProject
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.galleryBefore.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.activities.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.serviceStages.deleteMany({
+        where: { serviceProjectId: id },
+      });
+      await prisma.userServiceProject.deleteMany({
+        where: { service_project_id: id },
+      });
+      await prisma.timeLine.deleteMany({
+        where: { service_project_id: id },
+      });
+
       // Exclusão do ServiceProject
       await prisma.serviceProject.delete({
         where: {
@@ -609,14 +645,14 @@ export class ProjectController {
 
       return response.json({
         message:
-          "Service Project and its photos and cost projects deleted successfully",
+          "Service Project and its related data deleted successfully",
       });
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
         return response.json({ error: error.message });
       }
-      return response.json({ error: "Erro interno do servidor" });
+      return response.json({ error: "Internal server error" });
     }
   }
 
