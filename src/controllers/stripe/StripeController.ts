@@ -553,7 +553,7 @@ export class StripeController {
                     {
                         project: {
                             is: {
-                                client: {
+                                client: { 
                                     is: {
                                         name: {
                                             contains: search,
@@ -587,6 +587,15 @@ export class StripeController {
                             }
                         }
                     },
+                    payment: {
+                        select: {
+                            id: true,
+                            paymentMethod: true,
+                            notes: true,
+                            createdAt: true,
+                            amount: true
+                        }
+                    }
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
