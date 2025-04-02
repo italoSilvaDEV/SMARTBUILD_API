@@ -44,6 +44,24 @@ export class EstimateController {
 
     await transporter.sendMail(mailOptions);
   }
+
+  // Função utilitária para registrar eventos na timeline
+  private static async addTimelineEvent(estimateId: string, description: string) {
+    try {
+      return await prisma.estimateTimeline.create({
+        data: {
+          description,
+          estimate: {
+            connect: { id: estimateId }
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error adding timeline event:", error);
+      // Não lançamos o erro para não interromper o fluxo principal
+    }
+  }
+
   async create(req: Request, res: Response) {
     try {
       const { projectId } = req.body;
@@ -167,6 +185,10 @@ export class EstimateController {
       await transporter.sendMail(mailOptions);
 
       console.log("e-mail enviado com sucesso!");
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(estimate.id, "Created");
+      
       return res.status(201).json(estimate);
     } catch (error) {
       console.error(error);
@@ -193,6 +215,11 @@ export class EstimateController {
               id: true,
               name: true,
               email: true
+            }
+          },
+          timelineEvents: {
+            orderBy: {
+              date_creation: 'asc'
             }
           }
         },
@@ -246,6 +273,11 @@ export class EstimateController {
                 }
               }
             }
+          },
+          timelineEvents: {
+            orderBy: {
+              date_creation: 'asc'
+            }
           }
         }
       });
@@ -258,7 +290,10 @@ export class EstimateController {
       if (estimate.project?.company?.avatar) {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
-
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(id, "Viewed");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -295,7 +330,7 @@ export class EstimateController {
       const { id } = req.params;
       const { status } = req.body;
 
-      if (!["pending", "approved", "rejected"].includes(status)) {
+      if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
 
@@ -319,6 +354,11 @@ export class EstimateController {
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
+      
+      // Usar a função utilitária
+      const event = status === "rejected" ? "Rejected" : status;
+      await EstimateController.addTimelineEvent(estimate.id, event);
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -352,6 +392,10 @@ export class EstimateController {
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
+      
+      // Adicionar evento na timeline
+      await EstimateController.addTimelineEvent(estimate.id, "Approved");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -388,6 +432,10 @@ export class EstimateController {
         project?.client?.email || '',
         project?.contract_number?.toString() || ''
       );
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(estimate.id, "Canceled");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -552,6 +600,4 @@ export class EstimateController {
       return res.status(500).json({ error: "Failed to update service in estimate" });
     }
   }
-
-  
 } 

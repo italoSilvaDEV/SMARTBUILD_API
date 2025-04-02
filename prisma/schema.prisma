@@ -615,11 +615,22 @@ model Estimate {
   canceledBy User? @relation(name: "canceledEstimates", fields: [canceledById], references: [id])
 
   serviceProjects EstimateServiceProject[]
+  timelineEvents  EstimateTimeline[]
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
   @@unique([number, projectId])
 }
+
+model EstimateTimeline {
+  id          String   @id @default(uuid())
+  description String   @db.Text
+  date_creation   DateTime @default(now())
+  date_update DateTime @updatedAt
+  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimateId String
+}
+
 
 model EstimateServiceProject {
   id String @id @default(uuid())
