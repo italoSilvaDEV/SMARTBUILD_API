@@ -221,7 +221,12 @@ export class EstimateController {
             orderBy: {
               date_creation: 'asc'
             }
-          }
+          },
+          emailLogs: {
+            orderBy: {
+              date_creation: 'asc'
+            }
+          },
         },
         orderBy: {
           date_creation: 'desc'
@@ -421,17 +426,13 @@ export class EstimateController {
           date_update: new Date()
         }
       });
-      const project = await prisma.project.findUnique({
+      await prisma.project.findUnique({
         where: { id: estimate.projectId },
         include: {
           client: true
         }
       });
-      await EstimateController.sendStatusUpdateEmail(
-        estimate,
-        project?.client?.email || '',
-        project?.contract_number?.toString() || ''
-      );
+     
       
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(estimate.id, "Canceled");
@@ -598,6 +599,117 @@ export class EstimateController {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to update service in estimate" });
+    }
+  }
+
+  async resendEmail(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { emails } = req.body;
+
+      // Validar se emails é um array
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ error: "Please provide at least one email address" });
+      }
+
+      const estimate = await prisma.estimate.findUnique({
+        where: { id },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
+      }
+
+      // Configurar o transportador de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Resultados do envio para cada email
+      const results = [];
+
+      // Processar todos os emails
+      for (const email of emails) {
+        try {
+          const mailOptions = {
+            from: SMTP_CONFIG.user,
+            to: email,
+            subject: "Smart Build - Estimate Reminder",
+            html: `
+              <h1>Estimate #${estimate.number} for Project ${estimate.project?.contract_number?.toString() || 'N/A'}</h1>
+              <p>This is a reminder about your estimate.</p>
+              <p>Total Amount: ${estimate.totalAmount}</p>
+              <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}">View Estimate</a></p>
+              <p>Status: ${estimate.status}</p>
+            `,
+          };
+
+          // Enviar o email e aguardar a resposta
+          await transporter.sendMail(mailOptions);
+          
+          // Se chegou aqui, o envio foi bem-sucedido
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient: email,
+              status: "success",
+              sentAt: new Date()
+            }
+          });
+          
+          results.push({ email, status: "success" });
+          
+          await EstimateController.addTimelineEvent(
+            estimate.id, 
+            `Email sent to ${email} successfully`
+          );
+        } catch (error: any) {
+          
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient: email,
+              status: "error",
+              errorMessage: error.message || "Unknown error",
+              sentAt: new Date()
+            }
+          });
+          
+          results.push({ email, status: "error", message: error.message });
+          
+          await EstimateController.addTimelineEvent(
+            estimate.id, 
+            `Failed to send email to ${email}: ${error.message}`
+          );
+        }
+      }
+
+      // Retornar todos os resultados após processar todos os emails
+      return res.json({
+        success: results.some(r => r.status === "success"),
+        results
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to resend estimate email" });
     }
   }
 } 

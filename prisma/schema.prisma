@@ -619,6 +619,8 @@ model Estimate {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
+  emailLogs     EstimateEmailLog[]
+
   @@unique([number, projectId])
 }
 
@@ -718,4 +720,18 @@ model Plan {
   permissionGroupId String
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
+}
+
+model EstimateEmailLog {
+  id            String   @id @default(uuid())
+  recipient     String
+  status        String   // "success" ou "error"
+  errorMessage  String?  @db.Text
+  sentAt        DateTime @default(now())
+  
+  estimate      Estimate @relation(fields: [estimateId], references: [id])
+  estimateId    String
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }
