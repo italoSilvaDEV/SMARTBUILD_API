@@ -247,7 +247,11 @@ export class TimeLineController {
                 return;
             }
 
-            
+            if (!service_project_id) {
+                console.log('error', 'service_project_id is required');
+                res.status(400).json({ error: 'service_project_id is required.' });
+                return;
+            }
 
             // Cria o registro de check-in
             const attendance = await prisma.timeLine.create({
