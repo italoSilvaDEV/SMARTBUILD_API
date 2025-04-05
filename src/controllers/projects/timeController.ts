@@ -397,21 +397,13 @@ export class TimeController {
     }
 
     async findManyByIdWorker(req: Request, res: Response) {
-        const { id, worker_id, start_date, deadline, page } = req.query;
+        const { worker_id, start_date, deadline, page } = req.query;
         try {
             // Verificar se os parâmetros obrigatórios estão presentes
-            if (!id || !worker_id || !start_date || !deadline || !page) {
+            if ( !worker_id || !start_date || !deadline || !page) {
                 return res.status(400).json({ error: "Params invalid" });
             }
-
-            // Verificar se a empresa existe
-            const existCompany = await prisma.company.findUnique({
-                where: { id: String(id) },
-            });
-
-            if (!existCompany) {
-                return res.status(404).json({ error: "Company not found" });
-            }
+         
 
             const startDate = DateTime.fromISO(String(start_date))
                 .startOf('day')
@@ -476,7 +468,6 @@ export class TimeController {
                             UserServiceProject: {
                                 service_project: {
                                     Project: {
-                                        company_id: String(id),
                                         status_project: {
                                             in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                                         }
@@ -521,7 +512,6 @@ export class TimeController {
                         },
                         {
                             Project: {
-                                company_id: String(id),
                                 status_project: {
                                     in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                                 }
@@ -535,9 +525,6 @@ export class TimeController {
             const projects = await prisma.project.findMany({
                 where: {
                     AND: [
-                        {
-                            company_id: String(id),
-                        },
                         {
                             status_project: {
                                 in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
