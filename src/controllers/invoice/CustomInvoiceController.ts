@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import nodemailer from "nodemailer";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 interface InvoiceLineItem {
   name: string;
@@ -194,17 +196,25 @@ export class CustomInvoiceController {
 
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId, emailSubject, emailBody } = req.body;
+    const { userId } = req.body;
 
     try {
+      // Verificar se o userId foi fornecido
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      // Buscar a fatura com todas as informações necessárias
       const invoice = await prisma.invoice.findUnique({
-        where: { id: invoiceId },
+        where: { externalInvoiceId: invoiceId },
         include: {
           project: {
             include: {
-              client: true
+              client: true,
+              company: true
             }
-          }
+          },
+          InvoiceItems: true
         }
       });
 
@@ -224,8 +234,41 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Client email is required" });
       }
 
-      // Aqui você implementaria o envio de email
-      // Por exemplo, usando nodemailer ou outro serviço de email
+      // Configurar o envio de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Obter o logo da empresa
+      const company = invoice.project.company;
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
+
+      // Preparar os dados para o template
+      const companyName = company?.name || 'Smart Build';
+      const phone = company?.phone || '';
+      const clientName = invoice.project.client.name;
+      const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+
+      // Usar o template invoiceCustom
+      const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
+      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
+
+      // Enviar o email
+      await transporter.sendMail({
+        from: SMTP_CONFIG.user,
+        to: invoice.project.client.email,
+        subject: `Fatura #${invoiceCode} - ${companyName}`,
+        html: emailTemplate,
+      });
 
       // Registrar o envio no histórico
       await prisma.invoiceSendHistory.create({
@@ -234,12 +277,6 @@ export class CustomInvoiceController {
           recipient: invoice.project.client.email,
           user_id: userId
         }
-      });
-
-      // Atualizar o status da fatura
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: "sent" }
       });
 
       return res.status(200).json({
