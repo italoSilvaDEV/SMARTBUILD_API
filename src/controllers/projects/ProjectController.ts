@@ -574,78 +574,58 @@ export class ProjectController {
     try {
       const { id } = request.params;
 
-      // Verificação da existência do ServiceProject
-      const serviceProject = await prisma.serviceProject.findFirst({
-        where: {
-          id: id,
-        },
-        include: {
-          photos: true,
-          costProject: true,
-          galleryAlfter: true,
-          galleryBefore: true,
-          Activities: true,
-          stages: true,
-          UserServiceProject: {
-            include: {
-              user_attendances: true
-            }
-          },
-          TimeLine: true,
-        },
+      // Verificar se o serviço existe
+      const serviceProject = await prisma.serviceProject.findUnique({
+        where: { id: String(id) }
       });
 
       if (!serviceProject) {
-        throw new Error("Service Project not found!");
+        return response.status(404).json({ error: "Service Project not found" });
       }
+   
 
-      // Check if there are any user attendances or timeline entries
-      if (serviceProject.UserServiceProject.some(user => user.user_attendances.length > 0) || serviceProject.TimeLine.length > 0) {
-        return response.status(400).json({ error: "Workers have already started this service and cannot be deleted." });
-      }
-
-      // Exclusão de todas as fotos associadas ao ServiceProject
-      for (const photo of serviceProject.photos) {
-        this.deleteFiles(photo.uri);
-      }
-
-      // Exclusão de todos os CostProjects associados ao ServiceProject
-      await prisma.costProject.deleteMany({
-        where: {
-          serviceProjectId: id,
-        },
-      });
-
-      // Exclusão de todos os registros relacionados ao ServiceProject
-      await prisma.galleryAfter.deleteMany({
-        where: { serviceProjectId: id },
-      });
+      // Excluir outras entidades relacionadas
       await prisma.galleryBefore.deleteMany({
         where: { serviceProjectId: id },
       });
+
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
+      await prisma.imgServiceProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
+      await prisma.costProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
       await prisma.activities.deleteMany({
         where: { serviceProjectId: id },
       });
+
       await prisma.serviceStages.deleteMany({
         where: { serviceProjectId: id },
       });
+
       await prisma.userServiceProject.deleteMany({
         where: { service_project_id: id },
       });
+
       await prisma.timeLine.deleteMany({
         where: { service_project_id: id },
       });
 
-      // Exclusão do ServiceProject
+      // Agora podemos excluir o ServiceProject com segurança
       await prisma.serviceProject.delete({
         where: {
-          id: id,
+          id: String(id),
         },
       });
 
       return response.json({
-        message:
-          "Service Project and its related data deleted successfully",
+        message: "Service Project and its related data deleted successfully",
       });
     } catch (error) {
       console.error(error);

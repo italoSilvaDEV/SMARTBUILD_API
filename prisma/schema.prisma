@@ -52,6 +52,8 @@ model User {
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
 
+  canceledEstimates Estimate[] @relation("canceledEstimates")
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -84,6 +86,10 @@ model Company {
 
   // novo campo
   stripeAccountId String? @unique
+
+  Subscription Subscription[]
+  Plan         Plan?          @relation(fields: [planId], references: [id])
+  planId       String?
 }
 
 model ContractNotes {
@@ -195,20 +201,20 @@ model ServiceProject {
   service    Service? @relation(fields: [id_service], references: [id])
   id_service String?
 
-  stages             ServiceStages[]
-  galleryBefore      GalleryBefore[]
-  galleryAlfter      GalleryAfter[]
-  photos             ImgServiceProject[]
-  costProject        CostProject[]
-  date_creation      DateTime             @default(now())
-  date_update        DateTime             @updatedAt
-  Project            Project?             @relation(fields: [projectId], references: [id])
-  projectId          String?
-  UserServiceProject UserServiceProject[]
-  Activities         Activities[]
-  company            Company?             @relation(fields: [company_id], references: [id])
-  company_id         String?
-  TimeLine           TimeLine[]
+  stages                 ServiceStages[]
+  galleryBefore          GalleryBefore[]
+  galleryAlfter          GalleryAfter[]
+  photos                 ImgServiceProject[]
+  costProject            CostProject[]
+  date_creation          DateTime                 @default(now())
+  date_update            DateTime                 @updatedAt
+  Project                Project?                 @relation(fields: [projectId], references: [id])
+  projectId              String?
+  UserServiceProject     UserServiceProject[]
+  Activities             Activities[]
+  company                Company?                 @relation(fields: [company_id], references: [id])
+  company_id             String?
+  TimeLine               TimeLine[]
 }
 
 model Activities {
@@ -276,6 +282,7 @@ model Project {
   workedHours        Workedhours[]
   pdfproject         PdfProject[]
   contractProject    ContractProject[]
+  estimates          Estimate[]
 
   invoices Invoice[] @relation(name: "ProjectToInvoice")
 
@@ -493,17 +500,23 @@ model TimeLine {
 }
 
 model Invoice {
-  id              String    @id @default(uuid())
-  stripeInvoiceId String    @unique
-  status          String // Status do invoice: draft, open, paid, void, uncollectible
-  totalAmount     Decimal
-  dueDate         DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  invoiceUrl      String?
+  id                String  @id @default(uuid())
+  stripeInvoiceId   String? @unique
+  externalInvoiceId String? @unique
+
+  invoiceType String? // "stripe", "quickbooks", "custom"
+  status      String // Status do invoice: draft, open, paid, void, uncollectible
+  totalAmount Decimal
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  invoiceUrl  String?
 
   percentageCoefficient Decimal?
   description           String?  @db.Text
+
+  // Campos específicos para QuickBooks
+  externalDocNumber String?
 
   // Relacionamento com Project e Company
   project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
@@ -515,7 +528,12 @@ model Invoice {
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
 
+  // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
+  InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
+
+  // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
+  payment InvoicePayment?
 }
 
 model InvoiceSendHistory {
@@ -532,13 +550,184 @@ model InvoiceSendHistory {
 }
 
 model QuickBooksAccount {
+  id                   String   @id @default(uuid())
+  accessToken          String   @db.Text
+  refreshToken         String   @db.Text
+  realmId              String   @unique
+  expiresAt            DateTime
+  needsReauthorization Boolean  @default(false)
+  scopes               String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User?    @relation(fields: [user_id], references: [id])
+  user_id              String?  @unique
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  name        String // Nome do serviço ou item
+  description String?  @db.Text // Descrição opcional do item
+  quantity    Decimal // Quantidade
+  price       Decimal // Preço unitário
+  totalAmount Decimal // Valor total (quantidade * preço)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamento com Invoice
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id            String   @id @default(uuid())
+  paymentMethod String
+  notes         String?  @db.Text
+  amount        Float
+  paidAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relação com Invoice (um pagamento pertence a uma fatura)
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
+}
+
+model Estimate {
+  id              String   @id @default(uuid())
+  number          String
+  approvedAt      DateTime @default(now())
+  clientSignature String?  @db.Text
+  totalAmount     Decimal
+  description     String?  @db.Text
+  terms           String?  @db.Text
+  status          String   @default("pending")
+
+  canceledAt         DateTime?
+  canceledById       String?
+  cancellationReason String?   @db.Text
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  canceledBy User? @relation(name: "canceledEstimates", fields: [canceledById], references: [id])
+
+  serviceProjects EstimateServiceProject[]
+  timelineEvents  EstimateTimeline[]
+  date_creation   DateTime                 @default(now())
+  date_update     DateTime                 @updatedAt
+
+  emailLogs EstimateEmailLog[]
+
+  @@unique([number, projectId])
+}
+
+model EstimateTimeline {
+  id            String   @id @default(uuid())
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  estimate      Estimate @relation(fields: [estimateId], references: [id])
+  estimateId    String
+}
+
+model EstimateServiceProject {
+  id String @id @default(uuid())
+
+  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimateId String
+
+  name        String
+  description String? @db.Text
+  quantity    Int     @default(1)
+  unitPrice   Decimal
+  lineTotal   Decimal
+  notes       String? @db.Text
+
+  date_creation    DateTime        @default(now())
+  date_update      DateTime        @updatedAt
+
+  @@unique([estimateId, name])
+}
+
+model Permissions {
+  id String @id @default(uuid())
+
+  description          String
+  GroupPermissionsList GroupPermissionsList[]
+  date_creation        DateTime               @default(now())
+  date_update          DateTime               @updatedAt
+}
+
+model PermissionGroup {
+  id String @id @default(uuid())
+
+  description String
+
+  GroupPermissionsList GroupPermissionsList[]
+  plans                Plan[]
+  date_creation        DateTime               @default(now())
+  date_update          DateTime               @updatedAt
+}
+
+model GroupPermissionsList {
+  id String @id @default(uuid())
+
+  Permissions      Permissions     @relation(fields: [permission_id], references: [id])
+  permission_id    String
+  PermissionGroup  PermissionGroup @relation(fields: [permission_group], references: [id])
+  permission_group String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  startDate DateTime // Data de início da assinatura (quando o plano foi comprado)
+  endDate   DateTime // Data de fim do plano (quando o plano expira)
+  isActive  Boolean  @default(true) // Indica se o plano está ativo ou expirado
+}
+
+enum ValidityType {
+  FREE
+  MONTHLY
+  ANNUAL
+  CUSTOM
+  DAYS
+}
+
+model Plan {
+  id                String          @id @default(uuid())
+  name              String
+  description       String
+  price             Decimal?
+  features          Json? // Array de strings para armazenar as features do plano
+  validityType      ValidityType // Tipo de validade (gratuito, mensal, etc.)
+  validityDuration  Int // Duração da validade (ex: 15 para gratuito, 30 para mensal)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  permissionGroup   PermissionGroup @relation(fields: [permissionGroupId], references: [id])
+  permissionGroupId String
+  subscriptions     Subscription[] // Relaciona-se com as assinaturas
+  Company           Company[]
+}
+
+model EstimateEmailLog {
   id           String   @id @default(uuid())
-  accessToken  String   @db.Text
-  refreshToken String   @db.Text
-  realmId      String   @unique // Identificador da conta no QuickBooks
-  expiresAt    DateTime // Data de expiração do accessToken
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User?    @relation(fields: [user_id], references: [id])
-  user_id      String?  @unique
+  recipient    String
+  status       String // "success" ou "error"
+  errorMessage String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimateId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }

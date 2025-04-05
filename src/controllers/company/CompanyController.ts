@@ -195,7 +195,7 @@ export class CompanyController {
             });
             console.log("35. Email enviado");
 
-            return res.status(201).json({ message: "User created successfully" });
+            return res.status(201).json(company);
         } catch (error: any) {
             console.error("36. Erro no processo:", error);
             return res.status(500).json({ error: error.message || "Internal error" });

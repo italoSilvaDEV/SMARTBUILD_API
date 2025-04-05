@@ -19,8 +19,6 @@ import { TimeController } from "../controllers/projects/timeController";
 import { CreatePdContractfProjectController } from "../controllers/projects/CreatePdfProjectUploadContractController";
 import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController";
 
-
-
 const projectRoutes = Router();
 
 const projectController = new ProjectController();
@@ -43,7 +41,6 @@ projectRoutes.get("/project/user-seller",checkToken,projectController.getUserSel
 
 projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject);
 
-
 projectRoutes.post(
   "/service-project",
   checkToken,
@@ -52,8 +49,6 @@ projectRoutes.post(
 
 projectRoutes.put( "/service-project",  checkToken,  projectController.updateServiceProject);
 projectRoutes.delete( "/service-img-project/:id",  checkToken,  projectController.DeleteAllImgServiceProjectController);
-
-
 
 projectRoutes.post(
   "/img-service-project",
@@ -102,10 +97,6 @@ projectRoutes.post("/project/upload-contract",
 
 export { projectRoutes };
 
-
-
-
-
 const createCostProjectController = new CreateCostProjectController();
 projectRoutes.post(
   "/costproject",
@@ -145,7 +136,6 @@ projectRoutes.put(
 const deleteCostProjectController = new DeleteCostProjectController()
 projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
 
-
 const updateCostProjectController = new UpdateCostProjectController();
 projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle);
 
@@ -156,7 +146,6 @@ const galleryProject = new GalleryProjectController()
 projectRoutes.post('/project/gallery', galleryProject.create.bind(galleryProject))
 projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
 projectRoutes.get('/project/gallery/:id', galleryProject.find)
-
 
 projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
 
@@ -169,13 +158,11 @@ projectRoutes.post("/project/services-project/activities", checkToken, createAct
 // Rota para excluir uma atividade
 projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
 
-
 projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule);
 
 projectRoutes.patch("/service-project/update/dates", checkToken, projectController.updateDatesServiceProject);
 
 projectRoutes.patch("/service-project/update/status", checkToken, projectController.updateStatusServiceProject);
-
 
 projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
 
