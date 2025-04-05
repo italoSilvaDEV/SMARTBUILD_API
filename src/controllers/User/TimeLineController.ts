@@ -29,6 +29,7 @@ export class TimeLineController {
         check_in_latitude: number,
         check_in_longitude: number
     ) {
+        /* Código de auto check-out às 18h comentado
         const now = new Date();
         if (now.getHours() >= 18) {
             // Busca o registro de attendance aberto
@@ -53,6 +54,7 @@ export class TimeLineController {
                 });
             }
         }
+        */
     }
 
     // Check-in do usuário
@@ -160,6 +162,7 @@ export class TimeLineController {
             });
 
             // Verifica e realiza check-out automático se for 18:00 ou mais
+            /* Chamada ao auto check-out às 18h comentada
             await this.performAutoCheckOut(
                 user_id,
                 user_service_project_id,
@@ -167,6 +170,7 @@ export class TimeLineController {
                 check_in_latitude,
                 check_in_longitude
             );
+            */
             
             res.status(201).json(attendance);
         } catch (error) {
@@ -268,6 +272,7 @@ export class TimeLineController {
             });
 
             // Verifica e realiza check-out automático se for 18:00 ou mais
+            /* Chamada ao auto check-out às 18h comentada
             await this.performAutoCheckOut(
                 user_id,
                 user_service_project_id,
@@ -275,6 +280,7 @@ export class TimeLineController {
                 check_in_latitude,
                 check_in_longitude
             );
+            */
 
             res.status(201).json(attendance);
         } catch (error) {
