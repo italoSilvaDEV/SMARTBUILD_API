@@ -44,6 +44,24 @@ export class EstimateController {
 
     await transporter.sendMail(mailOptions);
   }
+
+  // Função utilitária para registrar eventos na timeline
+  private static async addTimelineEvent(estimateId: string, description: string) {
+    try {
+      return await prisma.estimateTimeline.create({
+        data: {
+          description,
+          estimate: {
+            connect: { id: estimateId }
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error adding timeline event:", error);
+      // Não lançamos o erro para não interromper o fluxo principal
+    }
+  }
+
   async create(req: Request, res: Response) {
     try {
       const { projectId } = req.body;
@@ -89,6 +107,15 @@ export class EstimateController {
         0
       );
 
+      // Map over service projects and ensure unique names by adding a unique identifier
+      const serviceProjectsToCreate = project.serviceProject.map((sp, index) => ({
+        name: `${sp.name}_${index}`, // Add index to make names unique
+        quantity: Number(sp.hours),
+        unitPrice: Number(sp.price),
+        lineTotal: Number(sp.price)*Number(sp.hours),
+        notes: sp.description,             
+      }));
+
       // Criar o change order
       const estimate = await prisma.estimate.create({
         data: {
@@ -101,29 +128,17 @@ export class EstimateController {
             connect: { id: projectId }
           },
           serviceProjects: {
-            create: project.serviceProject.map(sp => ({
-              quantity: Number(sp.hours),
-              unitPrice: Number(sp.price),
-              lineTotal: Number(sp.price)*Number(sp.hours),
-              notes: sp.description,
-              serviceProject: {
-                connect: { id: sp.id }
-              }
-            }))
+            create: serviceProjectsToCreate
           }
         },
-        include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
-          project: {
-            include: {
-              client: true
-            }
-          }
-        }
+        // include: {
+        //   serviceProjects: true,
+        //   project: {
+        //     include: {
+        //       client: true
+        //     }
+        //   }
+        // }
       });
       const SMTP_CONFIG = require("../../config/smtp");
 
@@ -167,6 +182,10 @@ export class EstimateController {
       await transporter.sendMail(mailOptions);
 
       console.log("e-mail enviado com sucesso!");
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(estimate.id, "Created");
+      
       return res.status(201).json(estimate);
     } catch (error) {
       console.error(error);
@@ -183,18 +202,24 @@ export class EstimateController {
           projectId
         },
         include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
+          serviceProjects: true,
           canceledBy: {
             select: {
               id: true,
               name: true,
               email: true
             }
-          }
+          },
+          timelineEvents: {
+            orderBy: {
+              date_creation: 'asc'
+            }
+          },
+          emailLogs: {
+            orderBy: {
+              date_creation: 'asc'
+            }
+          },
         },
         orderBy: {
           date_creation: 'desc'
@@ -215,11 +240,7 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
+          serviceProjects: true,
           canceledBy: {
             select: {
               id: true,
@@ -246,6 +267,11 @@ export class EstimateController {
                 }
               }
             }
+          },
+          timelineEvents: {
+            orderBy: {
+              date_creation: 'asc'
+            }
           }
         }
       });
@@ -258,7 +284,10 @@ export class EstimateController {
       if (estimate.project?.company?.avatar) {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
-
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(id, "Viewed");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -295,7 +324,7 @@ export class EstimateController {
       const { id } = req.params;
       const { status } = req.body;
 
-      if (!["pending", "approved", "rejected"].includes(status)) {
+      if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
 
@@ -319,6 +348,11 @@ export class EstimateController {
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
+      
+      // Usar a função utilitária
+      const event = status === "rejected" ? "Rejected" : status;
+      await EstimateController.addTimelineEvent(estimate.id, event);
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -352,6 +386,10 @@ export class EstimateController {
         project?.user?.email || '', 
         project?.contract_number?.toString() || ''
       );
+      
+      // Adicionar evento na timeline
+      await EstimateController.addTimelineEvent(estimate.id, "Approved");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -377,17 +415,17 @@ export class EstimateController {
           date_update: new Date()
         }
       });
-      const project = await prisma.project.findUnique({
+      await prisma.project.findUnique({
         where: { id: estimate.projectId },
         include: {
           client: true
         }
       });
-      await EstimateController.sendStatusUpdateEmail(
-        estimate,
-        project?.client?.email || '',
-        project?.contract_number?.toString() || ''
-      );
+     
+      
+      // Usar a função utilitária
+      await EstimateController.addTimelineEvent(estimate.id, "Canceled");
+      
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -398,16 +436,14 @@ export class EstimateController {
   async addService(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { serviceProjectId, quantity, unitPrice, lineTotal, notes } = req.body;
+      const {   name, quantity, unitPrice, lineTotal, notes } = req.body;
 
       const estimateServiceProject = await prisma.estimateServiceProject.create({
         data: {
           estimate: {
             connect: { id }
           },
-          serviceProject: {
-            connect: { id: serviceProjectId }
-          },
+          name,
           quantity,
           unitPrice,
           lineTotal,
@@ -445,13 +481,12 @@ export class EstimateController {
 
   async removeService(req: Request, res: Response) {
     try {
-      const { id, serviceProjectId } = req.params;
+      const { id } = req.params;
 
       // Find the record to delete
       const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          estimateId: id,
-          serviceProjectId
+         id
         }
       });
 
@@ -496,14 +531,13 @@ export class EstimateController {
 
   async updateService(req: Request, res: Response) {
     try {
-      const { id, serviceProjectId } = req.params;
+      const { id } = req.params;
       const { quantity, unitPrice, lineTotal, notes } = req.body;
 
       // Find the record to update
       const record = await prisma.estimateServiceProject.findFirst({
-        where: {
-          estimateId: id,
-          serviceProjectId
+        where: {         
+          id
         }
       });
 
@@ -553,5 +587,114 @@ export class EstimateController {
     }
   }
 
-  
+  async resendEmail(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { emails } = req.body;
+
+      // Validar se emails é um array
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ error: "Please provide at least one email address" });
+      }
+
+      const estimate = await prisma.estimate.findUnique({
+        where: { id },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
+      }
+
+      // Configurar o transportador de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Resultados do envio para cada email
+      const results = [];
+
+      // Processar todos os emails
+      for (const email of emails) {
+        try {
+          const mailOptions = {
+            from: SMTP_CONFIG.user,
+            to: email,
+            subject: "Smart Build - Estimate Reminder",
+            html: `
+              <h1>Estimate #${estimate.number} for Project ${estimate.project?.contract_number?.toString() || 'N/A'}</h1>
+              <p>This is a reminder about your estimate.</p>
+              <p>Total Amount: ${estimate.totalAmount}</p>
+              <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}">View Estimate</a></p>
+              <p>Status: ${estimate.status}</p>
+            `,
+          };
+
+          // Enviar o email e aguardar a resposta
+          await transporter.sendMail(mailOptions);
+          
+          // Se chegou aqui, o envio foi bem-sucedido
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient: email,
+              status: "success",
+              sentAt: new Date()
+            }
+          });
+          
+          results.push({ email, status: "success" });
+          
+          await EstimateController.addTimelineEvent(
+            estimate.id, 
+            `Email sent to ${email} successfully`
+          );
+        } catch (error: any) {
+          
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient: email,
+              status: "error",
+              errorMessage: error.message || "Unknown error",
+              sentAt: new Date()
+            }
+          });
+          
+          results.push({ email, status: "error", message: error.message });
+          
+          await EstimateController.addTimelineEvent(
+            estimate.id, 
+            `Failed to send email to ${email}: ${error.message}`
+          );
+        }
+      }
+
+      // Retornar todos os resultados após processar todos os emails
+      return res.json({
+        success: results.some(r => r.status === "success"),
+        results
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to resend estimate email" });
+    }
+  }
 } 
