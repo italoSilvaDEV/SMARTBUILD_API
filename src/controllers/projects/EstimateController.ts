@@ -107,6 +107,15 @@ export class EstimateController {
         0
       );
 
+      // Map over service projects and ensure unique names by adding a unique identifier
+      const serviceProjectsToCreate = project.serviceProject.map((sp, index) => ({
+        name: `${sp.name}_${index}`, // Add index to make names unique
+        quantity: Number(sp.hours),
+        unitPrice: Number(sp.price),
+        lineTotal: Number(sp.price)*Number(sp.hours),
+        notes: sp.description,             
+      }));
+
       // Criar o change order
       const estimate = await prisma.estimate.create({
         data: {
@@ -119,29 +128,17 @@ export class EstimateController {
             connect: { id: projectId }
           },
           serviceProjects: {
-            create: project.serviceProject.map(sp => ({
-              quantity: Number(sp.hours),
-              unitPrice: Number(sp.price),
-              lineTotal: Number(sp.price)*Number(sp.hours),
-              notes: sp.description,
-              serviceProject: {
-                connect: { id: sp.id }
-              }
-            }))
+            create: serviceProjectsToCreate
           }
         },
-        include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
-          project: {
-            include: {
-              client: true
-            }
-          }
-        }
+        // include: {
+        //   serviceProjects: true,
+        //   project: {
+        //     include: {
+        //       client: true
+        //     }
+        //   }
+        // }
       });
       const SMTP_CONFIG = require("../../config/smtp");
 
@@ -205,11 +202,7 @@ export class EstimateController {
           projectId
         },
         include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
+          serviceProjects: true,
           canceledBy: {
             select: {
               id: true,
@@ -247,11 +240,7 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: {
-            include: {
-              serviceProject: true
-            }
-          },
+          serviceProjects: true,
           canceledBy: {
             select: {
               id: true,
@@ -447,16 +436,14 @@ export class EstimateController {
   async addService(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { serviceProjectId, quantity, unitPrice, lineTotal, notes } = req.body;
+      const {   name, quantity, unitPrice, lineTotal, notes } = req.body;
 
       const estimateServiceProject = await prisma.estimateServiceProject.create({
         data: {
           estimate: {
             connect: { id }
           },
-          serviceProject: {
-            connect: { id: serviceProjectId }
-          },
+          name,
           quantity,
           unitPrice,
           lineTotal,
@@ -494,13 +481,12 @@ export class EstimateController {
 
   async removeService(req: Request, res: Response) {
     try {
-      const { id, serviceProjectId } = req.params;
+      const { id } = req.params;
 
       // Find the record to delete
       const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          estimateId: id,
-          serviceProjectId
+         id
         }
       });
 
@@ -545,14 +531,13 @@ export class EstimateController {
 
   async updateService(req: Request, res: Response) {
     try {
-      const { id, serviceProjectId } = req.params;
+      const { id } = req.params;
       const { quantity, unitPrice, lineTotal, notes } = req.body;
 
       // Find the record to update
       const record = await prisma.estimateServiceProject.findFirst({
-        where: {
-          estimateId: id,
-          serviceProjectId
+        where: {         
+          id
         }
       });
 

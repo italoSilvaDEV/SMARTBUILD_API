@@ -201,21 +201,20 @@ model ServiceProject {
   service    Service? @relation(fields: [id_service], references: [id])
   id_service String?
 
-  stages             ServiceStages[]
-  galleryBefore      GalleryBefore[]
-  galleryAlfter      GalleryAfter[]
-  photos             ImgServiceProject[]
-  costProject        CostProject[]
-  date_creation      DateTime                    @default(now())
-  date_update        DateTime                    @updatedAt
-  Project            Project?                    @relation(fields: [projectId], references: [id])
-  projectId          String?
-  UserServiceProject UserServiceProject[]
-  Activities         Activities[]
-  company            Company?                    @relation(fields: [company_id], references: [id])
-  company_id         String?
-  TimeLine           TimeLine[]
-  estimates          EstimateServiceProject[]
+  stages                 ServiceStages[]
+  galleryBefore          GalleryBefore[]
+  galleryAlfter          GalleryAfter[]
+  photos                 ImgServiceProject[]
+  costProject            CostProject[]
+  date_creation          DateTime                 @default(now())
+  date_update            DateTime                 @updatedAt
+  Project                Project?                 @relation(fields: [projectId], references: [id])
+  projectId              String?
+  UserServiceProject     UserServiceProject[]
+  Activities             Activities[]
+  company                Company?                 @relation(fields: [company_id], references: [id])
+  company_id             String?
+  TimeLine               TimeLine[]
 }
 
 model Activities {
@@ -501,24 +500,24 @@ model TimeLine {
 }
 
 model Invoice {
-  id              String    @id @default(uuid())
-  stripeInvoiceId String?   @unique
+  id                String  @id @default(uuid())
+  stripeInvoiceId   String? @unique
   externalInvoiceId String? @unique
-  
-  invoiceType     String?   // "stripe", "quickbooks", "custom"
-  status          String    // Status do invoice: draft, open, paid, void, uncollectible
-  totalAmount     Decimal
-  dueDate         DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  invoiceUrl      String?
+
+  invoiceType String? // "stripe", "quickbooks", "custom"
+  status      String // Status do invoice: draft, open, paid, void, uncollectible
+  totalAmount Decimal
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  invoiceUrl  String?
 
   percentageCoefficient Decimal?
   description           String?  @db.Text
-  
+
   // Campos específicos para QuickBooks
-  externalDocNumber   String?
-    
+  externalDocNumber String?
+
   // Relacionamento com Project e Company
   project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
   projectId String
@@ -531,10 +530,10 @@ model Invoice {
 
   // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
-  InvoiceItems       InvoiceItem[]        // Nova relação com InvoiceItem
+  InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
-  payment       InvoicePayment?
+  payment InvoicePayment?
 }
 
 model InvoiceSendHistory {
@@ -566,11 +565,11 @@ model QuickBooksAccount {
 
 model InvoiceItem {
   id          String   @id @default(uuid())
-  name        String   // Nome do serviço ou item
+  name        String // Nome do serviço ou item
   description String?  @db.Text // Descrição opcional do item
-  quantity    Decimal  // Quantidade
-  price       Decimal  // Preço unitário
-  totalAmount Decimal  // Valor total (quantidade * preço)
+  quantity    Decimal // Quantidade
+  price       Decimal // Preço unitário
+  totalAmount Decimal // Valor total (quantidade * preço)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -582,22 +581,22 @@ model InvoiceItem {
 }
 
 model InvoicePayment {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   paymentMethod String
-  notes         String? @db.Text
+  notes         String?  @db.Text
   amount        Float
-  paidAt        DateTime  @default(now())
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  paidAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
   // Relação com Invoice (um pagamento pertence a uma fatura)
-  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
-  invoiceId     String    @unique // Cada fatura pode ter apenas um registro de pagamento
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
 }
 
 model Estimate {
   id              String   @id @default(uuid())
-  number          String   
+  number          String
   approvedAt      DateTime @default(now())
   clientSignature String?  @db.Text
   totalAmount     Decimal
@@ -616,23 +615,22 @@ model Estimate {
 
   serviceProjects EstimateServiceProject[]
   timelineEvents  EstimateTimeline[]
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  date_creation   DateTime                 @default(now())
+  date_update     DateTime                 @updatedAt
 
-  emailLogs     EstimateEmailLog[]
+  emailLogs EstimateEmailLog[]
 
   @@unique([number, projectId])
 }
 
 model EstimateTimeline {
-  id          String   @id @default(uuid())
-  description String   @db.Text
-  date_creation   DateTime @default(now())
-  date_update DateTime @updatedAt
-  estimate   Estimate @relation(fields: [estimateId], references: [id])
-  estimateId String
+  id            String   @id @default(uuid())
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  estimate      Estimate @relation(fields: [estimateId], references: [id])
+  estimateId    String
 }
-
 
 model EstimateServiceProject {
   id String @id @default(uuid())
@@ -640,18 +638,17 @@ model EstimateServiceProject {
   estimate   Estimate @relation(fields: [estimateId], references: [id])
   estimateId String
 
-  serviceProject   ServiceProject @relation(fields: [serviceProjectId], references: [id])
-  serviceProjectId String
+  name        String
+  description String? @db.Text
+  quantity    Int     @default(1)
+  unitPrice   Decimal
+  lineTotal   Decimal
+  notes       String? @db.Text
 
-  quantity  Int     @default(1)
-  unitPrice Decimal
-  lineTotal Decimal
-  notes     String? @db.Text
+  date_creation    DateTime        @default(now())
+  date_update      DateTime        @updatedAt
 
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-
-  @@unique([estimateId, serviceProjectId])
+  @@unique([estimateId, name])
 }
 
 model Permissions {
@@ -659,10 +656,9 @@ model Permissions {
 
   description          String
   GroupPermissionsList GroupPermissionsList[]
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  date_creation        DateTime               @default(now())
+  date_update          DateTime               @updatedAt
 }
-
 
 model PermissionGroup {
   id String @id @default(uuid())
@@ -723,15 +719,15 @@ model Plan {
 }
 
 model EstimateEmailLog {
-  id            String   @id @default(uuid())
-  recipient     String
-  status        String   // "success" ou "error"
-  errorMessage  String?  @db.Text
-  sentAt        DateTime @default(now())
-  
-  estimate      Estimate @relation(fields: [estimateId], references: [id])
-  estimateId    String
-  
+  id           String   @id @default(uuid())
+  recipient    String
+  status       String // "success" ou "error"
+  errorMessage String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimateId String
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 }

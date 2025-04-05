@@ -84,6 +84,7 @@ serviceRoutes.delete("/service/:service_id", checkToken, deleteServiceController
 
 const findServiceController = new FindServiceController();
 serviceRoutes.post("/service/find", checkToken, findServiceController.handle);
+serviceRoutes.get('/service/company/:companyId', checkToken, findServiceController.getServicesByCompany);
 
 const userServiceProjectController = new UserServiceProjectController()
 serviceRoutes.post('/user_service_project', checkToken, userServiceProjectController.create);
