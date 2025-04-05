@@ -115,10 +115,11 @@ export class TimeLineController {
                 },
             });
 
-            if (!openAttendance) {
-                console.log('error', 'There is already an open attendance for this project. Please check out before creating a new one.')
+            if (openAttendance) {
+                // Continua com o processamento normal
+            } else {
                 res.status(400).json({
-                    error: 'There is already an open attendance for this project. Please check out before creating a new one.',
+                    error: 'No open attendance found. Please check in first.',
                 });
                 return;
             }
@@ -237,10 +238,11 @@ export class TimeLineController {
                 },
             });
 
-            if (!openAttendance) {
-                console.log('error', 'There is already an open attendance for this project. Please check out before creating a new one.')
+            if (openAttendance) {
+                // Continua com o processamento normal
+            } else {
                 res.status(400).json({
-                    error: 'There is already an open attendance for this project. Please check out before creating a new one.',
+                    error: 'No open attendance found. Please check in first.',
                 });
                 return;
             }
