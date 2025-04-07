@@ -502,7 +502,7 @@ model TimeLine {
 model Invoice {
   id                String  @id @default(uuid())
   stripeInvoiceId   String? @unique
-  externalInvoiceId String? @unique
+  externalInvoiceId String?
 
   invoiceType String? // "stripe", "quickbooks", "custom"
   status      String // Status do invoice: draft, open, paid, void, uncollectible
@@ -534,6 +534,8 @@ model Invoice {
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment InvoicePayment?
+
+  @@index([externalInvoiceId, invoiceType])
 }
 
 model InvoiceSendHistory {
