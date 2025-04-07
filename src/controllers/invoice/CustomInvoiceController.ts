@@ -72,7 +72,10 @@ export class CustomInvoiceController {
           invoiceType: "custom",
           externalInvoiceId: { not: null }
         },
-        orderBy: { externalInvoiceId: "desc" }, // Ordenar de forma decrescente
+        orderBy: [
+          { createdAt: "desc" },
+          { externalInvoiceId: "desc" }
+        ]
       });
 
       // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
@@ -205,8 +208,11 @@ export class CustomInvoiceController {
       }
 
       // Buscar a fatura com todas as informações necessárias
-      const invoice = await prisma.invoice.findUnique({
-        where: { externalInvoiceId: invoiceId },
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          externalInvoiceId: invoiceId,
+          invoiceType: "custom"
+        },
         include: {
           project: {
             include: {
@@ -333,8 +339,11 @@ export class CustomInvoiceController {
     const { userId } = req.body;
 
     try {
-      const invoice = await prisma.invoice.findUnique({
-        where: { externalInvoiceId: invoiceId }
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          externalInvoiceId: invoiceId,
+          invoiceType: "custom"
+        }
       });
 
       if (!invoice) {
