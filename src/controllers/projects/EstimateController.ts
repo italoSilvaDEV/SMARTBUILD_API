@@ -3,10 +3,34 @@ import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
+import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
 export class EstimateController {
 
-  private static async sendStatusUpdateEmail(estimate: any, email: string, projectNumber?: string, emailClient?: string) {
+  private static async sendStatusUpdateEmail(estimate: any, email: string,  emailClient: string) {
     const SMTP_CONFIG = require("../../config/smtp");
+
+    // Buscar o projeto relacionado ao estimate
+    const project = await prisma.project.findUnique({
+      where: { id: estimate.projectId },
+      include: {
+        client: true,
+        company: true
+      }
+    });
+
+    if (!project) {
+      console.error("Project not found for estimate:", estimate.id);
+      return;
+    }
+
+    // Obter o avatar da empresa
+    const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
+    
+    // Obter o número do estimate
+    const nextNumber = estimate.number;
+    
+    // Calcular o valor total
+    const totalAmount = Number(estimate.totalAmount);
 
     const transporter = nodemailer.createTransport({
       host: SMTP_CONFIG.host,
@@ -34,9 +58,15 @@ export class EstimateController {
       from: SMTP_CONFIG.user,
       to: email,
       subject: "Smart Build - Estimate",
-      html: `
-        <h1>Estimate #${estimate.number} for Project ${projectNumber || 'N/A'} ${estimate.status === "approved" ? "has been approved" : "has been rejected"} by ${emailClient} </h1>
-      `,
+      html: estimateNotificationEmail(
+        project.client?.name || '',
+        companyAvatar,
+        project.company?.name || '',
+        `${project.contract_number}/${nextNumber}`,
+        totalAmount,
+        emailClient,
+        estimate.status
+      ),
     };
 
     await transporter.sendMail(mailOptions);
@@ -156,21 +186,25 @@ export class EstimateController {
         }
       });
 
+      const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
+
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: project.client?.email || '',
         subject: "Smart Build - Estimate",
-        html: `
-        <h1>Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}</h1>
-        <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(project.client?.email || '').toString('base64')}">View Estimate</a></p>
-        <p>Status: ${estimate.status}</p>
-        `,
+        html: estimateEmail(
+          project.client?.name || '',
+          companyAvatar,
+          project.company?.name || '',
+          `${project.contract_number}/${nextNumber}`,
+          totalAmount,
+          estimate.id,
+          project.client?.email || ''
+        ),
       };
 
 
       await transporter.sendMail(mailOptions);
-
-      console.log("e-mail enviado com sucesso!");
 
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(estimate.id, "Created");
@@ -335,7 +369,6 @@ export class EstimateController {
         await EstimateController.sendStatusUpdateEmail(
           estimate,
           project?.user?.email || '',
-          project?.contract_number?.toString() || '',
           "client"
         );
       }
@@ -375,7 +408,6 @@ export class EstimateController {
       await EstimateController.sendStatusUpdateEmail(
         estimate,
         project?.user?.email || '',
-        project?.contract_number?.toString() || '',
         decodedEmail
       );
       // Adicionar evento na timeline
@@ -621,7 +653,7 @@ export class EstimateController {
 
       // Resultados do envio para cada email
       const results = [];
-
+      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
       // Processar todos os emails
       for (const email of emails) {
         try {
@@ -629,13 +661,15 @@ export class EstimateController {
             from: SMTP_CONFIG.user,
             to: email,
             subject: "Smart Build - Estimate Reminder",
-            html: `
-              <h1>Estimate #${estimate.number} for Project ${estimate.project?.contract_number?.toString() || 'N/A'}</h1>
-              <p>This is a reminder about your estimate.</p>
-              <p>Total Amount: ${estimate.totalAmount}</p>
-              <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(email).toString('base64')}">View Estimate</a></p>
-              <p>Status: ${estimate.status}</p>
-            `,
+            html: estimateEmail(
+              estimate.project?.client?.name || '',
+              companyAvatar,
+              estimate.project?.company?.name || '',
+              `${estimate.project?.contract_number}/${estimate.number}`,
+              Number(estimate.totalAmount),
+              estimate.id,
+              estimate.project?.client?.email || ''
+            ),
           };
 
           // Enviar o email e aguardar a resposta
