@@ -3,10 +3,34 @@ import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
+import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
 export class EstimateController {
 
-  private static async sendStatusUpdateEmail(estimate: any, email: string, projectNumber?: string) {
+  private static async sendStatusUpdateEmail(estimate: any, email: string,  emailClient: string) {
     const SMTP_CONFIG = require("../../config/smtp");
+
+    // Buscar o projeto relacionado ao estimate
+    const project = await prisma.project.findUnique({
+      where: { id: estimate.projectId },
+      include: {
+        client: true,
+        company: true
+      }
+    });
+
+    if (!project) {
+      console.error("Project not found for estimate:", estimate.id);
+      return;
+    }
+
+    // Obter o avatar da empresa
+    const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
+    
+    // Obter o número do estimate
+    const nextNumber = estimate.number;
+    
+    // Calcular o valor total
+    const totalAmount = Number(estimate.totalAmount);
 
     const transporter = nodemailer.createTransport({
       host: SMTP_CONFIG.host,
@@ -34,12 +58,15 @@ export class EstimateController {
       from: SMTP_CONFIG.user,
       to: email,
       subject: "Smart Build - Estimate",
-      html: `
-        <h1>Estimate #${estimate.number} for Project ${projectNumber || 'N/A'}</h1>
-       
-        <p>Link to Estimate: <a href="http://localhost:5173/estimate-response/${estimate.id}">View Estimate</a></p>
-        <p>Status: ${estimate.status} (Status has been updated)</p>
-      `,
+      html: estimateNotificationEmail(
+        project.client?.name || '',
+        companyAvatar,
+        project.company?.name || '',
+        `${project.contract_number}/${nextNumber}`,
+        totalAmount,
+        emailClient,
+        estimate.status
+      ),
     };
 
     await transporter.sendMail(mailOptions);
@@ -65,7 +92,7 @@ export class EstimateController {
   async create(req: Request, res: Response) {
     try {
       const { projectId } = req.body;
-      
+
       // Buscar o projeto com seus serviços
       const project = await prisma.project.findUnique({
         where: { id: projectId },
@@ -97,13 +124,13 @@ export class EstimateController {
       });
 
       // Combinar todos os termos do contrato
-      const combinedTerms = contractNotes.length > 0 
-        ? contractNotes.map(note => note.notes).join('\n\n') 
+      const combinedTerms = contractNotes.length > 0
+        ? contractNotes.map(note => note.notes).join('\n\n')
         : "Standard terms and conditions apply.";
 
       // Calcular o valor total com base nos serviços do projeto
       const totalAmount = project.serviceProject.reduce(
-        (total, service) => total + (Number(service.price)*Number(service.hours)),
+        (total, service) => total + (Number(service.price) * Number(service.hours)),
         0
       );
 
@@ -112,8 +139,8 @@ export class EstimateController {
         name: `${sp.name}_${index}`, // Add index to make names unique
         quantity: Number(sp.hours),
         unitPrice: Number(sp.price),
-        lineTotal: Number(sp.price)*Number(sp.hours),
-        notes: sp.description,             
+        lineTotal: Number(sp.price) * Number(sp.hours),
+        notes: sp.description,
       }));
 
       // Criar o change order
@@ -131,14 +158,6 @@ export class EstimateController {
             create: serviceProjectsToCreate
           }
         },
-        // include: {
-        //   serviceProjects: true,
-        //   project: {
-        //     include: {
-        //       client: true
-        //     }
-        //   }
-        // }
       });
       const SMTP_CONFIG = require("../../config/smtp");
 
@@ -167,25 +186,29 @@ export class EstimateController {
         }
       });
 
+      const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
+
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: project.client?.email || '',
         subject: "Smart Build - Estimate",
-        html: `
-        <h1>Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}</h1>
-        <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}">View Estimate</a></p>
-        <p>Status: ${estimate.status}</p>
-        `,
+        html: estimateEmail(
+          project.client?.name || '',
+          companyAvatar,
+          project.company?.name || '',
+          `${project.contract_number}/${nextNumber}`,
+          totalAmount,
+          estimate.id,
+          project.client?.email || ''
+        ),
       };
 
 
       await transporter.sendMail(mailOptions);
 
-      console.log("e-mail enviado com sucesso!");
-      
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(estimate.id, "Created");
-      
+
       return res.status(201).json(estimate);
     } catch (error) {
       console.error(error);
@@ -254,7 +277,7 @@ export class EstimateController {
                 select: {
                   id: true,
                   name: true,
-                  avatar: true, 
+                  avatar: true,
                   email: true,
                   phone: true
                 }
@@ -284,10 +307,10 @@ export class EstimateController {
       if (estimate.project?.company?.avatar) {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
-      
+
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(id, "Viewed");
-      
+
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -317,14 +340,14 @@ export class EstimateController {
     }
   }
 
-  
+
 
   async updateStatus(req: Request, res: Response) {
     try {
       const { id } = req.params;
       const { status } = req.body;
 
-      if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
+      if (!["rejected", "canceled"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
 
@@ -342,17 +365,18 @@ export class EstimateController {
           user: true
         }
       });
+      if (status === "rejected") {
+        await EstimateController.sendStatusUpdateEmail(
+          estimate,
+          project?.user?.email || '',
+          "client"
+        );
+      }
 
-      await EstimateController.sendStatusUpdateEmail(
-        estimate, 
-        project?.user?.email || '', 
-        project?.contract_number?.toString() || ''
-      );
-      
       // Usar a função utilitária
       const event = status === "rejected" ? "Rejected" : status;
       await EstimateController.addTimelineEvent(estimate.id, event);
-      
+
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -363,8 +387,8 @@ export class EstimateController {
   async addSignature(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { signature } = req.body;
-
+      const { signature, email } = req.body;
+      const decodedEmail = email ? Buffer.from(email.toString(), 'base64').toString() : 'unknown';
       const estimate = await prisma.estimate.update({
         where: { id },
         data: {
@@ -382,14 +406,13 @@ export class EstimateController {
       });
 
       await EstimateController.sendStatusUpdateEmail(
-        estimate, 
-        project?.user?.email || '', 
-        project?.contract_number?.toString() || ''
+        estimate,
+        project?.user?.email || '',
+        decodedEmail
       );
-      
       // Adicionar evento na timeline
-      await EstimateController.addTimelineEvent(estimate.id, "Approved");
-      
+      await EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail);
+
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -404,7 +427,7 @@ export class EstimateController {
       const payload = returnPayLoad(req)
       const userId = payload?.id; // Assuming you have user info in the request from checkToken middleware
 
-      if (!userId) return  res.status(401).json({ error: "Failed to cancel estimate" });
+      if (!userId) return res.status(401).json({ error: "Failed to cancel estimate" });
       const estimate = await prisma.estimate.update({
         where: { id },
         data: {
@@ -421,11 +444,11 @@ export class EstimateController {
           client: true
         }
       });
-     
-      
+
+
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(estimate.id, "Canceled");
-      
+
       return res.json(estimate);
     } catch (error) {
       console.error(error);
@@ -436,7 +459,7 @@ export class EstimateController {
   async addService(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const {   name, quantity, unitPrice, lineTotal, notes } = req.body;
+      const { name, quantity, unitPrice, lineTotal, notes } = req.body;
 
       const estimateServiceProject = await prisma.estimateServiceProject.create({
         data: {
@@ -486,7 +509,7 @@ export class EstimateController {
       // Find the record to delete
       const record = await prisma.estimateServiceProject.findFirst({
         where: {
-         id
+          id
         }
       });
 
@@ -536,7 +559,7 @@ export class EstimateController {
 
       // Find the record to update
       const record = await prisma.estimateServiceProject.findFirst({
-        where: {         
+        where: {
           id
         }
       });
@@ -630,7 +653,7 @@ export class EstimateController {
 
       // Resultados do envio para cada email
       const results = [];
-
+      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
       // Processar todos os emails
       for (const email of emails) {
         try {
@@ -638,18 +661,20 @@ export class EstimateController {
             from: SMTP_CONFIG.user,
             to: email,
             subject: "Smart Build - Estimate Reminder",
-            html: `
-              <h1>Estimate #${estimate.number} for Project ${estimate.project?.contract_number?.toString() || 'N/A'}</h1>
-              <p>This is a reminder about your estimate.</p>
-              <p>Total Amount: ${estimate.totalAmount}</p>
-              <p>Link to Estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimate.id}">View Estimate</a></p>
-              <p>Status: ${estimate.status}</p>
-            `,
+            html: estimateEmail(
+              estimate.project?.client?.name || '',
+              companyAvatar,
+              estimate.project?.company?.name || '',
+              `${estimate.project?.contract_number}/${estimate.number}`,
+              Number(estimate.totalAmount),
+              estimate.id,
+              estimate.project?.client?.email || ''
+            ),
           };
 
           // Enviar o email e aguardar a resposta
           await transporter.sendMail(mailOptions);
-          
+
           // Se chegou aqui, o envio foi bem-sucedido
           await prisma.estimateEmailLog.create({
             data: {
@@ -659,15 +684,15 @@ export class EstimateController {
               sentAt: new Date()
             }
           });
-          
+
           results.push({ email, status: "success" });
-          
+
           await EstimateController.addTimelineEvent(
-            estimate.id, 
+            estimate.id,
             `Email sent to ${email} successfully`
           );
         } catch (error: any) {
-          
+
           await prisma.estimateEmailLog.create({
             data: {
               estimate: { connect: { id } },
@@ -677,11 +702,11 @@ export class EstimateController {
               sentAt: new Date()
             }
           });
-          
+
           results.push({ email, status: "error", message: error.message });
-          
+
           await EstimateController.addTimelineEvent(
-            estimate.id, 
+            estimate.id,
             `Failed to send email to ${email}: ${error.message}`
           );
         }
