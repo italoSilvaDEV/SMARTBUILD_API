@@ -272,7 +272,7 @@ export class CustomInvoiceController {
       await transporter.sendMail({
         from: SMTP_CONFIG.user,
         to: invoice.project.client.email,
-        subject: `Fatura #${invoiceCode} - ${companyName}`,
+        subject: `Invoice #${invoiceCode} - ${companyName}`,
         html: emailTemplate,
       });
 
