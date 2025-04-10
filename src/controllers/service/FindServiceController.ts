@@ -35,6 +35,7 @@ export class FindServiceController {
         }
     }
 
+
     async getServicesByCompany(req: Request, res: Response) {
         try {
             const { companyId } = req.params;
@@ -50,7 +51,17 @@ export class FindServiceController {
             
             // Buscar todos os serviços da empresa
             const services = await prisma.service.findMany({
-                where: { company_id: companyId },
+                where: {
+                    service: {
+                        subcategory: {
+                            sub_category: {
+                                some: {
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    }
+                },
                 include: {
                     service: {
                         include: {
