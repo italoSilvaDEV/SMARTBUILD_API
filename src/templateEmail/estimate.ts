@@ -80,7 +80,12 @@ export const estimateEmail = (
                                             <td align="center" bgcolor="#cfebf6" style="padding:30px; margin: 0;">
                                                 <p style="font-size:16px;color:#333333;margin:0;text-align:center;"><strong>Your Estimate of number ${number} is ready!</strong></p>
                                                 <p style="font-size:12px;color:#333333;margin:0;text-align:center;">Total ${formattedValue}</p>
-                                                <p style="font-size:12px;color:#333333;margin:0;text-align:center;">Link to estimate: <a href="${process.env.URL_FRONT}/estimate-response/${estimateId}/${Buffer.from(email).toString('base64')}">View Estimate</a></p>
+                                                <p style="font-size:12px;color:#333333;margin:15px 0;text-align:center;">
+                                                  <a href="${process.env.URL_FRONT}/estimate-response/${estimateId}/${Buffer.from(email).toString('base64')}" 
+                                                     style="background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;margin-top:10px;font-size:14px;">
+                                                    View Estimate
+                                                  </a>
+                                                </p>
                                             </td>
                                         </tr>
                                     </table>
