@@ -6,7 +6,7 @@ import nodemailer from "nodemailer";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
 export class EstimateController {
 
-  private static async sendStatusUpdateEmail(estimate: any, email: string,  emailClient: string) {
+  private static async sendStatusUpdateEmail(estimate: any, email: string, emailClient: string) {
     const SMTP_CONFIG = require("../../config/smtp");
 
     // Buscar o projeto relacionado ao estimate
@@ -25,10 +25,10 @@ export class EstimateController {
 
     // Obter o avatar da empresa
     const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
-    
+
     // Obter o número do estimate
     const nextNumber = estimate.number;
-    
+
     // Calcular o valor total
     const totalAmount = Number(estimate.totalAmount);
 
@@ -404,6 +404,22 @@ export class EstimateController {
           user: true
         }
       });
+
+      if (project && project?.status_project !== "Accepted" &&
+        project?.status_project !== "Pre-Start" &&
+        project?.status_project !== "In Progress" &&
+        project?.status_project !== "Final walkthrough" &&
+        project?.status_project !== "Finished"
+      ) {
+        await prisma.project.update({
+          where: {
+            id: project.id
+          },
+          data: {
+            status_project: "Accepted"
+          }
+        });
+      }
 
       await EstimateController.sendStatusUpdateEmail(
         estimate,
