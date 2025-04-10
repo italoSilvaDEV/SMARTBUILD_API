@@ -593,7 +593,7 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
     // Gerar um nome de arquivo único
     const uniqueId = uuidv4();
     const fileName = `${clientName.replace(/\s+/g, '_')}_estimate_${uniqueId}.pdf`;
-    const filePath = path.join(__dirname, `../../public/tmp/estimate/${fileName}`);
+    const filePath = path.join(process.cwd(), `public/tmp/estimate/${fileName}`);
     
     // Garantir que o diretório existe
     const dir = path.dirname(filePath);
