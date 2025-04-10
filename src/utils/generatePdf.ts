@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { getPresignedUrl } from './S3/getPresignedUrl';
+import { v4 as uuidv4 } from 'uuid';
 
 interface TableRow {
     id: number;
@@ -27,9 +28,23 @@ interface DataProps {
     email: string;
     webSiteUrl: string;
     name: string;
+    isFromContract?: boolean;
 }
 
 const fontSize = 10;
+
+// Função para sanitizar o texto antes de adicioná-lo ao PDF
+const sanitizeText = (text: string): string => {
+  if (!text) return '';
+  
+  // Substituir tabulações por espaços
+  let sanitized = text.replace(/\t/g, '    ');
+  
+  // Substituir outros caracteres problemáticos
+  sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  
+  return sanitized;
+};
 
 // Função para carregar imagem localmente no backend
 const loadLocalImageAsUint8Array = (filePath: string): Uint8Array => {
@@ -37,9 +52,10 @@ const loadLocalImageAsUint8Array = (filePath: string): Uint8Array => {
     return new Uint8Array(imageBuffer);
 };
 
-export async function generatePdf(data: DataProps, clientName: string): Promise<string> {
+export async function generatePdf(data: DataProps, clientName: string, returnPath: boolean = false): Promise<string> {
     const pdfDoc = await PDFDocument.create();
     const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+    const timesBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
 
     pdfDoc.setTitle(`Estimate`);
     pdfDoc.setAuthor(data.name);
@@ -47,6 +63,36 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     pdfDoc.setKeywords(["Estimate", "Contract"]);
     pdfDoc.setCreator("pdf-lib (https://github.com/Hopding/pdf-lib)");
     pdfDoc.setProducer("pdf-lib");
+
+    // Função para quebrar texto em linhas
+    const wrapText = (
+      text: string,
+      maxWidth: number,
+    ) => {
+      // Sanitizar o texto antes de processá-lo
+      const sanitizedText = sanitizeText(text);
+      
+      const words = sanitizedText.replace(/\n/g, ' \n ').split(' ');
+      let lines: string[] = [];
+      let line = '';
+      for (let word of words) {
+        if (word === '\n') {
+          lines.push(line.trim());
+          line = '';
+          continue;
+        }
+        let testLine = line + word + ' ';
+        let testWidth = timesRomanFont.widthOfTextAtSize(testLine, fontSize);
+        if (testWidth > maxWidth) {
+          lines.push(line.trim());
+          line = word + ' ';
+        } else {
+          line = testLine;
+        }
+      }
+      lines.push(line.trim());
+      return lines;
+    };
 
     // Adicionar página
     const addPage = (): PDFPage => {
@@ -59,42 +105,6 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
     let page = addPage();
 
     // --- LOGO ---
-    // if (data.logoUrl) {
-    //     try {
-    //       const response = await fetch(data.logoUrl);
-    //       if (!response.ok) {
-    //         throw new Error(`Failed to load logo from URL: ${data.logoUrl}`);
-    //       }
-    //       const arrayBuffer = await response.arrayBuffer();
-    //       const buffer = Buffer.from(arrayBuffer);
-    //       // Converter a imagem (que pode estar em WebP) para PNG usando Sharp
-    //       const pngBuffer = await sharp(buffer).png().toBuffer();
-    //       // Embutir a imagem PNG no PDF
-    //       const logoImage = await pdfDoc.embedPng(pngBuffer);
-    //       const imageDims = logoImage.scale(0.5);
-    //       page.drawImage(logoImage, {
-    //         x: 420,
-    //         y: 680,
-    //         width: imageDims.width,
-    //         height: imageDims.height,
-    //       });
-    //     } catch (error) {
-    //       console.error("Error loading logo from URL:", error);
-    //     }
-    //   } else {
-    //     // Fallback: usa a imagem local
-    //     const imagePath = path.join(__dirname, '../img/captura.png');
-    //     const imageBytes = loadLocalImageAsUint8Array(imagePath);
-    //     const localImage = await pdfDoc.embedPng(imageBytes);
-    //     const imageDims = localImage.scale(0.5);
-    //     page.drawImage(localImage, {
-    //       x: 370,
-    //       y: 680,
-    //       width: imageDims.width,
-    //       height: imageDims.height,
-    //     });
-    //   }
-
     if (data.logoUrl) {
         try {
             const response = await fetch(data.logoUrl);
@@ -137,407 +147,466 @@ export async function generatePdf(data: DataProps, clientName: string): Promise<
         }
     }
 
-
-    // Carrega a imagem local
-    // const imagePath = path.join(__dirname, '../img/captura.png');
-    // const imageBytes = loadImageAsUint8Array(imagePath);
-    // const image = await pdfDoc.embedPng(imageBytes);
-    // const imageDims = image.scale(0.5);
-
-    // --- FUNÇÃO DE QUEBRA DE TEXTO (igual ao front) ---
-    const wrapText = (text: string, maxWidth: number): string[] => {
-        const words = text.replace(/\n/g, ' \n ').split(' ');
-        let lines: string[] = [];
-        let line = '';
-        for (let word of words) {
-            if (word === '\n') {
-                lines.push(line.trim());
-                line = '';
-                continue;
-            }
-            const testLine = line + word + ' ';
-            const testWidth = timesRomanFont.widthOfTextAtSize(testLine, fontSize);
-            if (testWidth > maxWidth) {
-                lines.push(line.trim());
-                line = word + ' ';
-            } else {
-                line = testLine;
-            }
-        }
-        lines.push(line.trim());
-        return lines;
-    };
-
-    // Cabeçalho
+    // --- HEADER ---
     const addHeader = (page: PDFPage) => {
-        // Título principal
-        page.drawText("ESTIMATE", {
-            x: 50,
-            y: 750,
-            size: 16,
-            color: rgb(0, 0, 1)
+      page.drawText("ESTIMATE", {
+        x: 50,
+        y: 750,
+        size: 16,
+        color: rgb(0, 0, 1)
+      });
+
+      page.drawText(data.name, {
+        x: 50,
+        y: 735,
+        size: fontSize,
+        color: rgb(0, 0, 0)
+      });
+
+      // Endereço
+      const addressLines = wrapText(data.address, 120);
+      let currentAddressY = 725;
+      addressLines.forEach((line) => {
+        page.drawText(line, {
+          x: 50,
+          y: currentAddressY,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
         });
-        // Nome da empresa (dinâmico)
-        page.drawText(data.name, {
-            x: 50,
-            y: 735,
+        currentAddressY -= fontSize;
+      });
+
+      // Contatos
+      const contactText = [
+        data.email,
+        data.phone,
+        data.webSiteUrl,
+      ].filter(Boolean);
+
+      contactText.forEach((line, index) => {
+        if (line) {
+          page.drawText(line, {
+            x: 230,
+            y: 737 - index * 11,
             size: fontSize,
-            color: rgb(0, 0, 0)
-        });
-        // Endereço
-        const addressLines = wrapText(data.address, 120);
-        let currentAddressY = 725;
-        addressLines.forEach((line) => {
-            page.drawText(line, {
-                x: 50,
-                y: currentAddressY,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-            currentAddressY -= fontSize;
-        });
-        // Contatos dinâmicos (email, phone e website)
-        const contactText = [
-            data.email || "info@rpprocontracting.com",
-            data.phone || "+1 (603) 557-2292",
-            data.webSiteUrl || "http://www.rpprocontracting.com",
-        ];
-        contactText.forEach((line, index) => {
-            page.drawText(line, {
-                x: 230,
-                y: 737 - index * 11,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0)
-            });
-        });
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+          });
+        }
+      });
     };
 
     addHeader(page);
 
-    // Sessão das colunas (nome, endereço, etc.)
+    // --- CAMPOS DE CABEÇALHO COM BACKGROUND ---
+    // Valores iniciais
     const initialY = 630;
     const textInitialY = initialY + 30;
-    const spacing = 6;
+    const spacing = 6; // Espaçamento extra entre cada item
     let currentLocY = textInitialY;
 
+    // Primeiro, processamos os dados para as duas colunas para determinar a altura total necessária.
     const maxItems = Math.max(data.columnText1.length, data.columnText2.length);
     const renderedItems: {
-        wrappedText1: string[];
-        wrappedText2: string[];
-        linesCount: number;
+      wrappedText1: string[];
+      wrappedText2: string[];
+      linesCount: number;
     }[] = [];
 
     for (let i = 0; i < maxItems; i++) {
-        const text1 = data.columnText1[i] || "";
-        const text2 = data.columnText2[i] || "";
-        const wrappedText1 = wrapText(text1, 150); // usa a função wrapText já definida
-        const wrappedText2 = wrapText(text2, 150);
-        const linesCount = Math.max(wrappedText1.length, wrappedText2.length);
-        renderedItems.push({ wrappedText1, wrappedText2, linesCount });
-        // Atualiza o currentY para cada item
-        currentLocY -= linesCount * fontSize + spacing;
+      const text1 = data.columnText1[i] || "";
+      const text2 = data.columnText2[i] || "";
+      const wrappedText1 = wrapText(text1, 150);
+      const wrappedText2 = wrapText(text2, 150);
+      const linesCount = Math.max(wrappedText1.length, wrappedText2.length);
+      renderedItems.push({ wrappedText1, wrappedText2, linesCount });
+      // Atualiza o currentY para cada item
+      currentLocY -= linesCount * fontSize + spacing;
     }
 
     // Agora, definimos o retângulo com altura dinâmica
-    const rectangleTop = textInitialY + 25;      // margem superior (pode ajustar)
-    const rectangleBottom = currentLocY - 0;         // margem inferior
+    const rectangleTop = textInitialY + 25;      // margem superior
+    const rectangleBottom = currentLocY - 0;     // margem inferior
     const rectangleHeight = rectangleTop - rectangleBottom;
 
     page.drawRectangle({
-        x: 0,
-        y: rectangleBottom,
-        width: 600,
-        height: rectangleHeight,
-        color: rgb(0.89, 0.97, 1),
+      x: 0,
+      y: rectangleBottom,
+      width: 600,
+      height: rectangleHeight,
+      color: rgb(0.89, 0.97, 1),
     });
 
     // Agora, renderizamos os textos das duas colunas dentro do retângulo
     let renderY = textInitialY;
     renderedItems.forEach(({ wrappedText1, wrappedText2, linesCount }) => {
-        // Para cada item, desenhamos todas as linhas, garantindo que ambas as colunas fiquem alinhadas
-        for (let i = 0; i < linesCount; i++) {
-            const line1 = wrappedText1[i] || "";
-            const line2 = wrappedText2[i] || "";
-            page.drawText(line1, {
-                x: 50,
-                y: renderY - i * fontSize,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-            page.drawText(line2, {
-                x: 300,
-                y: renderY - i * fontSize + 3,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-        }
-        // Atualiza a posição para o próximo item
-        renderY -= linesCount * fontSize + spacing;
+      // Para cada item, desenhamos todas as linhas, garantindo que ambas as colunas fiquem alinhadas
+      for (let i = 0; i < linesCount; i++) {
+        const line1 = wrappedText1[i] || "";
+        const line2 = wrappedText2[i] || "";
+        page.drawText(line1, {
+          x: 50,
+          y: renderY - i * fontSize,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
+        page.drawText(line2, {
+          x: 300,
+          y: renderY - i * fontSize + 3,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
+      }
+      // Atualiza a posição para o próximo item
+      renderY -= linesCount * fontSize + spacing;
     });
 
-    // Seção da Tabela
+    // --- TABELA DE ITENS ---
     const marginX = 50;
-
     const tableHeaders = [
-        { text: '#', x: 50 },
-        { text: 'Product or Service', x: 80 },
-        { text: 'Description', x: 180 },
-        { text: 'Qty', x: 400 },
-        { text: 'Rate', x: 450 },
-        { text: 'Amount', x: 500 },
+      { text: "Product or Service", x: 50, width: 280 },
+      { text: "Qty", x: 340, width: 50 },
+      { text: "Rate", x: 400, width: 80 },
+      { text: "Amount", x: 500, width: 80 }
     ];
 
     let tableY = 480;
-
-    // Desenha os cabeçalhos da tabela
     tableHeaders.forEach(header => {
-        page.drawText(header.text, {
-            x: header.x,
-            y: tableY,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-        });
+      page.drawText(header.text, {
+        x: header.x,
+        y: tableY,
+        size: fontSize,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+      });
     });
 
-    // Linha horizontal abaixo do cabeçalho
+    // Linha horizontal logo abaixo do cabeçalho
     page.drawLine({
-        start: { x: marginX, y: tableY - spacing / 2 },
-        end: { x: 550, y: tableY - spacing / 2 },
-        thickness: 0.5,
-        color: rgb(0.8, 0.8, 0.8),
+      start: { x: marginX, y: tableY - spacing / 2 },
+      end: { x: 550, y: tableY - spacing / 2 },
+      thickness: 0.5,
+      color: rgb(0.8, 0.8, 0.8),
     });
 
-    // Função para adicionar nova página na tabela
     const addNewPageAndContinueTable = () => {
-        page = addPage();
-        tableY = 750;
+      page = addPage();
+      // addHeader(page);
+      currentY = 700;
+      
+      // Definir um valor padrão para rowHeight nesta função
+      const rowHeight = fontSize + spacing;
+      
+      currentY -= rowHeight + spacing;
     };
 
     let currentY = tableY - spacing - spacing;
-
-    // Renderiza as linhas da tabela
     data.tableData.forEach((row) => {
-        // Quebra de texto para "Product or Service" (80) e "Description" (150)
-        const productLines = wrapText(row.productOrService, 80);
-        const descriptionLines = wrapText(row.description, 150);
-        const maxLines = Math.max(productLines.length, descriptionLines.length, 1);
-        const rowHeight = maxLines * fontSize + spacing;
+      // Calcula quantas linhas são necessárias para as colunas "Product" e "Description"
+      const productServiceLines = wrapText(row.productOrService, 270);
+      const rowHeight = Math.max(productServiceLines.length * fontSize, fontSize) + spacing;
+      const offsetSingle = fontSize / 2;
+      const offsetProductService = (rowHeight - productServiceLines.length * fontSize) / 2;
 
-        // Nova página se não couber
-        if (currentY - rowHeight < 50) {
-            addNewPageAndContinueTable();
-            currentY = 750 - spacing;
-        }
-
-        // Offsets de centralização vertical
-        const offsetSingle = (rowHeight - fontSize) / 2;
-        const offsetProduct = (rowHeight - productLines.length * fontSize) / 2;
-        const offsetDescription = (rowHeight - descriptionLines.length * fontSize) / 2;
-
-        // Coluna "#"
-        page.drawText(row.id.toString(), {
-            x: 50,
-            y: currentY - offsetSingle,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
+      // Desenha as células de linha única
+      productServiceLines.forEach((line, index) => {
+        page.drawText(line, {
+          x: 50,
+          y: currentY - offsetProductService - (index * fontSize),
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
         });
+      });
 
-        // Coluna "Product or Service"
-        productLines.forEach((line, index) => {
-            page.drawText(line, {
-                x: 80,
-                y: currentY - offsetProduct - (index * fontSize),
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-        });
-
-        // Coluna "Description"
-        descriptionLines.forEach((line, index) => {
-            page.drawText(line, {
-                x: 180,
-                y: currentY - offsetDescription - (index * fontSize),
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-        });
-
-        // Colunas "Qty", "Rate", "Amount"
-        page.drawText(row.qty.toString(), {
-            x: 400,
-            y: currentY - offsetSingle,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-        });
-
-        page.drawText(row.rate.toFixed(2), {
-            x: 450,
-            y: currentY - offsetSingle,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-        });
-
-        page.drawText(row.amount.toFixed(2), {
-            x: 500,
-            y: currentY - offsetSingle,
-            size: fontSize,
-            font: timesRomanFont,
-            color: rgb(0, 0, 0),
-        });
-
-        // Linha horizontal para separar
-        page.drawLine({
-            start: { x: marginX, y: currentY - rowHeight + spacing / 2 },
-            end: { x: 550, y: currentY - rowHeight + spacing / 2 },
-            thickness: 0.5,
-            color: rgb(0.8, 0.8, 0.8),
-        });
-
-        currentY -= rowHeight + spacing;
-    });
-
-    // Se não couber no final
-    if (currentY < 50) {
-        addNewPageAndContinueTable();
-        currentY = 750 - spacing;
-    }
-
-    // Sessão do Total
-    page.drawText('Total', {
-        x: 350,
-        y: currentY - 20,
+      page.drawText(row.qty.toString(), {
+        x: 340,
+        y: currentY - offsetSingle,
         size: fontSize,
         font: timesRomanFont,
         color: rgb(0, 0, 0),
+      });
+
+      page.drawText(row.rate.toFixed(2), {
+        x: 400,
+        y: currentY - offsetSingle,
+        size: fontSize,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+      });
+
+      page.drawText(row.amount.toFixed(2), {
+        x: 500,
+        y: currentY - offsetSingle,
+        size: fontSize,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+      });
+
+      // Linha horizontal para separar a linha da próxima
+      page.drawLine({
+        start: { x: marginX, y: currentY - rowHeight + spacing / 2 },
+        end: { x: 550, y: currentY - rowHeight + spacing / 2 },
+        thickness: 0.5,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+
+      currentY -= rowHeight + spacing;
+    });
+
+    // Se ficar pouco espaço, cria nova página
+    if (currentY < 50) {
+      addNewPageAndContinueTable();
+      currentY = 750 - spacing;
+    }
+
+    // --- TOTAL ---
+    page.drawText('Total', {
+      x: 350,
+      y: currentY - 20,
+      size: fontSize,
+      font: timesRomanFont,
+      color: rgb(0, 0, 0),
     });
 
     page.drawText(data.total, {
-        x: 500,
-        y: currentY - 20,
-        size: fontSize,
-        font: timesRomanFont,
-        color: rgb(0, 0, 0),
+      x: 500,
+      y: currentY - 20,
+      size: fontSize,
+      font: timesRomanFont,
+      color: rgb(0, 0, 0),
     });
 
     page.drawLine({
-        start: { x: 350, y: currentY - 30 },
-        end: { x: 550, y: currentY - 30 },
-        thickness: 0.5,
-        color: rgb(0, 0, 0),
+      start: { x: 350, y: currentY - 30 },
+      end: { x: 550, y: currentY - 30 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0),
     });
 
-    // Texto final (nota ao cliente)
-    // --- NOTAS DINÂMICAS ---
-    let notesY = currentY - 60;
+    currentY -= 60;
+    
+    // --- NOTAS ---
+    page.drawText("Notes", {
+      x: 50,
+      y: currentY,
+      size: 14,
+      font: timesRomanFont,
+      color: rgb(0, 0, 0),
+    });
+    currentY -= 20;
+
+    let notesY = currentY;
+    const notesIndent = 10;
     data.notes.forEach((note) => {
-        const noteLines = wrapText(note, 280);
-        noteLines.forEach((line) => {
-            if (notesY < 50) {
-                addNewPageAndContinueTable();
-                notesY = 750 - spacing;
-            }
-            page.drawText(line, {
-                x: 50,
-                y: notesY,
-                size: fontSize - 2,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-            notesY -= fontSize;
+      const noteLines = wrapText(note, 280);
+
+      noteLines.forEach((line) => {
+        if (notesY < 50) {
+          addNewPageAndContinueTable();
+          notesY = 750 - spacing;
+        }
+        // Sanitizar a linha antes de adicioná-la ao PDF
+        const sanitizedLine = sanitizeText(line);
+        
+        page.drawText(sanitizedLine, {
+          x: 50 + notesIndent,
+          y: notesY,
+          size: fontSize - 2,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
         });
-        notesY -= 10; // Espaço extra entre notas
+
+        notesY -= fontSize;
+      });
+
+      // Espaço extra entre notas
+      notesY -= 10;
     });
 
-    // Título das fotos
-    page.drawText("Photo attachment", {
+    // --- DESCRIÇÕES DOS SERVIÇOS ---
+    // Adicionar nova página para as descrições
+    page = addPage();
+    currentY = 750;
+    
+    // Título da seção de descrições
+    page.drawText("Description", {
+      x: 50,
+      y: currentY,
+      size: 14,
+      font: timesRomanFont,
+      color: rgb(0, 0, 0),
+    });
+    currentY -= 30;
+    
+    // Listar cada serviço com sua descrição
+    data.tableData.forEach((row, index) => {
+      if (currentY < 100) {
+        page = addPage();
+        currentY = 750;
+      }
+      
+      // Número e nome do serviço
+      page.drawText(`${index + 1}. ${row.productOrService}`, {
         x: 50,
-        y: notesY - 30,
+        y: currentY,
+        size: fontSize,
+        font: timesBoldFont,
+        color: rgb(0, 0, 0)
+      });
+      currentY -= fontSize + 5;
+      
+      // Descrição do serviço
+      if (row.description && row.description.trim() !== "") {
+        const descriptionLines = wrapText(row.description, 450);
+        
+        descriptionLines.forEach((line) => {
+          if (currentY < 50) {
+            page = addPage();
+            currentY = 750;
+          }
+          
+          // Sanitizar a linha antes de adicioná-la ao PDF
+          const sanitizedLine = sanitizeText(line);
+          
+          page.drawText(sanitizedLine, {
+            x: 70, // Indentado
+            y: currentY,
+            size: fontSize - 1,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+          });
+          
+          currentY -= fontSize;
+        });
+      }
+      
+      // Espaço entre serviços
+      currentY -= 20;
+    });
+
+    // --- FOTOS ---
+    // Verificar se há fotos antes de adicionar a seção
+    const hasPhotos = data.tableData.some(service => 
+      service.photos && service.photos.length > 0
+    );
+
+    if (hasPhotos) {
+      // Após a seção de descrições, sempre iniciar uma nova página para as fotos
+      page = addPage();
+      currentY = 750;
+
+      // Insere o título "photo attachment"
+      page.drawText("Photo attachment", {
+        x: 50,
+        y: currentY,
         size: 12,
         font: timesRomanFont,
         color: rgb(0, 0, 0),
-    });
-    notesY -= 50;
+      });
 
-    // Renderizar fotos de cada serviço
-    for (const service of data.tableData) {
+      currentY -= 20;
+
+      // Agrupar imagens por serviço
+      const imagesByService: { [serviceId: number]: TableRow } = {};
+      data.tableData.forEach(service => {
         if (service.photos && service.photos.length > 0) {
-            // Nome do serviço
-            page.drawText(service.productOrService, {
-                x: 50,
-                y: notesY,
-                size: fontSize,
-                font: timesRomanFont,
-                color: rgb(0, 0, 0),
-            });
-            notesY -= 20;
-
-            const imagesPerRow = 3;
-            const maxImageWidth = 150;
-            const maxImageHeight = 100;
-            const horizontalSpacing = 20;
-
-            for (let i = 0; i < service.photos.length; i++) {
-                if (notesY < 100) {
-                    page = addPage();
-                    notesY = 750;
-                }
-
-                try {
-                    const imageUrl = await getPresignedUrl(service.photos[i].uri);
-                    const response = await fetch(imageUrl);
-                    const imageBuffer = await response.arrayBuffer();
-                    
-                    // Converter para PNG usando sharp
-                    const pngBuffer = await sharp(Buffer.from(imageBuffer))
-                        .png()
-                        .toBuffer();
-                    
-                    const image = await pdfDoc.embedPng(pngBuffer);
-
-                    const scaleFactor = Math.min(
-                        maxImageWidth / image.width,
-                        maxImageHeight / image.height,
-                        1
-                    );
-
-                    const width = image.width * scaleFactor;
-                    const height = image.height * scaleFactor;
-
-                    const xPosition = 50 + (i % imagesPerRow) * (maxImageWidth + horizontalSpacing);
-
-                    if (i > 0 && i % imagesPerRow === 0) {
-                        notesY -= maxImageHeight + 20;
-                    }
-
-                    page.drawImage(image, {
-                        x: xPosition,
-                        y: notesY - height,
-                        width,
-                        height,
-                    });
-
-                } catch (error) {
-                    console.error("Erro ao carregar imagem:", error);
-                }
-            }
-            notesY -= maxImageHeight + 40;
+          imagesByService[service.id] = service;
         }
+      });
+
+      // Renderizar imagens por serviço
+      for (const serviceId in imagesByService) {
+        const service = imagesByService[serviceId];
+        
+        // Adicionar o nome do serviço
+        page.drawText(service.productOrService, {
+          x: 50 + notesIndent,
+          y: currentY,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
+
+        currentY -= 20;
+
+        // Configurações comuns para imagens
+        const imagesPerRow = 3;
+        const maxImageWidth = 150;
+        const maxImageHeight = 100;
+        const horizontalSpacing = 20;
+
+        for (let i = 0; i < (service.photos?.length || 0); i++) {
+          if (currentY < 100) {
+            page = addPage();
+            notesY = 750;
+          }
+
+          try {
+            const imageUrl = await getPresignedUrl(service.photos![i].uri);
+            const response = await fetch(imageUrl);
+            const imageBuffer = await response.arrayBuffer();
+            
+            // Converter para PNG usando sharp
+            const pngBuffer = await sharp(Buffer.from(imageBuffer))
+                .png()
+                .toBuffer();
+            
+            const image = await pdfDoc.embedPng(pngBuffer);
+
+            const scaleFactor = Math.min(
+                maxImageWidth / image.width,
+                maxImageHeight / image.height,
+                1
+            );
+
+            const width = image.width * scaleFactor;
+            const height = image.height * scaleFactor;
+
+            const xPosition = 50 + (i % imagesPerRow) * (maxImageWidth + horizontalSpacing);
+
+            if (i > 0 && i % imagesPerRow === 0) {
+                currentY -= maxImageHeight + 20;
+            }
+
+            page.drawImage(image, {
+                x: xPosition + notesIndent,
+                y: currentY - height,
+                width,
+                height,
+            });
+
+          } catch (error) {
+            console.error("Erro ao carregar imagem:", error);
+          }
+        }
+        currentY -= maxImageHeight + 40;
+      }
     }
 
-    // Salvar o PDF na pasta temporária
+    // Salvar o PDF
     const pdfBytes = await pdfDoc.save();
-    const filePath = path.join(__dirname, `../../public/tmp/estimate/${clientName.replace(/\s+/g, '_')}_estimate.pdf`);
+    
+    // Gerar um nome de arquivo único
+    const uniqueId = uuidv4();
+    const fileName = `${clientName.replace(/\s+/g, '_')}_estimate_${uniqueId}.pdf`;
+    const filePath = path.join(__dirname, `../../public/tmp/estimate/${fileName}`);
+    
+    // Garantir que o diretório existe
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
 
+    // Salvar o arquivo
     fs.writeFileSync(filePath, pdfBytes);
-    return filePath;
+    
+    if (returnPath) {
+        return filePath;
+    } else {
+        return `/tmp/estimate/${fileName}`;
+    }
 }
