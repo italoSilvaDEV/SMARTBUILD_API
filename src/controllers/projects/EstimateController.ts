@@ -4,6 +4,7 @@ import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
+
 export class EstimateController {
 
   private static async sendStatusUpdateEmail(estimate: any, email: string, emailClient: string) {
@@ -75,6 +76,32 @@ export class EstimateController {
   // Função utilitária para registrar eventos na timeline
   private static async addTimelineEvent(estimateId: string, description: string) {
     try {
+      const estimate = await prisma.estimate.findUnique({
+        where: { id: estimateId },
+        select: {
+          number: true,
+          project: {
+            select: {
+              contract_number: true,
+              user: {
+                select: {
+                  phone: true
+                }
+              }
+            }
+          }
+        }
+      });
+      
+//       if (estimate?.project?.user?.phone) {
+//         const text = `📩 *SmartBuild Notification*
+// Estimate ${estimate?.project?.contract_number || ''}/${estimate?.number || ''} 
+// ${description}`;
+//         // Formatar o telefone removendo caracteres não numéricos e garantindo formato correto
+//         const formattedPhone = estimate?.project?.user?.phone.replace(/\D/g, '');
+//         await EstimateController.sendWebhookNotification(formattedPhone, text);
+//       }
+
       return await prisma.estimateTimeline.create({
         data: {
           description,
@@ -85,6 +112,29 @@ export class EstimateController {
       });
     } catch (error) {
       console.error("Error adding timeline event:", error);
+      // Não lançamos o erro para não interromper o fluxo principal
+    }
+  }
+
+  private static async sendWebhookNotification(number: string, text: string) {
+    try {
+      const response = await fetch('https://n8n.codelabsusa.com/webhook/d29c40a4-a974-4000-b1ea-cef981a72646', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ number, text }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Webhook notification sent successfully:', data);
+      return data;
+    } catch (error) {
+      console.error('Error sending webhook notification:', error);
       // Não lançamos o erro para não interromper o fluxo principal
     }
   }
