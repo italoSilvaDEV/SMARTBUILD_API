@@ -178,4 +178,6 @@ projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies)
 
 projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.generateAndSendPdf);
 
+projectRoutes.get("/project/generate-pdf-estimate/:id", projectController.generatePdfEstimate);
+
 

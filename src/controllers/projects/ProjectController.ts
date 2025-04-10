@@ -1783,4 +1783,168 @@ export class ProjectController {
       });
     }
   }
+
+  
+  async generatePdfEstimate(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Buscar todas as informações do projeto com base no ID
+      const project = await prisma.project.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          serviceProject: {
+            include: {
+              photos: true // Incluindo as fotos dos serviços
+            }
+          },
+          company: {
+            select: {
+              name: true,
+              avatar: true,
+              address: true,
+              district: true,
+              numberHouse: true,
+              complement: true,
+              email: true,
+              phone: true,
+              webSiteUrl: true,
+              NotesContrac: {
+                orderBy: { updatedAt: "asc" },
+                select: {
+                  id: true,
+                  notes: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.client) {
+        return res.status(400).json({ error: "Client information is missing" });
+      }
+
+      // Transformar os dados do projeto no formato esperado por generatePdf
+      const tableData = project.serviceProject.map((service, index) => {
+        const rate = Number(service.price) * Number(service.hours);
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: service.name,
+          description: service.description,
+          qty: Number(service.hours),
+          rate,
+          amount: rate,
+          photos: service.photos.map(photo => ({
+            uri: photo.uri
+          }))
+        };
+      });
+
+      const total = `$${tableData
+        .reduce((sum, row) => sum + row.amount, 0)
+        .toFixed(2)}`;
+
+      const columnText1 = [
+        project.client?.name || "",
+        "Bill to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      const columnText2 = [
+        "",
+        "Ship to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      // --- Buscar os dados da empresa (para os dados do cabeçalho) ---
+      // Assumindo que o projeto possua um campo company_id (relacionado à empresa que gera o contrato)
+      const companyId = project.company_id;
+      if (!companyId) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const companyData = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: {
+          name: true,
+          avatar: true,
+          address: true,
+          district: true,
+          numberHouse: true,
+          complement: true,
+          email: true,
+          phone: true,
+          webSiteUrl: true,
+          NotesContrac: {
+            orderBy: { updatedAt: "asc" },
+            select: {
+              id: true,
+              notes: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      if (!companyData) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      
+      // Converter o avatar para um presigned URL, se existir
+      const logoUrl = companyData.avatar
+        ? await getPresignedUrl(companyData.avatar)
+        : null;
+
+      // Montar o endereço completo
+      const fullAddress = `${companyData.address}`;
+
+      // Sanitizar as notas antes de passá-las para o PDF
+      const sanitizedNotes = companyData.NotesContrac.map(note => {
+        // Substituir tabulações por espaços
+        return (note.notes || "").replace(/\t/g, '    ');
+      }) || [];
+
+      // Preparar o objeto de dados a ser enviado para a função generatePdf
+      const data = {
+        tableData,
+        total, 
+        columnText1,
+        columnText2,
+        address: fullAddress || "",
+        logoUrl: logoUrl || undefined,
+        notes: sanitizedNotes,
+        phone: companyData.phone || "",
+        email: companyData.email || "",
+        webSiteUrl: companyData.webSiteUrl || "",
+        name: companyData.name,
+      };
+
+      // Gerar o PDF e obter o caminho relativo
+      const pdfRelativePath = await generatePdf(data, project.client.name);
+      
+      // Construir a URL completa para o PDF
+      const pdfUrl = `${process.env.URL_API}${pdfRelativePath}`;
+
+      return res.status(200).json({
+        message: "PDF gerado com sucesso",
+        pdfUrl: pdfUrl
+      });
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Erro interno do servidor",
+      });
+    }
+  }
 }
