@@ -241,7 +241,7 @@ export class EstimateController {
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: project.client?.email || '',
-        subject: "Smart Build - Estimate",
+        subject: project.company?.name + " - Estimate",
         html: estimateEmail(
           project.client?.name || '',
           companyAvatar,
