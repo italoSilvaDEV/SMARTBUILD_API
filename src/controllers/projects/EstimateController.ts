@@ -726,7 +726,7 @@ export class EstimateController {
           const mailOptions = {
             from: SMTP_CONFIG.user,
             to: email,
-            subject: "Smart Build - Estimate Reminder",
+            subject: estimate.project?.company?.name + " - Estimate Reminder",
             html: estimateEmail(
               estimate.project?.client?.name || '',
               companyAvatar,

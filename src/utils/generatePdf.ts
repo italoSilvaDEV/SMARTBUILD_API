@@ -29,6 +29,8 @@ interface DataProps {
     webSiteUrl: string;
     name: string;
     isFromContract?: boolean;
+    hideRateColumns?: boolean;
+    documentType?: 'ESTIMATE' | 'INVOICE'; // Novo parâmetro para controlar o título
 }
 
 const fontSize = 10;
@@ -149,7 +151,10 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
 
     // --- HEADER ---
     const addHeader = (page: PDFPage) => {
-      page.drawText("ESTIMATE", {
+      // Usar o parâmetro documentType para determinar o título, com fallback para "ESTIMATE"
+      const documentTitle = data.documentType || "ESTIMATE";
+      
+      page.drawText(documentTitle, {
         x: 50,
         y: 750,
         size: 16,
@@ -266,12 +271,19 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
 
     // --- TABELA DE ITENS ---
     const marginX = 50;
-    const tableHeaders = [
-      { text: "Product or Service", x: 50, width: 280 },
-      { text: "Qty", x: 340, width: 50 },
-      { text: "Rate", x: 400, width: 80 },
-      { text: "Amount", x: 500, width: 80 }
-    ];
+    
+    // Definir os cabeçalhos da tabela com base no parâmetro hideRateColumns
+    const tableHeaders = data.hideRateColumns 
+      ? [
+          { text: "Product or Service", x: 50, width: 350 },
+          { text: "Amount", x: 500, width: 80 }
+        ]
+      : [
+          { text: "Product or Service", x: 50, width: 280 },
+          { text: "Qty", x: 340, width: 50 },
+          { text: "Rate", x: 400, width: 80 },
+          { text: "Amount", x: 500, width: 80 }
+        ];
 
     let tableY = 480;
     tableHeaders.forEach(header => {
@@ -306,7 +318,7 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
     let currentY = tableY - spacing - spacing;
     data.tableData.forEach((row) => {
       // Calcula quantas linhas são necessárias para as colunas "Product" e "Description"
-      const productServiceLines = wrapText(row.productOrService, 270);
+      const productServiceLines = wrapText(row.productOrService, data.hideRateColumns ? 340 : 270);
       const rowHeight = Math.max(productServiceLines.length * fontSize, fontSize) + spacing;
       const offsetSingle = fontSize / 2;
       const offsetProductService = (rowHeight - productServiceLines.length * fontSize) / 2;
@@ -322,21 +334,24 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
         });
       });
 
-      page.drawText(row.qty.toString(), {
-        x: 340,
-        y: currentY - offsetSingle,
-        size: fontSize,
-        font: timesRomanFont,
-        color: rgb(0, 0, 0),
-      });
+      // Desenhar as colunas Qty e Rate apenas se não estiver ocultando
+      if (!data.hideRateColumns) {
+        page.drawText(row.qty.toString(), {
+          x: 340,
+          y: currentY - offsetSingle,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
 
-      page.drawText(row.rate.toFixed(2), {
-        x: 400,
-        y: currentY - offsetSingle,
-        size: fontSize,
-        font: timesRomanFont,
-        color: rgb(0, 0, 0),
-      });
+        page.drawText(row.rate.toFixed(2), {
+          x: 400,
+          y: currentY - offsetSingle,
+          size: fontSize,
+          font: timesRomanFont,
+          color: rgb(0, 0, 0),
+        });
+      }
 
       page.drawText(row.amount.toFixed(2), {
         x: 500,

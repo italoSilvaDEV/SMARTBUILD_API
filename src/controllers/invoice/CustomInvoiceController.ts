@@ -2,6 +2,9 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import fs from "fs";
+import { generatePdf } from "../../utils/generatePdf";
+
 
 interface InvoiceLineItem {
   name: string;
@@ -202,12 +205,11 @@ export class CustomInvoiceController {
     const { userId } = req.body;
 
     try {
-      // Verificar se o userId foi fornecido
       if (!userId) {
         return res.status(400).json({ error: "User ID is required" });
       }
 
-      // Buscar a fatura com todas as informações necessárias
+      // Buscar a fatura com todas as informações necessárias, incluindo fotos dos serviços
       const invoice = await prisma.invoice.findFirst({
         where: { 
           externalInvoiceId: invoiceId,
@@ -217,7 +219,12 @@ export class CustomInvoiceController {
           project: {
             include: {
               client: true,
-              company: true
+              company: true,
+              serviceProject: {
+                include: {
+                  photos: true // Incluir as fotos dos serviços do projeto
+                }
+              }
             }
           },
           InvoiceItems: true
@@ -268,12 +275,95 @@ export class CustomInvoiceController {
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
 
-      // Enviar o email
+      // Criar um mapa de serviços para facilitar a associação com os itens da fatura
+      const serviceMap = new Map();
+      invoice.project.serviceProject.forEach(service => {
+        serviceMap.set(service.name, service);
+      });
+
+      // Transformar os itens da fatura no formato esperado por generatePdf
+      const tableData = invoice.InvoiceItems.map((item, index) => {
+        // Tentar encontrar o serviço correspondente pelo nome
+        const matchingService = serviceMap.get(item.name);
+        
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: item.name,
+          description: item.description || "",
+          qty: Number(item.quantity),
+          rate: Number(item.price),
+          amount: Number(item.totalAmount),
+          photos: matchingService?.photos?.map((photo: { uri: string }) => ({
+            uri: photo.uri
+          })) || [] // Usar as fotos do serviço correspondente, se existir
+        };
+      });
+
+      const total = `$${Number(invoice.totalAmount).toFixed(2)}`;
+
+      const columnText1 = [
+        invoice.project.client?.name || "",
+        "Bill to",
+        invoice.project.client?.name || "",
+        invoice.project.client?.location || "",
+        invoice.project.client?.city_and_state || "",
+      ];
+
+      const columnText2 = [
+        "",
+        "Ship to",
+        invoice.project.client?.name || "",
+        invoice.project.client?.location || "",
+        invoice.project.client?.city_and_state || "",
+      ];
+
+      // Buscar notas da empresa
+      const companyNotes = await prisma.contractNotes.findMany({
+        where: { company_id: company?.id },
+        orderBy: { updatedAt: "asc" }
+      });
+
+      // Sanitizar as notas
+      const sanitizedNotes = companyNotes.map(note => {
+        return (note.notes || "").replace(/\t/g, '    ');
+      }) || [];
+
+      // Montar o endereço completo
+      const fullAddress = company?.address || "";
+
+      // Preparar o objeto de dados para o PDF
+      const pdfData = {
+        tableData,
+        total,
+        columnText1,
+        columnText2,
+        address: fullAddress,
+        logoUrl: urlLogo,
+        notes: sanitizedNotes,
+        phone: company?.phone || "",
+        email: company?.email || "",
+        webSiteUrl: company?.webSiteUrl || "",
+        name: company?.name || "",
+        hideRateColumns: true,
+        documentType: 'INVOICE' as 'INVOICE'
+      };
+
+      // Gerar o PDF
+      const pdfPath = await generatePdf(pdfData, clientName, true);
+
+      // Enviar o email com o PDF anexado
       await transporter.sendMail({
         from: SMTP_CONFIG.user,
         to: invoice.project.client.email,
         subject: `Invoice #${invoiceCode} - ${companyName}`,
         html: emailTemplate,
+        attachments: [
+          {
+            filename: `invoice_${invoiceCode}.pdf`,
+            path: pdfPath,
+          },
+        ],
       });
 
       // Registrar o envio no histórico
@@ -284,6 +374,11 @@ export class CustomInvoiceController {
           user_id: userId
         }
       });
+
+      // Remover o PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 5000);
 
       return res.status(200).json({
         message: "Invoice sent successfully",
