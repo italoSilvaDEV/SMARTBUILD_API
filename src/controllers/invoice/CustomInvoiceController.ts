@@ -39,7 +39,6 @@ export class CustomInvoiceController {
 
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(dueDate) : new Date();
-      dueDateObj.setDate(dueDateObj.getDate() + 30); // 30 dias por padrão se não especificado
 
       // Calcular o valor total com base nos serviços e coeficiente
       let totalAmount = 0;
@@ -200,6 +199,7 @@ export class CustomInvoiceController {
     }
   }
 
+  // enviar o pdf para o cliente atravez de email
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId } = req.body;
@@ -262,7 +262,7 @@ export class CustomInvoiceController {
 
       // Obter o logo da empresa
       const company = invoice.project.company;
-      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
@@ -302,21 +302,52 @@ export class CustomInvoiceController {
 
       const total = `$${Number(invoice.totalAmount).toFixed(2)}`;
 
+      // Preparar os dados das colunas
       const columnText1 = [
-        invoice.project.client?.name || "",
-        "Bill to",
-        invoice.project.client?.name || "",
-        invoice.project.client?.location || "",
-        invoice.project.client?.city_and_state || "",
+        clientName,
       ];
 
       const columnText2 = [
         "",
-        "Ship to",
-        invoice.project.client?.name || "",
-        invoice.project.client?.location || "",
-        invoice.project.client?.city_and_state || "",
       ];
+
+      // Adicionar a data de vencimento apenas se for uma fatura e tiver data de vencimento
+      if (invoice.dueDate) {
+        // Formatar a data de vencimento ajustando o fuso horário
+        const dueDate = new Date(invoice.dueDate);
+        
+        // Ajustar para o fuso horário local para evitar problemas com UTC
+        const dueDateUTC = new Date(dueDate.getTime() + dueDate.getTimezoneOffset() * 60000);
+        
+        const formattedDueDate = dueDateUTC.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          timeZone: 'UTC' // Forçar UTC para evitar ajustes de fuso horário
+        });
+        
+        columnText1.push(`Due Date: ${formattedDueDate}`);
+        // Adicionar um espaço vazio correspondente em columnText2 para manter o alinhamento
+        columnText2.push("");
+      }
+
+      // Continuar com o restante dos dados das colunas
+      columnText1.push(
+        "Bill to",
+        clientName,
+        invoice.project.client.location || "",
+        invoice.project.client.city_and_state || "",
+      );
+
+      columnText2.push(
+        "Ship to",
+        clientName,
+        invoice.project.client.location || "",
+        invoice.project.client.city_and_state || "",
+      );
+
+      // Montar o endereço completo
+      const fullAddress = company?.address || "";
 
       // Buscar notas da empresa
       const companyNotes = await prisma.contractNotes.findMany({
@@ -324,13 +355,8 @@ export class CustomInvoiceController {
         orderBy: { updatedAt: "asc" }
       });
 
-      // Sanitizar as notas
-      const sanitizedNotes = companyNotes.map(note => {
-        return (note.notes || "").replace(/\t/g, '    ');
-      }) || [];
-
-      // Montar o endereço completo
-      const fullAddress = company?.address || "";
+      // Preparar as notas
+      const sanitizedNotes = companyNotes.map(note => note.notes || "") || [];
 
       // Preparar o objeto de dados para o PDF
       const pdfData = {
@@ -339,7 +365,7 @@ export class CustomInvoiceController {
         columnText1,
         columnText2,
         address: fullAddress,
-        logoUrl: urlLogo,
+        logoUrl: urlLogo || undefined,
         notes: sanitizedNotes,
         phone: company?.phone || "",
         email: company?.email || "",
@@ -460,6 +486,182 @@ export class CustomInvoiceController {
       });
     } catch (error: any) {
       console.error("Error cancelling custom invoice:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
+  // gera o pdf para os botoes donwload de pdf em listagem geral de invoice e tab invoice
+  async generateInvoicePdf(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      // Buscar a fatura com todas as informações necessárias
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          externalInvoiceId: invoiceId,
+          // invoiceType: "custom"
+        },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: {
+                include: {
+                  NotesContrac: true // Incluir a relação NotesContrac
+                }
+              },
+              serviceProject: {
+                include: {
+                  photos: true
+                }
+              }
+            }
+          },
+          InvoiceItems: true
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      // Verificar se o projeto e o cliente existem
+      if (!invoice.project || !invoice.project.client) {
+        return res.status(400).json({ error: "Project or client information is missing" });
+      }
+
+      // Criar um mapa de serviços para facilitar a associação com os itens da fatura
+      const serviceMap = new Map();
+      invoice.project.serviceProject.forEach(service => {
+        serviceMap.set(service.name, service);
+      });
+
+      // Transformar os itens da fatura no formato esperado por generatePdf
+      const tableData = invoice.InvoiceItems.map((item, index) => {
+        // Tentar encontrar o serviço correspondente pelo nome
+        const matchingService = serviceMap.get(item.name);
+        
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: item.name,
+          description: item.description || "",
+          qty: Number(item.quantity),
+          rate: Number(item.price),
+          amount: Number(item.totalAmount),
+          photos: matchingService?.photos?.map((photo: { uri: string }) => ({
+            uri: photo.uri
+          })) || [] // Usar as fotos do serviço correspondente, se existir
+        };
+      });
+
+      // Calcular o total
+      const total = `$${invoice.totalAmount}`;
+
+      // Preparar os dados para o PDF
+      const clientName = invoice.project.client.name;
+      const invoiceCode = invoice.externalInvoiceId;
+      const invoiceAmount = `$${Number(invoice.totalAmount).toFixed(2)}`;
+      const company = invoice.project.company;
+      const companyName = company?.name || "";
+      const phone = company?.phone || "";
+
+      // Obter o logo da empresa
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+
+      // Preparar os dados das colunas
+      const columnText1 = [
+        clientName,
+      ];
+
+      const columnText2 = [
+        "",
+      ];
+
+      // Adicionar a data de vencimento apenas se for uma fatura e tiver data de vencimento
+      if (invoice.dueDate) {
+        // Formatar a data de vencimento ajustando o fuso horário
+        const dueDate = new Date(invoice.dueDate);
+        
+        // Ajustar para o fuso horário local para evitar problemas com UTC
+        const dueDateUTC = new Date(dueDate.getTime() + dueDate.getTimezoneOffset() * 60000);
+        
+        const formattedDueDate = dueDateUTC.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          timeZone: 'UTC' // Forçar UTC para evitar ajustes de fuso horário
+        });
+        
+        columnText1.push(`Due Date: ${formattedDueDate}`);
+        // Adicionar um espaço vazio correspondente em columnText2 para manter o alinhamento
+        columnText2.push("");
+      }
+
+      // Continuar com o restante dos dados das colunas
+      columnText1.push(
+        "Bill to",
+        clientName,
+        invoice.project.client.location || "",
+        invoice.project.client.city_and_state || "",
+      );
+
+      columnText2.push(
+        "Ship to",
+        clientName,
+        invoice.project.client.location || "",
+        invoice.project.client.city_and_state || "",
+      );
+
+      // Montar o endereço completo
+      const fullAddress = company?.address || "";
+
+      // Buscar notas da empresa
+      const companyNotes = await prisma.contractNotes.findMany({
+        where: { company_id: company?.id },
+        orderBy: { updatedAt: "asc" }
+      });
+
+      // Preparar as notas
+      const sanitizedNotes = companyNotes.map(note => note.notes || "") || [];
+
+      // Preparar o objeto de dados para o PDF
+      const pdfData = {
+        tableData,
+        total,
+        columnText1,
+        columnText2,
+        address: fullAddress,
+        logoUrl: urlLogo || undefined,
+        notes: sanitizedNotes,
+        phone: company?.phone || "",
+        email: company?.email || "",
+        webSiteUrl: company?.webSiteUrl || "",
+        name: company?.name || "",
+        hideRateColumns: true,
+        documentType: 'INVOICE' as 'INVOICE'
+      };
+
+      // Gerar o PDF
+      const pdfPath = await generatePdf(pdfData, clientName, true);
+
+      // Ler o arquivo PDF
+      const pdfBuffer = fs.readFileSync(pdfPath);
+
+      // Configurar os headers para download do PDF
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="invoice_${invoiceCode}.pdf"`);
+      
+      // Enviar o PDF como resposta
+      res.send(pdfBuffer);
+
+      // Remover o arquivo PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 1000);
+
+    } catch (error) {
+      console.error("Error generating invoice PDF:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
