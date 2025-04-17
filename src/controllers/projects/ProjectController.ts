@@ -1619,8 +1619,6 @@ export class ProjectController {
     }
   }
 
- 
-
   async generateAndSendPdf(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -2013,7 +2011,7 @@ export class ProjectController {
     }
   }
 
-  //gera pdf de estimativa para o cliente
+  //gera pdf no botão download e dentro de view details no fluxo do link de estimate enviado para o client
   async generatePdfEstimate(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -2144,6 +2142,8 @@ export class ProjectController {
         return (note.notes || "").replace(/\t/g, '    ');
       }) || [];
 
+      
+
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
@@ -2159,16 +2159,25 @@ export class ProjectController {
         name: companyData.name,
       };
 
-      // Gerar o PDF e obter o caminho relativo
-      const pdfRelativePath = await generatePdf(data, project.client.name);
-      
-      // Construir a URL completa para o PDF
-      const pdfUrl = `${process.env.URL_API}${pdfRelativePath}`;
+      // para baixar o pdf sem deixar o arquivo salvo no servidor
+      const pdfPath = await generatePdf(data, project.client.name, true);
 
-      return res.status(200).json({
-        message: "PDF gerado com sucesso",
-        pdfUrl: pdfUrl
-      });
+      // Ler o arquivo PDF
+      const pdfBuffer = fs.readFileSync(pdfPath);
+ 
+      // Configurar os headers para download do PDF
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="estimate_${project.contract_number || project.id}.pdf"`);
+      
+      // Enviar o PDF como resposta
+      res.send(pdfBuffer);
+ 
+      // Remover o arquivo PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 1000);
+
+
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
       return res.status(500).json({
