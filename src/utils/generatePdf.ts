@@ -30,7 +30,7 @@ interface DataProps {
     name: string;
     isFromContract?: boolean;
     hideRateColumns?: boolean;
-    documentType?: 'ESTIMATE' | 'INVOICE'; // Novo parâmetro para controlar o título
+    documentType?: 'ESTIMATE' | 'INVOICE';
 }
 
 const fontSize = 10;

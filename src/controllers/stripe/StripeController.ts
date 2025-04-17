@@ -553,7 +553,7 @@ export class StripeController {
                     {
                         project: {
                             is: {
-                                client: { 
+                                client: {
                                     is: {
                                         name: {
                                             contains: search,
@@ -580,10 +580,17 @@ export class StripeController {
                     InvoiceSendHistory: {
                         orderBy: { sentAt: "desc" }
                     },
+                    InvoiceItems: true, // Incluir os itens da fatura
                     project: {
                         include: {
                             client: {
-                                select: { id: true, name: true, email: true }
+                                select: { 
+                                    id: true, 
+                                    name: true, 
+                                    email: true,
+                                    phone: true,
+                                    location: true,
+                                }
                             }
                         }
                     },
@@ -722,10 +729,17 @@ export class StripeController {
                 include: {
                     company: true,
                     InvoiceSendHistory: { orderBy: { sentAt: "desc" } },
+                    InvoiceItems: true, 
                     project: {
                         include: {
                             client: {
-                                select: { id: true, name: true, email: true }
+                                select: { 
+                                    id: true, 
+                                    name: true, 
+                                    email: true,
+                                    phone: true,
+                                    location: true,
+                                }
                             }
                         }
                     },
