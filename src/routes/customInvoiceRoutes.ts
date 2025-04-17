@@ -17,4 +17,7 @@ customInvoiceRoutes.post("/custom/invoice/:invoiceId/send", checkToken, customIn
 // Cancelar invoice
 customInvoiceRoutes.post("/custom/invoice/:invoiceId/cancel", checkToken, customInvoiceController.cancelInvoice);
 
+// Adicionar esta nova rota
+customInvoiceRoutes.get("/custom/invoice/:invoiceId/pdf", checkToken, customInvoiceController.generateInvoicePdf);
+
 export { customInvoiceRoutes }; 

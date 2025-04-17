@@ -138,46 +138,46 @@ export class ProjectController {
 
       const projectsWithCalculations = await Promise.all(
         projects.map(async (project) => {
-          // Calcula o custo total do trabalho
-          const costofwork = project.invoiceCostProject.reduce(
-            (total, invoice) => {
-              return (
-                total +
-                invoice.costProject.reduce((subtotal, cost) => {
-                  return subtotal + Number(cost.price) * Number(cost.amout);
-                }, 0)
-              );
-            },
-            0
-          );
+        // Calcula o custo total do trabalho
+        const costofwork = project.invoiceCostProject.reduce(
+          (total, invoice) => {
+            return (
+              total +
+              invoice.costProject.reduce((subtotal, cost) => {
+                return subtotal + Number(cost.price) * Number(cost.amout);
+              }, 0)
+            );
+          },
+          0
+        );
 
-          // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
-          let totalCostOfServiceHours = 0;
-          let totalNumberOfHoursWorked = 0;
+        // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
+        let totalCostOfServiceHours = 0;
+        let totalNumberOfHoursWorked = 0;
 
-          const uniqueUsers = new Set();
+        const uniqueUsers = new Set();
 
-          project.workedHours.forEach((workedHour) => {
-            if (workedHour.amount_of_hours !== null) {
-              totalCostOfServiceHours +=
-                Number(workedHour.amount_of_hours) *
-                Number(workedHour.hourly_price);
-              totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-            } else {
-              totalCostOfServiceHours += Number(workedHour.hourly_price);
-            }
-            uniqueUsers.add(workedHour.name_user);
-          });
+        project.workedHours.forEach((workedHour) => {
+          if (workedHour.amount_of_hours !== null) {
+            totalCostOfServiceHours +=
+              Number(workedHour.amount_of_hours) *
+              Number(workedHour.hourly_price);
+            totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+          } else {
+            totalCostOfServiceHours += Number(workedHour.hourly_price);
+          }
+          uniqueUsers.add(workedHour.name_user);
+        });
 
-          const workersOnThisProject = uniqueUsers.size;
+        const workersOnThisProject = uniqueUsers.size;
 
-          // Calcula o somatório de hours * price
-          const priceProject = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price);
-          }, 0);
+        // Calcula o somatório de hours * price
+        const priceProject = project.serviceProject.reduce((total, service) => {
+          return total + Number(service.hours) * Number(service.price);
+        }, 0);
 
-          // Remove o array workedHours do projeto
-          const { workedHours, ...projectWithoutWorkedHours } = project;
+        // Remove o array workedHours do projeto
+        const { workedHours, ...projectWithoutWorkedHours } = project;
 
           // Buscar os estimates relacionados a este projeto
           const estimates = await prisma.estimate.findMany({
@@ -209,19 +209,19 @@ export class ProjectController {
             }
           });
 
-          return {
-            ...projectWithoutWorkedHours,
-            costofwork,
-            cost_of_service_hours: totalCostOfServiceHours,
-            total_number_of_hours_worked: totalNumberOfHoursWorked,
-            workers_on_this_project: workersOnThisProject,
-            price_project: priceProject,
-            serviceProject: project.serviceProject.map((service) => ({
-              ...service,
-              stages: service.stages,
-            })),
+        return {
+          ...projectWithoutWorkedHours,
+          costofwork,
+          cost_of_service_hours: totalCostOfServiceHours,
+          total_number_of_hours_worked: totalNumberOfHoursWorked,
+          workers_on_this_project: workersOnThisProject,
+          price_project: priceProject,
+          serviceProject: project.serviceProject.map((service) => ({
+            ...service,
+            stages: service.stages,
+          })),
             estimates: estimates
-          };
+        };
         })
       );
 
@@ -252,7 +252,7 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: { 
+          serviceProject: {
             include: {
               UserServiceProject: {
                 select: {
@@ -766,7 +766,7 @@ export class ProjectController {
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
 
-    try { 
+    try {
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -1869,7 +1869,7 @@ export class ProjectController {
           id: index + 1,
           date: "",
           productOrService: service.name,
-          description: service.description, 
+          description: service.description,
           qty: Number(service.hours),
           rate,
           amount: rate,
