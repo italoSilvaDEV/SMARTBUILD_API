@@ -29,8 +29,8 @@ app.use(router)
 app.use(express.static('public'));
 
 (async () => {
-  // await setupWebhook(); 
-  setupAttendanceJobs(); 
+  await setupWebhook(); 
+  // setupAttendanceJobs(); 
 })();
 
 app.listen(4003, () =>
