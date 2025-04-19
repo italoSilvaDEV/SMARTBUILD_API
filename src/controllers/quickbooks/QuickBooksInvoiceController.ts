@@ -13,7 +13,7 @@ interface InvoiceLineItem {
 export class QuickBooksInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, dueDate, userId, lineItems, coefficientPerfentage } = req.body;
+    const { description, dueDate, userId, coefficientPerfentage, services } = req.body;
 
     try {
       // Buscar o projeto
@@ -21,7 +21,6 @@ export class QuickBooksInvoiceController {
         where: { id: projectId },
         include: {
           client: true,
-          serviceProject: true,
           company: true,
         },
       });
@@ -97,14 +96,25 @@ export class QuickBooksInvoiceController {
       }
 
       // Preparar os itens da fatura com logs detalhados
-      console.log("Serviços do projeto:", project.serviceProject);
+      console.log("Serviços do projeto:", services);
       console.log("Coeficiente recebido:", coefficientPerfentage);
 
       const processedLineItems = [];
 
-      for (const service of project.serviceProject) {
+      for (const service of services) {
         const itemName = service.name;
-        const amount = Number(service.price) * Number(service.hours) * (coefficientPerfentage || 1);
+        const quantity = Number(service.quantity) || 0;
+        const price = Number(service.price) || 0;
+        const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
+        
+        // Usar o total fornecido ou calcular se não estiver disponível
+        const serviceAmount = service.total || (quantity * price);
+        const adjustedAmount = serviceAmount * validCoefficient;
+        
+        if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+          console.warn(`⚠️ Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
+          continue;
+        }
         
         try {
           // Verificar se o item existe no QuickBooks
@@ -134,7 +144,7 @@ export class QuickBooksInvoiceController {
                 value: "1"  // Usar o ID 1 que geralmente é o item de serviços padrão
               },
               Type: "Service",
-              UnitPrice: Number(service.price)
+              UnitPrice: price
             };
             
             const createItemResponse = await axios.post(
@@ -156,14 +166,14 @@ export class QuickBooksInvoiceController {
           // Adicionar o item à lista de itens da fatura
           processedLineItems.push({
             DetailType: "SalesItemLineDetail",
-            Amount: amount,
+            Amount: adjustedAmount,
             Description: service.description || "",
             SalesItemLineDetail: {
               ItemRef: {
                 value: itemId
               },
-              Qty: Number(service.hours),
-              UnitPrice: Number(service.price)
+              Qty: quantity,
+              UnitPrice: price
             }
           });
           

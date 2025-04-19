@@ -115,7 +115,7 @@ export class StripeController {
 
     async createInvoice(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { coefficientPerfentage, description, dueDate, userId } = req.body;
+        const { coefficientPerfentage, description, dueDate, userId, services } = req.body;
 
         try {
             console.log("Buscando o projeto no banco de dados...");
@@ -123,7 +123,6 @@ export class StripeController {
                 where: { id: projectId },
                 include: {
                     client: true,
-                    serviceProject: true,
                     company: true,
                 },
             });
@@ -218,17 +217,18 @@ export class StripeController {
                 { stripeAccount: stripeAccountId }
             );
 
-            for (const service of project.serviceProject) {
-                const hours = Number(service.hours) || 0;
+            for (const service of services) {
+                const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
-                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 0;
+                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-                const serviceAmount = hours * price;
+                // Usar o total fornecido ou calcular se não estiver disponível
+                const serviceAmount = service.total || (quantity * price);
                 const adjustedAmount = serviceAmount * validCoefficient;
 
                 console.log("-------- Detalhes do Serviço --------");
                 console.log(`Serviço: ${service.name}`);
-                console.log(`Horas (hours): ${service.hours} -> Convertido: ${hours}`);
+                console.log(`Quantidade: ${service.quantity} -> Convertido: ${quantity}`);
                 console.log(`Preço (price): ${service.price} -> Convertido: ${price}`);
                 console.log(`Coeficiente (coefficient): ${coefficientPerfentage} -> Válido: ${validCoefficient}`);
                 console.log(`Valor Bruto (serviceAmount): ${serviceAmount}`);
@@ -247,7 +247,7 @@ export class StripeController {
                 lineItems.push({
                     name: service.name,
                     description: service.description || "",
-                    quantity: hours,
+                    quantity: quantity,
                     price: price,
                     totalAmount: adjustedAmount
                 });

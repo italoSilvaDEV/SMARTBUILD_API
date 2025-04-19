@@ -16,7 +16,7 @@ interface InvoiceLineItem {
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate } = req.body;
+    const { userId, coefficientPerfentage, description, dueDate, services } = req.body;
 
     try {
       // Buscar o projeto
@@ -24,7 +24,6 @@ export class CustomInvoiceController {
         where: { id: projectId },
         include: {
           client: true,
-          serviceProject: true,
           company: true,
         },
       });
@@ -44,12 +43,13 @@ export class CustomInvoiceController {
       let totalAmount = 0;
       const lineItems = [];
 
-      for (const service of project.serviceProject) {
-        const hours = Number(service.hours) || 0;
-        const price = Number(service.price) || 0;
-        const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 0;
+      for (const item of services) {
+        const quantity = Number(item.quantity) || 0;
+        const price = Number(item.price) || 0;
+        const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-        const serviceAmount = hours * price;
+        // Usar o total fornecido ou calcular se não estiver disponível
+        const serviceAmount = item.total || (quantity * price);
         const adjustedAmount = serviceAmount * validCoefficient;
 
         if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
@@ -57,11 +57,10 @@ export class CustomInvoiceController {
         }
 
         totalAmount += adjustedAmount;
-
         lineItems.push({
-          name: service.name,
-          description: service.description || "",
-          quantity: hours,
+          name: item.name,
+          description: item.description || "",
+          quantity: quantity,
           price: price,
           totalAmount: adjustedAmount
         });
@@ -93,7 +92,6 @@ export class CustomInvoiceController {
       // Criar a fatura personalizada no banco de dados
       const newInvoice = await prisma.invoice.create({
         data: {
-          // stripeInvoiceId: `custom-${Date.now()}`, // Mantido para compatibilidade
           externalInvoiceId: nextInvoiceNumber.toString(), // Usar o número sequencial
           invoiceType: "custom",
           status: "open",
