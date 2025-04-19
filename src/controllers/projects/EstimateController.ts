@@ -676,7 +676,7 @@ export class EstimateController {
     }
   }
 
-  async resendEmail(req: Request, res: Response) {
+  async resendEmail(req: Request, res: Response) { 
     try {
       const { id } = req.params;
       const { emails } = req.body;

@@ -531,6 +531,9 @@ model Invoice {
   // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
   InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
+  
+  InvoiceTimeline    InvoiceTimeline[]
+  InvoiceEmailLog    InvoiceEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment InvoicePayment?
@@ -729,6 +732,29 @@ model EstimateEmailLog {
 
   estimate   Estimate @relation(fields: [estimateId], references: [id])
   estimateId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+}
+
+model InvoiceTimeline {
+  id            String   @id @default(uuid())
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  invoice      Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId    String
+}
+
+model InvoiceEmailLog {
+  id           String   @id @default(uuid())
+  recipient    String
+  status       String // "success" ou "error"
+  errorMessage String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt

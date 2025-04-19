@@ -118,6 +118,16 @@ export class CustomInvoiceController {
         }
       });
 
+      // Registrar evento na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Created`,
+          invoice: {
+            connect: { id: newInvoice.id }
+          }
+        }
+      });
+
       return res.status(201).json({
         message: "Custom invoice created successfully",
         invoice: newInvoice
@@ -414,6 +424,292 @@ export class CustomInvoiceController {
     }
   }
 
+  // Método utilitário para registrar eventos na timeline
+  private async addInvoiceTimelineEvent(invoiceId: string, description: string) {
+    try {
+      return await prisma.invoiceTimeline.create({
+        data: {
+          description,
+          invoice: {
+            connect: { id: invoiceId }
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error adding invoice timeline event:", error);
+      // Não lançamos o erro para não interromper o fluxo principal
+    }
+  }
+
+  async sendInvoiceMultiple(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { userId, emails } = req.body;
+
+    try {
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      // Validar se emails é um array
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ error: "Please provide at least one email address" });
+      }
+
+      // Buscar a fatura com todas as informações necessárias
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          externalInvoiceId: invoiceId,
+          invoiceType: "custom"
+        },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true,
+              serviceProject: {
+                include: {
+                  photos: true // Incluir as fotos dos serviços do projeto
+                }
+              }
+            }
+          },
+          InvoiceItems: true
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      if (invoice.invoiceType !== "custom") {
+        return res.status(400).json({ error: "Not a custom invoice" });
+      }
+
+      // Configurar o envio de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Obter o logo da empresa
+      const company = invoice.project.company;
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+
+      // Preparar os dados para o template
+      const companyName = company?.name || 'Smart Build';
+      const phone = company?.phone || '';
+      const clientName = invoice.project.client?.name || 'Cliente';
+      const clientLocation = invoice.project.client?.location || '';
+      const clientCityAndState = invoice.project.client?.city_and_state || '';
+      const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+
+      // Usar o template invoiceCustom
+      const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
+      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
+
+      // Criar um mapa de serviços para facilitar a associação com os itens da fatura
+      const serviceMap = new Map();
+      invoice.project.serviceProject.forEach(service => {
+        serviceMap.set(service.name, service);
+      });
+
+      // Transformar os itens da fatura no formato esperado por generatePdf
+      const tableData = invoice.InvoiceItems.map((item, index) => {
+        // Tentar encontrar o serviço correspondente pelo nome
+        const matchingService = serviceMap.get(item.name);
+        
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: item.name,
+          description: item.description || "",
+          qty: Number(item.quantity),
+          rate: Number(item.price),
+          amount: Number(item.totalAmount),
+          photos: matchingService?.photos?.map((photo: { uri: string }) => ({
+            uri: photo.uri
+          })) || [] // Usar as fotos do serviço correspondente, se existir
+        };
+      });
+
+      const total = `$${Number(invoice.totalAmount).toFixed(2)}`;
+
+      // Preparar os dados das colunas
+      const columnText1 = [
+        clientName,
+      ];
+
+      const columnText2 = [
+        "",
+      ];
+
+      // Adicionar a data de vencimento apenas se for uma fatura e tiver data de vencimento
+      if (invoice.dueDate) {
+        // Formatar a data de vencimento ajustando o fuso horário
+        const dueDate = new Date(invoice.dueDate);
+        
+        // Ajustar para o fuso horário local para evitar problemas com UTC
+        const dueDateUTC = new Date(dueDate.getTime() + dueDate.getTimezoneOffset() * 60000);
+        
+        const formattedDueDate = dueDateUTC.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          timeZone: 'UTC' // Forçar UTC para evitar ajustes de fuso horário
+        });
+        
+        columnText1.push(`Due Date: ${formattedDueDate}`);
+        // Adicionar um espaço vazio correspondente em columnText2 para manter o alinhamento
+        columnText2.push("");
+      }
+
+      // Continuar com o restante dos dados das colunas
+      columnText1.push(
+        "Bill to",
+        clientName,
+        clientLocation,
+        clientCityAndState,
+      );
+
+      columnText2.push(
+        "Ship to",
+        clientName,
+        clientLocation,
+        clientCityAndState,
+      );
+
+      // Montar o endereço completo
+      const fullAddress = company?.address || "";
+
+      // Buscar notas da empresa
+      const companyNotes = await prisma.contractNotes.findMany({
+        where: { company_id: company?.id },
+        orderBy: { updatedAt: "asc" }
+      });
+
+      // Preparar as notas
+      const sanitizedNotes = companyNotes.map(note => note.notes || "") || [];
+
+      // Preparar o objeto de dados para o PDF
+      const pdfData = {
+        tableData,
+        total,
+        columnText1,
+        columnText2,
+        address: fullAddress,
+        logoUrl: urlLogo || undefined,
+        notes: sanitizedNotes,
+        phone: company?.phone || "",
+        email: company?.email || "",
+        webSiteUrl: company?.webSiteUrl || "",
+        name: company?.name || "",
+        hideRateColumns: true,
+        documentType: 'INVOICE' as 'INVOICE'
+      };
+
+      // Gerar o PDF
+      const pdfPath = await generatePdf(pdfData, clientName, true);
+
+      // Resultados do envio para cada email
+      const results = [];
+
+      // Processar todos os emails
+      for (const email of emails) {
+        try {
+          // Enviar o email com o PDF anexado
+          await transporter.sendMail({
+            from: SMTP_CONFIG.user,
+            to: email,
+            subject: `Invoice #${invoiceCode} - ${companyName}`,
+            html: emailTemplate,
+            attachments: [
+              {
+                filename: `invoice_${invoiceCode}.pdf`,
+                path: pdfPath,
+              },
+            ],
+          });
+
+          // Se chegou aqui, o envio foi bem-sucedido
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoice: { connect: { id: invoice.id } },
+              recipient: email,
+              status: "success",
+              sentAt: new Date()
+            }
+          });
+
+          // Registrar o envio no histórico
+          await prisma.invoiceSendHistory.create({
+            data: {
+              invoiceId: invoice.id,
+              recipient: email,
+              user_id: userId
+            }
+          });
+
+          results.push({ email, status: "success" });
+
+          // Adicionar evento na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Email sent to ${email} successfully`,
+              invoice: {
+                connect: { id: invoice.id }
+              }
+            }
+          });
+        } catch (error: any) {
+          // Registrar o erro no log
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoice: { connect: { id: invoice.id } },
+              recipient: email,
+              status: "error",
+              errorMessage: error.message || "Unknown error",
+              sentAt: new Date()
+            }
+          });
+
+          results.push({ email, status: "error", message: error.message });
+
+          // Adicionar evento na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Failed to send email to ${email}: ${error.message}`,
+              invoice: {
+                connect: { id: invoice.id }
+              }
+            }
+          });
+        }
+      }
+
+      // Remover o PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 5000);
+
+      // Retornar todos os resultados após processar todos os emails
+      return res.status(200).json({
+        success: results.some(r => r.status === "success"),
+        results
+      });
+    } catch (error) {
+      console.error("Error sending custom invoice:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
   async updateInvoiceStatus(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { status } = req.body;
@@ -478,6 +774,17 @@ export class CustomInvoiceController {
         where: { id: invoice.id },
         data: { status: "void" }
       });
+
+
+      // Registrar evento na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Canceled`,
+          invoice: {
+            connect: { id: invoice.id }
+          }
+        }
+      }); 
 
       return res.status(200).json({
         message: "Invoice cancelled successfully"

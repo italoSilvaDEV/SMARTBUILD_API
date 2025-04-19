@@ -55,6 +55,16 @@ export class CustomInvoicePaymentController {
         data: { status: "paid" }
       });
 
+      // Registrar evento na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Payment`,
+          invoice: {
+            connect: { id: invoiceId }
+          }
+        }
+      });
+
       return res.status(201).json({
         message: "Payment recorded successfully",
         payment
