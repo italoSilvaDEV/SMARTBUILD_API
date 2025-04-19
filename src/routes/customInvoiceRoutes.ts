@@ -20,4 +20,11 @@ customInvoiceRoutes.post("/custom/invoice/:invoiceId/cancel", checkToken, custom
 // Adicionar esta nova rota
 customInvoiceRoutes.get("/custom/invoice/:invoiceId/pdf", checkToken, customInvoiceController.generateInvoicePdf);
 
+// Adicionar esta nova rota para enviar invoice para múltiplos destinatários
+customInvoiceRoutes.post(
+  "/custom/invoice/:invoiceId/send-multiple", 
+  checkToken, 
+  customInvoiceController.sendInvoiceMultiple.bind(customInvoiceController)
+);
+
 export { customInvoiceRoutes }; 
