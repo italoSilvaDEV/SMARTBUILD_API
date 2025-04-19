@@ -760,18 +760,19 @@ export class UserController {
       filtro.email = { contains: email };
     }
 
+    // Condição de filtro completa incluindo company_id
+    const whereCondition = {
+      AND: [filtro, { OR: [name_full] }, { company_id }]
+    };
+
     const result = await prisma.user.findMany({
-      skip: Number(pag) * 8,
       take: 8,
+      skip: Number(pag || 0) * 8,
       orderBy: {
         //name: "asc"
         date_creation: "desc",
       },
-      where: {
-        AND: [filtro, { OR: [name_full] }, {
-          company_id
-        }],
-      },
+      where: whereCondition,
       select: {
         id: true,
         name: true,
@@ -797,10 +798,9 @@ export class UserController {
       }))
     );
 
+    // Usar a mesma condição de filtro para a contagem
     const total = await prisma.user.count({
-      where: {
-        AND: [filtro, { OR: [name_full] }],
-      },
+      where: whereCondition
     });
 
     return response.json({ users: usersWithPresignedAvatar, total });
@@ -911,6 +911,7 @@ export class UserController {
       return response.status(500).json({ error: "Erro ao enviar e-mail" });
     }
   }
+
   async validCode(request: Request, response: Response) {
     try {
       const { code } = request.body;
@@ -932,6 +933,7 @@ export class UserController {
       return response.json({ error: "Internal error" });
     }
   }
+
   async updatePassword(request: Request, response: Response) {
     try {
       const { code, pass, confirmPass } = request.body;
