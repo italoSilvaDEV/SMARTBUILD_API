@@ -512,6 +512,8 @@ model Invoice {
   updatedAt   DateTime  @updatedAt
   invoiceUrl  String?
 
+  type_value String? // "percentage" ou "value"
+  
   percentageCoefficient Decimal?
   description           String?  @db.Text
 

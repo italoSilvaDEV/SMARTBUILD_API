@@ -16,7 +16,7 @@ interface InvoiceLineItem {
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services } = req.body;
+    const { userId, coefficientPerfentage, description, dueDate, services, type_value } = req.body;
 
     try {
       // Buscar o projeto
@@ -101,6 +101,7 @@ export class CustomInvoiceController {
           projectId: project.id,
           companyId: project.company_id,
           user_id: userId,
+          type_value: type_value,
           percentageCoefficient: coefficientPerfentage,
           // Criar os itens da fatura
           InvoiceItems: {

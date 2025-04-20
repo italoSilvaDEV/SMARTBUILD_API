@@ -115,7 +115,7 @@ export class StripeController {
 
     async createInvoice(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { coefficientPerfentage, description, dueDate, userId, services } = req.body;
+        const { coefficientPerfentage, description, dueDate, userId, services, type_value } = req.body;
 
         try {
             console.log("Buscando o projeto no banco de dados...");
@@ -281,6 +281,7 @@ export class StripeController {
                     dueDate: dueDateObj,
                     description: description,
                     percentageCoefficient: coefficientPerfentage,
+                    type_value: type_value,
                     user_id: userId,
                 },
             });
