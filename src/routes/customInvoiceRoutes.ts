@@ -27,4 +27,7 @@ customInvoiceRoutes.post(
   customInvoiceController.sendInvoiceMultiple.bind(customInvoiceController)
 );
 
+// Atualizar invoice personalizado
+customInvoiceRoutes.put("/custom/invoice/:invoiceId", checkToken, customInvoiceController.updateInvoice);
+
 export { customInvoiceRoutes }; 
