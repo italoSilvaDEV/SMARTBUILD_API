@@ -53,8 +53,18 @@ model User {
   quickBooksAccount_id String?            @unique
 
   canceledEstimates Estimate[] @relation("canceledEstimates")
+  Audit             Audit[]
 
   @@index([office_id], map: "User_office_id_fkey")
+}
+
+model Audit {
+  id            String   @id @default(uuid())
+  action        String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
 }
 
 model Company {
@@ -201,20 +211,20 @@ model ServiceProject {
   service    Service? @relation(fields: [id_service], references: [id])
   id_service String?
 
-  stages                 ServiceStages[]
-  galleryBefore          GalleryBefore[]
-  galleryAlfter          GalleryAfter[]
-  photos                 ImgServiceProject[]
-  costProject            CostProject[]
-  date_creation          DateTime                 @default(now())
-  date_update            DateTime                 @updatedAt
-  Project                Project?                 @relation(fields: [projectId], references: [id])
-  projectId              String?
-  UserServiceProject     UserServiceProject[]
-  Activities             Activities[]
-  company                Company?                 @relation(fields: [company_id], references: [id])
-  company_id             String?
-  TimeLine               TimeLine[]
+  stages             ServiceStages[]
+  galleryBefore      GalleryBefore[]
+  galleryAlfter      GalleryAfter[]
+  photos             ImgServiceProject[]
+  costProject        CostProject[]
+  date_creation      DateTime             @default(now())
+  date_update        DateTime             @updatedAt
+  Project            Project?             @relation(fields: [projectId], references: [id])
+  projectId          String?
+  UserServiceProject UserServiceProject[]
+  Activities         Activities[]
+  company            Company?             @relation(fields: [company_id], references: [id])
+  company_id         String?
+  TimeLine           TimeLine[]
 }
 
 model Activities {
@@ -531,9 +541,9 @@ model Invoice {
   // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
   InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
-  
-  InvoiceTimeline    InvoiceTimeline[]
-  InvoiceEmailLog    InvoiceEmailLog[]
+
+  InvoiceTimeline InvoiceTimeline[]
+  InvoiceEmailLog InvoiceEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment InvoicePayment?
@@ -650,8 +660,8 @@ model EstimateServiceProject {
   lineTotal   Decimal
   notes       String? @db.Text
 
-  date_creation    DateTime        @default(now())
-  date_update      DateTime        @updatedAt
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 
   @@unique([estimateId, name])
 }
@@ -742,8 +752,8 @@ model InvoiceTimeline {
   description   String   @db.Text
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-  invoice      Invoice @relation(fields: [invoiceId], references: [id])
-  invoiceId    String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  invoiceId     String
 }
 
 model InvoiceEmailLog {
