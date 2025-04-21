@@ -1143,7 +1143,7 @@ export class ProjectController {
           where: {
             seller_user_id,
             status_project: {
-              equals: "Accepted",
+              in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"],
             },
           },
           include: {
@@ -1156,7 +1156,7 @@ export class ProjectController {
           where: {
             company_id,
             status_project: {
-              equals: "Accepted",
+              in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"],
             },
           },
           include: {
