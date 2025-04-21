@@ -20,4 +20,7 @@ stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.get
 
 stripeRoutes.get("/stripe/company-invoices/:companyId", checkToken, stripeController.getInvoicesByCompany);
 
+// Atualizar invoice Stripe
+stripeRoutes.put("/stripe/invoice/:invoiceId", checkToken, stripeController.updateInvoice);
+
 export { stripeRoutes };
