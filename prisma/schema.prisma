@@ -522,6 +522,9 @@ model Invoice {
   updatedAt   DateTime  @updatedAt
   invoiceUrl  String?
 
+  type_value String? // "percentage" ou "value"
+  cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
+  
   percentageCoefficient Decimal?
   description           String?  @db.Text
 

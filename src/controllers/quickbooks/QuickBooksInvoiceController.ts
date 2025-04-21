@@ -13,7 +13,7 @@ interface InvoiceLineItem {
 export class QuickBooksInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, dueDate, userId, coefficientPerfentage, services } = req.body;
+    const { description, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
 
     try {
       // Buscar o projeto
@@ -285,6 +285,7 @@ export class QuickBooksInvoiceController {
             companyId: project.company_id,
             user_id: userId,
             percentageCoefficient: coefficientPerfentage || 1,
+            type_value: type_value,
             // Criar os itens da fatura
             InvoiceItems: {
               create: processedLineItems.map((item: any) => ({
