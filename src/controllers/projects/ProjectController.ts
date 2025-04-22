@@ -504,6 +504,7 @@ export class ProjectController {
           data: {
             description: data.description,
             hours: data.hours,
+            price: data.price,
           },
         });
         return res.json(result);
