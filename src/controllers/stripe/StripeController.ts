@@ -433,7 +433,7 @@ export class StripeController {
     }
 
     // com stripe e custom
-    async getInvoicesByProject(req: Request, res: Response) {
+    async getInvoicesByProject(req: Request, res: Response) { 
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
@@ -589,7 +589,7 @@ export class StripeController {
     }
 
 
-    async getInvoicesByCompany(req: Request, res: Response) {
+     async getInvoicesByCompany(req: Request, res: Response) {
         const { companyId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; // Parâmetros para paginação e pesquisa
 
@@ -604,25 +604,31 @@ export class StripeController {
             const filtro = {
                 companyId,
                 OR: [
-                    {
-                        project: {
-                            is: {
-                                client: {
-                                    is: {
-                                        name: {
-                                            contains: search,
+                    { cancel_invoice_edit: false },
+                    { cancel_invoice_edit: null }
+                ],
+                AND: {
+                    OR: [
+                        {
+                            project: {
+                                is: {
+                                    client: {
+                                        is: {
+                                            name: {
+                                                contains: search,
+                                            }
                                         }
                                     }
                                 }
                             }
+                        },
+                        {
+                            stripeInvoiceId: {
+                                contains: search,
+                            }
                         }
-                    },
-                    {
-                        stripeInvoiceId: {
-                            contains: search,
-                        }
-                    }
-                ]
+                    ]
+                }
 
             };
 

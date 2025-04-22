@@ -26,7 +26,11 @@ export class InvoiceStatisticsController {
       const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
-          status: { notIn: ['void'] }
+          status: { notIn: ['void'] },
+          OR: [
+            { cancel_invoice_edit: false },
+            { cancel_invoice_edit: null }
+          ]
         }
       });
 
@@ -35,6 +39,10 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           status: { notIn: ['void'] },
+          OR: [
+            { cancel_invoice_edit: false },
+            { cancel_invoice_edit: null }
+          ],
           createdAt: {
             gte: startOfCurrentMonth,
             lte: endOfCurrentMonth
@@ -47,6 +55,10 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           status: { notIn: ['void'] },
+          OR: [
+            { cancel_invoice_edit: false },
+            { cancel_invoice_edit: null }
+          ],
           createdAt: {
             gte: startOfLastMonth,
             lte: endOfLastMonth
@@ -125,19 +137,31 @@ export class InvoiceStatisticsController {
         paid: await prisma.invoice.count({
           where: {
             companyId,
-            status: 'paid'
+            status: 'paid',
+            OR: [
+              { cancel_invoice_edit: false },
+              { cancel_invoice_edit: null }
+            ]
           }
         }),
         pending: await prisma.invoice.count({
           where: {
             companyId,
-            status: { in: ['open', 'draft'] }
+            status: { in: ['open', 'draft'] },
+            OR: [
+              { cancel_invoice_edit: false },
+              { cancel_invoice_edit: null }
+            ]
           }
         }),
         canceled: await prisma.invoice.count({
           where: {
             companyId,
-            status: 'void'
+            status: 'void',
+            OR: [
+              { cancel_invoice_edit: false },
+              { cancel_invoice_edit: null }
+            ]
           }
         })
       };
@@ -154,6 +178,10 @@ export class InvoiceStatisticsController {
           where: {
             companyId,
             status: 'paid',
+            OR: [
+              { cancel_invoice_edit: false },
+              { cancel_invoice_edit: null }
+            ],
             createdAt: {
               gte: startOfMonth,
               lte: endOfMonth
