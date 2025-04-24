@@ -420,7 +420,7 @@ export class CustomInvoiceController {
   // invia para o metodo resend mais de um email
   async sendInvoiceMultiple(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId, emails } = req.body;
+    const { userId, emails, companyId } = req.body;
 
     try {
       if (!userId) {
@@ -432,10 +432,21 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Please provide at least one email address" });
       }
 
-      // Buscar a fatura com todas as informações necessárias
+      // Validar cada email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const invalidEmails = emails.filter(email => !emailRegex.test(email));
+      if (invalidEmails.length > 0) {
+        return res.status(400).json({ 
+          error: "Invalid email addresses", 
+          invalidEmails 
+        });
+      }
+
+      // Buscar a fatura com todas as informações necessárias, agora incluindo companyId
       const invoice = await prisma.invoice.findFirst({
         where: { 
           externalInvoiceId: invoiceId,
+          companyId: companyId, // Filtrar pelo companyId fornecido
           invoiceType: "custom"
         },
         include: {
@@ -445,7 +456,7 @@ export class CustomInvoiceController {
               company: true,
               serviceProject: {
                 include: {
-                  photos: true // Incluir as fotos dos serviços do projeto
+                  photos: true
                 }
               }
             }
@@ -775,13 +786,14 @@ export class CustomInvoiceController {
   // gera o pdf para os botoes donwload de pdf em listagem geral de invoice e tab invoice
   async generateInvoicePdf(req: Request, res: Response) {
     const { invoiceId } = req.params;
+    const { companyId } = req.query; // Obter companyId dos parâmetros de consulta
 
-    try {
+    try { 
       // Buscar a fatura com todas as informações necessárias
       const invoice = await prisma.invoice.findFirst({
         where: { 
           externalInvoiceId: invoiceId,
-          // invoiceType: "custom"
+          companyId: companyId as string // Adicionar filtro por companyId
         },
         include: {
           project: {
@@ -789,7 +801,7 @@ export class CustomInvoiceController {
               client: true,
               company: {
                 include: {
-                  NotesContrac: true // Incluir a relação NotesContrac
+                  NotesContrac: true
                 }
               },
               serviceProject: {
