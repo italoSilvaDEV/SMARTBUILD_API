@@ -472,21 +472,23 @@ export class ProjectController {
     const data: IputServiceData = req.body;
     console.log(data);
     try {
-      // Verificar se o id_service existe na tabela referenciada
+      // Verificar se o serviço existe
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
-        },
+        }
       });
 
       if (!serviceExists) {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
 
+      // Atualizar o serviço
+      let result;
       if (!data.id_service) {
-        const result = await prisma.serviceProject.update({
+        result = await prisma.serviceProject.update({
           where: {
-            id: data.id, // Use a chave primária correta aqui
+            id: data.id,
           },
           data: {
             name: data.name,
@@ -495,11 +497,10 @@ export class ProjectController {
             price: data.price,
           },
         });
-        return res.json(result);
       } else {
-        const result = await prisma.serviceProject.update({
+        result = await prisma.serviceProject.update({
           where: {
-            id: data.id, // Use a chave primária correta aqui
+            id: data.id,
           },
           data: {
             description: data.description,
@@ -507,8 +508,37 @@ export class ProjectController {
             price: data.price,
           },
         });
-        return res.json(result);
       }
+
+      // Se temos id_project e description, atualizar os InvoiceItems relacionados
+      if (data.id_project && data.description) {
+        // Buscar todas as faturas do projeto
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            projectId: data.id_project
+          },
+          include: {
+            InvoiceItems: true
+          }
+        });
+
+        // Para cada fatura, atualizar os itens que correspondem ao nome do serviço
+        for (const invoice of invoices) {
+          for (const item of invoice.InvoiceItems) {
+            if (item.name === serviceExists.name) {
+              await prisma.invoiceItem.update({
+                where: { id: item.id },
+                data: {
+                  description: data.description
+                }
+              });
+              console.log(`Atualizada descrição do item ${item.id} na fatura ${invoice.id}`);
+            }
+          }
+        }
+      }
+
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
