@@ -203,17 +203,22 @@ export class CustomInvoiceController {
   // enviar o pdf para o cliente atravez de email
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId } = req.body;
+    const { userId, companyId } = req.body;
 
     try {
       if (!userId) {
         return res.status(400).json({ error: "User ID is required" });
       }
 
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
       // Buscar a fatura com todas as informações necessárias, incluindo fotos dos serviços
       const invoice = await prisma.invoice.findFirst({
         where: { 
           externalInvoiceId: invoiceId,
+          companyId: companyId,
           invoiceType: "custom"
         },
         include: {
