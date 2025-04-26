@@ -12,7 +12,7 @@ const Company = new CompanyController()
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/company"))
 //criar
 companyRoutes.post("/company",
-    checkToken,
+    // checkToken,
     uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.create)

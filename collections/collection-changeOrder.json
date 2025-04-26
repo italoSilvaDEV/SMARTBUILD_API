@@ -1,0 +1,438 @@
+{
+    "info": {
+        "_postman_id": "f6b8c9d0-e1f2-4g3h-i4j5-k6l7m8n9o0p1",
+        "name": "Change Orders API",
+        "description": "Coleção para testar as APIs de Change Orders",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Autenticação",
+            "item": [
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.token) {",
+                                    "    pm.environment.set(\"token\", jsonData.token);",
+                                    "    console.log(\"Token salvo com sucesso!\");",
+                                    "} else {",
+                                    "    console.log(\"Falha ao obter token. Resposta:\", jsonData);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/auth",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "auth"
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"master@user.com\",\n    \"password\": \"CodelabsMaster\"\n}"
+                        },
+                        "description": "Autenticação para obter o token JWT"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Change Orders",
+            "item": [
+                {
+                    "name": "Criar Change Order",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/change-order",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"projectId\": \"{{project_id}}\"\n}"
+                        },
+                        "description": "Cria um novo Change Order para um projeto"
+                    }
+                },
+                {
+                    "name": "Listar Change Orders do Projeto",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/project/{{project_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "project",
+                                "{{project_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Lista todos os Change Orders de um projeto específico"
+                    }
+                },
+                {
+                    "name": "Buscar Change Order por ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Busca um Change Order específico pelo ID"
+                    }
+                },
+                {
+                    "name": "Atualizar Change Order",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"description\": \"Updated description\",\n    \"terms\": \"Updated terms\",\n    \"totalAmount\": 1500.00\n}"
+                        },
+                        "description": "Atualiza um Change Order existente"
+                    }
+                },
+                {
+                    "name": "Atualizar Status",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "status"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"approved\"\n}"
+                        },
+                        "description": "Atualiza o status de um Change Order (pending, approved, rejected)"
+                    }
+                },
+                {
+                    "name": "Adicionar Assinatura",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/sign",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "sign"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"clientSignature\": \"base64_encoded_signature_data\"\n}"
+                        },
+                        "description": "Adiciona a assinatura do cliente ao Change Order"
+                    }
+                },
+                {
+                    "name": "Cancelar Change Order",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/cancel",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "cancel"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"cancellationReason\": \"Client requested cancellation\"\n}"
+                        },
+                        "description": "Cancela um Change Order"
+                    }
+                },
+                {
+                    "name": "Adicionar Serviço",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/service",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "service"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"serviceProjectId\": \"{{service_project_id}}\",\n    \"quantity\": 1,\n    \"unitPrice\": 100.00,\n    \"lineTotal\": 100.00,\n    \"notes\": \"Additional service\"\n}"
+                        },
+                        "description": "Adiciona um serviço ao Change Order"
+                    }
+                },
+                {
+                    "name": "Remover Serviço",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/service/{{service_project_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "service",
+                                "{{service_project_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Remove um serviço do Change Order"
+                    }
+                },
+                {
+                    "name": "Atualizar Serviço",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "{{base_url}}/change-order/{{change_order_id}}/service/{{service_project_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "change-order",
+                                "{{change_order_id}}",
+                                "service",
+                                "{{service_project_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"quantity\": 2,\n    \"unitPrice\": 100.00,\n    \"lineTotal\": 200.00,\n    \"notes\": \"Updated service details\"\n}"
+                        },
+                        "description": "Atualiza os detalhes de um serviço no Change Order"
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:4003",
+            "type": "string"
+        },
+        {
+            "key": "project_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "change_order_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "service_project_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}
