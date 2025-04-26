@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
+import { AuditController } from '../Audit/AuditController';
+import { logAudit } from '../../utils/auditLogger';
+import { returnPayLoad } from '../../config/returnPayLoad';
 
 const prisma = new PrismaClient();
 
@@ -365,6 +368,50 @@ export class TimeLineController {
         } catch (error) {
             console.error("Error fetching timeline by worker:", error);
             return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+    // Delete timeline record
+    deleteTimeline = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const user = returnPayLoad(req);
+            if(!user){
+                res.status(401).json({ error: 'Unauthorized' });
+                return;
+            }
+
+            const { id } = req.params;
+            
+            // Verify if the timeline exists
+            const timeline = await prisma.userAttendance.findUnique({
+                where: { id },
+                include: {
+                    user: true,
+                    UserServiceProject: {
+                        include: {
+                            service_project: true
+                        }
+                    }
+                }
+            });
+            
+            if (!timeline) {
+                res.status(404).json({ error: 'Timeline record not found.' });
+                return;
+            }            
+          
+           
+            const clockInTime = timeline?.check_in_time ? new Date(timeline.check_in_time).toLocaleString() : 'N/A';
+            const clockOutTime = timeline?.check_out_time ? new Date(timeline.check_out_time).toLocaleString() : 'N/A';
+            
+            const auditMessage = `Delete clock-in/clock-out record ${timeline.id} for user ${timeline.user.name} (${timeline.user.id}) on service project ${timeline.UserServiceProject.service_project.name || 'Unnamed project'} (${timeline.UserServiceProject.service_project.id}). Clock-in: ${clockInTime}, Clock-out: ${clockOutTime}`;
+            logAudit(auditMessage, user.id);
+            await prisma.userAttendance.delete({
+                where: { id }
+            });
+            res.status(200).json({ message: 'Timeline record deleted successfully.' });
+        } catch (error) {
+            console.error('Error deleting timeline:', error);
+            res.status(500).json({ error: 'Error while deleting timeline record.' });
         }
     }
 }

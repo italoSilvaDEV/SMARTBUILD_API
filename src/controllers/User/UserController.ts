@@ -164,7 +164,6 @@ export class UserController {
     }
     // })
   }
-
   async authenticate(req: Request, res: Response) {
     try {
       const errors = validationResult(req);
@@ -246,6 +245,182 @@ export class UserController {
           company: user.company
 
         },
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Internal error" });
+    }
+  }
+  async authenticateCOM_PERMISSOES(req: Request, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "User or password is required!" });
+      }
+
+      const user = await prisma.user.findUnique({
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+          password: true,
+          email: true,
+          rules: true,
+          isDisabled: true,
+          office: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          company: {
+            select: {
+              id: true,
+              name: true,
+              planId: true,
+            }
+          }
+        },
+        where: {
+          email,
+        },
+      });
+
+      if (!user) {
+        return res.status(400).json({ error: "User or password invalid!" });
+      }
+
+      if (user.isDisabled) {
+        return res.status(403).json({ error: "Access denied!" });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+
+      if (!isValidPassword) {
+        return res.status(400).json({ error: "User or password invalid!" });
+      }
+
+      // Gerar URL assinada para o avatar, se existir
+      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+
+      // Buscar informações do plano e assinatura
+      let planInfo = null;
+      let subscriptionInfo = null;
+      let isExpired = false;
+      let permissions: string[] = [];
+
+      if (user.company?.id) {
+        // Buscar o plano da empresa
+        if (user.company.planId) {
+          const plan = await prisma.plan.findUnique({
+            where: { id: user.company.planId },
+            include: {
+              permissionGroup: {
+                include: {
+                  GroupPermissionsList: {
+                    include: {
+                      Permissions: true
+                    }
+                  }
+                }
+              }
+            }
+          });
+          
+          planInfo = plan;
+          
+          // Obter as permissões do grupo de permissões associado ao plano
+          if (plan?.permissionGroup?.GroupPermissionsList) {
+            permissions = plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+          }
+        }
+
+        // Buscar a assinatura ativa mais recente
+        const subscription = await prisma.subscription.findFirst({
+          where: { 
+            companyId: user.company.id,
+            isActive: true
+          },
+          orderBy: {
+            endDate: 'desc'
+          },
+          include: {
+            plan: true
+          }
+        });
+
+        subscriptionInfo = subscription;
+        
+        // Verificar se o plano expirou
+        if (subscription) {
+          isExpired = new Date(subscription.endDate) < new Date();
+        } else if (planInfo && planInfo.validityType === 'DAYS') {
+          // Para planos trial, verificar se já passou o período de validade
+          const company = await prisma.company.findUnique({
+            where: { id: user.company.id }
+          });
+          
+          if (company && company.date_creation) {
+            const trialEndDate = new Date(company.date_creation);
+            trialEndDate.setDate(trialEndDate.getDate() + planInfo.validityDuration);
+            isExpired = trialEndDate < new Date();
+          }
+        }
+        
+        // Se o plano expirou, verificar se o usuário é administrador
+        if (isExpired) {
+          // Verificar se o usuário é administrador
+          const isAdmin = user.office.name.toLowerCase() === 'administrador' || 
+                          user.office.name.toLowerCase() === 'administrator';
+          
+          // Se não for administrador, bloquear o acesso
+          if (!isAdmin) {
+            return res.status(403).json({ 
+              error: "Your subscription has expired. Please renew your plan to continue using the system.",
+              isExpired: true,
+              plan: planInfo,
+              subscription: subscriptionInfo
+            });
+          }
+          // Se for administrador, continua o login mas informa sobre a expiração
+        }
+      }
+
+      const token = Jwt.sign(
+        {
+          id: user.id,
+          name: user.name,
+        },
+        String(process.env.SECRET_JWT),
+        {
+          subject: user.id,
+          expiresIn: "1d",
+        }
+      );
+
+      return res.json({
+        msg: "Authentication completed successfully!",
+        token,
+        rules: user.office.name,
+        user: {
+          id: user.id,
+          email: user.email,
+          avatar: avatarUrl,
+          name: user.name,
+          office: user.office,
+          company: user.company,
+          permissions: permissions
+        },
+        subscription: subscriptionInfo,
+        isExpired: isExpired
       });
     } catch (error) {
       if (error instanceof Error) {
@@ -585,18 +760,19 @@ export class UserController {
       filtro.email = { contains: email };
     }
 
+    // Condição de filtro completa incluindo company_id
+    const whereCondition = {
+      AND: [filtro, { OR: [name_full] }, { company_id }]
+    };
+
     const result = await prisma.user.findMany({
-      skip: Number(pag) * 8,
       take: 8,
+      skip: Number(pag || 0) * 8,
       orderBy: {
         //name: "asc"
         date_creation: "desc",
       },
-      where: {
-        AND: [filtro, { OR: [name_full] }, {
-          company_id
-        }],
-      },
+      where: whereCondition,
       select: {
         id: true,
         name: true,
@@ -622,10 +798,9 @@ export class UserController {
       }))
     );
 
+    // Usar a mesma condição de filtro para a contagem
     const total = await prisma.user.count({
-      where: {
-        AND: [filtro, { OR: [name_full] }],
-      },
+      where: whereCondition
     });
 
     return response.json({ users: usersWithPresignedAvatar, total });
@@ -736,6 +911,7 @@ export class UserController {
       return response.status(500).json({ error: "Erro ao enviar e-mail" });
     }
   }
+
   async validCode(request: Request, response: Response) {
     try {
       const { code } = request.body;
@@ -757,6 +933,7 @@ export class UserController {
       return response.json({ error: "Internal error" });
     }
   }
+
   async updatePassword(request: Request, response: Response) {
     try {
       const { code, pass, confirmPass } = request.body;

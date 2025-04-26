@@ -34,5 +34,51 @@ export class FindServiceController {
             return response.json({ error: "Erro interno do servidor" });
         }
     }
+
+
+    async getServicesByCompany(req: Request, res: Response) {
+        try {
+            const { companyId } = req.params;
+            
+            // Verificar se a empresa existe
+            const company = await prisma.company.findUnique({
+                where: { id: companyId }
+            });
+            
+            if (!company) {
+                return res.status(404).json({ error: "Company not found" });
+            }
+            
+            // Buscar todos os serviços da empresa
+            const services = await prisma.service.findMany({
+                where: {
+                    service: {
+                        subcategory: {
+                            sub_category: {
+                                some: {
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    }
+                },
+                include: {
+                    service: {
+                        include: {
+                            subcategory: true
+                        }
+                    }
+                },
+                orderBy: {
+                    service_name: 'asc'
+                }
+            });
+            
+            return res.json(services);
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ error: "Failed to fetch services" });
+        }
+    }
 }
 

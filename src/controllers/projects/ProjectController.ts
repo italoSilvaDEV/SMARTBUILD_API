@@ -136,7 +136,8 @@ export class ProjectController {
         },
       });
 
-      const projectsWithCalculations = projects.map((project) => {
+      const projectsWithCalculations = await Promise.all(
+        projects.map(async (project) => {
         // Calcula o custo total do trabalho
         const costofwork = project.invoiceCostProject.reduce(
           (total, invoice) => {
@@ -178,6 +179,36 @@ export class ProjectController {
         // Remove o array workedHours do projeto
         const { workedHours, ...projectWithoutWorkedHours } = project;
 
+          // Buscar os estimates relacionados a este projeto
+          const estimates = await prisma.estimate.findMany({
+            where: {
+              projectId: project.id
+            },
+            include: {
+              serviceProjects: true,
+              canceledBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              },
+              timelineEvents: {
+                orderBy: {
+                  date_creation: 'asc'
+                }
+              },
+              emailLogs: {
+                orderBy: {
+                  date_creation: 'asc'
+                }
+              },
+            },
+            orderBy: {
+              date_creation: 'desc'
+            }
+          });
+
         return {
           ...projectWithoutWorkedHours,
           costofwork,
@@ -189,8 +220,10 @@ export class ProjectController {
             ...service,
             stages: service.stages,
           })),
+            estimates: estimates
         };
-      });
+        })
+      );
 
       const total = await prisma.project.count({
         where: query,
@@ -219,7 +252,7 @@ export class ProjectController {
         where: { id },
         include: {
           client: true,
-          serviceProject: { 
+          serviceProject: {
             include: {
               UserServiceProject: {
                 select: {
@@ -439,21 +472,23 @@ export class ProjectController {
     const data: IputServiceData = req.body;
     console.log(data);
     try {
-      // Verificar se o id_service existe na tabela referenciada
+      // Verificar se o serviço existe
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
-        },
+        }
       });
 
       if (!serviceExists) {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
 
+      // Atualizar o serviço
+      let result;
       if (!data.id_service) {
-        const result = await prisma.serviceProject.update({
+        result = await prisma.serviceProject.update({
           where: {
-            id: data.id, // Use a chave primária correta aqui
+            id: data.id,
           },
           data: {
             name: data.name,
@@ -462,19 +497,48 @@ export class ProjectController {
             price: data.price,
           },
         });
-        return res.json(result);
       } else {
-        const result = await prisma.serviceProject.update({
+        result = await prisma.serviceProject.update({
           where: {
-            id: data.id, // Use a chave primária correta aqui
+            id: data.id,
           },
           data: {
             description: data.description,
             hours: data.hours,
+            price: data.price,
           },
         });
-        return res.json(result);
       }
+
+      // Se temos id_project e description, atualizar os InvoiceItems relacionados
+      if (data.id_project && data.description) {
+        // Buscar todas as faturas do projeto
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            projectId: data.id_project
+          },
+          include: {
+            InvoiceItems: true
+          }
+        });
+
+        // Para cada fatura, atualizar os itens que correspondem ao nome do serviço
+        for (const invoice of invoices) {
+          for (const item of invoice.InvoiceItems) {
+            if (item.name === serviceExists.name) {
+              await prisma.invoiceItem.update({
+                where: { id: item.id },
+                data: {
+                  description: data.description
+                }
+              });
+              console.log(`Atualizada descrição do item ${item.id} na fatura ${invoice.id}`);
+            }
+          }
+        }
+      }
+
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
@@ -574,78 +638,58 @@ export class ProjectController {
     try {
       const { id } = request.params;
 
-      // Verificação da existência do ServiceProject
-      const serviceProject = await prisma.serviceProject.findFirst({
-        where: {
-          id: id,
-        },
-        include: {
-          photos: true,
-          costProject: true,
-          galleryAlfter: true,
-          galleryBefore: true,
-          Activities: true,
-          stages: true,
-          UserServiceProject: {
-            include: {
-              user_attendances: true
-            }
-          },
-          TimeLine: true,
-        },
+      // Verificar se o serviço existe
+      const serviceProject = await prisma.serviceProject.findUnique({
+        where: { id: String(id) }
       });
 
       if (!serviceProject) {
-        throw new Error("Service Project not found!");
+        return response.status(404).json({ error: "Service Project not found" });
       }
+   
 
-      // Check if there are any user attendances or timeline entries
-      if (serviceProject.UserServiceProject.some(user => user.user_attendances.length > 0) || serviceProject.TimeLine.length > 0) {
-        return response.status(400).json({ error: "Workers have already started this service and cannot be deleted." });
-      }
-
-      // Exclusão de todas as fotos associadas ao ServiceProject
-      for (const photo of serviceProject.photos) {
-        this.deleteFiles(photo.uri);
-      }
-
-      // Exclusão de todos os CostProjects associados ao ServiceProject
-      await prisma.costProject.deleteMany({
-        where: {
-          serviceProjectId: id,
-        },
-      });
-
-      // Exclusão de todos os registros relacionados ao ServiceProject
-      await prisma.galleryAfter.deleteMany({
-        where: { serviceProjectId: id },
-      });
+      // Excluir outras entidades relacionadas
       await prisma.galleryBefore.deleteMany({
         where: { serviceProjectId: id },
       });
+
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
+      await prisma.imgServiceProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
+      await prisma.costProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
+
       await prisma.activities.deleteMany({
         where: { serviceProjectId: id },
       });
+
       await prisma.serviceStages.deleteMany({
         where: { serviceProjectId: id },
       });
+
       await prisma.userServiceProject.deleteMany({
         where: { service_project_id: id },
       });
+
       await prisma.timeLine.deleteMany({
         where: { service_project_id: id },
       });
 
-      // Exclusão do ServiceProject
+      // Agora podemos excluir o ServiceProject com segurança
       await prisma.serviceProject.delete({
         where: {
-          id: id,
+          id: String(id),
         },
       });
 
       return response.json({
-        message:
-          "Service Project and its related data deleted successfully",
+        message: "Service Project and its related data deleted successfully",
       });
     } catch (error) {
       console.error(error);
@@ -753,7 +797,7 @@ export class ProjectController {
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
 
-    try { 
+    try {
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -1130,7 +1174,7 @@ export class ProjectController {
           where: {
             seller_user_id,
             status_project: {
-              equals: "Accepted",
+              in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"],
             },
           },
           include: {
@@ -1143,7 +1187,7 @@ export class ProjectController {
           where: {
             company_id,
             status_project: {
-              equals: "Accepted",
+              in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"],
             },
           },
           include: {
@@ -1606,8 +1650,6 @@ export class ProjectController {
     }
   }
 
- 
-
   async generateAndSendPdf(req: Request, res: Response) {
     const { id } = req.params;
     try {
@@ -1800,6 +1842,377 @@ export class ProjectController {
       return res.status(500).json({
         error:
           error instanceof Error ? error.message : "Erro interno do servidor",
+      });
+    }
+  }
+
+  async generateAndSendPdfOther(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Buscar todas as informações do projeto com base no ID
+      const project = await prisma.project.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          serviceProject: {
+            include: {
+              photos: true // Incluindo as fotos dos serviços
+            }
+          },
+          company: {
+            select: {
+              name: true,
+              avatar: true,
+              address: true,
+              district: true,
+              numberHouse: true,
+              complement: true,
+              email: true,
+              phone: true,
+              webSiteUrl: true,
+              NotesContrac: {
+                orderBy: { updatedAt: "asc" },
+                select: {
+                  id: true,
+                  notes: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.client) {
+        return res.status(400).json({ error: "Client information is missing" });
+      }
+
+      // Transformar os dados do projeto no formato esperado por generatePdf
+      const tableData = project.serviceProject.map((service, index) => {
+        const rate = Number(service.price) * Number(service.hours);
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: service.name,
+          description: service.description,
+          qty: Number(service.hours),
+          rate,
+          amount: rate,
+          photos: service.photos.map(photo => ({
+            uri: photo.uri
+          }))
+        };
+      });
+
+      const total = `$${tableData
+        .reduce((sum, row) => sum + row.amount, 0)
+        .toFixed(2)}`;
+
+      const columnText1 = [
+        project.client?.name || "",
+        "Bill to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      const columnText2 = [
+        "",
+        "Ship to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      // --- Buscar os dados da empresa (para os dados do cabeçalho) ---
+      // Assumindo que o projeto possua um campo company_id (relacionado à empresa que gera o contrato)
+      const companyId = project.company_id;
+      if (!companyId) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const companyData = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: {
+          name: true,
+          avatar: true,
+          address: true,
+          district: true,
+          numberHouse: true,
+          complement: true,
+          email: true,
+          phone: true,
+          webSiteUrl: true,
+          NotesContrac: {
+            orderBy: { updatedAt: "asc" },
+            select: {
+              id: true,
+              notes: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      if (!companyData) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      // Converter o avatar para um presigned URL, se existir
+      const logoUrl = companyData.avatar
+        ? await getPresignedUrl(companyData.avatar)
+        : null;
+
+      // Montar o endereço completo
+      const fullAddress = `${companyData.address}`;
+
+      // Extrair as notas (apenas o texto)
+      const notesArray = companyData.NotesContrac.map((note) => note.notes);
+      console.log("logo depois de comprimir: ", logoUrl)
+      // Preparar o objeto de dados a ser enviado para a função generatePdf
+      const data = {
+        tableData,
+        total, 
+        columnText1,
+        columnText2,
+        address: fullAddress || "",
+        logoUrl: logoUrl || undefined,
+        notes: notesArray,
+        phone: companyData.phone || "",
+        email: companyData.email || "",
+        webSiteUrl: companyData.webSiteUrl || "",
+        name: companyData.name,
+      };
+
+      // Gerar o PDF
+      const pdfPath = await generatePdf(data, project.client.name);
+
+      // Configurar transporte de e-mail
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Criar template do e-mail
+      const templateEmail = createPreviewContract(
+        project.client?.name.toUpperCase(),
+        logoUrl || '',
+        companyData.name,
+        Number(total)
+      );
+
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: project.client.email,
+        subject: `Estimate for ${project.client?.name.toUpperCase()}`,
+        html: templateEmail,
+        attachments: [
+          {
+            filename: "estimate.pdf",
+            path: pdfPath,
+          },
+        ],
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      // Remover o PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 5000);
+
+      return res
+        .status(200)
+        .json({ message: "PDF enviado com sucesso para o cliente!" });
+    } catch (error) {
+      return res.status(500).json({
+        error:
+          error instanceof Error ? error.message : "Erro interno do servidor",
+      });
+    }
+  }
+
+  //gera pdf no botão download e dentro de view details no fluxo do link de estimate enviado para o client
+  async generatePdfEstimate(req: Request, res: Response) {
+    const { id } = req.params;
+    try {
+      // Buscar todas as informações do projeto com base no ID
+      const project = await prisma.project.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          serviceProject: {
+            include: {
+              photos: true // Incluindo as fotos dos serviços
+            }
+          },
+          company: {
+            select: {
+              name: true,
+              avatar: true,
+              address: true,
+              district: true,
+              numberHouse: true,
+              complement: true,
+              email: true,
+              phone: true,
+              webSiteUrl: true,
+              NotesContrac: {
+                orderBy: { updatedAt: "asc" },
+                select: {
+                  id: true,
+                  notes: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.client) {
+        return res.status(400).json({ error: "Client information is missing" });
+      }
+
+      // Transformar os dados do projeto no formato esperado por generatePdf
+      const tableData = project.serviceProject.map((service, index) => {
+        const rate = Number(service.price) * Number(service.hours);
+        return {
+          id: index + 1,
+          date: "",
+          productOrService: service.name,
+          description: service.description,
+          qty: Number(service.hours),
+          rate,
+          amount: rate,
+          photos: service.photos.map(photo => ({
+            uri: photo.uri
+          }))
+        };
+      });
+
+      const total = `$${tableData
+        .reduce((sum, row) => sum + row.amount, 0)
+        .toFixed(2)}`;
+
+      const columnText1 = [
+        project.client?.name || "",
+        "Bill to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      const columnText2 = [
+        "",
+        "Ship to",
+        project.client?.name || "",
+        project.client?.location || "",
+        project.client?.city_and_state || "",
+      ];
+
+      // --- Buscar os dados da empresa (para os dados do cabeçalho) ---
+      // Assumindo que o projeto possua um campo company_id (relacionado à empresa que gera o contrato)
+      const companyId = project.company_id;
+      if (!companyId) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const companyData = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: {
+          name: true,
+          avatar: true,
+          address: true,
+          district: true,
+          numberHouse: true,
+          complement: true,
+          email: true,
+          phone: true,
+          webSiteUrl: true,
+          NotesContrac: {
+            orderBy: { updatedAt: "asc" },
+            select: {
+              id: true,
+              notes: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      if (!companyData) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      
+      // Converter o avatar para um presigned URL, se existir
+      const logoUrl = companyData.avatar
+        ? await getPresignedUrl(companyData.avatar)
+        : null;
+
+      // Montar o endereço completo
+      const fullAddress = `${companyData.address}`;
+
+      // Sanitizar as notas antes de passá-las para o PDF
+      const sanitizedNotes = companyData.NotesContrac.map(note => {
+        // Substituir tabulações por espaços
+        return (note.notes || "").replace(/\t/g, '    ');
+      }) || [];
+
+      
+
+      // Preparar o objeto de dados a ser enviado para a função generatePdf
+      const data = {
+        tableData,
+        total, 
+        columnText1,
+        columnText2,
+        address: fullAddress || "",
+        logoUrl: logoUrl || undefined,
+        notes: sanitizedNotes,
+        phone: companyData.phone || "",
+        email: companyData.email || "",
+        webSiteUrl: companyData.webSiteUrl || "",
+        name: companyData.name,
+      };
+
+      // para baixar o pdf sem deixar o arquivo salvo no servidor
+      const pdfPath = await generatePdf(data, project.client.name, true);
+
+      // Ler o arquivo PDF
+      const pdfBuffer = fs.readFileSync(pdfPath);
+ 
+      // Configurar os headers para download do PDF
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="estimate_${project.contract_number || project.id}.pdf"`);
+      
+      // Enviar o PDF como resposta
+      res.send(pdfBuffer);
+ 
+      // Remover o arquivo PDF após o envio
+      setTimeout(() => {
+        fs.unlinkSync(pdfPath);
+      }, 1000);
+
+
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   }

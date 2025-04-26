@@ -4,6 +4,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { setupWebhook } from './config/stripeWebHook';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
+import { auditRoutes } from './routes/auditRoutes';
 const cors = require('cors');
 
 
@@ -25,12 +26,14 @@ app.use("/webhook", express.raw({ type: 'application/json' }), router);
 app.use(express.json())
 app.use(router)
 
+// Register the audit routes
+app.use('/api/audits', auditRoutes);
 
 app.use(express.static('public'));
 
 (async () => {
   await setupWebhook(); 
-  setupAttendanceJobs(); 
+  // setupAttendanceJobs(); 
 })();
 
 app.listen(4003, () =>
