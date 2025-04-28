@@ -257,7 +257,8 @@ export class StripeController {
                         customer: stripeCustomerId,
                         amount: Math.round(adjustedAmount * 100), // Convertendo para centavos
                         currency: "usd",
-                        description: `${service.name} - ${service.description || "No additional description"}`,
+                        description: `${service.name} - ${(service.description || "No additional description").substring(0, 450)}`, // Limitar a 450 caracteres para garantir que não exceda 500 com o nome do serviço
+                        // description: `${service.name} - ${service.description || "No additional description"}`,
                         invoice: invoice.id // 3️⃣ Associar o item à fatura criada
                     },
                     { stripeAccount: stripeAccountId }
@@ -874,7 +875,8 @@ export class StripeController {
                         customer: stripeCustomerId,
                         amount: Math.round(adjusted * 100),
                         currency: "usd",
-                        description: `${s.name} - ${s.description ?? "No description"}`,
+                        description: `${s.name} - ${(s.description || "No description").substring(0, 450)}`, // Limitar a 450 caracteres para garantir que não exceda 500 com o nome do serviço
+                        // description: `${s.name} - ${s.description ?? "No description"}`,
                         invoice: draftInvoice.id
                     },
                     { stripeAccount: stripeAccountId }
