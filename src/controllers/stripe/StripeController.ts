@@ -7,6 +7,30 @@ dotenv.config();
 
 const stripe = stripeConfig.getClient();
 
+// Função auxiliar para garantir que a descrição completa não ultrapasse 500 caracteres
+function createSafeDescription(serviceName: string, description: string): string {
+    const separator = " - ";
+    const maxLength = 500;
+    
+    // Se o nome do serviço já for maior que o limite, truncá-lo
+    if (serviceName.length >= maxLength) {
+        return serviceName.substring(0, maxLength - 3) + "...";
+    }
+    
+    // Espaço disponível para a descrição = limite total - tamanho do nome - tamanho do separador
+    const availableSpace = maxLength - serviceName.length - separator.length;
+    
+    // Se não houver espaço para descrição, retornar apenas o nome truncado
+    if (availableSpace <= 0) {
+        return serviceName.substring(0, maxLength - 3) + "...";
+    }
+    
+    // Truncar a descrição para caber no espaço disponível
+    const truncatedDescription = (description || "No description").substring(0, availableSpace);
+    
+    return `${serviceName}${separator}${truncatedDescription}`;
+}
+
 export class StripeController {
 
     async connectCompany(req: Request, res: Response) {
@@ -246,7 +270,7 @@ export class StripeController {
 
                 lineItems.push({
                     name: service.name,
-                    description: service.description || "",
+                    description: createSafeDescription(service.name, service.description || "No additional description"),
                     quantity: quantity,
                     price: price,
                     totalAmount: adjustedAmount
@@ -257,8 +281,7 @@ export class StripeController {
                         customer: stripeCustomerId,
                         amount: Math.round(adjustedAmount * 100), // Convertendo para centavos
                         currency: "usd",
-                        description: `${service.name} - ${(service.description || "No additional description").substring(0, 450)}`, // Limitar a 450 caracteres para garantir que não exceda 500 com o nome do serviço
-                        // description: `${service.name} - ${service.description || "No additional description"}`,
+                        description: createSafeDescription(service.name, service.description || "No additional description"),
                         invoice: invoice.id // 3️⃣ Associar o item à fatura criada
                     },
                     { stripeAccount: stripeAccountId }
@@ -864,7 +887,7 @@ export class StripeController {
 
                 preparedItems.push({
                     name: s.name,
-                    description: s.description || "",
+                    description: createSafeDescription(s.name, s.description || "No description"),
                     quantity,
                     price,
                     totalAmount: adjusted
@@ -875,8 +898,7 @@ export class StripeController {
                         customer: stripeCustomerId,
                         amount: Math.round(adjusted * 100),
                         currency: "usd",
-                        description: `${s.name} - ${(s.description || "No description").substring(0, 450)}`, // Limitar a 450 caracteres para garantir que não exceda 500 com o nome do serviço
-                        // description: `${s.name} - ${s.description ?? "No description"}`,
+                        description: createSafeDescription(s.name, s.description || "No description"),
                         invoice: draftInvoice.id
                     },
                     { stripeAccount: stripeAccountId }
