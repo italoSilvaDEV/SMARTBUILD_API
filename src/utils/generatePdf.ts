@@ -106,6 +106,10 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
 
     let page = addPage();
 
+    // Adicionar estas declarações próximo ao início da função (após as funções auxiliares)
+    const notesIndent = 10;
+    let notesY = 0;
+
     // --- LOGO ---
     if (data.logoUrl) {
         try {
@@ -404,44 +408,6 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
 
     currentY -= 60;
     
-    // --- NOTAS ---
-    page.drawText("Notes", {
-      x: 50,
-      y: currentY,
-      size: 14,
-      font: timesRomanFont,
-      color: rgb(0, 0, 0),
-    });
-    currentY -= 20;
-
-    let notesY = currentY;
-    const notesIndent = 10;
-    data.notes.forEach((note) => {
-      const noteLines = wrapText(note, 280);
-
-      noteLines.forEach((line) => {
-        if (notesY < 50) {
-          addNewPageAndContinueTable();
-          notesY = 750 - spacing;
-        }
-        // Sanitizar a linha antes de adicioná-la ao PDF
-        const sanitizedLine = sanitizeText(line);
-        
-        page.drawText(sanitizedLine, {
-          x: 50 + notesIndent,
-          y: notesY,
-          size: fontSize - 2,
-          font: timesRomanFont,
-          color: rgb(0, 0, 0),
-        });
-
-        notesY -= fontSize;
-      });
-
-      // Espaço extra entre notas
-      notesY -= 10;
-    });
-
     // --- DESCRIÇÕES DOS SERVIÇOS ---
     // Adicionar nova página para as descrições
     page = addPage();
@@ -600,6 +566,57 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
         }
         currentY -= maxImageHeight + 40;
       }
+    }
+
+    // --- NOTAS --- (Movida para depois da seção de fotos)
+    if (data.notes && data.notes.length > 0) {
+      // Iniciar uma nova página para as notas
+      page = addPage();
+      currentY = 750;
+
+      // Título da seção de notas
+      page.drawText("Notes", {
+        x: 50,
+        y: currentY,
+        size: 14,
+        font: timesRomanFont,
+        color: rgb(0, 0, 0),
+      });
+      currentY -= 30;
+
+      // Notas
+      data.notes.forEach((note) => {
+        // Verificar se precisa adicionar uma nova página
+        if (currentY < 100) {
+          page = addPage();
+          currentY = 750;
+        }
+
+        // Processar a nota (sanitizar e quebrar linhas longas)
+        const noteSanitized = sanitizeText(note);
+        const noteLines = wrapText(noteSanitized, 450);
+
+        // Adicionar cada linha da nota
+        noteLines.forEach((line) => {
+          if (currentY < 50) {
+            page = addPage();
+            currentY = 750;
+          }
+
+          page.drawText(line, {
+            x: 50 + notesIndent,
+            y: currentY,
+            size: fontSize,
+            font: timesRomanFont,
+            color: rgb(0, 0, 0),
+          });
+
+          currentY -= fontSize + 2;
+        });
+
+        // Adicionar espaço entre notas
+        currentY -= 10;
+      });
     }
 
     // Salvar o PDF
