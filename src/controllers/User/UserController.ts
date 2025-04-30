@@ -748,7 +748,7 @@ export class UserController {
   }
 
   async serchAllUser(request: Request, response: Response) {
-    const { name, email, pag, company_id } = request.body;
+    const { name, email, company_id } = request.body;
 
     const filtro: any = {};
     const name_full: any = {};
@@ -766,11 +766,8 @@ export class UserController {
     };
 
     const result = await prisma.user.findMany({
-      take: 8,
-      skip: Number(pag || 0) * 8,
       orderBy: {
-        //name: "asc"
-        date_creation: "desc",
+        name: "asc",
       },
       where: whereCondition,
       select: {
@@ -798,7 +795,6 @@ export class UserController {
       }))
     );
 
-    // Usar a mesma condição de filtro para a contagem
     const total = await prisma.user.count({
       where: whereCondition
     });

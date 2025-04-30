@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
@@ -590,10 +589,22 @@ export class FinanceDashboardController {
 
             const companyId = valid.response?.id;
 
+            // Contagem de funcionários ativos (isDisabled = false) e com cargo "Worker"
+            const employeesCount = await prisma.user.count({
+                where: {
+                    company_id: companyId,
+                    isDisabled: false, // Filtrar apenas usuários ativos
+                    office: {
+                        name: {
+                            equals: 'Worker'
+                        }
+                    }
+                }
+            });
+
             const [
                 estimates,
                 projects,
-                employees,
                 inProgressProjects,
                 pendingProjects,
                 completedProjects,
@@ -611,16 +622,6 @@ export class FinanceDashboardController {
                     where: {
                         status_project: {
                             notIn: ["Pending", "Accepted", "Denied", "Waiting for Decision"]
-                        },
-                        company_id: companyId
-                    }
-                }),
-                prisma.user.count({
-                    where: {
-                        office: {
-                            name: {
-                                equals: 'Worker'
-                            }
                         },
                         company_id: companyId
                     }
@@ -662,7 +663,7 @@ export class FinanceDashboardController {
             return res.json({
                 estimates,
                 projects,
-                employees,
+                employees: employeesCount,
                 customers: 0,
                 inProgressProjects,
                 pendingProjects,
