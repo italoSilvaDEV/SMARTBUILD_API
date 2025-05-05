@@ -11,23 +11,23 @@ const stripe = stripeConfig.getClient();
 function createSafeDescription(serviceName: string, description: string): string {
     const separator = " - ";
     const maxLength = 500;
-    
+
     // Se o nome do serviço já for maior que o limite, truncá-lo
     if (serviceName.length >= maxLength) {
         return serviceName.substring(0, maxLength - 3) + "...";
     }
-    
+
     // Espaço disponível para a descrição = limite total - tamanho do nome - tamanho do separador
     const availableSpace = maxLength - serviceName.length - separator.length;
-    
+
     // Se não houver espaço para descrição, retornar apenas o nome truncado
     if (availableSpace <= 0) {
         return serviceName.substring(0, maxLength - 3) + "...";
     }
-    
+
     // Truncar a descrição para caber no espaço disponível
     const truncatedDescription = (description || "No description").substring(0, availableSpace);
-    
+
     return `${serviceName}${separator}${truncatedDescription}`;
 }
 
@@ -457,7 +457,7 @@ export class StripeController {
     }
 
     // com stripe e custom
-    async getInvoicesByProject(req: Request, res: Response) { 
+    async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
@@ -612,8 +612,7 @@ export class StripeController {
         }
     }
 
-
-     async getInvoicesByCompany(req: Request, res: Response) {
+    async getInvoicesByCompany(req: Request, res: Response) {
         const { companyId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; // Parâmetros para paginação e pesquisa
 
@@ -967,37 +966,37 @@ export class StripeController {
     async createCheckoutSession(req: Request, res: Response) {
         try {
             const { planId, companyId } = req.body;
-            
+
             if (!planId || !companyId) {
                 return res.status(400).json({ error: "IDs do plano e da empresa são obrigatórios" });
             }
-            
+
             // Buscar informações do plano
             const plan = await prisma.plan.findUnique({
                 where: { id: planId }
             });
-            
+
             if (!plan) {
                 return res.status(404).json({ error: "Plano não encontrado" });
             }
-            
+
             // Verificar se é um plano gratuito
             if (plan.validityType === 'FREE') {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     error: "Planos gratuitos não precisam de checkout",
-                    isFree: true 
+                    isFree: true
                 });
             }
-            
+
             // Verificar se temos as informações do Stripe necessárias
             if (!plan.stripePriceId) {
                 return res.status(400).json({ error: "Plano não está configurado para pagamentos" });
             }
-            
+
             // Preparar datas para a assinatura
             const startDate = new Date();
             let endDate = new Date();
-            
+
             if (plan.validityType === 'MONTHLY') {
                 endDate.setMonth(endDate.getMonth() + plan.validityDuration);
             } else if (plan.validityType === 'ANNUAL') {
@@ -1005,7 +1004,7 @@ export class StripeController {
             } else {
                 endDate.setDate(endDate.getDate() + plan.validityDuration);
             }
-            
+
             // Criar a sessão de checkout com dados completos de assinatura no metadata
             const session = await stripe.checkout.sessions.create({
                 payment_method_types: ['card'],
@@ -1028,8 +1027,8 @@ export class StripeController {
                     validityDuration: plan.validityDuration.toString()
                 }
             });
-            
-            return res.status(200).json({ 
+
+            return res.status(200).json({
                 checkoutUrl: session.url,
                 sessionId: session.id
             });

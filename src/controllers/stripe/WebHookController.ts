@@ -10,22 +10,45 @@ export class StripeWebHooksController {
         const sig = req.headers['stripe-signature'];
 
         try {
-            // Recupera o webhook ativo
-            const webhook = await prisma.webhooks.findFirst({
-                where: { event: 'invoice.payment_succeeded', status: 'enabled' },
+            // PROBLEMA: req.body é um Buffer quando usamos express.raw()
+            // Não podemos ler req.body.type diretamente
+            
+            // Vamos primeiro recuperar todos os webhooks ativos
+            const webhooks = await prisma.webhooks.findMany({
+                where: { status: 'enabled' },
             });
-
-            if (!webhook || !webhook.secret) {
-                return res.status(400).send('Webhook não configurado.');
+            
+            console.log('Webhooks ativos:', webhooks.map(w => w.event));
+            
+            // Tentar cada webhook até encontrar o correto
+            let event: Stripe.Event | null = null;
+            let webhook = null;
+            
+            for (const hook of webhooks) {
+                try {
+                    event = stripe.webhooks.constructEvent(
+                        req.body, 
+                        sig as string, 
+                        hook.secret
+                    );
+                    webhook = hook;
+                    console.log(`Evento verificado usando webhook para: ${hook.event}`);
+                    break; // Encontramos o webhook correto!
+                } catch (e) {
+                    // Tente o próximo webhook
+                    console.log(`Webhook para ${hook.event} não corresponde à assinatura`);
+                }
             }
-
-            // Verifica a assinatura do Stripe
-            const event = stripe.webhooks.constructEvent(req.body, sig as string, webhook.secret);
-
-            // Processa o evento
+            
+            if (!event || !webhook) {
+                return res.status(400).send('Nenhum webhook válido encontrado para este evento');
+            }
+            
+            console.log('Processando evento:', event.type);
+            
+            // Agora podemos processar o evento baseado no seu tipo
             if (event.type === 'invoice.payment_succeeded') {
                 const invoice = event.data.object as Stripe.Invoice;
-
                 console.log('Pagamento confirmado para a Invoice:', invoice.id);
 
                 // Atualiza o status da fatura no banco
@@ -33,13 +56,57 @@ export class StripeWebHooksController {
                     where: { stripeInvoiceId: invoice.id },
                     data: { status: 'paid' },
                 });
+            } 
+            else if (event.type === 'checkout.session.completed') {
+                const session = event.data.object as Stripe.Checkout.Session;
+                console.log('Checkout concluído para a sessão:', session.id);
+                
+                // Verificar se é uma compra de plano
+                if (session.mode === 'subscription' && session.metadata?.planId && session.metadata?.companyId) {
+                    const { 
+                        planId, 
+                        companyId, 
+                        startDate, 
+                        endDate 
+                    } = session.metadata;
+                    
+                    console.log(`Processando assinatura para empresa ${companyId}, plano ${planId}`);
+                    
+                    // Buscar informações do plano
+                    const plan = await prisma.plan.findUnique({
+                        where: { id: planId }
+                    });
+                    
+                    if (!plan) {
+                        console.error('Plano não encontrado:', planId);
+                        return res.status(200).send('Evento recebido, mas plano não encontrado.');
+                    }
+                    
+                    // Atualizar a empresa com o novo plano
+                    await prisma.company.update({
+                        where: { id: companyId },
+                        data: { planId }
+                    });
+                    
+                    // Criar uma assinatura para a empresa usando as datas do metadata
+                    await prisma.subscription.create({
+                        data: {
+                            companyId,
+                            planId,
+                            startDate: new Date(startDate),
+                            endDate: new Date(endDate),
+                            isActive: true
+                        }
+                    });
+                    
+                    console.log(`Assinatura do plano ${plan.name} ativada para empresa ${companyId}`);
+                }
             }
 
-            res.status(200).send('Evento recebido com sucesso!');
+            res.status(200).send('Evento recebido e processado com sucesso!');
         } catch (error: any) {
             console.error('Erro ao processar o webhook:', error.message);
             res.status(400).send(`Webhook Error: ${error.message}`);
         }
     };
-
 }
