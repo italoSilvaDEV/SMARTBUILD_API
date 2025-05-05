@@ -135,7 +135,9 @@ export class PlanController {
         permissionGroupId: plan.permissionGroupId,
         permissionGroup: plan.permissionGroup,
         createdAt: plan.createdAt,
-        updatedAt: plan.updatedAt
+        updatedAt: plan.updatedAt,
+        stripeProductId: plan.stripeProductId,
+        stripePriceId: plan.stripePriceId
       }));
       
       res.status(200).json(formattedPlans);
@@ -170,6 +172,7 @@ export class PlanController {
         permissionGroupId: plan.permissionGroupId,
         permissionGroup: plan.permissionGroup,
         createdAt: plan.createdAt,
+        stripeProductId: plan.stripeProductId,
         updatedAt: plan.updatedAt
       };
       
@@ -303,6 +306,7 @@ export class PlanController {
     }
   }
 
+  // integrado com stripe
   async deletePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
