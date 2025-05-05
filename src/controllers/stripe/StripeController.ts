@@ -964,5 +964,79 @@ export class StripeController {
         }
     }
 
+    async createCheckoutSession(req: Request, res: Response) {
+        try {
+            const { planId, companyId } = req.body;
+            
+            if (!planId || !companyId) {
+                return res.status(400).json({ error: "IDs do plano e da empresa são obrigatórios" });
+            }
+            
+            // Buscar informações do plano
+            const plan = await prisma.plan.findUnique({
+                where: { id: planId }
+            });
+            
+            if (!plan) {
+                return res.status(404).json({ error: "Plano não encontrado" });
+            }
+            
+            // Verificar se é um plano gratuito
+            if (plan.validityType === 'FREE') {
+                return res.status(400).json({ 
+                    error: "Planos gratuitos não precisam de checkout",
+                    isFree: true 
+                });
+            }
+            
+            // Verificar se temos as informações do Stripe necessárias
+            if (!plan.stripePriceId) {
+                return res.status(400).json({ error: "Plano não está configurado para pagamentos" });
+            }
+            
+            // Preparar datas para a assinatura
+            const startDate = new Date();
+            let endDate = new Date();
+            
+            if (plan.validityType === 'MONTHLY') {
+                endDate.setMonth(endDate.getMonth() + plan.validityDuration);
+            } else if (plan.validityType === 'ANNUAL') {
+                endDate.setFullYear(endDate.getFullYear() + plan.validityDuration);
+            } else {
+                endDate.setDate(endDate.getDate() + plan.validityDuration);
+            }
+            
+            // Criar a sessão de checkout com dados completos de assinatura no metadata
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [
+                    {
+                        price: plan.stripePriceId,
+                        quantity: 1,
+                    },
+                ],
+                mode: 'subscription',
+                success_url: `${process.env.URL_FRONT}/login?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.URL_FRONT}/register?checkout_cancelled=true`,
+                client_reference_id: companyId,
+                metadata: {
+                    planId,
+                    companyId,
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString(),
+                    validityType: plan.validityType,
+                    validityDuration: plan.validityDuration.toString()
+                }
+            });
+            
+            return res.status(200).json({ 
+                checkoutUrl: session.url,
+                sessionId: session.id
+            });
+        } catch (error) {
+            console.error("Erro ao criar sessão de checkout:", error);
+            return res.status(500).json({ error: "Erro interno ao processar o checkout" });
+        }
+    }
 
 }
