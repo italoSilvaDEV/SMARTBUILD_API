@@ -253,6 +253,7 @@ export class UserController {
       return res.json({ error: "Internal error" });
     }
   }
+  // essa rota que vai ser usada agora pois ela trabalha com as permissões
   async authenticateCOM_PERMISSOES(req: Request, res: Response) {
     try {
       const errors = validationResult(req);

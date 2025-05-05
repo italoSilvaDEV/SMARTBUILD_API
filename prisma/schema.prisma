@@ -522,9 +522,9 @@ model Invoice {
   updatedAt   DateTime  @updatedAt
   invoiceUrl  String?
 
-  type_value String? // "percentage" ou "value"
+  type_value          String? // "percentage" ou "value"
   cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
-  
+
   percentageCoefficient Decimal?
   description           String?  @db.Text
 
@@ -734,6 +734,10 @@ model Plan {
   permissionGroupId String
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
+  
+
+  stripeProductId String? // Campo para armazenar o ID do produto no Stripe
+  stripePriceId   String? // Campo para armazenar o ID do preço no Stripe
 }
 
 model EstimateEmailLog {
