@@ -10,25 +10,22 @@ export class StripeWebHooksController {
         const sig = req.headers['stripe-signature'];
 
         try {
-            // PROBLEMA: req.body é um Buffer quando usamos express.raw()
-            // Não podemos ler req.body.type diretamente
-            
             // Vamos primeiro recuperar todos os webhooks ativos
             const webhooks = await prisma.webhooks.findMany({
                 where: { status: 'enabled' },
             });
-            
+
             console.log('Webhooks ativos:', webhooks.map(w => w.event));
-            
+
             // Tentar cada webhook até encontrar o correto
             let event: Stripe.Event | null = null;
             let webhook = null;
-            
+
             for (const hook of webhooks) {
                 try {
                     event = stripe.webhooks.constructEvent(
-                        req.body, 
-                        sig as string, 
+                        req.body,
+                        sig as string,
                         hook.secret
                     );
                     webhook = hook;
@@ -39,13 +36,13 @@ export class StripeWebHooksController {
                     console.log(`Webhook para ${hook.event} não corresponde à assinatura`);
                 }
             }
-            
+
             if (!event || !webhook) {
                 return res.status(400).send('Nenhum webhook válido encontrado para este evento');
             }
-            
+
             console.log('Processando evento:', event.type);
-            
+
             // Agora podemos processar o evento baseado no seu tipo
             if (event.type === 'invoice.payment_succeeded') {
                 const invoice = event.data.object as Stripe.Invoice;
@@ -56,49 +53,59 @@ export class StripeWebHooksController {
                     where: { stripeInvoiceId: invoice.id },
                     data: { status: 'paid' },
                 });
-            } 
+            }
             else if (event.type === 'checkout.session.completed') {
                 const session = event.data.object as Stripe.Checkout.Session;
                 console.log('Checkout concluído para a sessão:', session.id);
-                
+
                 // Verificar se é uma compra de plano
                 if (session.mode === 'subscription' && session.metadata?.planId && session.metadata?.companyId) {
-                    const { 
-                        planId, 
-                        companyId, 
-                        startDate, 
-                        endDate 
+                    const {
+                        planId,
+                        companyId,
+                        startDate,
+                        endDate
                     } = session.metadata;
-                    
+
                     console.log(`Processando assinatura para empresa ${companyId}, plano ${planId}`);
-                    
+
                     // Buscar informações do plano
                     const plan = await prisma.plan.findUnique({
                         where: { id: planId }
                     });
-                    
+
                     if (!plan) {
                         console.error('Plano não encontrado:', planId);
                         return res.status(200).send('Evento recebido, mas plano não encontrado.');
                     }
-                    
+
                     // Atualizar a empresa com o novo plano
                     await prisma.company.update({
                         where: { id: companyId },
                         data: { planId }
                     });
-                    
+
+                    // Verifique o tipo de session.subscription e acesse o ID de maneira segura
+                    let stripeSubscriptionId: string | null = null;
+
+                    if (typeof session.subscription === 'string') {
+                        stripeSubscriptionId = session.subscription; // Se for uma string, é o ID da assinatura
+                    } else if (session.subscription && 'id' in session.subscription) {
+                        stripeSubscriptionId = session.subscription.id; // Se for um objeto, acessa o ID da assinatura
+                    }
+
                     // Criar uma assinatura para a empresa usando as datas do metadata
-                    await prisma.subscription.create({
+                    const subscription = await prisma.subscription.create({
                         data: {
                             companyId,
                             planId,
                             startDate: new Date(startDate),
                             endDate: new Date(endDate),
-                            isActive: true
+                            isActive: true,
+                            stripeSubscriptionId // Adicionando o ID da assinatura do Stripe
                         }
                     });
-                    
+
                     console.log(`Assinatura do plano ${plan.name} ativada para empresa ${companyId}`);
                 }
             }

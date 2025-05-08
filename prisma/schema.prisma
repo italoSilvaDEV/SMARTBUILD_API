@@ -710,6 +710,7 @@ model Subscription {
   startDate DateTime // Data de início da assinatura (quando o plano foi comprado)
   endDate   DateTime // Data de fim do plano (quando o plano expira)
   isActive  Boolean  @default(true) // Indica se o plano está ativo ou expirado
+  stripeSubscriptionId String?
 }
 
 enum ValidityType {
