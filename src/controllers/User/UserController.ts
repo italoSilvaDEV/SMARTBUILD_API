@@ -449,10 +449,14 @@ export class UserController {
           permissions: permissions,
           last_acess: user.last_acess,
           subscription: subscriptionInfo,
-          isExpired
+          // isExpired
+          // so para simular o isExpired
+          isExpired: true
         },
         subscription: subscriptionInfo,
-        isExpired
+        // isExpired
+         // so para simular o isExpired
+         isExpired: true
 
       });
     } catch (error) {

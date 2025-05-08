@@ -1038,4 +1038,75 @@ export class StripeController {
         }
     }
 
+    async createCustomerPortalSession(req: Request, res: Response) {
+        try {
+            const { companyId } = req.params;
+
+            if (!companyId) {
+                return res.status(400).json({ error: "ID da empresa é obrigatório" });
+            }
+
+            // Buscar a empresa
+            const company = await prisma.company.findUnique({
+                where: { id: companyId }
+            });
+
+            if (!company) {
+                return res.status(404).json({ error: "Empresa não encontrada" });
+            }
+
+            // Buscar a assinatura ativa mais recente
+            const subscription = await prisma.subscription.findFirst({
+                where: {
+                    companyId,
+                    isActive: true
+                },
+                orderBy: {
+                    startDate: 'desc'
+                }
+            });
+
+            if (!subscription || !subscription.stripeSubscriptionId) {
+                return res.status(400).json({ error: "Nenhuma assinatura ativa encontrada para esta empresa" });
+            }
+
+            // Obter a assinatura do Stripe para encontrar o cliente
+            const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+            console.log("Assinatura Stripe verificada:", subscription.stripeSubscriptionId, "status:", stripeSubscription.status);
+
+            if (!stripeSubscription.customer) {
+                return res.status(400).json({ error: "Cliente Stripe não encontrado para esta assinatura" });
+            }
+
+            try {
+                // Criar sessão do portal do cliente
+                const session = await stripe.billingPortal.sessions.create({
+                    customer: typeof stripeSubscription.customer === 'string' 
+                        ? stripeSubscription.customer 
+                        : stripeSubscription.customer.id,
+                    return_url: `${process.env.URL_FRONT}/subscription-plans`
+                });
+
+                return res.status(200).json({
+                    url: session.url
+                });
+            } catch (portalError: any) {
+                // Verificar se é o erro específico de configuração não existente
+                if (portalError?.raw?.message?.includes('default configuration has not been created')) {
+                    // Retornar apenas mensagem para o cliente final
+                    return res.status(503).json({
+                        error: "Portal do cliente não configurado. Por favor, entre em contato com o administrador da plataforma.",
+                        configurationNeeded: true
+                    });
+                }
+                
+                // Se for outro erro, relançar para ser capturado pelo catch externo
+                throw portalError;
+            }
+        } catch (error) {
+            console.error("Erro ao criar sessão do portal do cliente:", error);
+            return res.status(500).json({ error: "Erro interno ao processar a solicitação" });
+        }
+    }
+
 }
