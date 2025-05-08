@@ -1,65 +1,51 @@
+import Stripe from "stripe";
 import { stripeConfig } from "./stripe";
-import { prisma } from '../utils/prisma';
+import { prisma } from "../utils/prisma";
 
 const stripe = stripeConfig.getClient();
 
 export async function setupWebhook() {
-    const webhookUrl = `${process.env.URL_API}/webhook`;
+  const webhookUrl = `${process.env.URL_API}/webhook`;
 
-    try {
-        const existingInvoiceWebhook = await prisma.webhooks.findFirst({
-            where: { event: 'invoice.payment_succeeded', status: 'enabled' },
-        });
+  /** eventos que você quer escutar */
+  const EVENTS: { event: string; name: string }[] = [
+    { event: "invoice.payment_succeeded", name: "Invoice payment" },
+    { event: "checkout.session.completed", name: "Checkout completed" },
+    { event: "customer.subscription.updated", name: "Subscription updated" }, // novo!
+  ];
 
-        if (!existingInvoiceWebhook) {
-            const invoiceWebhook = await stripe.webhookEndpoints.create({
-                url: webhookUrl,
-                enabled_events: ['invoice.payment_succeeded'],
-                connect: true,
-            });
+  try {
+    for (const { event, name } of EVENTS) {
+      const existing = await prisma.webhooks.findFirst({
+        where: { event, status: "enabled" },
+      });
 
-            await prisma.webhooks.create({
-                data: {
-                    name: 'Webhook de Pagamento de Invoice',
-                    event: 'invoice.payment_succeeded',
-                    secret: invoiceWebhook.secret || '',
-                    url: invoiceWebhook.url,
-                    status: 'enabled',
-                    stripeId: invoiceWebhook.id,
-                },
-            });
+      if (existing) {
+        console.log(`Webhook already configured for ${event}: ${existing.id}`);
+        continue;
+      }
 
-            console.log('Webhook para pagamentos de invoice criado com sucesso:', invoiceWebhook.id);
-        } else {
-            console.log('Webhook para pagamentos de invoice já configurado:', existingInvoiceWebhook.id);
-        }
+      const stripeWebhook = await stripe.webhookEndpoints.create({
+        url: webhookUrl,
+        enabled_events: [
+            event as Stripe.WebhookEndpointCreateParams.EnabledEvent
+        ],
+      });
 
-        const existingCheckoutWebhook = await prisma.webhooks.findFirst({
-            where: { event: 'checkout.session.completed', status: 'enabled' },
-        });
+      await prisma.webhooks.create({
+        data: {
+          name: `Webhook – ${name}`,
+          event,
+          secret: stripeWebhook.secret ?? "",
+          url: stripeWebhook.url,
+          status: "enabled",
+          stripeId: stripeWebhook.id,
+        },
+      });
 
-        if (!existingCheckoutWebhook) {
-            const checkoutWebhook = await stripe.webhookEndpoints.create({
-                url: webhookUrl,
-                enabled_events: ['checkout.session.completed'],
-            });
-
-            await prisma.webhooks.create({
-                data: {
-                    name: 'Webhook de Checkout Concluído',
-                    event: 'checkout.session.completed',
-                    secret: checkoutWebhook.secret || '',
-                    url: checkoutWebhook.url,
-                    status: 'enabled',
-                    stripeId: checkoutWebhook.id,
-                },
-            });
-
-            console.log('Webhook para checkout concluído criado com sucesso:', checkoutWebhook.id);
-        } else {
-            console.log('Webhook para checkout concluído já configurado:', existingCheckoutWebhook.id);
-        }
-    } catch (error) {
-        console.error('Erro ao configurar webhooks:', error);
+      console.log(`Webhook created for ${event}: ${stripeWebhook.id}`);
     }
+  } catch (err) {
+    console.error("Error while configuring webhooks:", err);
+  }
 }

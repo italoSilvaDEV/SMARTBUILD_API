@@ -1038,12 +1038,13 @@ export class StripeController {
         }
     }
 
+    // portal do cliente
     async createCustomerPortalSession(req: Request, res: Response) {
         try {
             const { companyId } = req.params;
 
             if (!companyId) {
-                return res.status(400).json({ error: "ID da empresa é obrigatório" });
+                return res.status(400).json({ error: "Company ID is required." });
             }
 
             // Buscar a empresa
@@ -1052,7 +1053,7 @@ export class StripeController {
             });
 
             if (!company) {
-                return res.status(404).json({ error: "Empresa não encontrada" });
+                return res.status(404).json({ error: "Company not found." });
             }
 
             // Buscar a assinatura ativa mais recente
@@ -1067,7 +1068,7 @@ export class StripeController {
             });
 
             if (!subscription || !subscription.stripeSubscriptionId) {
-                return res.status(400).json({ error: "Nenhuma assinatura ativa encontrada para esta empresa" });
+                return res.status(400).json({ error: "No active subscription found for this company." });
             }
 
             // Obter a assinatura do Stripe para encontrar o cliente
@@ -1075,7 +1076,7 @@ export class StripeController {
             console.log("Assinatura Stripe verificada:", subscription.stripeSubscriptionId, "status:", stripeSubscription.status);
 
             if (!stripeSubscription.customer) {
-                return res.status(400).json({ error: "Cliente Stripe não encontrado para esta assinatura" });
+                return res.status(400).json({ error: "Stripe customer not found for this subscription." });
             }
 
             try {
@@ -1084,7 +1085,7 @@ export class StripeController {
                     customer: typeof stripeSubscription.customer === 'string' 
                         ? stripeSubscription.customer 
                         : stripeSubscription.customer.id,
-                    return_url: `${process.env.URL_FRONT}/subscription-plans`
+                    return_url: `${process.env.URL_FRONT}/login`
                 });
 
                 return res.status(200).json({
@@ -1095,7 +1096,7 @@ export class StripeController {
                 if (portalError?.raw?.message?.includes('default configuration has not been created')) {
                     // Retornar apenas mensagem para o cliente final
                     return res.status(503).json({
-                        error: "Portal do cliente não configurado. Por favor, entre em contato com o administrador da plataforma.",
+                        error: "Customer portal is not configured. Please contact the platform administrator.",
                         configurationNeeded: true
                     });
                 }
