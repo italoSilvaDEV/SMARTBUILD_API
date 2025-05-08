@@ -32,6 +32,8 @@ export class SubscriptionController {
           isActive: true
         }
       });
+
+      await prisma.company.update({ where: { id: companyId }, data: { planId } });
       
       // Formatar resposta para compatibilidade com PrismaSubscriptionRepository
       const formattedSubscription = {

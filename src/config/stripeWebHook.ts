@@ -12,6 +12,10 @@ export async function setupWebhook() {
     { event: "invoice.payment_succeeded", name: "Invoice payment" },
     { event: "checkout.session.completed", name: "Checkout completed" },
     { event: "customer.subscription.updated", name: "Subscription updated" }, // novo!
+    { event: "customer.subscription.created", name: "Subscription created" }, // novo!
+    { event: "customer.subscription.deleted", name: "Subscription deleted" }, // novo!
+    { event: "invoice.payment_failed", name: "Invoice payment failed" }, // novo!
+    { event: "customer.updated", name: "Customer updated" } // novo!
   ];
 
   try {
