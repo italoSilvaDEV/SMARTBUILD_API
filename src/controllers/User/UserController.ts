@@ -301,6 +301,7 @@ export class UserController {
       let planInfo = null;
       let subscriptionInfo = null;
       let isExpired = false;
+      let stripeSubscriptionCanceled = false; // Nova flag para rastrear cancelamento
       let permissions: string[] = [];
 
       if (user.company?.id) {
@@ -320,7 +321,7 @@ export class UserController {
               }
             }
           });
-         
+
           // Obter as permissões do grupo de permissões associado ao plano
           if (plan?.permissionGroup?.GroupPermissionsList) {
             permissions = plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
@@ -342,70 +343,66 @@ export class UserController {
         const subscription = await prisma.subscription.findFirst({
           where: {
             companyId: user.company.id,
-            isActive: true
+            // isActive: true
           },
           orderBy: { endDate: 'desc' }
         });
         subscriptionInfo = subscription;
 
-        // Verificar se é plano FREE ou pago
-        if (planInfo && planInfo.validityType !== 'FREE') {
-          // Para planos pagos, verificar no Stripe
-          if (subscription && user.company.Plan?.stripePriceId) {
+        // Lógica simplificada para verificação de planos e assinaturas
+        if (!planInfo) {
+          // Sem plano definido, considerar expirado
+          isExpired = true;
+        }
+        else if (planInfo.validityType === 'FREE') {
+          // Plano FREE nunca expira
+          // isExpired = false;
+          if (subscription) {
+            isExpired = new Date(subscription.endDate) < new Date();
+          } else {
+            // Sem assinatura para plano FREE, considerar expirado
+            isExpired = true;
+          }
+        }
+        else {
+          // Para planos PAGOS (não-FREE)
+          if (!subscription || !subscription.stripeSubscriptionId) {
+            // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+            isExpired = true;
+          } 
+          else {
             try {
               // Inicializar cliente Stripe
               const stripe = stripeConfig.getClient();
 
-              // Buscar assinaturas da empresa no Stripe
-              const stripeSubscriptions = await stripe.subscriptions.list({
-                customer: user.company.stripeAccountId || undefined,
-                status: 'active',
-                limit: 1
-              });
+              // Buscar a assinatura específica pelo ID salvo no banco
+              const stripeSubscription = await stripe.subscriptions.retrieve(
+                subscription.stripeSubscriptionId
+              );
 
-              // Se não encontrar assinatura ativa no Stripe, considerar expirado
-              if (stripeSubscriptions.data.length === 0) {
-                console.log(`Nenhuma assinatura ativa encontrada no Stripe para a empresa ${user.company.id}`);
-                isExpired = true;
-              } else {
-                // Assinatura encontrada e ativa no Stripe
-                const stripeSubscription = stripeSubscriptions.data[0];
-
-                // Verificar se há data de cancelamento futura
-                if (stripeSubscription.cancel_at) {
-                  isExpired = new Date(stripeSubscription.cancel_at * 1000) < new Date();
-                } else {
-                  isExpired = false;
-                }
-
-                console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}`);
+              // Verificar se a assinatura foi cancelada
+              if (stripeSubscription.status === 'canceled') {
+                stripeSubscriptionCanceled = true;
               }
-            } catch (stripeError) {
+
+              // Verificar status da assinatura
+              if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
+                // Verificar se tem data de cancelamento programada
+                isExpired = stripeSubscription.cancel_at 
+                  ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
+                  : false;
+              } else {
+                // Status inativo (canceled, unpaid, incomplete_expired, etc)
+                isExpired = true;
+              }
+
+              console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}`);
+            } 
+            catch (stripeError) {
               console.error('Erro ao verificar assinatura no Stripe:', stripeError);
-              // Em caso de erro na API do Stripe, usar verificação local como fallback
+              // Fallback para verificação local em caso de erro
               isExpired = new Date(subscription.endDate) < new Date();
             }
-          } else {
-            // Sem assinatura local ou sem stripePriceId, considerar expirado
-            isExpired = true;
-          }
-        } else if (planInfo && planInfo.validityType === 'FREE') {
-          // Para planos FREE, usar lógica local existente
-          if (subscription) {
-            // Se existe uma assinatura local para plano FREE, verificar data de expiração
-            isExpired = new Date(subscription.endDate) < new Date();
-          }
-        } else if (planInfo && planInfo.validityType === 'FREE') {
-          const company = await prisma.company.findUnique({
-            where: { id: user.company.id }
-          });
-          // lógica para verificar expiração do trial para planos free
-          if (company) {
-            const trialEndDate = new Date(company.date_creation);
-            trialEndDate.setDate(trialEndDate.getDate() + planInfo.validityDuration);
-            isExpired = trialEndDate < new Date();
-          } else {
-            isExpired = true;
           }
         }
 
@@ -449,15 +446,12 @@ export class UserController {
           permissions: permissions,
           last_acess: user.last_acess,
           subscription: subscriptionInfo,
-          isExpired
-          // so para simular o isExpired
-          // isExpired: true
+          isExpired,
+          stripeSubscriptionCanceled
         },
         subscription: subscriptionInfo,
-        isExpired
-         // so para simular o isExpired
-        //  isExpired: true
-
+        isExpired,
+        stripeSubscriptionCanceled
       });
     } catch (error) {
       console.error("Erro na autenticação:", error);
@@ -1110,3 +1104,4 @@ export class UserController {
   }
 
 }
+

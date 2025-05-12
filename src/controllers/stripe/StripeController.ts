@@ -1042,7 +1042,8 @@ export class StripeController {
     async createCustomerPortalSession(req: Request, res: Response) {
         try {
             const { companyId } = req.params;
-
+            const { returnUrl } = req.body; // Receber a URL de redirecionamento do front-end
+            
             if (!companyId) {
                 return res.status(400).json({ error: "Company ID is required." });
             }
@@ -1060,7 +1061,7 @@ export class StripeController {
             const subscription = await prisma.subscription.findFirst({
                 where: {
                     companyId,
-                    isActive: true
+                    // isActive: true
                 },
                 orderBy: {
                     startDate: 'desc'
@@ -1079,34 +1080,18 @@ export class StripeController {
                 return res.status(400).json({ error: "Stripe customer not found for this subscription." });
             }
 
-            try {
-                // Criar sessão do portal do cliente
-                const session = await stripe.billingPortal.sessions.create({
-                    customer: typeof stripeSubscription.customer === 'string' 
-                        ? stripeSubscription.customer 
-                        : stripeSubscription.customer.id,
-                    return_url: `${process.env.URL_FRONT}/login`
-                });
+            // Criar a sessão do portal do cliente
+            const session = await stripe.billingPortal.sessions.create({
+                customer: String(stripeSubscription.customer),
+                return_url: `${process.env.URL_FRONT}/${returnUrl}` || `${process.env.URL_FRONT}/login`, // Usar a URL fornecida ou fallback para /login
+            });
 
-                return res.status(200).json({
-                    url: session.url
-                });
-            } catch (portalError: any) {
-                // Verificar se é o erro específico de configuração não existente
-                if (portalError?.raw?.message?.includes('default configuration has not been created')) {
-                    // Retornar apenas mensagem para o cliente final
-                    return res.status(503).json({
-                        error: "Customer portal is not configured. Please contact the platform administrator.",
-                        configurationNeeded: true
-                    });
-                }
-                
-                // Se for outro erro, relançar para ser capturado pelo catch externo
-                throw portalError;
-            }
+            return res.json({ url: session.url });
         } catch (error) {
             console.error("Erro ao criar sessão do portal do cliente:", error);
-            return res.status(500).json({ error: "Erro interno ao processar a solicitação" });
+            return res.status(500).json({
+                error: error instanceof Error ? error.message : "Internal server error"
+            });
         }
     }
 
