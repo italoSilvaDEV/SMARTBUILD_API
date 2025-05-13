@@ -170,7 +170,7 @@ export class StripeController {
 
             const emailClient = project.client.email || "";
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
+    
             if (!emailRegex.test(emailClient)) {
                 console.error("Endereço de email inválido!");
                 return res.status(400).json({ error: "Invalid client email address" });
@@ -197,7 +197,7 @@ export class StripeController {
                     }
                 }
             }
-
+    
             if (!stripeCustomerId) {
                 console.log("Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
@@ -209,15 +209,15 @@ export class StripeController {
                     { stripeAccount: stripeAccountId }
                 );
                 stripeCustomerId = customer.id;
-
+    
                 await prisma.client.update({
                     where: { id: project.client.id },
                     data: { stripeCustomerId },
                 });
-
+    
                 console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             }
-
+        
             console.log("Criando Invoice Items...");
             let totalAmount = 0;
             const lineItems = [];
@@ -476,26 +476,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
-                                            }
+                OR: [
+                    {
+                        project: {
+                            is: {
+                                client: {
+                                    is: {
+                                        name: {
+                                            contains: search,
                                         }
                                     }
                                 }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
                         }
-                    ]
+                    },
+                    {
+                        stripeInvoiceId: {
+                            contains: search,
+                        }
+                    }
+                ]
                 }
             };
 
@@ -631,26 +631,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
-                                            }
+                OR: [
+                    {
+                        project: {
+                            is: {
+                                client: {
+                                    is: {
+                                        name: {
+                                            contains: search,
                                         }
                                     }
                                 }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
                         }
-                    ]
+                    },
+                    {
+                        stripeInvoiceId: {
+                            contains: search,
+                        }
+                    }
+                ]
                 }
 
             };

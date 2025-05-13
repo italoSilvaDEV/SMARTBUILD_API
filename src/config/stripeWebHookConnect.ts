@@ -14,16 +14,23 @@ export async function setupConnectWebhook() {
   ];
 
   try {
+    // console.log("Verificando webhooks conectados existentes na base de dados...");
+    
     for (const { event, name, connect } of EVENTS) {
+      // Verificar apenas pelo evento, sem restrição de nome
       const existing = await prisma.webhooks.findFirst({
-        where: { event, status: "enabled", name: { contains: "connected account" } },
+        where: { 
+          name, 
+          status: "enabled"
+        },
       });
 
       if (existing) {
-        console.log(`Webhook conectado já configurado para ${event}: ${existing.id}`);
+        console.log(`Webhook conectado já existe na base: ${event} (ID: ${existing.id})`);
         continue;
       }
 
+      // console.log(`Criando novo webhook conectado para ${event}...`);
       // Opções específicas para webhooks de contas conectadas
       const webhookOptions: Stripe.WebhookEndpointCreateParams = {
         url: webhookUrl,
@@ -35,13 +42,12 @@ export async function setupConnectWebhook() {
 
       await prisma.webhooks.create({
         data: {
-          name: `Webhook – ${name}`,
+          name: `${name}`,
           event,
           secret: stripeWebhook.secret ?? "",
           url: stripeWebhook.url,
           status: "enabled",
           stripeId: stripeWebhook.id,
-        //   isConnectWebhook: true // Novo campo para identificar
         },
       });
 
