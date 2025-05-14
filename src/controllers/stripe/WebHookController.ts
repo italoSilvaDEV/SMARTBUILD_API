@@ -80,21 +80,13 @@ export class StripeWebHooksController {
                     const { planId, companyId } = session.metadata;
                     console.log("Checkout completado para companyId:", companyId, "planId:", planId);
 
-                    // Atualizar a empresa com o novo plano e stripeCustomerId se disponível
-                    const updateData: any = { planId };
-                    if (session.customer) {
-                        updateData.stripeCustomerId = typeof session.customer === 'string' 
-                            ? session.customer 
-                            : session.customer.id;
-                        console.log("✅ Atualizando stripeCustomerId da empresa:", updateData.stripeCustomerId);
-                    }
-
+                    // Apenas atualizar a empresa com o novo plano
                     await prisma.company.update({
                         where: { id: companyId },
-                        data: updateData
+                        data: { planId }
                     });
 
-                    console.log("✅ Empresa atualizada com novo plano e customerId");
+                    console.log("✅ Empresa atualizada com novo plano");
 
                     // Identificar a assinatura Stripe criada por este checkout
                     const stripeSubscriptionId = typeof session.subscription === "string"
@@ -361,42 +353,6 @@ export class StripeWebHooksController {
                         console.log("   ✅ Assinatura marcada com pagamento falho");
                     } else {
                         console.log("   ⚠️ Nenhuma assinatura local encontrada para este ID");
-                    }
-                }
-            }
-
-            /* ---------- CUSTOMER UPDATED ---------- */
-            else if (event.type === "customer.updated") {
-                console.log("processando evento customer.updated");
-                const customer = event.data.object as Stripe.Customer;
-
-                // Buscar empresa pelo stripeCustomerId
-                const company = await prisma.company.findFirst({
-                    where: { stripeCustomerId: customer.id }
-                });
-
-                if (company) {
-                    console.log("🔔 Atualizando dados do cliente para empresa:", company.id);
-                    
-                    const updateData: any = {};
-                    
-                    // Atualizar email se disponível e diferente
-                    if (customer.email && customer.email !== company.email) {
-                        updateData.email = customer.email;
-                    }
-                    
-                    // Atualizar nome se disponível e diferente
-                    if (customer.name && customer.name !== company.name) {
-                        updateData.name = customer.name;
-                    }
-
-                    // Se houver dados para atualizar
-                    if (Object.keys(updateData).length > 0) {
-                        await prisma.company.update({
-                            where: { id: company.id },
-                            data: updateData
-                        });
-                        console.log("✅ Dados da empresa atualizados com informações do Stripe");
                     }
                 }
             }
