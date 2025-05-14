@@ -23,4 +23,10 @@ stripeRoutes.get("/stripe/company-invoices/:companyId", checkToken, stripeContro
 // Atualizar invoice Stripe
 stripeRoutes.put("/stripe/invoice/:invoiceId", checkToken, stripeController.updateInvoice);
 
+// Criar sessão de checkout para compra de plano (rota pública)
+stripeRoutes.post("/stripe/checkout-plan", stripeController.createCheckoutSession);
+
+// Nova rota para o portal do cliente
+stripeRoutes.post("/stripe/company/:companyId/customer-portal", checkToken, stripeController.createCustomerPortalSession);
+
 export { stripeRoutes };
