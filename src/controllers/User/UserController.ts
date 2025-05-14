@@ -217,6 +217,11 @@ export class UserController {
         return res.status(400).json({ error: "User or password invalid!" });
       }
 
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { last_acess: new Date() },   // Use new Date() para o horário atual
+      });
+
       // Gerar URL assinada para o avatar, se existir
       const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
 
@@ -421,7 +426,13 @@ export class UserController {
         }
       }
 
-      // Gerar token JWT
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { last_acess: new Date() },   // Use new Date() para o horário atual
+      });
+
+
       const token = Jwt.sign(
         { id: user.id, name: user.name, email: user.email },
         String(process.env.SECRET_JWT),
