@@ -94,6 +94,8 @@ model Company {
 
   NotesContrac ContractNotes[]
 
+  stripeCustomerId String? 
+
   // novo campo
   stripeAccountId String? @unique
 

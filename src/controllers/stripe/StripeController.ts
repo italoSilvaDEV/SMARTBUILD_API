@@ -971,13 +971,18 @@ export class StripeController {
                 return res.status(400).json({ error: "IDs do plano e da empresa são obrigatórios" });
             }
 
-            // Buscar informações do plano
-            const plan = await prisma.plan.findUnique({
-                where: { id: planId }
-            });
+            // Buscar informações do plano e da empresa
+            const [plan, company] = await Promise.all([
+                prisma.plan.findUnique({ where: { id: planId } }),
+                prisma.company.findUnique({ where: { id: companyId } })
+            ]);
 
             if (!plan) {
                 return res.status(404).json({ error: "Plano não encontrado" });
+            }
+
+            if (!company) {
+                return res.status(404).json({ error: "Empresa não encontrada" });
             }
 
             // Verificar se é um plano gratuito
@@ -991,6 +996,26 @@ export class StripeController {
             // Verificar se temos as informações do Stripe necessárias
             if (!plan.stripePriceId) {
                 return res.status(400).json({ error: "Plano não está configurado para pagamentos" });
+            }
+
+            // Recuperar ou criar o cliente no Stripe
+            let customerId = company.stripeCustomerId;
+            if (!customerId) {
+                const customerData: { name: string; email?: string } = {
+                    name: company.name
+                };
+
+                if (company.email) {
+                    customerData.email = company.email;
+                }
+
+                const customer = await stripe.customers.create(customerData);
+                customerId = customer.id;
+
+                await prisma.company.update({
+                    where: { id: companyId },
+                    data: { stripeCustomerId: customer.id }
+                });
             }
 
             // Preparar datas para a assinatura
@@ -1007,12 +1032,14 @@ export class StripeController {
 
             // Criar a sessão de checkout com dados completos de assinatura no metadata
             const session = await stripe.checkout.sessions.create({
+                customer: customerId,
+                customer_creation: 'if_required',
                 payment_method_types: ['card'],
                 line_items: [
                     {
                         price: plan.stripePriceId,
                         quantity: 1,
-                    },
+                    }, 
                 ],
                 mode: 'subscription',
                 success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
@@ -1025,7 +1052,7 @@ export class StripeController {
                     endDate: endDate.toISOString(),
                     validityType: plan.validityType,
                     validityDuration: plan.validityDuration.toString()
-                }
+                } 
             });
 
             return res.status(200).json({
