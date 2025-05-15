@@ -1016,7 +1016,7 @@ export class StripeController {
                 ],
                 mode: 'subscription',
                 success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${process.env.URL_FRONT}/register?checkout_cancelled=true`,
+                cancel_url: `${process.env.URL_FRONT}/login`,
                 client_reference_id: companyId,
                 metadata: {
                     planId,
