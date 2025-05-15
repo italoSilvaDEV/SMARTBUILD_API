@@ -1122,153 +1122,33 @@ export class UserController {
     }
   }
 
-  // Método para verificar status da assinatura
-  // async getSubscriptionStatus(req: Request, res: Response) {
-  //   try {
-  //     // Obter ID do usuário - ou do parâmetro da rota ou do token
-      
-  //     const userIdFromParam = req.params.userId;
-      
-  //     // Usar o ID fornecido ou cair para o ID do token
-  //     const userId = userIdFromParam;
-      
-  //     if (!userId) {
-  //       return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
-  //     }
-      
-  //     // Buscar usuário com dados da empresa e plano
-  //     const user = await prisma.user.findUnique({
-  //       where: { id: userId },
-  //       include: {
-  //         company: {
-  //           include: {
-  //             Plan: true
-  //           }
-  //         }
-  //       }
-  //     });
-      
-  //     if (!user || !user.company?.id) {
-  //       return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
-  //     }
-      
-  //     // Exatamente a mesma lógica do authenticate para verificar assinatura
-  //     let subscriptionInfo = null;
-  //     let isExpired = false;
-  //     let stripeSubscriptionCanceled = false;
-  //     let planInfo = null;
-      
-  //     // Obter informações do plano
-  //     planInfo = user.company.Plan ? {
-  //       id: user.company.Plan.id,
-  //       name: user.company.Plan.name,
-  //       validityType: user.company.Plan.validityType,
-  //       validityDuration: user.company.Plan.validityDuration,
-  //       stripePriceId: user.company.Plan.stripePriceId,
-  //       stripeProductId: user.company.Plan.stripeProductId
-  //     } : null;
-      
-  //     // Buscar assinatura local
-  //     const subscription = await prisma.subscription.findFirst({
-  //       where: {
-  //         companyId: user.company.id,
-  //       },
-  //       orderBy: { endDate: 'desc' }
-  //     });
-      
-  //     subscriptionInfo = subscription;
-      
-  //     // Lógica simplificada para verificação de planos e assinaturas
-  //     if (!planInfo) {
-  //       // Sem plano definido, considerar expirado
-  //       isExpired = true;
-  //     }
-  //     else if (planInfo.validityType === 'FREE') {
-  //       // Para planos FREE, verificar data de expiração na assinatura local
-  //       if (subscription) {
-  //         isExpired = new Date(subscription.endDate) < new Date();
-  //       } else {
-  //         // Sem assinatura para plano FREE, considerar expirado
-  //         isExpired = true;
-  //       }
-  //     }
-  //     else {
-  //       // Para planos PAGOS (não-FREE)
-  //       if (!subscription || !subscription.stripeSubscriptionId) {
-  //         // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
-  //         isExpired = true;
-  //       } 
-  //       else {
-  //         try {
-  //           // Inicializar cliente Stripe
-  //           const stripe = stripeConfig.getClient();
-
-  //           // Buscar a assinatura específica pelo ID salvo no banco
-  //           const stripeSubscription = await stripe.subscriptions.retrieve(
-  //             subscription.stripeSubscriptionId
-  //           );
-
-  //           // Verificar se a assinatura foi cancelada
-  //           if (stripeSubscription.status === 'canceled') {
-  //             stripeSubscriptionCanceled = true;
-  //           }
-
-  //           // Verificar status da assinatura
-  //           if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
-  //             // Verificar se tem data de cancelamento programada
-  //             isExpired = stripeSubscription.cancel_at 
-  //               ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
-  //               : false;
-  //           } else {
-  //             // Status inativo (canceled, unpaid, incomplete_expired, etc)
-  //             isExpired = true;
-  //           }
-
-  //           console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}`);
-  //         } 
-  //         catch (stripeError) {
-  //           console.error('Erro ao verificar assinatura no Stripe:', stripeError);
-  //           // Fallback para verificação local em caso de erro
-  //           isExpired = new Date(subscription.endDate) < new Date();
-  //         }
-  //       }
-  //     }
-      
-  //     // Retornar apenas os dados solicitados
-  //     return res.json({
-  //       subscription: subscriptionInfo,
-  //       isExpired,
-  //       stripeSubscriptionCanceled
-  //     });
-      
-  //   } catch (error) {
-  //     console.error("Erro ao verificar status da assinatura:", error);
-  //     return res.status(500).json({ 
-  //       error: error instanceof Error ? error.message : "Erro interno do servidor"
-  //     });
-  //   }
-  // }
-
   async getSubscriptionStatus(req: Request, res: Response) {
     try {
-      // Obter ID do usuário - ou do parâmetro da rota ou do token
-      
       const userIdFromParam = req.params.userId;
-      
-      // Usar o ID fornecido ou cair para o ID do token
       const userId = userIdFromParam;
       
       if (!userId) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
       
-      // Buscar usuário com dados da empresa e plano
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
           company: {
             include: {
-              Plan: true
+              Plan: {
+                include: {
+                  permissionGroup: {
+                    include: {
+                      GroupPermissionsList: {
+                        include: {
+                          Permissions: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -1278,12 +1158,17 @@ export class UserController {
         return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
       }
       
-      // Exatamente a mesma lógica do authenticate para verificar assinatura
       let subscriptionInfo = null;
       let isExpired = false;
       let stripeSubscriptionCanceled = false;
       let planInfo = null;
       let paymentFailed = false;
+      let permissions: string[] = [];
+
+      // Obter permissões do plano
+      if (user.company.Plan?.permissionGroup?.GroupPermissionsList) {
+        permissions = user.company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+      }
 
       // Obter informações do plano
       planInfo = user.company.Plan ? {
@@ -1379,7 +1264,8 @@ export class UserController {
         subscription: subscriptionInfo,
         isExpired,
         stripeSubscriptionCanceled,
-        paymentFailed
+        paymentFailed,
+        permissions
       });
       
     } catch (error) {
