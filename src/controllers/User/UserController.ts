@@ -1023,6 +1023,11 @@ export class UserController {
   async serchOfficeUser(request: Request, response: Response) {
     try {
       const result = await prisma.office.findMany({
+        where: {
+          name: {
+            not: "Master" // Excluir office com nome "Master"
+          }
+        },
         select: {
           id: true,
           name: true,
