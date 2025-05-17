@@ -121,6 +121,8 @@ export class StripeWebHooksController {
                     return res.json({ received: true }); // não faz nada se não existir no banco
                 }
 
+                //parou aqyui 
+
                 console.log("   • Assinatura local encontrada:", localSub.id);
 
                 const newEnd = new Date(sub.current_period_end * 1000);
@@ -129,13 +131,16 @@ export class StripeWebHooksController {
                 if (sub.status === 'canceled' || sub.canceled_at) {
                     console.log("   ⚠️ Assinatura cancelada detectada!");
 
-                    // Desativar a assinatura imediatamente
+                    // Desativar a assinatura imediatamente e marcar como cancelada
                     await prisma.subscription.update({
                         where: { id: localSub.id },
-                        data: { isActive: false }
+                        data: { 
+                            isActive: false,
+                            stripeSubscriptionCanceled: true // Marcar como cancelada no Stripe
+                        }
                     });
 
-                    console.log("   ✅ Assinatura marcada como inativa devido ao cancelamento");
+                    console.log("   ✅ Assinatura marcada como inativa e cancelada");
                     return res.json({ received: true });
                 }
 
@@ -181,6 +186,7 @@ export class StripeWebHooksController {
                 console.log("   • Stripe subscription ID:", sub.id);
                 console.log("   • Status:", sub.status);
                 console.log("   • current_period_end (unix):", sub.current_period_end);
+                console.log("   • Customer ID:", sub.customer);
 
                 // Verificar se temos o companyId na metadata
                 const { companyId } = sub.metadata;
@@ -201,7 +207,7 @@ export class StripeWebHooksController {
                             ? session.subscription === sub.id
                             : session.subscription.id === sub.id)
                     );
-
+// paramos aqui 
                     if (relatedSession && relatedSession.metadata?.companyId) {
                         console.log("   ✔️  Encontrado companyId na sessão de checkout:", relatedSession.metadata.companyId);
 
@@ -231,12 +237,23 @@ export class StripeWebHooksController {
 
                         console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
 
-                        // Atualizar o plano da empresa
+                        // Salvar o stripeCustomerId na tabela Company
+                        const stripeCustomerId = typeof sub.customer === 'string' 
+                            ? sub.customer 
+                            : sub.customer.id;
+                        
+                        console.log("   • Customer ID para salvar:", stripeCustomerId);
+                        
+                        // Atualizar o plano e o stripeCustomerId da empresa
                         await prisma.company.update({
                             where: { id: companyIdFromSession },
-                            data: { planId: plan.id }
+                            data: { 
+                                planId: plan.id,
+                                stripeCustomerId: stripeCustomerId
+                            }
                         });
                         console.log("   ✔️  company.planId atualizado para", plan.id);
+                        console.log("   ✔️  company.stripeCustomerId atualizado para", stripeCustomerId);
 
                         // Criar assinatura no banco
                         const newSubscription = await prisma.subscription.create({
@@ -245,8 +262,10 @@ export class StripeWebHooksController {
                                 planId: plan.id,
                                 startDate: new Date(sub.current_period_start * 1000),
                                 endDate: new Date(sub.current_period_end * 1000),
-                                isActive: sub.status === "active" || sub.status === "trialing",
-                                stripeSubscriptionId: sub.id
+                                isActive: true, // Sempre começar como ativa, independente do status no Stripe
+                                stripeSubscriptionId: sub.id,
+                                stripeSubscriptionCanceled: false, // Inicializar como não cancelada
+                                paymentFailed: false // Inicializar como sem falha de pagamento
                             }
                         });
 
@@ -285,8 +304,56 @@ export class StripeWebHooksController {
                     });
                     console.log("✅ Assinaturas anteriores (incluindo planos FREE) marcadas como inativas");
 
+                    // Salvar o stripeCustomerId na tabela Company
+                    const stripeCustomerId = typeof sub.customer === 'string' 
+                        ? sub.customer 
+                        : sub.customer.id;
+                    
+                    console.log("   • Customer ID para salvar:", stripeCustomerId);
+                    
+                    // Buscar o plano baseado no priceId
+                    const priceId = sub.items.data[0].price.id;
+                    const plan = await prisma.plan.findFirst({
+                        where: { stripePriceId: priceId },
+                    });
+                    
+                    if (!plan) {
+                        console.log("   ⚠️  Nenhum plano encontrado com o price.id:", priceId);
+                        // Ainda assim, vamos atualizar o stripeCustomerId
+                        await prisma.company.update({
+                            where: { id: companyId },
+                            data: { stripeCustomerId }
+                        });
+                        console.log("   ✔️  company.stripeCustomerId atualizado para", stripeCustomerId);
+                        return res.json({ received: true });
+                    }
+                    
+                    // Atualizar o plano e o stripeCustomerId da empresa
+                    await prisma.company.update({
+                        where: { id: companyId },
+                        data: { 
+                            planId: plan.id,
+                            stripeCustomerId
+                        }
+                    });
+                    console.log("   ✔️  company.planId atualizado para", plan.id);
+                    console.log("   ✔️  company.stripeCustomerId atualizado para", stripeCustomerId);
+                    
                     // Criar a nova assinatura local
-                    // (resto do código para criar assinatura...)
+                    const newSubscription = await prisma.subscription.create({
+                        data: {
+                            companyId,
+                            planId: plan.id,
+                            startDate: new Date(sub.current_period_start * 1000),
+                            endDate: new Date(sub.current_period_end * 1000),
+                            isActive: true, // Sempre começar como ativa, independente do status no Stripe
+                            stripeSubscriptionId: sub.id,
+                            stripeSubscriptionCanceled: false, // Inicializar como não cancelada
+                            paymentFailed: false // Inicializar como sem falha de pagamento
+                        }
+                    });
+                    
+                    console.log("   ✔️  Nova assinatura criada com sucesso:", newSubscription.id);
                 }
             }
 
@@ -311,15 +378,18 @@ export class StripeWebHooksController {
 
                 console.log("   • Assinatura local encontrada:", localSubscription.id);
 
-                // Desativar a assinatura
+                // Desativar a assinatura e marcar como cancelada
                 await prisma.subscription.update({
                     where: { id: localSubscription.id },
-                    data: { isActive: false }
+                    data: { 
+                        isActive: false,
+                        stripeSubscriptionCanceled: true // Marcar como cancelada no Stripe
+                    }
                 });
-                console.log("   ✅ Assinatura marcada como inativa");
+                console.log("   ✅ Assinatura marcada como inativa e cancelada");
 
-                // Nota: Mantemos o usuário no mesmo plano, apenas com assinatura inativa
-                // Isso permitirá que o front-end mostre a página "subscription expired"
+                // Nota: Mantemos o usuário no mesmo plano, apenas com assinatura inativa e cancelada
+                // Isso permitirá que o front-end mostre a página "subscription expired/canceled"
             }
 
             /* ---------- INVOICE PAYMENT FAILED ---------- */

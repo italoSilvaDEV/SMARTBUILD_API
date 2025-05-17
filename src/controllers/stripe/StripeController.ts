@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
 import dotenv from "dotenv";
@@ -993,6 +994,15 @@ export class StripeController {
                 return res.status(400).json({ error: "Plano não está configurado para pagamentos" });
             }
 
+            // Buscar a empresa para verificar se já tem stripeCustomerId
+            const company = await prisma.company.findUnique({
+                where: { id: companyId }
+            });
+
+            if (!company) {
+                return res.status(404).json({ error: "Empresa não encontrada" });
+            }
+
             // Preparar datas para a assinatura
             const startDate = new Date();
             let endDate = new Date();
@@ -1005,8 +1015,8 @@ export class StripeController {
                 endDate.setDate(endDate.getDate() + plan.validityDuration);
             }
 
-            // Criar a sessão de checkout com dados completos de assinatura no metadata
-            const session = await stripe.checkout.sessions.create({
+            // Configuração base da sessão de checkout
+            const sessionConfig: Stripe.Checkout.SessionCreateParams = {
                 payment_method_types: ['card'],
                 line_items: [
                     {
@@ -1025,8 +1035,20 @@ export class StripeController {
                     endDate: endDate.toISOString(),
                     validityType: plan.validityType,
                     validityDuration: plan.validityDuration.toString()
-                } 
-            });
+                }
+            };
+
+            // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação
+            if (company.stripeCustomerId) {
+                console.log(`Usando cliente Stripe existente: ${company.stripeCustomerId}`);
+                sessionConfig.customer = company.stripeCustomerId;
+            }
+
+            // Criar a sessão de checkout
+            const session = await stripe.checkout.sessions.create(sessionConfig);
+
+            // Se a empresa não tinha stripeCustomerId, vamos capturá-lo no webhook
+            // O webhook customer.subscription.created vai associar o cliente à empresa
 
             return res.status(200).json({
                 checkoutUrl: session.url,

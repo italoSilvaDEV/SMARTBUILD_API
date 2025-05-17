@@ -715,6 +715,7 @@ model Subscription {
   isActive  Boolean  @default(true) // Indica se o plano está ativo ou expirado
   stripeSubscriptionId String?
   paymentFailed  Boolean  @default(false)
+  stripeSubscriptionCanceled Boolean @default(false)
 }
 
 enum ValidityType {
