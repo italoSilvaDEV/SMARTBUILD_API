@@ -255,4 +255,79 @@ export class UserAttendanceController {
         }
     }
 
+    async changeProject(req: Request, res: Response) { 
+        try {
+            const { attendanceId } = req.params;
+            const { newServiceProjectId } = req.body;
+            
+            if (!attendanceId || !newServiceProjectId) {
+                return res.status(400).json({ error: 'Attendance record ID and new project ID are required' });
+            }
+            
+            // Buscar o registro de presença no banco de dados
+            const attendance = await prisma.userAttendance.findUnique({ 
+                where: { id: attendanceId },
+                include: { user: true }
+            });
+            
+            if (!attendance) {
+                return res.status(404).json({ error: 'Attendance record not found' });
+            }
+            
+            // Verificar se o novo projeto existe
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: { id: newServiceProjectId }
+            });
+            
+            if (!serviceProject) {
+                return res.status(404).json({ error: 'Project not found. Please verify if the project ID is valid.' });
+            }
+            
+            // Buscar ou criar uma relação UserServiceProject
+            let userServiceProject = await prisma.userServiceProject.findFirst({
+                where: {
+                    user_id: attendance.user_id,
+                    service_project_id: newServiceProjectId
+                }
+            });
+            
+            // Se não existir, criar a relação
+            if (!userServiceProject) {
+                userServiceProject = await prisma.userServiceProject.create({
+                    data: {
+                        user_id: attendance.user_id,
+                        service_project_id: newServiceProjectId
+                    }
+                });
+            }
+            
+            // Atualizar o projeto usando o ID do UserServiceProject
+            const updatedAttendance = await prisma.userAttendance.update({
+                where: { id: attendanceId },
+                data: {
+                    user_service_project_id: userServiceProject.id
+                },
+                include: {
+                    user: {
+                        select: { id: true, name: true }
+                    },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                select: { id: true, name: true }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            return res.status(200).json({
+                message: 'Project changed successfully',
+                attendance: updatedAttendance
+            });
+        } catch (error) {
+            console.error('Error changing project:', error);
+            return res.status(500).json({ error: 'Error processing request' });
+        }
+    }
 }

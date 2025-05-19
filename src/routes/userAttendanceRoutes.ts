@@ -30,4 +30,7 @@ userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineCont
 userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker);
 userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline);
 
+// Nova rota para mudança de projeto
+userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject); 
+
 export { userAttendanceRoutes };
