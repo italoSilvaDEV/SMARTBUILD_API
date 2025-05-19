@@ -62,4 +62,7 @@ userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPas
 // Rota para verificar status da assinatura
 userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscriptionStatus);
 
+// Rota para verificar status da assinatura local
+userRoutes.get('/user/local-subscription-status/:userId?', checkToken, User.getLocalSubscriptionsStatus);
+
 export { userRoutes }

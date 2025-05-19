@@ -1135,7 +1135,7 @@ export class UserController {
       if (!userId) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
-      
+       
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -1275,6 +1275,113 @@ export class UserController {
       
     } catch (error) {
       console.error("Erro ao verificar status da assinatura:", error);
+      return res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Erro interno do servidor"
+      });
+    }
+  }
+
+  async getLocalSubscriptionsStatus(req: Request, res: Response) {
+    try {
+      const userIdFromParam = req.params.userId;
+      const userId = userIdFromParam;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
+      }
+       
+      // Buscar o usuário com sua empresa e o plano associado
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          company: {
+            include: {
+              Plan: {
+                include: {
+                  permissionGroup: {
+                    include: {
+                      GroupPermissionsList: {
+                        include: {
+                          Permissions: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      if (!user || !user.company?.id) {
+        return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
+      }
+      
+      // Obter permissões do plano
+      let permissions: string[] = [];
+      if (user.company.Plan?.permissionGroup?.GroupPermissionsList) {
+        permissions = user.company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+      }
+
+      // Obter informações do plano
+      const planInfo = user.company.Plan ? {
+        id: user.company.Plan.id,
+        name: user.company.Plan.name,
+        validityType: user.company.Plan.validityType,
+        validityDuration: user.company.Plan.validityDuration,
+        stripePriceId: user.company.Plan.stripePriceId,
+        stripeProductId: user.company.Plan.stripeProductId
+      } : null;
+
+      // Buscar a assinatura mais recente pelo startDate
+      const subscription = await prisma.subscription.findFirst({
+        where: {
+          companyId: user.company.id,
+        },
+        orderBy: { startDate: 'desc' }
+      });
+      
+      // Definir valores padrão
+      let isExpired = true;
+      let stripeSubscriptionCanceled = false;
+      let paymentFailed = false;
+
+
+       // Lógica de verificação de planos e assinaturas
+      if (!planInfo) {
+        // Sem plano definido, considerar expirado
+        isExpired = true;
+      }
+      else if (planInfo.validityType === 'FREE') {
+        // Para planos FREE, verificar data de expiração na assinatura local
+        if (subscription) {
+          isExpired = new Date(subscription.endDate) < new Date();
+        } else {
+          // Sem assinatura para plano FREE, considerar expirado
+          isExpired = true;
+        }
+      }
+      else {
+        // Para planos PAGOS (não-FREE), usar os valores da assinatura local
+        if (subscription) {
+          isExpired = !subscription.isActive;
+          stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+          paymentFailed = subscription.paymentFailed;
+        }
+      }
+      
+      // Retornar no mesmo formato do getSubscriptionStatus
+      return res.json({
+        subscription,
+        isExpired,
+        stripeSubscriptionCanceled,
+        paymentFailed,
+        permissions
+      });
+      
+    } catch (error) {
+      console.error("Erro ao verificar status da assinatura local:", error);
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
