@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
 import dotenv from "dotenv";
@@ -11,23 +12,23 @@ const stripe = stripeConfig.getClient();
 function createSafeDescription(serviceName: string, description: string): string {
     const separator = " - ";
     const maxLength = 500;
-    
+
     // Se o nome do serviço já for maior que o limite, truncá-lo
     if (serviceName.length >= maxLength) {
         return serviceName.substring(0, maxLength - 3) + "...";
     }
-    
+
     // Espaço disponível para a descrição = limite total - tamanho do nome - tamanho do separador
     const availableSpace = maxLength - serviceName.length - separator.length;
-    
+
     // Se não houver espaço para descrição, retornar apenas o nome truncado
     if (availableSpace <= 0) {
         return serviceName.substring(0, maxLength - 3) + "...";
     }
-    
+
     // Truncar a descrição para caber no espaço disponível
     const truncatedDescription = (description || "No description").substring(0, availableSpace);
-    
+
     return `${serviceName}${separator}${truncatedDescription}`;
 }
 
@@ -170,7 +171,7 @@ export class StripeController {
 
             const emailClient = project.client.email || "";
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
+    
             if (!emailRegex.test(emailClient)) {
                 console.error("Endereço de email inválido!");
                 return res.status(400).json({ error: "Invalid client email address" });
@@ -197,7 +198,7 @@ export class StripeController {
                     }
                 }
             }
-
+    
             if (!stripeCustomerId) {
                 console.log("Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
@@ -209,15 +210,15 @@ export class StripeController {
                     { stripeAccount: stripeAccountId }
                 );
                 stripeCustomerId = customer.id;
-
+    
                 await prisma.client.update({
                     where: { id: project.client.id },
                     data: { stripeCustomerId },
                 });
-
+    
                 console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             }
-
+        
             console.log("Criando Invoice Items...");
             let totalAmount = 0;
             const lineItems = [];
@@ -457,7 +458,7 @@ export class StripeController {
     }
 
     // com stripe e custom
-    async getInvoicesByProject(req: Request, res: Response) { 
+    async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
@@ -476,26 +477,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
-                                            }
+                OR: [
+                    {
+                        project: {
+                            is: {
+                                client: {
+                                    is: {
+                                        name: {
+                                            contains: search,
                                         }
                                     }
                                 }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
                         }
-                    ]
+                    },
+                    {
+                        stripeInvoiceId: {
+                            contains: search,
+                        }
+                    }
+                ]
                 }
             };
 
@@ -612,8 +613,7 @@ export class StripeController {
         }
     }
 
-
-     async getInvoicesByCompany(req: Request, res: Response) {
+    async getInvoicesByCompany(req: Request, res: Response) {
         const { companyId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; // Parâmetros para paginação e pesquisa
 
@@ -632,26 +632,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
-                                            }
+                OR: [
+                    {
+                        project: {
+                            is: {
+                                client: {
+                                    is: {
+                                        name: {
+                                            contains: search,
                                         }
                                     }
                                 }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
                         }
-                    ]
+                    },
+                    {
+                        stripeInvoiceId: {
+                            contains: search,
+                        }
+                    }
+                ]
                 }
 
             };
@@ -964,5 +964,157 @@ export class StripeController {
         }
     }
 
+    async createCheckoutSession(req: Request, res: Response) {
+        try {
+            const { planId, companyId } = req.body;
+
+            if (!planId || !companyId) {
+                return res.status(400).json({ error: "IDs do plano e da empresa são obrigatórios" });
+            }
+
+            // Buscar informações do plano
+            const plan = await prisma.plan.findUnique({
+                where: { id: planId }
+            });
+
+            if (!plan) {
+                return res.status(404).json({ error: "Plano não encontrado" });
+            }
+
+            // Verificar se é um plano gratuito
+            if (plan.validityType === 'FREE') {
+                return res.status(400).json({
+                    error: "Planos gratuitos não precisam de checkout",
+                    isFree: true
+                });
+            }
+
+            // Verificar se temos as informações do Stripe necessárias
+            if (!plan.stripePriceId) {
+                return res.status(400).json({ error: "Plano não está configurado para pagamentos" });
+            }
+
+            // Buscar a empresa para verificar se já tem stripeCustomerId
+            const company = await prisma.company.findUnique({
+                where: { id: companyId }
+            });
+
+            if (!company) {
+                return res.status(404).json({ error: "Empresa não encontrada" });
+            }
+
+            // Preparar datas para a assinatura
+            const startDate = new Date();
+            let endDate = new Date();
+
+            if (plan.validityType === 'MONTHLY') {
+                endDate.setMonth(endDate.getMonth() + plan.validityDuration);
+            } else if (plan.validityType === 'ANNUAL') {
+                endDate.setFullYear(endDate.getFullYear() + plan.validityDuration);
+            } else {
+                endDate.setDate(endDate.getDate() + plan.validityDuration);
+            }
+
+            // Configuração base da sessão de checkout
+            const sessionConfig: Stripe.Checkout.SessionCreateParams = {
+                payment_method_types: ['card'],
+                line_items: [
+                    {
+                        price: plan.stripePriceId,
+                        quantity: 1,
+                    }, 
+                ],
+                mode: 'subscription',
+                success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.URL_FRONT}/login`,
+                client_reference_id: companyId,
+                metadata: {
+                    planId,
+                    companyId,
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString(),
+                    validityType: plan.validityType,
+                    validityDuration: plan.validityDuration.toString()
+                }
+            };
+
+            // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação
+            if (company.stripeCustomerId) {
+                console.log(`Usando cliente Stripe existente: ${company.stripeCustomerId}`);
+                sessionConfig.customer = company.stripeCustomerId;
+            }
+
+            // Criar a sessão de checkout
+            const session = await stripe.checkout.sessions.create(sessionConfig);
+
+            // Se a empresa não tinha stripeCustomerId, vamos capturá-lo no webhook
+            // O webhook customer.subscription.created vai associar o cliente à empresa
+
+            return res.status(200).json({
+                checkoutUrl: session.url,
+                sessionId: session.id
+            });
+        } catch (error) {
+            console.error("Erro ao criar sessão de checkout:", error);
+            return res.status(500).json({ error: "Erro interno ao processar o checkout" });
+        }
+    }
+
+    // portal do cliente
+    async createCustomerPortalSession(req: Request, res: Response) {
+        try {
+            const { companyId } = req.params;
+            const { returnUrl } = req.body; // Receber a URL de redirecionamento do front-end
+            
+            if (!companyId) {
+                return res.status(400).json({ error: "Company ID is required." });
+            }
+
+            // Buscar a empresa
+            const company = await prisma.company.findUnique({
+                where: { id: companyId }
+            });
+
+            if (!company) {
+                return res.status(404).json({ error: "Company not found." });
+            }
+
+            // Buscar a assinatura ativa mais recente
+            const subscription = await prisma.subscription.findFirst({
+                where: {
+                    companyId,
+                    // isActive: true
+                },
+                orderBy: {
+                    startDate: 'desc'
+                }
+            });
+
+            if (!subscription || !subscription.stripeSubscriptionId) {
+                return res.status(400).json({ error: "No active subscription found for this company." });
+            }
+
+            // Obter a assinatura do Stripe para encontrar o cliente
+            const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+            console.log("Assinatura Stripe verificada:", subscription.stripeSubscriptionId, "status:", stripeSubscription.status);
+
+            if (!stripeSubscription.customer) {
+                return res.status(400).json({ error: "Stripe customer not found for this subscription." });
+            }
+
+            // Criar a sessão do portal do cliente
+            const session = await stripe.billingPortal.sessions.create({
+                customer: String(stripeSubscription.customer),
+                return_url: `${process.env.URL_FRONT}/${returnUrl}` || `${process.env.URL_FRONT}/login`, // Usar a URL fornecida ou fallback para /login
+            });
+
+            return res.json({ url: session.url });
+        } catch (error) {
+            console.error("Erro ao criar sessão do portal do cliente:", error);
+            return res.status(500).json({
+                error: error instanceof Error ? error.message : "Internal server error"
+            });
+        }
+    }
 
 }

@@ -13,6 +13,7 @@ import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
+import { stripeConfig } from "../../config/stripe";
 
 
 export class UserController {
@@ -164,7 +165,9 @@ export class UserController {
     }
     // })
   }
-  async authenticate(req: Request, res: Response) {
+
+  // atual mais agora mudei para a abaixo dessa enquanto nao ver se tem algum erro vou guardar essa de backup
+  async authenticateAtualSemPermissoes(req: Request, res: Response) {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -258,13 +261,9 @@ export class UserController {
       return res.json({ error: "Internal error" });
     }
   }
-  async authenticateCOM_PERMISSOES(req: Request, res: Response) {
+  // essa rota que vai ser usada agora pois ela trabalha com as permissões
+  async authenticate(req: Request, res: Response) {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
       const { email, password } = req.body;
 
       if (!email || !password) {
@@ -272,58 +271,47 @@ export class UserController {
       }
 
       const user = await prisma.user.findUnique({
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          password: true,
-          email: true,
-          rules: true,
-          isDisabled: true,
-          office: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+        where: { email },
+        include: {
+          office: true,
           company: {
-            select: {
-              id: true,
-              name: true,
-              planId: true,
+            include: {
+              Plan: true
             }
           }
-        },
-        where: {
-          email,
-        },
+        }
       });
 
       if (!user) {
         return res.status(400).json({ error: "User or password invalid!" });
       }
 
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        return res.status(401).json({ error: "Email ou senha inválidos" });
+      }
+
+      // Verificar se o usuário está desativado
       if (user.isDisabled) {
-        return res.status(403).json({ error: "Access denied!" });
+        return res.status(403).json({ error: "Access denied" });
       }
 
-      const isValidPassword = await bcrypt.compare(password, user.password);
+      // Atualizar último acesso
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { last_acess: new Date() }
+      });
 
-      if (!isValidPassword) {
-        return res.status(400).json({ error: "User or password invalid!" });
-      }
-
-      // Gerar URL assinada para o avatar, se existir
-      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
-
-      // Buscar informações do plano e assinatura
+      // Verificar plano e assinatura
       let planInfo = null;
       let subscriptionInfo = null;
       let isExpired = false;
+      let stripeSubscriptionCanceled = false;
+      let paymentFailed = false;
       let permissions: string[] = [];
 
       if (user.company?.id) {
-        // Buscar o plano da empresa
+
         if (user.company.planId) {
           const plan = await prisma.plan.findUnique({
             where: { id: user.company.planId },
@@ -339,104 +327,154 @@ export class UserController {
               }
             }
           });
-          
-          planInfo = plan;
-          
+
           // Obter as permissões do grupo de permissões associado ao plano
           if (plan?.permissionGroup?.GroupPermissionsList) {
             permissions = plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
           }
         }
 
-        // Buscar a assinatura ativa mais recente
-        const subscription = await prisma.subscription.findFirst({
-          where: { 
-            companyId: user.company.id,
-            isActive: true
-          },
-          orderBy: {
-            endDate: 'desc'
-          },
-          include: {
-            plan: true
-          }
-        });
 
+        // Obter informações do plano
+        planInfo = user.company.Plan ? {
+          id: user.company.Plan.id,
+          name: user.company.Plan.name,
+          validityType: user.company.Plan.validityType,
+          validityDuration: user.company.Plan.validityDuration,
+          stripePriceId: user.company.Plan.stripePriceId,
+          stripeProductId: user.company.Plan.stripeProductId
+        } : null;
+
+        // Buscar assinatura local
+        const subscription = await prisma.subscription.findFirst({
+          where: {
+            companyId: user.company.id,
+            // isActive: true
+          },
+          orderBy: { endDate: 'desc' }
+        });
         subscriptionInfo = subscription;
-        
-        // Verificar se o plano expirou
-        if (subscription) {
-          isExpired = new Date(subscription.endDate) < new Date();
-        } else if (planInfo && planInfo.validityType === 'DAYS') {
-          // Para planos trial, verificar se já passou o período de validade
-          const company = await prisma.company.findUnique({
-            where: { id: user.company.id }
-          });
-          
-          if (company && company.date_creation) {
-            const trialEndDate = new Date(company.date_creation);
-            trialEndDate.setDate(trialEndDate.getDate() + planInfo.validityDuration);
-            isExpired = trialEndDate < new Date();
+
+        // Lógica simplificada para verificação de planos e assinaturas
+        if (!planInfo) {
+          // Sem plano definido, considerar expirado
+          isExpired = true;
+        }
+        else if (planInfo.validityType === 'FREE') {
+          // Plano FREE nunca expira
+          // isExpired = false;
+          if (subscription) {
+            isExpired = new Date(subscription.endDate) < new Date();
+          } else {
+            // Sem assinatura para plano FREE, considerar expirado
+            isExpired = true;
           }
         }
-        
-        // Se o plano expirou, verificar se o usuário é administrador
-        if (isExpired) {
-          // Verificar se o usuário é administrador
-          const isAdmin = user.office.name.toLowerCase() === 'administrador' || 
-                          user.office.name.toLowerCase() === 'administrator';
-          
-          // Se não for administrador, bloquear o acesso
-          if (!isAdmin) {
-            return res.status(403).json({ 
-              error: "Your subscription has expired. Please renew your plan to continue using the system.",
-              isExpired: true,
-              plan: planInfo,
-              subscription: subscriptionInfo
-            });
+        else {
+          // Para planos PAGOS (não-FREE)
+          if (!subscription || !subscription.stripeSubscriptionId) {
+            // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+            isExpired = true;
+          } 
+          else {
+            try {
+              // Inicializar cliente Stripe
+              const stripe = stripeConfig.getClient();
+
+              // Buscar a assinatura específica pelo ID salvo no banco
+              const stripeSubscription = await stripe.subscriptions.retrieve(
+                subscription.stripeSubscriptionId
+              );
+
+              // Verificar se a assinatura foi cancelada
+              if (stripeSubscription.status === 'canceled') {
+                stripeSubscriptionCanceled = true;
+              }
+
+              // Verificar status da assinatura
+              if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
+                // Verificar se tem data de cancelamento programada
+                isExpired = stripeSubscription.cancel_at 
+                  ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
+                  : false;
+              } else {
+                // Status inativo (canceled, unpaid, incomplete_expired, etc)
+                isExpired = true;
+              }
+
+              // Verificar se a assinatura tem problema de pagamento no banco
+              if (stripeSubscription.status === 'past_due' || stripeSubscription.status === 'unpaid') {
+                paymentFailed = true;
+              }
+
+              console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
+            } 
+            catch (stripeError) {
+              console.error('Erro ao verificar assinatura no Stripe:', stripeError);
+              // Fallback para verificação local em caso de erro
+              isExpired = new Date(subscription.endDate) < new Date();
+            }
           }
-          // Se for administrador, continua o login mas informa sobre a expiração
+        }
+
+        // Se o plano expirou e o usuário não é administrador, bloquear acesso
+        const isAdmin = user.office.name.toLowerCase() === 'administrator';
+        if (isExpired && !isAdmin) {
+          return res.status(403).json({
+            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
+          });
         }
       }
+
 
       await prisma.user.update({
         where: { id: user.id },
         data: { last_acess: new Date() },   // Use new Date() para o horário atual
       });
 
+
       const token = Jwt.sign(
-        {
-          id: user.id,
-          name: user.name,
-        },
+        { id: user.id, name: user.name, email: user.email },
         String(process.env.SECRET_JWT),
-        {
-          subject: user.id,
-          expiresIn: "1d",
-        }
+        { expiresIn: "30d" }
       );
 
+      // Formatar resposta
       return res.json({
         msg: "Authentication completed successfully!",
         token,
         rules: user.office.name,
         user: {
           id: user.id,
-          email: user.email,
-          avatar: avatarUrl,
           name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+          document: user.document,
+          city_and_state: user.city_and_state,
           office: user.office,
-          company: user.company,
-          permissions: permissions
+          phone: user.phone,
+          hourly_price: user.hourly_price,
+          profession: user.profession,
+          company: {
+            id: user.company?.id,
+            name: user.company?.name,
+          },
+          plan: planInfo,
+          permissions: permissions,
+          last_acess: user.last_acess,
+          subscription: subscriptionInfo,
+          isExpired,
+          stripeSubscriptionCanceled,
+          paymentFailed
         },
         subscription: subscriptionInfo,
-        isExpired: isExpired
+        isExpired,
+        stripeSubscriptionCanceled,
+        paymentFailed
       });
     } catch (error) {
-      if (error instanceof Error) {
-        return res.json({ error: error.message });
-      }
-      return res.json({ error: "Internal error" });
+      console.error("Erro na autenticação:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
 
@@ -494,7 +532,7 @@ export class UserController {
         }
       }
 
-      
+
 
       if (current_password && password) {
         const checkPassword = await bcrypt.compare(
@@ -985,6 +1023,11 @@ export class UserController {
   async serchOfficeUser(request: Request, response: Response) {
     try {
       const result = await prisma.office.findMany({
+        where: {
+          name: {
+            not: "Master" // Excluir office com nome "Master"
+          }
+        },
         select: {
           id: true,
           name: true,
@@ -1063,10 +1106,10 @@ export class UserController {
 
       // Obter URL do logo da empresa
       const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
-      
+
       // Criar template de email
       const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, newPassword);
-      
+
       // Enviar email
       await transporter.sendMail({
         from: SMTP_CONFIG.user,
@@ -1078,10 +1121,164 @@ export class UserController {
       return res.status(200).json({ message: "Email updated and password sent successfully" });
     } catch (error) {
       console.error("Error updating email:", error);
-      return res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Internal server error" 
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error"
       });
     }
   }
 
+  async getSubscriptionStatus(req: Request, res: Response) {
+    try {
+      const userIdFromParam = req.params.userId;
+      const userId = userIdFromParam;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
+      }
+      
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          company: {
+            include: {
+              Plan: {
+                include: {
+                  permissionGroup: {
+                    include: {
+                      GroupPermissionsList: {
+                        include: {
+                          Permissions: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      if (!user || !user.company?.id) {
+        return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
+      }
+      
+      let subscriptionInfo = null;
+      let isExpired = false;
+      let stripeSubscriptionCanceled = false;
+      let planInfo = null;
+      let paymentFailed = false;
+      let permissions: string[] = [];
+
+      // Obter permissões do plano
+      if (user.company.Plan?.permissionGroup?.GroupPermissionsList) {
+        permissions = user.company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+      }
+
+      // Obter informações do plano
+      planInfo = user.company.Plan ? {
+        id: user.company.Plan.id,
+        name: user.company.Plan.name,
+        validityType: user.company.Plan.validityType,
+        validityDuration: user.company.Plan.validityDuration,
+        stripePriceId: user.company.Plan.stripePriceId,
+        stripeProductId: user.company.Plan.stripeProductId
+      } : null;
+
+      // Buscar assinatura local
+      const subscription = await prisma.subscription.findFirst({
+        where: {
+          companyId: user.company.id,
+        },
+        orderBy: { endDate: 'desc' }
+      });
+      
+      subscriptionInfo = subscription;
+      
+      // Lógica simplificada para verificação de planos e assinaturas
+      if (!planInfo) {
+        // Sem plano definido, considerar expirado
+        isExpired = true;
+      }
+      else if (planInfo.validityType === 'FREE') {
+        // Para planos FREE, verificar data de expiração na assinatura local
+        if (subscription) {
+          isExpired = new Date(subscription.endDate) < new Date();
+        } else {
+          // Sem assinatura para plano FREE, considerar expirado
+          isExpired = true;
+        }
+      }
+      else {
+        // Para planos PAGOS (não-FREE)
+        if (!subscription || !subscription.stripeSubscriptionId) {
+          // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+          isExpired = true;
+        } 
+        else {
+          try {
+            // Inicializar cliente Stripe
+            const stripe = stripeConfig.getClient();
+
+            // Buscar a assinatura específica pelo ID salvo no banco
+            const stripeSubscription = await stripe.subscriptions.retrieve(
+              subscription.stripeSubscriptionId
+            );
+
+            // Verificar se a assinatura foi cancelada
+            if (stripeSubscription.status === 'canceled') {
+              stripeSubscriptionCanceled = true;
+            }
+
+            // Verificar status da assinatura
+            if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
+              // Verificar se tem data de cancelamento programada
+              isExpired = stripeSubscription.cancel_at 
+                ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
+                : false;
+            } else {
+              // Status inativo (canceled, unpaid, incomplete_expired, etc)
+              isExpired = true;
+            }
+
+            // Verificar se a assinatura tem problema de pagamento no banco
+            if (stripeSubscription.status === 'past_due' || stripeSubscription.status === 'unpaid') {
+              paymentFailed = true;
+              
+              // Atualizar no banco se identificamos pelo Stripe
+              if (!subscription.paymentFailed) {
+                await prisma.subscription.update({
+                  where: { id: subscription.id },
+                  data: { paymentFailed: true }
+                });
+              }
+            }
+
+            console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
+          } 
+          catch (stripeError) {
+            console.error('Erro ao verificar assinatura no Stripe:', stripeError);
+            // Fallback para verificação local em caso de erro
+            isExpired = new Date(subscription.endDate) < new Date();
+          }
+        }
+      }
+      
+      // Retornar apenas os dados solicitados
+      return res.json({
+        subscription: subscriptionInfo,
+        isExpired,
+        stripeSubscriptionCanceled,
+        paymentFailed,
+        permissions
+      });
+      
+    } catch (error) {
+      console.error("Erro ao verificar status da assinatura:", error);
+      return res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Erro interno do servidor"
+      });
+    }
+  }
 }
+

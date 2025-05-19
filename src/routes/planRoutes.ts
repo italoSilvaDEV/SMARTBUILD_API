@@ -1,18 +1,15 @@
 import { Router } from 'express';
-import { PlanController } from '../adapters/controllers/planController';
-import { PlanService } from '../application/services/planService';
-import { PrismaPlanRepository } from '../infrastructure/repositories/prisma/PrismaPlanRepository';
+import { PlanController } from '../controllers/plans/PlanController';
 import { checkToken } from '../middlewares/checkToken';
+
 const planRoutes = Router();
-const planRepository = new PrismaPlanRepository();
-const planService = new PlanService(planRepository);
-const planController = new PlanController(planService);
+const planController = new PlanController();
 
 // Rotas para planos
-planRoutes.post('/plans', checkToken, (req, res) => planController.createPlan(req, res));
-planRoutes.get('/plans', (req, res) => planController.getAllPlans(req, res));
-planRoutes.get('/plans/:id',  (req, res) => planController.getPlanById(req, res));
-planRoutes.put('/plans/:id', checkToken, (req, res) => planController.updatePlan(req, res));
-planRoutes.delete('/plans/:id', checkToken, (req, res) => planController.deletePlan(req, res));
+planRoutes.post('/plans', checkToken, planController.create);
+planRoutes.get('/plans', planController.getAllPlans);
+planRoutes.get('/plans/:id', planController.getPlanById);
+planRoutes.put('/plans/:id', checkToken, planController.updatePlan);
+planRoutes.delete('/plans/:id', checkToken, planController.deletePlan);
 
 export { planRoutes }; 
