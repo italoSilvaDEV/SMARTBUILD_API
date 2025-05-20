@@ -80,10 +80,16 @@ export class StripeWebHooksController {
                     const { planId, companyId } = session.metadata;
                     console.log("Checkout completado para companyId:", companyId, "planId:", planId);
 
-                    // Apenas atualizar a empresa com o novo plano
+                    // Atualizar a empresa com o novo plano e allowedEmployees
                     await prisma.company.update({
                         where: { id: companyId },
-                        data: { planId }
+                        data: { 
+                            planId,
+                            // Verificar se temos allowedEmployees no metadata
+                            ...(session.metadata.allowedEmployees && {
+                                allowedEmployees: parseInt(session.metadata.allowedEmployees)
+                            })
+                        }
                     });
 
                     console.log("✅ Empresa atualizada com novo plano");
@@ -167,9 +173,26 @@ export class StripeWebHooksController {
 
                 if (plan) {
                     console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
+                    
+                    // Buscar allowedEmployees do plano
+                    const allowedEmployeesFromPlan = plan.allowedEmployees;
+                    
+                    // Buscar a empresa para verificar se já tem um allowedEmployees definido
+                    const company = await prisma.company.findUnique({
+                        where: { id: localSub.companyId },
+                        select: { allowedEmployees: true }
+                    });
+                    
+                    // Atualizar a empresa com o novo plano e allowedEmployees se necessário
                     await prisma.company.update({
                         where: { id: localSub.companyId },
-                        data: { planId: plan.id },
+                        data: { 
+                            planId: plan.id,
+                            // Se a empresa não tem allowedEmployees, usa o do plano
+                            ...(company?.allowedEmployees === null && allowedEmployeesFromPlan !== null && {
+                                allowedEmployees: allowedEmployeesFromPlan
+                            })
+                        },
                     });
                     console.log("   ✔️  company.planId atualizado para", plan.id);
                 } else {
@@ -249,7 +272,11 @@ export class StripeWebHooksController {
                             where: { id: companyIdFromSession },
                             data: { 
                                 planId: plan.id,
-                                stripeCustomerId: stripeCustomerId
+                                stripeCustomerId: stripeCustomerId,
+                                // Verificar se a sessão tem allowedEmployees no metadata
+                                ...(relatedSession.metadata?.allowedEmployees && {
+                                    allowedEmployees: parseInt(relatedSession.metadata.allowedEmployees)
+                                })
                             }
                         });
                         console.log("   ✔️  company.planId atualizado para", plan.id);
@@ -333,7 +360,11 @@ export class StripeWebHooksController {
                         where: { id: companyId },
                         data: { 
                             planId: plan.id,
-                            stripeCustomerId
+                            stripeCustomerId,
+                            // Se ainda não tem allowedEmployees, pegar do plano
+                            ...(plan.allowedEmployees !== null && {
+                                allowedEmployees: plan.allowedEmployees
+                            })
                         }
                     });
                     console.log("   ✔️  company.planId atualizado para", plan.id);

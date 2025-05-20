@@ -12,7 +12,7 @@ export class PlanController {
   // integrado com stripe
   async create(req: Request, res: Response) {
     try {
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees } = req.body;
       
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
@@ -20,7 +20,7 @@ export class PlanController {
 
       // 1. Para planos gratuitos, não criamos no Stripe
       let stripeProductId = null;
-      let stripePriceId = null;
+      let stripePriceId = null; 
       
       // Apenas criar no Stripe se NÃO for um plano FREE e tiver preço
       if (validityType !== 'FREE' && price && price > 0) {
@@ -32,7 +32,8 @@ export class PlanController {
             features: processedFeatures,
             validityType,
             validityDuration: validityDuration?.toString() || "",
-            permissionGroupId
+            permissionGroupId,
+            allowedEmployees: allowedEmployees?.toString() || ""
           }
         });
         
@@ -75,7 +76,8 @@ export class PlanController {
           validityDuration,
           permissionGroupId,
           stripeProductId,
-          stripePriceId
+          stripePriceId,
+          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null
         },
         include: {
           permissionGroup: true
@@ -104,6 +106,7 @@ export class PlanController {
         permissionGroup: plan.permissionGroup,
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
+        allowedEmployees: plan.allowedEmployees,
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt
       };
@@ -186,7 +189,7 @@ export class PlanController {
   async updatePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees } = req.body;
       
       // Buscar o plano atual para verificar se há alterações e se existem IDs do Stripe
       const currentPlan = await prisma.plan.findUnique({
@@ -214,7 +217,8 @@ export class PlanController {
             features: processedFeatures,
             validityType,
             validityDuration: validityDuration?.toString() || "",
-            permissionGroupId
+            permissionGroupId,
+            allowedEmployees: allowedEmployees?.toString() || ""
           }
         });
         
@@ -277,7 +281,8 @@ export class PlanController {
           validityDuration,
           permissionGroupId,
           stripeProductId,
-          stripePriceId
+          stripePriceId,
+          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null
         },
         include: { permissionGroup: true }
       });
@@ -295,6 +300,7 @@ export class PlanController {
         permissionGroup: updatedPlan.permissionGroup,
         stripeProductId: updatedPlan.stripeProductId,
         stripePriceId: updatedPlan.stripePriceId,
+        allowedEmployees: updatedPlan.allowedEmployees,
         createdAt: updatedPlan.createdAt,
         updatedAt: updatedPlan.updatedAt
       };

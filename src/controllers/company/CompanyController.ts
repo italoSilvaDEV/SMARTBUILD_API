@@ -123,6 +123,11 @@ export class CompanyController {
                 data: {
                     name: data.company_name,
                     avatar: String(fileName),
+                    extraEmployees: data.extraEmployees ? 
+                        (typeof data.extraEmployees === 'string' ? 
+                            parseInt(data.extraEmployees) : 
+                            Number(data.extraEmployees)) : 
+                        null
                 }
             });
             console.log("30. Company criada:", company);
@@ -495,7 +500,8 @@ export class CompanyController {
                 document,
                 city_and_state,
                 phone,
-                userId // Adicionado userId para identificar o usuário específico
+                userId, // Adicionado userId para identificar o usuário específico
+                extraEmployees // Nova propriedade opcional
             } = req.body;
 
             // Verificar se userId foi fornecido
@@ -604,7 +610,12 @@ export class CompanyController {
                     where: { id },
                     data: {
                         name: company_name,
-                        ...(req.file && { avatar: avatarUrl })
+                        ...(req.file && { avatar: avatarUrl }),
+                        ...(extraEmployees !== undefined && { 
+                            extraEmployees: typeof extraEmployees === 'string' ? 
+                                parseInt(extraEmployees) : 
+                                Number(extraEmployees) 
+                        })
                     }
                 }),
                 prisma.user.update({

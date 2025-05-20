@@ -89,6 +89,8 @@ model Company {
   Project        Project[]
   Client         Client[]
   UserAttendance UserAttendance[]
+  allowedEmployees Int? // Quantidade de funcionários permitida pelo plano
+  extraEmployees   Int? // Quantidade de funcionários extras adicionados
 
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
@@ -741,7 +743,7 @@ model Plan {
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
   
-
+allowedEmployees  Int?
   stripeProductId String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId   String? // Campo para armazenar o ID do preço no Stripe
 }

@@ -49,4 +49,5 @@ export interface INewCompany {
   office_id: string;
   password: string | string[]
   profession?: string
+  extraEmployees?: string | number;
 }

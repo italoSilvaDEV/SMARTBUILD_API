@@ -10,16 +10,34 @@ export class SubscriptionController {
       if (!companyId || !planId) {
         return res.status(400).json({ message: 'Empresa e plano são obrigatórios' });
       }
-
+ 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: 'Datas de início e fim são obrigatórias' });
-      }
+      } 
 
       const startDateObj = new Date(startDate);
       const endDateObj = new Date(endDate);
 
       if (startDateObj >= endDateObj) {
         return res.status(400).json({ message: 'A data de início deve ser anterior à data de fim' });
+      }
+
+      // Buscar o plano para obter allowedEmployees
+      const plan = await prisma.plan.findUnique({
+        where: { id: planId }
+      });
+
+      if (!plan) {
+        return res.status(400).json({ message: 'Plano não encontrado' });
+      }
+
+      // Buscar a empresa para verificar allowedEmployees atual
+      const company = await prisma.company.findUnique({
+        where: { id: companyId }
+      });
+
+      if (!company) {
+        return res.status(400).json({ message: 'Empresa não encontrada' });
       }
 
       // Criar a assinatura
@@ -33,7 +51,15 @@ export class SubscriptionController {
         }
       });
 
-      await prisma.company.update({ where: { id: companyId }, data: { planId } });
+      // Atualizar a empresa com o novo planId e allowedEmployees do plano
+      await prisma.company.update({ 
+        where: { id: companyId }, 
+        data: { 
+          planId,
+          // Se a empresa não tem allowedEmployees definido, usar o do plano
+          allowedEmployees: company.allowedEmployees ?? plan.allowedEmployees
+        } 
+      });
       
       // Formatar resposta para compatibilidade com PrismaSubscriptionRepository
       const formattedSubscription = {

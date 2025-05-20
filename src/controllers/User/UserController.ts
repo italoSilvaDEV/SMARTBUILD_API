@@ -29,6 +29,41 @@ export class UserController {
 
   async create(req: Request, res: Response) {
 
+    // Verificar o limite de funcionários
+    const { company_id } = req.body;
+    
+    if (company_id) {
+      try {
+        // Buscar a empresa e seus valores de allowedEmployees e extraEmployees
+        const company = await prisma.company.findUnique({
+          where: { id: company_id },
+          select: { allowedEmployees: true, extraEmployees: true }
+        });
+        
+        if (company) {
+          // Calcular o número máximo de funcionários permitidos
+          const allowedEmployees = company.allowedEmployees || 0;
+          const extraEmployees = company.extraEmployees || 0;
+          const maxEmployees = allowedEmployees + extraEmployees;
+          
+          // Contar quantos funcionários a empresa já tem
+          const currentEmployeesCount = await prisma.user.count({
+            where: { company_id }
+          });
+          
+          // Verificar se já atingiu o limite
+          if (currentEmployeesCount >= maxEmployees) {
+            return res.status(400).json({ 
+              error: `Unable to create new user. Company has reached the maximum number of employees allowed (${maxEmployees}).`
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error verifying employee limit:", error);
+        // Em caso de erro na verificação, continuamos com a criação do usuário
+      }
+    }
+
     function validateNewUser(data: INewUser): string | null {
       if (!data.name) return "Name is required";
       if (!data.email) return "Email is required";

@@ -1034,7 +1034,12 @@ export class StripeController {
                     startDate: startDate.toISOString(),
                     endDate: endDate.toISOString(),
                     validityType: plan.validityType,
-                    validityDuration: plan.validityDuration.toString()
+                    validityDuration: plan.validityDuration.toString(),
+                    allowedEmployees: company.allowedEmployees !== null ? 
+                        company.allowedEmployees.toString() : 
+                        plan.allowedEmployees !== null ? 
+                            plan.allowedEmployees.toString() : 
+                            null
                 }
             };
 
