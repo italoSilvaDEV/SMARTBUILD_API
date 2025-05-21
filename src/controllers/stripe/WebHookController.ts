@@ -127,46 +127,69 @@ export class StripeWebHooksController {
                     return res.json({ received: true }); // não faz nada se não existir no banco
                 }
 
-                //parou aqyui 
-
                 console.log("   • Assinatura local encontrada:", localSub.id);
 
                 const newEnd = new Date(sub.current_period_end * 1000);
-
-                // Verifica explicitamente se a assinatura foi cancelada
-                if (sub.status === 'canceled' || sub.canceled_at) {
-                    console.log("   ⚠️ Assinatura cancelada detectada!");
-
-                    // Desativar a assinatura imediatamente e marcar como cancelada
+                
+                // Verificar tipo de cancelamento
+                if (sub.status === 'canceled') {
+                    // Cancelamento imediato
+                    console.log("   ⚠️ Assinatura cancelada imediatamente detectada!");
+                    
                     await prisma.subscription.update({
                         where: { id: localSub.id },
                         data: { 
                             isActive: false,
-                            stripeSubscriptionCanceled: true // Marcar como cancelada no Stripe
+                            stripeSubscriptionCanceled: true,
+                            stripeDateSubscriptionCanceled: new Date() // Data atual para cancelamento imediato
                         }
                     });
-
-                    console.log("   ✅ Assinatura marcada como inativa e cancelada");
+                    
+                    console.log("   ✅ Assinatura marcada como inativa e cancelada imediatamente");
                     return res.json({ received: true });
+                } 
+                else if (sub.cancel_at_period_end) {
+                    // Cancelamento agendado para o final do período
+                    console.log("   ⚠️ Cancelamento ao final do período detectado");
+                    console.log("   • Data de término do período:", newEnd.toISOString());
+                    
+                    // Manter assinatura ativa até o final do período
+                    await prisma.subscription.update({
+                        where: { id: localSub.id },
+                        data: {
+                            endDate: newEnd,
+                            isActive: true,
+                            stripeSubscriptionCanceled: false,
+                            stripeDateSubscriptionCanceled: newEnd // Data de término da assinatura
+                        }
+                    });
+                    
+                    console.log("   ✅ Assinatura permanecerá ativa até o final do período");
                 }
-
-                // Para outros casos, continua com a lógica normal
-                const isActive = sub.status === "active" || sub.status === "trialing";
-
-                console.log("   • Novo endDate:", newEnd.toISOString());
-                console.log("   • isActive calculado:", isActive);
-
-                await prisma.subscription.update({
-                    where: { id: localSub.id },
-                    data: {
-                        endDate: newEnd,
-                        isActive,
-                    },
-                });
-                console.log("   ✔️  Assinatura local atualizada.");
+                else {
+                    // Para outros casos, continua com a lógica normal
+                    const isActive = sub.status === "active" || sub.status === "trialing";
+                    
+                    console.log("   • Novo endDate:", newEnd.toISOString());
+                    console.log("   • isActive calculado:", isActive);
+                    
+                    await prisma.subscription.update({
+                        where: { id: localSub.id },
+                        data: {
+                            endDate: newEnd,
+                            isActive,
+                            // Remover data de cancelamento caso a assinatura tenha sido reativada
+                            ...(isActive && { stripeDateSubscriptionCanceled: null })
+                        }
+                    });
+                    
+                    console.log("   ✔️  Assinatura local atualizada.");
+                }
 
                 // Verifica se houve troca de preço / plano
                 const price = sub.items.data[0].price;
+
+                console.log("esse é o price", JSON.stringify(price, null, 2));
                 const plan = await prisma.plan.findFirst({
                     where: { stripePriceId: price.id },
                 });
@@ -182,18 +205,26 @@ export class StripeWebHooksController {
                         where: { id: localSub.companyId },
                         select: { allowedEmployees: true }
                     });
+
+                    console.log("esse é oallowedEmployeesFromPlan", allowedEmployeesFromPlan);
                     
                     // Atualizar a empresa com o novo plano e allowedEmployees se necessário
                     await prisma.company.update({
                         where: { id: localSub.companyId },
                         data: { 
                             planId: plan.id,
-                            // Se a empresa não tem allowedEmployees, usa o do plano
-                            ...(company?.allowedEmployees === null && allowedEmployeesFromPlan !== null && {
-                                allowedEmployees: allowedEmployeesFromPlan
-                            })
+                            // Sempre substituir allowedEmployees pelo valor do plano
+                            allowedEmployees: allowedEmployeesFromPlan
                         },
                     });
+
+                    await prisma.subscription.update({
+                        where: { id: localSub.id },
+                        data: {
+                            planId: plan.id,
+                        },
+                    });
+                    console.log("   ✔️  Assinatura local atualizada.");
                     console.log("   ✔️  company.planId atualizado para", plan.id);
                 } else {
                     console.log("   • Nenhum plano correspondente ao price.id", price.id);
@@ -292,7 +323,8 @@ export class StripeWebHooksController {
                                 isActive: true, // Sempre começar como ativa, independente do status no Stripe
                                 stripeSubscriptionId: sub.id,
                                 stripeSubscriptionCanceled: false, // Inicializar como não cancelada
-                                paymentFailed: false // Inicializar como sem falha de pagamento
+                                paymentFailed: false, // Inicializar como sem falha de pagamento
+                                stripeDateSubscriptionCanceled: null // Inicializar como não cancelada
                             }
                         });
 
@@ -362,9 +394,7 @@ export class StripeWebHooksController {
                             planId: plan.id,
                             stripeCustomerId,
                             // Se ainda não tem allowedEmployees, pegar do plano
-                            ...(plan.allowedEmployees !== null && {
-                                allowedEmployees: plan.allowedEmployees
-                            })
+                            allowedEmployees: plan.allowedEmployees
                         }
                     });
                     console.log("   ✔️  company.planId atualizado para", plan.id);
@@ -380,7 +410,8 @@ export class StripeWebHooksController {
                             isActive: true, // Sempre começar como ativa, independente do status no Stripe
                             stripeSubscriptionId: sub.id,
                             stripeSubscriptionCanceled: false, // Inicializar como não cancelada
-                            paymentFailed: false // Inicializar como sem falha de pagamento
+                            paymentFailed: false, // Inicializar como sem falha de pagamento
+                            stripeDateSubscriptionCanceled: null // Inicializar como não cancelada
                         }
                     });
                     
@@ -396,6 +427,8 @@ export class StripeWebHooksController {
                 console.log("🔔  subscription.deleted recebido:");
                 console.log("   • Stripe subscription ID:", sub.id);
                 console.log("   • Status:", sub.status);
+                console.log("   • Cancelamento programado:", sub.cancel_at_period_end ? "Sim" : "Não");
+                console.log("   • Cancelado em:", sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : "N/A");
 
                 // Buscar a assinatura no banco de dados
                 const localSubscription = await prisma.subscription.findFirst({
@@ -408,13 +441,19 @@ export class StripeWebHooksController {
                 }
 
                 console.log("   • Assinatura local encontrada:", localSubscription.id);
+                console.log("   • Já está marcada como cancelada:", localSubscription.stripeSubscriptionCanceled ? "Sim" : "Não");
+                console.log("   • Já está marcada como inativa:", !localSubscription.isActive ? "Sim" : "Não");
 
-                // Desativar a assinatura e marcar como cancelada
+                // Este evento ocorre quando:
+                // 1. Assinatura foi cancelada imediatamente (não no fim do período)
+                // 2. Assinatura com cancelamento no fim do período chegou ao final
+                
+                // Em ambos os casos, devemos marcar como inativa e cancelada
                 await prisma.subscription.update({
                     where: { id: localSubscription.id },
                     data: { 
                         isActive: false,
-                        stripeSubscriptionCanceled: true // Marcar como cancelada no Stripe
+                        stripeSubscriptionCanceled: true
                     }
                 });
                 console.log("   ✅ Assinatura marcada como inativa e cancelada");

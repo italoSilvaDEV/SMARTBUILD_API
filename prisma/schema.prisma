@@ -718,6 +718,7 @@ model Subscription {
   stripeSubscriptionId String?
   paymentFailed  Boolean  @default(false)
   stripeSubscriptionCanceled Boolean @default(false)
+  stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
 }
 
 enum ValidityType {

@@ -1412,7 +1412,8 @@ export class UserController {
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
-        permissions
+        permissions,
+        plan: planInfo
       });
       
     } catch (error) {

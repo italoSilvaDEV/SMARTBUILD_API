@@ -140,7 +140,8 @@ export class PlanController {
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt,
         stripeProductId: plan.stripeProductId,
-        stripePriceId: plan.stripePriceId
+        stripePriceId: plan.stripePriceId,
+        allowedEmployees: plan.allowedEmployees
       }));
       
       res.status(200).json(formattedPlans);
@@ -224,10 +225,18 @@ export class PlanController {
         
         // O Stripe não permite mudar o valor de um preço existente
         // Se o preço mudou, precisamos criar um novo preço
-        const priceChanged = price !== currentPlan.price?.toString();
+        const currentPrice = currentPlan.price?.toNumber() || 0;
+        const newPrice = price ? parseFloat(price) : 0;
+        const priceChanged = newPrice !== currentPrice;
         
-        if (priceChanged && price && parseFloat(price) > 0) {
-          const priceInCents = Math.round(parseFloat(price) * 100);
+        console.log('Verificando mudança de preço:', {
+          currentPrice,
+          newPrice,
+          priceChanged
+        });
+        
+        if (priceChanged && newPrice > 0) {
+          const priceInCents = Math.round(newPrice * 100);
           
           // Configurar intervalo com base no validityType
           let interval: Stripe.PriceCreateParams.Recurring.Interval = 'month';
@@ -249,8 +258,12 @@ export class PlanController {
             }
           });
           
+          console.log('Novo preço criado no Stripe:', stripePrice.id);
+          
           // Salvar ID do novo preço
           stripePriceId = stripePrice.id;
+        } else {
+          console.log('Preço não alterado, mantendo o mesmo stripePriceId:', stripePriceId);
         }
       } else if (stripeProductId && validityType === 'FREE' && currentPlan.validityType !== 'FREE') {
         // Desativar produto e preço se o plano mudou para gratuito
