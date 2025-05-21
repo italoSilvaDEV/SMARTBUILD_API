@@ -10,6 +10,9 @@ userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.che
 userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControlller.checkOut);
 userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser);
 
+// Nova rota para registrar clock in/out em um único endpoint
+userAttendanceRoutes.post('/clock-in-out', checkToken, userAttendanceControlller.clockInOut);
+
 // Rota para buscar registros ativos (check-in feito, sem check-out)
 userAttendanceRoutes.get(
     '/user-attendance/active/:userId',
@@ -29,5 +32,8 @@ userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient);
 userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker);
 userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline);
+
+// Nova rota para mudança de projeto
+userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject); 
 
 export { userAttendanceRoutes };
