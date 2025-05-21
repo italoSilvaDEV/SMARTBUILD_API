@@ -30,6 +30,7 @@ export class CompanyController {
             if (!data.name) return "Name is required";
             if (!data.email) return "Email is required";
             if (!data.document) return "Document is required";
+            if (!data.password) return "Password is required";
             return null;
         }
 
@@ -95,23 +96,6 @@ export class CompanyController {
                     .json({ error: "Email has already been registered in the system" });
             }
 
-            console.log("19. Verificando documento duplicado");
-            // const documentExists = await prisma.user.findUnique({
-            //     where: { document: data.document },
-            // });
-            // console.log("20. Documento existente:", documentExists);
-
-            // if (documentExists) {
-            //     console.log("21. Documento já registrado");
-            //     this.deleteFiles(
-            //         req.file?.filename?.split(".")[0] + ".webp",
-            //         req.file?.filename
-            //     );
-            //     return res.status(400).json({
-            //         error: "Document has already been registered in the system",
-            //     });
-            // }
-
             console.log("22. Buscando cargo de administrador");
             const office = await prisma.office.findFirst({
                 where: {
@@ -122,45 +106,28 @@ export class CompanyController {
             });
             console.log("23. Cargo encontrado:", office);
 
-            const pass = crypto.randomBytes(3).toString("hex").toUpperCase();
-            const hashedPassword = bcrypt.hashSync(pass, 10);
-            console.log("24. Senha temporária gerada");
+            // Criptografar a senha fornecida pelo usuário
+            // Verificar se a senha é um array e usar o primeiro elemento
+            const passwordToHash = Array.isArray(data.password) ? data.password[0] : data.password;
+            console.log("24. Tipo da senha:", typeof passwordToHash);
+            const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
+            console.log("24. Senha criptografada");
 
-            console.log("25. Configurando email");
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
-            transporter.verify((error, success) => {
-                if (error) {
-                    console.error("Erro ao configurar o transportador de e-mail:", error);
-                } else {
-                    console.log("Transportador de e-mail configurado com sucesso:", success);
-                }
-            });
-
-            console.log("26. Gerando URL presigned para logo");
-            const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
-            console.log("27. URL do logo:", urlLogo);
-
-            const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
-            console.log("28. Template de email gerado");
+            // era pra ser enviado com email a url logo como nao tem mais email nao precisa
+            // console.log("26. Gerando URL presigned para logo");
+            // const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
+            // console.log("27. URL do logo:", urlLogo);
 
             console.log("29. Criando company no banco");
             const company = await prisma.company.create({
                 data: {
                     name: data.company_name,
                     avatar: String(fileName),
+                    extraEmployees: data.extraEmployees ? 
+                        (typeof data.extraEmployees === 'string' ? 
+                            parseInt(data.extraEmployees) : 
+                            Number(data.extraEmployees)) : 
+                        null
                 }
             });
             console.log("30. Company criada:", company);
@@ -185,15 +152,6 @@ export class CompanyController {
 
             console.log("33. Deletando arquivo temporário");
             deleteFile(`./public/tmp/company/${req.file?.filename}`);
-
-            console.log("34. Enviando email");
-            await transporter.sendMail({
-                from: SMTP_CONFIG.user,
-                to: data.email,
-                subject: "Smart Build",
-                html: templateEmail,
-            });
-            console.log("35. Email enviado");
 
             return res.status(201).json(company);
         } catch (error: any) {
@@ -542,7 +500,8 @@ export class CompanyController {
                 document,
                 city_and_state,
                 phone,
-                userId // Adicionado userId para identificar o usuário específico
+                userId, // Adicionado userId para identificar o usuário específico
+                extraEmployees // Nova propriedade opcional
             } = req.body;
 
             // Verificar se userId foi fornecido
@@ -651,7 +610,12 @@ export class CompanyController {
                     where: { id },
                     data: {
                         name: company_name,
-                        ...(req.file && { avatar: avatarUrl })
+                        ...(req.file && { avatar: avatarUrl }),
+                        ...(extraEmployees !== undefined && { 
+                            extraEmployees: typeof extraEmployees === 'string' ? 
+                                parseInt(extraEmployees) : 
+                                Number(extraEmployees) 
+                        })
                     }
                 }),
                 prisma.user.update({

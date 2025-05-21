@@ -47,6 +47,7 @@ export interface INewCompany {
   city_and_state?: string;
   rules?: JSON;
   office_id: string;
-  password: string
+  password: string | string[]
   profession?: string
+  extraEmployees?: string | number;
 }

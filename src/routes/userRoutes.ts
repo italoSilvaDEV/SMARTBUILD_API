@@ -59,4 +59,10 @@ userRoutes.post('/create-password', User.updatePassword)
 // Atualizar email do usuário e enviar nova senha
 userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPassword);
 
+// Rota para verificar status da assinatura
+userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscriptionStatus);
+
+// Rota para verificar status da assinatura local
+userRoutes.get('/user/local-subscription-status/:userId?', checkToken, User.getLocalSubscriptionsStatus);
+
 export { userRoutes }
