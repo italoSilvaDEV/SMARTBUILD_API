@@ -323,7 +323,7 @@ export class UserController {
 
       const passwordMatch = await bcrypt.compare(password, user.password);
       if (!passwordMatch) {
-        return res.status(401).json({ error: "Email ou senha inválidos" });
+        return res.status(401).json({ error: "User or password invalid" });
       }
 
       // Verificar se o usuário está desativado
@@ -336,6 +336,9 @@ export class UserController {
         where: { id: user.id },
         data: { last_acess: new Date() }
       });
+
+      // Gerar URL assinada para o avatar, se existir
+      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
 
       // Verificar plano e assinatura
       let planInfo = null;
@@ -461,17 +464,16 @@ export class UserController {
         }
       }
 
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { last_acess: new Date() },   // Use new Date() para o horário atual
-      });
-
-
       const token = Jwt.sign(
-        { id: user.id, name: user.name, email: user.email },
+        { 
+          id: user.id, 
+          name: user.name, 
+          email: user.email 
+        },
         String(process.env.SECRET_JWT),
-        { expiresIn: "30d" }
+        { 
+          expiresIn: "30d" 
+        }
       );
 
       // Formatar resposta
@@ -483,7 +485,7 @@ export class UserController {
           id: user.id,
           name: user.name,
           email: user.email,
-          avatar: user.avatar,
+          avatar: avatarUrl,
           document: user.document,
           city_and_state: user.city_and_state,
           office: user.office,
