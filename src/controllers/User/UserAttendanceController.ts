@@ -330,4 +330,136 @@ export class UserAttendanceController {
             return res.status(500).json({ error: 'Error processing request' });
         }
     }
+
+    async clockInOut(req: Request, res: Response) {
+        try {
+            const { 
+                userId, 
+                serviceProjectId, 
+                checkInTime, 
+                checkOutTime, 
+                date
+            } = req.body;
+
+            // Validar dados obrigatórios
+            if (!userId || !serviceProjectId || !date) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Dados obrigatórios não fornecidos" 
+                });
+            }
+
+            // Validar se pelo menos um dos horários foi fornecido
+            if (!checkInTime && !checkOutTime) {
+                return res.status(400).json({
+                    success: false,
+                    message: "É necessário fornecer pelo menos um horário (entrada ou saída)"
+                });
+            }
+
+            // Criar um novo registro de atendimento ou buscar existente para o mesmo dia
+            let attendance;
+            const project = await prisma.project.findFirst({
+                where: {
+                    serviceProject: {
+                        some: {
+                            id: serviceProjectId
+                        }
+                    }
+                },
+                include: {
+                    client: true
+                }
+            });
+            if (!project) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Project not found"
+                });
+            }
+
+            // Verificar se existe um UserServiceProject válido ou criar um novo
+            let userServiceProject = await prisma.userServiceProject.findFirst({
+                where: {
+                    user_id: userId,
+                    service_project_id: serviceProjectId
+                }
+            });
+
+            if (!userServiceProject) {
+                // Se não existir, criar um novo UserServiceProject
+                userServiceProject = await prisma.userServiceProject.create({
+                    data: {
+                        user_id: userId,
+                        service_project_id: serviceProjectId
+                    }
+                });
+            }
+
+            // Caso apenas tenha o checkOutTime, precisamos encontrar um registro ativo para fazer checkout
+            if (!checkInTime && checkOutTime) {
+                // Buscar registro ativo para fazer checkout
+                const activeAttendance = await prisma.userAttendance.findFirst({
+                    where: {
+                        user_id: userId,
+                        user_service_project_id: userServiceProject.id,  // Usar o ID do userServiceProject
+                        check_out_time: null,
+                        // Opcional: verificar se a data do checkin corresponde a data informada
+                    },
+                    orderBy: {
+                        check_in_time: 'desc'
+                    }
+                });
+
+                if (!activeAttendance) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "Não foi encontrado um registro ativo para realizar o check-out"
+                    });
+                }
+
+                // Atualizar o registro existente com o horário de saída
+                attendance = await prisma.userAttendance.update({
+                    where: {
+                        id: activeAttendance.id
+                    },
+                    data: {
+                        check_out_time: new Date(checkOutTime),
+                        check_out_address: project?.client?.location || null,
+                        check_out_latitude: project?.client?.lat ? parseFloat(project.client.lat) : null,
+                        check_out_longitude: project?.client?.log ? parseFloat(project.client.log) : null
+                    }
+                });
+            } else {
+                // Criar um novo registro com check-in
+                attendance = await prisma.userAttendance.create({
+                    data: {
+                        user_id: userId,
+                        user_service_project_id: userServiceProject.id,  // Usar o ID do userServiceProject
+                        check_in_time: new Date(checkInTime),
+                        check_out_time: checkOutTime ? new Date(checkOutTime) : null,
+                        date: new Date(date),
+                        check_in_address: project?.client?.location || "",
+                        check_in_latitude: project?.client?.lat ? parseFloat(project.client.lat) : 0,
+                        check_in_longitude: project?.client?.log ? parseFloat(project.client.log) : 0,
+                        check_out_address: checkOutTime ? project?.client?.location || null : null,
+                        check_out_latitude: checkOutTime ? (project?.client?.lat ? parseFloat(project.client.lat) : null) : null,
+                        check_out_longitude: checkOutTime ? (project?.client?.log ? parseFloat(project.client.log) : null) : null
+                    }
+                });
+            }
+
+            return res.status(201).json({
+                success: true,
+                data: attendance
+            });
+        } catch (error) {
+            console.error("Erro ao registrar clock in/out:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Erro ao processar a solicitação",
+                error: (error as Error).message
+            });
+        }
+    }
 }
