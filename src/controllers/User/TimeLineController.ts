@@ -4,66 +4,10 @@ import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 import { AuditController } from '../Audit/AuditController';
 import { logAudit } from '../../utils/auditLogger';
 import { returnPayLoad } from '../../config/returnPayLoad';
-import { TimelineWorkerManager } from '../../services/TimelineWorkerManager';
-import { CreateTimelineData } from '../../workers/timelineWorker';
-import { DatabaseOptimization } from '../../utils/databaseOptimization';
 
 const prisma = new PrismaClient();
 
 export class TimeLineController {
-    private workerManager: TimelineWorkerManager;
-    private cache = new Map<string, { data: any; timestamp: number }>();
-    private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutos para não impactar dados frescos
-
-    constructor() {
-        this.workerManager = TimelineWorkerManager.getInstance();
-        
-        // Auto-limpeza de cache a cada 5 minutos
-        setInterval(() => {
-            this.cleanExpiredCache();
-        }, 5 * 60 * 1000);
-
-        // Inicializar otimizações de banco (async, não bloqueia)
-        this.initializeDatabaseOptimizations();
-    }
-
-    private async initializeDatabaseOptimizations(): Promise<void> {
-        try {
-            // Executar otimizações após 10 segundos (não bloquear startup)
-            setTimeout(async () => {
-                console.log('[TIMELINE-CONTROLLER] Initializing database optimizations...');
-                await DatabaseOptimization.createPerformanceIndexes();
-                console.log('[TIMELINE-CONTROLLER] Database optimizations completed');
-            }, 10000);
-        } catch (error) {
-            console.error('[TIMELINE-CONTROLLER] Error initializing optimizations:', error);
-        }
-    }
-
-    private cleanExpiredCache(): void {
-        const now = Date.now();
-        for (const [key, value] of this.cache.entries()) {
-            if (now - value.timestamp > this.CACHE_TTL) {
-                this.cache.delete(key);
-            }
-        }
-    }
-
-    private getCached(key: string): any {
-        const cached = this.cache.get(key);
-        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-            return cached.data;
-        }
-        return null;
-    }
-
-    private setCache(key: string, data: any): void {
-        this.cache.set(key, {
-            data,
-            timestamp: Date.now()
-        });
-    }
-
     // Função para calcular distância entre coordenadas usando Haversine
     private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
         const R = 6371; // Raio da Terra em km
@@ -116,7 +60,7 @@ export class TimeLineController {
         */
     }
 
-    // Check-in do usuário - OTIMIZADO COM WORKERS (interface mantida igual)
+    // Check-in do usuário
     handleTimeLine = async (req: Request, res: Response): Promise<void> => {
         try {
             const { 
@@ -127,150 +71,120 @@ export class TimeLineController {
                 check_in_longitude,
                 service_project_id,
             } = req.body;
-
-            // Validação rápida dos dados obrigatórios
-            if (!user_id || !user_service_project_id || !service_project_id || 
-                !check_in_address || check_in_latitude === undefined || check_in_longitude === undefined) {
-                res.status(400).json({ error: 'Missing required fields' });
+            // Verifica se o usuário existe
+            const userExists = await prisma.user.findUnique({ where: { id: user_id } });
+            if (!userExists) {
+                console.log('error', 'User not found.')
+                res.status(400).json({ error: 'User not found.' });
                 return;
             }
 
-            // Preparar dados para o worker (mesma lógica, mas otimizada)
-            const timelineData: CreateTimelineData = {
-                user_id,
-                user_service_project_id,
-                service_project_id,
-                check_in_address,
-                check_in_latitude: Number(check_in_latitude),
-                check_in_longitude: Number(check_in_longitude),
-                check_in_time: new Date()
-            };
-
-            try {
-                // Processar no worker (com timeout para fallback)
-                const result = await Promise.race([
-                    this.workerManager.createTimeline(timelineData),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Worker timeout')), 5000)
-                    )
-                ]);
-
-                if (result.success) {
-                    // Resposta idêntica à original
-                    res.status(201).json(result.timeline);
-                } else {
-                    res.status(400).json({ error: result.error || 'Failed to create timeline' });
+            // Verifica se o ServiceProject existe e obtém suas coordenadas
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: {
+                    Project: {
+                        include: {
+                            client: true
+                        }
+                    }
                 }
+            });
 
-            } catch (workerError) {
-                // Fallback para implementação síncrona se worker falhar
-                console.log('[TIMELINE] Worker failed, using fallback:', workerError);
-                await this.handleTimeLineSync(req, res);
+            if (!serviceProject) {
+                console.log('error', 'ServiceProject not found.')
+                res.status(400).json({ error: 'ServiceProject not found.' });
+                return;
             }
 
+            // Verifica se o UserServiceProject existe
+            const serviceProjectExists = await prisma.userServiceProject.findUnique({
+                where: { id: user_service_project_id },
+                include: {
+                    service_project: true
+                }
+            });
+
+            if (!serviceProjectExists) {
+                console.log('error', 'UserServiceProject not found.')
+                res.status(400).json({ error: 'UserServiceProject not found.' });
+                return;
+            }
+
+            // Verifica se já existe um registro aberto
+            const openAttendance = await prisma.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    user_service_project_id,
+                    check_out_time: null,
+                },
+            });
+
+            if (openAttendance) {
+                // Continua com o processamento normal
+            } else {
+                res.status(400).json({
+                    error: 'No open attendance found. Please check in first.',
+                });
+                return;
+            }
+
+            let isLocalWork = false;
+
+            // Verifica se as coordenadas foram fornecidas
+            if (check_in_latitude && check_in_longitude && 
+                serviceProject.Project?.client?.lat && 
+                serviceProject.Project?.client?.log && 
+                serviceProject.Project?.client?.radius) {
+                
+                // Calcula a distância entre os pontos
+                const distance = this.calculateDistance(
+                    Number(check_in_latitude),
+                    Number(check_in_longitude),
+                    Number(serviceProject.Project.client.lat),
+                    Number(serviceProject.Project.client.log)
+                );
+
+                // Verifica se está dentro do raio (convertendo o raio para km)
+                const radiusInKm = Number(serviceProject.Project.client.radius) / 1000;
+                isLocalWork = distance <= radiusInKm;
+            }
+
+            // Cria o registro de check-in
+            const attendance = await prisma.timeLine.create({
+                data: {
+                    user_id,
+                    service_project_id,
+                    userServiceProjectId: user_service_project_id,
+                    check_in_time: new Date(),
+                    check_in_address,
+                    check_in_latitude,
+                    check_in_longitude,
+                    is_local_work: isLocalWork,
+                },
+            });
+
+            // Verifica e realiza check-out automático se for 18:00 ou mais
+            /* Chamada ao auto check-out às 18h comentada
+            await this.performAutoCheckOut(
+                user_id,
+                user_service_project_id,
+                check_in_address,
+                check_in_latitude,
+                check_in_longitude
+            );
+            */
+            
+            res.status(201).json(attendance);
         } catch (error) {
-            console.log('error', error);
+            console.log('error',error)
             console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
 
-    // Fallback síncrono (implementação original como backup)
-    private async handleTimeLineSync(req: Request, res: Response): Promise<void> {
-        const { 
-            user_id,
-            user_service_project_id,
-            check_in_address,
-            check_in_latitude,
-            check_in_longitude,
-            service_project_id,
-        } = req.body;
 
-        // Implementação original como fallback
-        const userExists = await prisma.user.findUnique({ where: { id: user_id } });
-        if (!userExists) {
-            res.status(400).json({ error: 'User not found.' });
-            return;
-        }
-
-        const serviceProject = await prisma.serviceProject.findUnique({
-            where: { id: service_project_id },
-            include: {
-                Project: {
-                    include: {
-                        client: true
-                    }
-                }
-            }
-        });
-
-        if (!serviceProject) {
-            res.status(400).json({ error: 'ServiceProject not found.' });
-            return;
-        }
-
-        const serviceProjectExists = await prisma.userServiceProject.findUnique({
-            where: { id: user_service_project_id },
-            include: {
-                service_project: true
-            }
-        });
-
-        if (!serviceProjectExists) {
-            res.status(400).json({ error: 'UserServiceProject not found.' });
-            return;
-        }
-
-        const openAttendance = await prisma.userAttendance.findFirst({
-            where: {
-                user_id,
-                user_service_project_id,
-                check_out_time: null,
-            },
-        });
-
-        if (!openAttendance) {
-            res.status(400).json({
-                error: 'No open attendance found. Please check in first.',
-            });
-            return;
-        }
-
-        let isLocalWork = false;
-
-        if (check_in_latitude && check_in_longitude && 
-            serviceProject.Project?.client?.lat && 
-            serviceProject.Project?.client?.log && 
-            serviceProject.Project?.client?.radius) {
-            
-            const distance = this.calculateDistance(
-                Number(check_in_latitude),
-                Number(check_in_longitude),
-                Number(serviceProject.Project.client.lat),
-                Number(serviceProject.Project.client.log)
-            );
-
-            const radiusInKm = Number(serviceProject.Project.client.radius) / 1000;
-            isLocalWork = distance <= radiusInKm;
-        }
-
-        const attendance = await prisma.timeLine.create({
-            data: {
-                user_id,
-                service_project_id,
-                userServiceProjectId: user_service_project_id,
-                check_in_time: new Date(),
-                check_in_address,
-                check_in_latitude,
-                check_in_longitude,
-                is_local_work: isLocalWork,
-            },
-        });
-
-        res.status(201).json(attendance);
-    }
-
-    // Check-in do usuário (client version) - OTIMIZADO COM WORKERS
+    // Check-in do usuário
     handleTimeLineClient = async (req: Request, res: Response): Promise<void> => {
         try {
             const {
@@ -282,153 +196,110 @@ export class TimeLineController {
                 service_project_id,
                 is_local_work
             } = req.body;
-
-            // Validação rápida
-            if (!user_id || !user_service_project_id || !service_project_id || 
-                !check_in_address || check_in_latitude === undefined || check_in_longitude === undefined) {
-                res.status(400).json({ error: 'Missing required fields' });
+            // Verifica se o usuário existe
+            const userExists = await prisma.user.findUnique({ where: { id: user_id } });
+            if (!userExists) {
+                console.log('error', 'User not found.')
+                res.status(400).json({ error: 'User not found.' });
                 return;
             }
 
-            // Preparar dados para o worker
-            const timelineData: CreateTimelineData = {
-                user_id,
-                user_service_project_id,
-                service_project_id,
-                check_in_address,
-                check_in_latitude: Number(check_in_latitude),
-                check_in_longitude: Number(check_in_longitude),
-                is_local_work,
-                check_in_time: new Date()
-            };
-
-            try {
-                // Processar no worker com timeout
-                const result = await Promise.race([
-                    this.workerManager.createTimeline(timelineData),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Worker timeout')), 5000)
-                    )
-                ]);
-
-                if (result.success) {
-                    res.status(201).json(result.timeline);
-                } else {
-                    res.status(400).json({ error: result.error || 'Failed to create timeline' });
+            // Verifica se o ServiceProject existe e obtém suas coordenadas
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: {
+                    Project: {
+                        include: {
+                            client: true
+                        }
+                    }
                 }
+            });
 
-            } catch (workerError) {
-                // Fallback síncrono se worker falhar
-                console.log('[TIMELINE-CLIENT] Worker failed, using fallback:', workerError);
-                await this.handleTimeLineClientSync(req, res);
+            if (!serviceProject) {
+                console.log('error', 'ServiceProject not found.')
+                res.status(400).json({ error: 'ServiceProject not found.' });
+                return;
             }
 
+            // Verifica se o UserServiceProject existe
+            const serviceProjectExists = await prisma.userServiceProject.findUnique({
+                where: { id: user_service_project_id },
+                include: {
+                    service_project: true
+                }
+            });
+
+            if (!serviceProjectExists) {
+                console.log('error', 'UserServiceProject not found.')
+                res.status(400).json({ error: 'UserServiceProject not found.' });
+                return;
+            }
+
+            // Verifica se já existe um registro aberto
+            const openAttendance = await prisma.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    user_service_project_id,
+                    check_out_time: null,
+                },
+            });
+
+            if (openAttendance) {
+                // Continua com o processamento normal
+            } else {
+                res.status(400).json({
+                    error: 'No open attendance found. Please check in first.',
+                });
+                return;
+            }
+
+            if (!service_project_id) {
+                console.log('error', 'service_project_id is required');
+                res.status(400).json({ error: 'service_project_id is required.' });
+                return;
+            }
+
+            // Cria o registro de check-in
+            const attendance = await prisma.timeLine.create({
+                data: {
+                    user_id,
+                    service_project_id,
+                    userServiceProjectId: user_service_project_id,
+                    check_in_time: new Date(),
+                    check_in_address,
+                    check_in_latitude,
+                    check_in_longitude,
+                    is_local_work,
+                },
+            });
+
+            // Verifica e realiza check-out automático se for 18:00 ou mais
+            /* Chamada ao auto check-out às 18h comentada
+            await this.performAutoCheckOut(
+                user_id,
+                user_service_project_id,
+                check_in_address,
+                check_in_latitude,
+                check_in_longitude
+            );
+            */
+
+            res.status(201).json(attendance);
         } catch (error) {
-            console.log('error', error);
+            console.log('error', error)
             console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
 
-    // Fallback síncrono para handleTimeLineClient
-    private async handleTimeLineClientSync(req: Request, res: Response): Promise<void> {
-        const {
-            user_id,
-            user_service_project_id,
-            check_in_address,
-            check_in_latitude,
-            check_in_longitude,
-            service_project_id,
-            is_local_work
-        } = req.body;
-
-        // Implementação original como fallback
-        const userExists = await prisma.user.findUnique({ where: { id: user_id } });
-        if (!userExists) {
-            res.status(400).json({ error: 'User not found.' });
-            return;
-        }
-
-        const serviceProject = await prisma.serviceProject.findUnique({
-            where: { id: service_project_id },
-            include: {
-                Project: {
-                    include: {
-                        client: true
-                    }
-                }
-            }
-        });
-
-        if (!serviceProject) {
-            res.status(400).json({ error: 'ServiceProject not found.' });
-            return;
-        }
-
-        const serviceProjectExists = await prisma.userServiceProject.findUnique({
-            where: { id: user_service_project_id },
-            include: {
-                service_project: true
-            }
-        });
-
-        if (!serviceProjectExists) {
-            res.status(400).json({ error: 'UserServiceProject not found.' });
-            return;
-        }
-
-        const openAttendance = await prisma.userAttendance.findFirst({
-            where: {
-                user_id,
-                user_service_project_id,
-                check_out_time: null,
-            },
-        });
-
-        if (!openAttendance) {
-            res.status(400).json({
-                error: 'No open attendance found. Please check in first.',
-            });
-            return;
-        }
-
-        if (!service_project_id) {
-            res.status(400).json({ error: 'service_project_id is required.' });
-            return;
-        }
-
-        const attendance = await prisma.timeLine.create({
-            data: {
-                user_id,
-                service_project_id,
-                userServiceProjectId: user_service_project_id,
-                check_in_time: new Date(),
-                check_in_address,
-                check_in_latitude,
-                check_in_longitude,
-                is_local_work,
-            },
-        });
-
-        res.status(201).json(attendance);
-    }
-
-    // Atualização do método para buscar timeline por worker - OTIMIZADO COM CACHE
+    // Atualização do método para buscar timeline por worker
     async handleTimeLineByWorker(req: Request, res: Response) {
         try {
             const { user_service_project_id, date } = req.params;
             
             if (!user_service_project_id) {
                 return res.status(400).json({ error: "user_service_project_id is required" });
-            }
-
-            // Cache para consultas frequentes (5 minutos para dados que mudam)
-            const cacheKey = `timeline_worker_${user_service_project_id}_${date || 'all'}`;
-            const cachedResult = this.getCached(cacheKey);
-            
-            if (cachedResult) {
-                console.log(`[TIMELINE-CACHE] Cache hit for ${cacheKey}`);
-                return res.status(200).json(cachedResult);
             }
             
             // Buscar o UserServiceProject para verificar se existe
@@ -476,44 +347,24 @@ export class TimeLineController {
             }
             
             // Buscar todas as timelines associadas a este UserServiceProject com filtro de data opcional
-            // OTIMIZADO: select apenas campos necessários e limit para evitar consultas muito pesadas
             const timelines = await prisma.timeLine.findMany({
                 where: {
                     userServiceProjectId: String(user_service_project_id),
                     ...dateFilter
                 },
-                select: {
-                    id: true,
-                    check_in_time: true,
-                    check_in_address: true,
-                    check_in_latitude: true,
-                    check_in_longitude: true,
-                    is_local_work: true,
-                    date_creation: true,
-                    date_update: true,
-                    user_id: true,
-                    service_project_id: true,
-                    userServiceProjectId: true
-                },
                 orderBy: {
                     check_in_time: 'desc'
-                },
-                take: 1000 // Limitar para evitar consultas muito pesadas
+                }
             });
-
-            const result = {
+            
+            return res.status(200).json({
                 userServiceProject: {
                     ...userServiceProject,
                     user: userWithPresignedAvatar
                 },
                 timelines,
                 dateFilter: date ? new Date(date as string).toISOString().split('T')[0] : null
-            };
-
-            // Armazenar no cache (TTL menor para dados que mudam frequentemente)
-            this.setCache(cacheKey, result);
-            
-            return res.status(200).json(result);
+            });
         } catch (error) {
             console.error("Error fetching timeline by worker:", error);
             return res.status(500).json({ error: "Internal server error" });
