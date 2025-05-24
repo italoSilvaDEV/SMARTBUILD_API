@@ -221,12 +221,23 @@ export class UserServiceProjectController {
       const { id } = req.params; // ID do usuário
       const { search } = req.body; // Termo de busca
 
-      // Consulta no Prisma com joins adequados
+      // Consulta otimizada que filtra projetos cancelados e evita duplicações
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
           user_id: id,
           service_project: {
             name: search ? { contains: search.toLowerCase() } : undefined,
+            // Filtrar apenas serviços ativos ou sem status definido
+            OR: [
+              { status: { not: "Canceled" } },
+              { status: null }
+            ],
+            Project: {
+              // Filtrar apenas projetos não cancelados
+              status_project: {
+                notIn: ["Canceled", "Declined", "Rejected"]
+              }
+            }
           },
         },
         include: {
@@ -240,14 +251,58 @@ export class UserServiceProjectController {
             },
           },
         },
+        // Ordenar para garantir consistência
+        orderBy: {
+          assigned_at: "desc"
+        }
       });
 
+      // Remover duplicações baseado no service_project.id e garantir que o usuário é responsável
+      const uniqueServices = new Map();
+      
+      for (const usp of userServiceProjects) {
+        const serviceId = usp.service_project.id;
+        const serviceName = usp.service_project.name;
+        
+        // Verificar se já existe um serviço com o mesmo nome e endereço
+        const key = `${serviceName}_${usp.service_project.Project?.client?.location || 'no-address'}`;
+        
+        if (!uniqueServices.has(key)) {
+          // Verificar se o usuário realmente tem permissão para bater ponto neste serviço
+          const hasActiveUserService = await prisma.userServiceProject.findFirst({
+            where: {
+              id: usp.id,
+              user_id: id,
+              service_project: {
+                id: serviceId,
+                OR: [
+                  { status: { not: "Canceled" } },
+                  { status: null }
+                ],
+                Project: {
+                  status_project: {
+                    notIn: ["Canceled", "Declined", "Rejected"]
+                  }
+                }
+              }
+            }
+          });
+          
+          if (hasActiveUserService) {
+            uniqueServices.set(key, usp);
+          }
+        }
+      }
+
       // Formatação do resultado no formato solicitado
-      const formattedResult = userServiceProjects.map((usp) => ({
+      const formattedResult = Array.from(uniqueServices.values()).map((usp) => ({
         id_userServiceProject: usp.id,
         name_service: usp.service_project.name,
         address_client: usp.service_project.Project?.client?.location || "Endereço não informado",
-        selected: false
+        selected: false,
+        // Adicionar informações para debug se necessário
+        project_status: usp.service_project.Project?.status_project,
+        service_status: usp.service_project.status
       }));
 
       res.status(200).json(formattedResult);

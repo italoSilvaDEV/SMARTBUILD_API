@@ -16,16 +16,68 @@ export class UserAttendanceController {
                 return;
             }
 
-            // Verifica se o UserServiceProject existe
+            // Verifica se o UserServiceProject existe e inclui validações críticas
             const serviceProjectExists = await prisma.userServiceProject.findUnique({
                 where: { id: user_service_project_id },
                 include: {
-                    service_project: true
+                    service_project: {
+                        include: {
+                            Project: true
+                        }
+                    }
                 }
-            },
-            );
+            });
+            
             if (!serviceProjectExists) {
                 res.status(400).json({ error: 'UserServiceProject not found.' });
+                return;
+            }
+
+            // VALIDAÇÕES CRÍTICAS PARA EVITAR BUG DO "LIMBO"
+            
+            // 1. Verificar se o projeto não está cancelado
+            const project = serviceProjectExists.service_project.Project;
+            if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
+                res.status(400).json({ 
+                    error: 'Cannot check in to a canceled or rejected project.',
+                    project_status: project.status_project
+                });
+                return;
+            }
+
+            // 2. Verificar se o serviço não está cancelado
+            const service = serviceProjectExists.service_project;
+            if (service.status === 'Canceled') {
+                res.status(400).json({ 
+                    error: 'Cannot check in to a canceled service.',
+                    service_status: service.status
+                });
+                return;
+            }
+
+            // 3. Verificar se o usuário realmente está vinculado a este serviço
+            const validUserService = await prisma.userServiceProject.findFirst({
+                where: {
+                    id: user_service_project_id,
+                    user_id: user_id,
+                    service_project: {
+                        OR: [
+                            { status: { not: "Canceled" } },
+                            { status: null }
+                        ],
+                        Project: {
+                            status_project: {
+                                notIn: ["Canceled", "Declined", "Rejected"]
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!validUserService) {
+                res.status(400).json({ 
+                    error: 'User is not authorized to check in to this service or the service/project is not active.'
+                });
                 return;
             }
 
@@ -45,12 +97,13 @@ export class UserAttendanceController {
                 return;
             }
          
-                await prisma.serviceProject.update({
-                    where: { id: serviceProjectExists.service_project_id },
-                    data: {
-                        status: 'In Progress'
-                    }
-                });
+            await prisma.serviceProject.update({
+                where: { id: serviceProjectExists.service_project_id },
+                data: {
+                    status: 'In Progress'
+                }
+            });
+
             // Cria o registro de check-in
             const attendance = await prisma.userAttendance.create({
                 data: {
@@ -383,17 +436,88 @@ export class UserAttendanceController {
                 where: {
                     user_id: userId,
                     service_project_id: serviceProjectId
+                },
+                include: {
+                    service_project: {
+                        include: {
+                            Project: true
+                        }
+                    }
                 }
             });
 
             if (!userServiceProject) {
+                // VALIDAÇÕES ANTES DE CRIAR NOVO UserServiceProject
+                
+                // Verificar se o serviço existe e está ativo
+                const serviceProject = await prisma.serviceProject.findUnique({
+                    where: { id: serviceProjectId },
+                    include: {
+                        Project: true
+                    }
+                });
+
+                if (!serviceProject) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "Service project not found"
+                    });
+                }
+
+                // Verificar se o projeto não está cancelado
+                if (serviceProject.Project && ['Canceled', 'Declined', 'Rejected'].includes(serviceProject.Project.status_project)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot check in to a canceled or rejected project",
+                        project_status: serviceProject.Project.status_project
+                    });
+                }
+
+                // Verificar se o serviço não está cancelado
+                if (serviceProject.status === 'Canceled') {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot check in to a canceled service",
+                        service_status: serviceProject.status
+                    });
+                }
+
                 // Se não existir, criar um novo UserServiceProject
                 userServiceProject = await prisma.userServiceProject.create({
                     data: {
                         user_id: userId,
                         service_project_id: serviceProjectId
+                    },
+                    include: {
+                        service_project: {
+                            include: {
+                                Project: true
+                            }
+                        }
                     }
                 });
+            } else {
+                // VALIDAÇÕES PARA UserServiceProject EXISTENTE
+                
+                // Verificar se o projeto não está cancelado
+                const project = userServiceProject.service_project.Project;
+                if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot check in to a canceled or rejected project",
+                        project_status: project.status_project
+                    });
+                }
+
+                // Verificar se o serviço não está cancelado
+                const service = userServiceProject.service_project;
+                if (service.status === 'Canceled') {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot check in to a canceled service",
+                        service_status: service.status
+                    });
+                }
             }
 
             // Caso apenas tenha o checkOutTime, precisamos encontrar um registro ativo para fazer checkout
