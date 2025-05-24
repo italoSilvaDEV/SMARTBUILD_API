@@ -51,13 +51,44 @@ export interface IputServiceData extends IServicesData {
 }
 
 export class ProjectController {
+  // Cache simples em memória para consultas frequentes
+  private static cache = new Map<string, { data: any; timestamp: number }>();
+  private static CACHE_TTL = 30000; // 30 segundos
+
+  private static getCacheKey(query: any, page: number): string {
+    return JSON.stringify({ query, page });
+  }
+
+  private static getFromCache(key: string) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  private static setCache(key: string, data: any) {
+    // Limpar cache antigo periodicamente
+    if (this.cache.size > 100) {
+      const now = Date.now();
+      for (const [k, v] of this.cache.entries()) {
+        if (now - v.timestamp > this.CACHE_TTL) {
+          this.cache.delete(k);
+        }
+      }
+    }
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search } = req.query;
     const query: any = {};
+    
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
+    
     if (company_id) query.company_id = { equals: String(company_id) };
-
     if (id_seller) query.seller_user_id = { equals: id_seller };
 
     if (status_project) {
@@ -103,22 +134,33 @@ export class ProjectController {
     const pageNumber = Number(page);
     const skip = pageNumber * take;
 
+    // Verificar cache
+    const cacheKey = ProjectController.getCacheKey(query, pageNumber);
+    const cached = ProjectController.getFromCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     try {
+      // Consulta otimizada com includes seletivos
       const projects = await prisma.project.findMany({
         where: query,
-        include: {
-          client: true,
-          serviceProject: {
-            include: {
-              service: true,
-              stages: true,
-            },
-          },
-          workedHours: true,
-          invoiceCostProject: {
-            include: {
-              costProject: true,
-            },
+        select: {
+          id: true,
+          contract_number: true,
+          status_project: true,
+          date_creation: true,
+          date_update: true,
+          seller_user_id: true,
+          company_id: true,
+          client: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              location: true,
+            }
           },
           user: {
             select: {
@@ -128,6 +170,23 @@ export class ProjectController {
               name: true,
             },
           },
+          // Usar aggregações do Prisma para cálculos pesados
+          serviceProject: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              hours: true,
+              price: true,
+              stages: true,
+            }
+          },
+          _count: {
+            select: {
+              serviceProject: true,
+              workedHours: true,
+            }
+          }
         },
         skip,
         take,
@@ -136,107 +195,156 @@ export class ProjectController {
         },
       });
 
-      const projectsWithCalculations = await Promise.all(
-        projects.map(async (project) => {
-        // Calcula o custo total do trabalho
-        const costofwork = project.invoiceCostProject.reduce(
-          (total, invoice) => {
-            return (
-              total +
-              invoice.costProject.reduce((subtotal, cost) => {
-                return subtotal + Number(cost.price) * Number(cost.amout);
-              }, 0)
-            );
+      if (projects.length === 0) {
+        const result = { projects: [], total: 0, amount: 0 };
+        ProjectController.setCache(cacheKey, result);
+        return res.json(result);
+      }
+
+      // Buscar todos os dados pesados em uma única consulta batch
+      const projectIds = projects.map(p => p.id);
+      
+      // Batch query para estimates - resolver N+1
+      const [estimates, invoiceCosts, workedHoursAgg] = await Promise.all([
+        prisma.estimate.findMany({
+          where: {
+            projectId: { in: projectIds }
           },
-          0
-        );
-
-        // Calcula o custo total das horas trabalhadas e o total de horas trabalhadas
-        let totalCostOfServiceHours = 0;
-        let totalNumberOfHoursWorked = 0;
-
-        const uniqueUsers = new Set();
-
-        project.workedHours.forEach((workedHour) => {
-          if (workedHour.amount_of_hours !== null) {
-            totalCostOfServiceHours +=
-              Number(workedHour.amount_of_hours) *
-              Number(workedHour.hourly_price);
-            totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-          } else {
-            totalCostOfServiceHours += Number(workedHour.hourly_price);
+          select: {
+            id: true,
+            projectId: true,
+            serviceProjects: true,
+            canceledBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            },
+            timelineEvents: {
+              select: {
+                id: true,
+                date_creation: true,
+              },
+              orderBy: {
+                date_creation: 'asc'
+              }
+            },
+            emailLogs: {
+              select: {
+                id: true,
+                date_creation: true,
+              },
+              orderBy: {
+                date_creation: 'asc'
+              }
+            },
+          },
+          orderBy: {
+            date_creation: 'desc'
           }
-          uniqueUsers.add(workedHour.name_user);
-        });
+        }),
+        
+        // Batch query para custos de material
+        prisma.invoiceCostProject.findMany({
+          where: {
+            project: {
+              id: { in: projectIds }
+            }
+          },
+          select: {
+            project_id: true,
+            costProject: {
+              select: {
+                price: true,
+                amout: true,
+              }
+            }
+          }
+        }),
+        
+        // Batch query para horas trabalhadas agregadas
+        prisma.workedhours.groupBy({
+          by: ['project_id'],
+          where: {
+            project_id: { in: projectIds }
+          },
+          _sum: {
+            amount_of_hours: true,
+            hourly_price: true,
+          },
+          _count: {
+            name_user: true,
+          }
+        })
+      ]);
 
-        const workersOnThisProject = uniqueUsers.size;
+      // Criar maps para lookups O(1)
+      const estimatesMap = new Map<string, any[]>();
+      estimates.forEach((est: any) => {
+        if (!estimatesMap.has(est.projectId)) {
+          estimatesMap.set(est.projectId, []);
+        }
+        estimatesMap.get(est.projectId)!.push(est);
+      });
 
-        // Calcula o somatório de hours * price
+      const costsMap = new Map<string, number>();
+      invoiceCosts.forEach((invoice: any) => {
+        const projectId = invoice.project_id;
+        const currentCost = costsMap.get(projectId) || 0;
+        const invoiceCost = invoice.costProject.reduce((total: number, cost: any) => {
+          return total + Number(cost.price) * Number(cost.amout);
+        }, 0);
+        costsMap.set(projectId, currentCost + invoiceCost);
+      });
+
+      const workedHoursMap = new Map<string, any>();
+      workedHoursAgg.forEach((wh: any) => {
+        workedHoursMap.set(wh.project_id, wh);
+      });
+
+      // Montar resultado otimizado
+      const projectsWithCalculations = projects.map(project => {
+        const projectEstimates = estimatesMap.get(project.id) || [];
+        const costOfWork = costsMap.get(project.id) || 0;
+        const workedHoursData = workedHoursMap.get(project.id);
+        
+        const totalCostOfServiceHours = workedHoursData?._sum?.hourly_price || 0;
+        const totalNumberOfHoursWorked = workedHoursData?._sum?.amount_of_hours || 0;
+        const workersOnThisProject = workedHoursData?._count?.name_user || 0;
+
+        // Cálculo do preço do projeto (mais eficiente)
         const priceProject = project.serviceProject.reduce((total, service) => {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
 
-        // Remove o array workedHours do projeto
-        const { workedHours, ...projectWithoutWorkedHours } = project;
-
-          // Buscar os estimates relacionados a este projeto
-          const estimates = await prisma.estimate.findMany({
-            where: {
-              projectId: project.id
-            },
-            include: {
-              serviceProjects: true,
-              canceledBy: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              },
-              timelineEvents: {
-                orderBy: {
-                  date_creation: 'asc'
-                }
-              },
-              emailLogs: {
-                orderBy: {
-                  date_creation: 'asc'
-                }
-              },
-            },
-            orderBy: {
-              date_creation: 'desc'
-            }
-          });
-
         return {
-          ...projectWithoutWorkedHours,
-          costofwork,
+          ...project,
+          costofwork: costOfWork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject,
-          serviceProject: project.serviceProject.map((service) => ({
-            ...service,
-            stages: service.stages,
-          })),
-            estimates: estimates
+          estimates: projectEstimates
         };
-        })
-      );
+      });
 
+      // Consulta do total apenas uma vez
       const total = await prisma.project.count({
         where: query,
       });
 
       let amount = pageNumber * take + projectsWithCalculations.length;
-
-      // Se amount exceder total, ajustar amount para ser igual a total
       if (amount > total) {
         amount = total;
       }
 
-      return res.json({ projects: projectsWithCalculations, total, amount });
+      const result = { projects: projectsWithCalculations, total, amount };
+      
+      // Cachear resultado
+      ProjectController.setCache(cacheKey, result);
+      
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
