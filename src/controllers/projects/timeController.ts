@@ -826,8 +826,7 @@ export class TimeController {
                 address: entry.address,
                 check_in_time: entry.check_in_time,
                 check_out_time: entry.check_out_time,
-                status: entry.status,
-                user_id: entry.userId
+                status: entry.status
             }));
 
             // Obter os IDs únicos de UserServiceProject dos registros mais recentes
