@@ -534,4 +534,102 @@ export class TimeLineController {
             res.status(500).json({ error: 'Error while deleting timeline record.' });
         }
     }
+
+    // Novo método para buscar timeline por user_id e redirecionar para a timeline mais recente
+    handleTimeLineByUserId = async (req: Request, res: Response): Promise<Response> => {
+        try {
+            const { user_id, date } = req.params;
+            
+            if (!user_id) {
+                return res.status(400).json({ error: "user_id is required" });
+            }
+
+            // Buscar o UserServiceProject mais recente para este usuário
+            const userServiceProject = await prisma.userServiceProject.findFirst({
+                where: {
+                    user_id: String(user_id),
+                    // Filtrar apenas projetos ativos
+                    service_project: {
+                        Project: {
+                            status_project: {
+                                in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                            }
+                        }
+                    }
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            avatar: true
+                        }
+                    },
+                    service_project: {
+                        include: {
+                            Project: {
+                                include: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            location: true,
+                                            lat: true,
+                                            log: true,
+                                            radius: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    user_attendances: {
+                        where: {
+                            check_out_time: null // Apenas registros em aberto
+                        },
+                        orderBy: {
+                            check_in_time: 'desc'
+                        },
+                        take: 1
+                    }
+                },
+                orderBy: {
+                    assigned_at: 'desc'
+                }
+            });
+            
+            if (!userServiceProject) {
+                return res.status(404).json({ 
+                    error: "No active UserServiceProject found for this user" 
+                });
+            }
+
+            // Se não há attendance ativo, buscar o projeto mais recente
+            if (userServiceProject.user_attendances.length === 0) {
+                const recentUserServiceProject = await prisma.userServiceProject.findFirst({
+                    where: {
+                        user_id: String(user_id)
+                    },
+                    orderBy: {
+                        assigned_at: 'desc'
+                    }
+                });
+
+                if (recentUserServiceProject) {
+                    // Usar o handleTimeLineByWorker existente
+                    req.params.user_service_project_id = recentUserServiceProject.id;
+                    return this.handleTimeLineByWorker(req, res);
+                }
+            }
+
+            // Usar o handleTimeLineByWorker existente
+            req.params.user_service_project_id = userServiceProject.id;
+            return this.handleTimeLineByWorker(req, res);
+
+        } catch (error) {
+            console.error("Error fetching timeline by user_id:", error);
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    }
 }

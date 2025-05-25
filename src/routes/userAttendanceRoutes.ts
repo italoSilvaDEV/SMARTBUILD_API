@@ -31,6 +31,8 @@ userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceCont
 userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine);
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient);
 userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker);
+userAttendanceRoutes.get('/time-line/timeline/:user_id', checkToken, timeLineController.handleTimeLineByUserId);
+userAttendanceRoutes.get('/time-line/timeline/:user_id/:date', checkToken, timeLineController.handleTimeLineByUserId);
 userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline);
 
 // Nova rota para mudança de projeto
