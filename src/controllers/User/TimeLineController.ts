@@ -390,7 +390,24 @@ export class TimeLineController {
                             avatar: true
                         }
                     },
-                    service_project: true
+                    service_project: {
+                        include: {
+                            Project: {
+                                include: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            location: true,
+                                            lat: true,
+                                            log: true,
+                                            radius: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             });
             
@@ -451,6 +468,14 @@ export class TimeLineController {
                     ...userServiceProject,
                     user: userWithPresignedAvatar
                 },
+                // Coordenadas do projeto para cálculo de distância no frontend
+                projectCoordinates: userServiceProject?.service_project?.Project?.client ? {
+                    location: userServiceProject.service_project.Project.client.location,
+                    latitude: userServiceProject.service_project.Project.client.lat ? Number(userServiceProject.service_project.Project.client.lat) : null,
+                    longitude: userServiceProject.service_project.Project.client.log ? Number(userServiceProject.service_project.Project.client.log) : null,
+                    radius: userServiceProject.service_project.Project.client.radius ? Number(userServiceProject.service_project.Project.client.radius) : null,
+                    radiusInKm: userServiceProject.service_project.Project.client.radius ? Number(userServiceProject.service_project.Project.client.radius) / 1000 : null
+                } : null,
                 timelines,
                 dateFilter: date ? new Date(date as string).toISOString().split('T')[0] : null
             };
