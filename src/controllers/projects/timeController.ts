@@ -821,6 +821,7 @@ export class TimeController {
 
             // Formatar o resultado final
             const formattedResult = Array.from(latestEntriesMap.values()).map(entry => ({
+                user_service_project_id: entry.user_service_project_id,
                 name: entry.name,
                 serviceName: entry.serviceName,
                 address: entry.address,
