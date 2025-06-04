@@ -224,6 +224,7 @@ export class ProjectController {
             timelineEvents: {
               select: {
                 id: true,
+                description: true,              
                 date_creation: true,
               },
               orderBy: {
