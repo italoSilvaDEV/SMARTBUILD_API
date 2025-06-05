@@ -19,7 +19,7 @@ export class ListClientController {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-            // Get total count and paginated clients in a single query
+            // Modified query to ensure proper handling of duplicates and pagination using MySQL syntax
             const clientsQuery = await prisma.$queryRaw<any[]>`
                 WITH RankedClients AS (
                     SELECT 
@@ -28,15 +28,15 @@ export class ListClientController {
                         c.email,
                         c.phone,
                         c.date_creation,
-                        ROW_NUMBER() OVER (PARTITION BY c.email ORDER BY c.date_creation DESC) as rn
+                        ROW_NUMBER() OVER (PARTITION BY LOWER(c.email) ORDER BY c.date_creation DESC) as rn
                     FROM Client c
                     LEFT JOIN project p ON p.client_id = c.id
                     WHERE 
                         (c.company_id = ${String(company_id)} OR p.company_id = ${String(company_id)})
                         ${search ? Prisma.sql`AND (
-                            c.name LIKE ${`%${search}%`} OR 
-                            c.email LIKE ${`%${search}%`} OR 
-                            c.location LIKE ${`%${search}%`}
+                            LOWER(c.name) LIKE LOWER(${`%${search}%`}) OR 
+                            LOWER(c.email) LIKE LOWER(${`%${search}%`}) OR 
+                            LOWER(c.location) LIKE LOWER(${`%${search}%`})
                         )` : Prisma.empty}
                 )
                 SELECT 
@@ -52,17 +52,17 @@ export class ListClientController {
                 OFFSET ${pageNumber * itemsLimit}
             `;
 
-            // Get total count using the same logic
+            // Get total count of unique emails
             const totalCountQuery = await prisma.$queryRaw<{ count: bigint }[]>`
-                SELECT COUNT(DISTINCT c.email) as count
+                SELECT COUNT(DISTINCT LOWER(c.email)) as count
                 FROM Client c
                 LEFT JOIN project p ON p.client_id = c.id
                 WHERE 
                     (c.company_id = ${String(company_id)} OR p.company_id = ${String(company_id)})
                     ${search ? Prisma.sql`AND (
-                        c.name LIKE ${`%${search}%`} OR 
-                        c.email LIKE ${`%${search}%`} OR 
-                        c.location LIKE ${`%${search}%`}
+                        LOWER(c.name) LIKE LOWER(${`%${search}%`}) OR 
+                        LOWER(c.email) LIKE LOWER(${`%${search}%`}) OR 
+                        LOWER(c.location) LIKE LOWER(${`%${search}%`})
                     )` : Prisma.empty}
             `;
 
@@ -70,7 +70,7 @@ export class ListClientController {
 
             // Get new clients registered in current month (first time registrations only)
             const newClientsThisMonth = await prisma.$queryRaw<{ count: bigint }[]>`
-                SELECT COUNT(DISTINCT c1.email) as count
+                SELECT COUNT(DISTINCT LOWER(c1.email)) as count
                 FROM Client c1
                 LEFT JOIN project p ON p.client_id = c1.id
                 WHERE 
@@ -80,7 +80,7 @@ export class ListClientController {
                     AND NOT EXISTS (
                         SELECT 1 FROM Client c2
                         LEFT JOIN project p2 ON p2.client_id = c2.id
-                        WHERE c2.email = c1.email
+                        WHERE LOWER(c2.email) = LOWER(c1.email)
                         AND (c2.company_id = ${String(company_id)} OR p2.company_id = ${String(company_id)})
                         AND c2.date_creation < ${startOfMonth}
                     )
