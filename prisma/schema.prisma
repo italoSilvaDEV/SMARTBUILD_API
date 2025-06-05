@@ -26,6 +26,7 @@ model User {
   hourly_price    Float?
   profession      String?
   isDisabled      Boolean? @default(false)
+  isOverTime      Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
