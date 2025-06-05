@@ -19,32 +19,40 @@ export class ListClientController {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-            // Base where condition
-            const whereCondition = {
-                AND: [
-                    {
-                        OR: [
-                            { company_id: String(company_id) },
-                            {
-                                projects: {
-                                    some: {
-                                        company_id: String(company_id)
-                                    }
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        OR: search ? [
-                            { name: { contains: String(search) } },
-                            { email: { contains: String(search) } },
-                            { location: { contains: String(search) } }
-                        ] : undefined
-                    }
-                ]
-            };
+            // Get total count and paginated clients in a single query
+            const clientsQuery = await prisma.$queryRaw<any[]>`
+                WITH RankedClients AS (
+                    SELECT 
+                        c.id,
+                        c.name,
+                        c.email,
+                        c.phone,
+                        c.date_creation,
+                        ROW_NUMBER() OVER (PARTITION BY c.email ORDER BY c.date_creation DESC) as rn
+                    FROM Client c
+                    LEFT JOIN project p ON p.client_id = c.id
+                    WHERE 
+                        (c.company_id = ${String(company_id)} OR p.company_id = ${String(company_id)})
+                        ${search ? Prisma.sql`AND (
+                            c.name LIKE ${`%${search}%`} OR 
+                            c.email LIKE ${`%${search}%`} OR 
+                            c.location LIKE ${`%${search}%`}
+                        )` : Prisma.empty}
+                )
+                SELECT 
+                    id,
+                    name,
+                    email,
+                    phone,
+                    date_creation
+                FROM RankedClients
+                WHERE rn = 1
+                ORDER BY date_creation DESC, name ASC
+                LIMIT ${itemsLimit}
+                OFFSET ${pageNumber * itemsLimit}
+            `;
 
-            // Get total count of distinct clients
+            // Get total count using the same logic
             const totalCountQuery = await prisma.$queryRaw<{ count: bigint }[]>`
                 SELECT COUNT(DISTINCT c.email) as count
                 FROM Client c
@@ -80,26 +88,8 @@ export class ListClientController {
 
             const currentMonthCount = Number(newClientsThisMonth[0].count);
 
-            // Get paginated results with distinct emails
-            const clients = await prisma.client.findMany({
-                where: whereCondition,
-                orderBy: [
-                    { date_creation: 'desc' },
-                    { name: 'asc' }
-                ],
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    phone: true,
-                    date_creation: true
-                },
-                distinct: ['email'],
-                skip: pageNumber * itemsLimit,
-                take: itemsLimit
-            });
-
-            const formattedClients = clients.map(({ id, name, email, phone }) => ({
+            // Format the clients
+            const formattedClients = clientsQuery.map(({ id, name, email, phone }) => ({
                 id,
                 name,
                 email,
@@ -107,7 +97,20 @@ export class ListClientController {
             }));
 
             // Get total raw count for duplicates check
-            const rawCount = await prisma.client.count({ where: whereCondition });
+            const rawCount = await prisma.client.count({
+                where: {
+                    OR: [
+                        { company_id: String(company_id) },
+                        {
+                            projects: {
+                                some: {
+                                    company_id: String(company_id)
+                                }
+                            }
+                        }
+                    ]
+                }
+            });
 
             return res.json({
                 total: totalCount,
