@@ -167,9 +167,7 @@ export class CompanyController {
             email,
             phone,
             webSiteUrl,
-            name,
-            workStartTime,
-            workEndTime
+            name
         } = req.body;
         const file = req.file;
 
@@ -179,37 +177,15 @@ export class CompanyController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
-            // Validate working hours format and logic
-            if (workStartTime || workEndTime) {
-                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                
-                if (workStartTime && !timeRegex.test(workStartTime)) {
-                    return res.status(400).json({ error: "Invalid start time format. Use HH:mm (24-hour format)" });
-                }
-                
-                if (workEndTime && !timeRegex.test(workEndTime)) {
-                    return res.status(400).json({ error: "Invalid end time format. Use HH:mm (24-hour format)" });
-                }
-
-                if (workStartTime && workEndTime) {
-                    const [startHour, startMinute] = workStartTime.split(':').map(Number);
-                    const [endHour, endMinute] = workEndTime.split(':').map(Number);
-                    
-                    const startMinutes = startHour * 60 + startMinute;
-                    const endMinutes = endHour * 60 + endMinute;
-                    
-                    if (endMinutes <= startMinutes) {
-                        return res.status(400).json({ error: "End time must be after start time" });
-                    }
-                }
-            }
-
             let avatarUrl = company.avatar;
 
             if (file) {
+
+                // const newAvatarUrl = await uploadImageWebpToS3(`./public/tmp/user/${file.filename}`, process.env.AMAZON_S3_BUCKET!);
                 const filePath = `./public/tmp/company/${file.filename.split('.')[0]}.webp`;
                 const newAvatarUrl = await uploadImageWebpToS3(filePath, process.env.AMAZON_S3_BUCKET!);
                 avatarUrl = newAvatarUrl;
+                // Optionally delete old avatar from S3 if needed
             }
 
             const updatedCompany = await prisma.company.update({
@@ -221,8 +197,6 @@ export class CompanyController {
                     webSiteUrl,
                     name,
                     avatar: avatarUrl,
-                    workStartTime,
-                    workEndTime,
                 },
             });
 
@@ -251,9 +225,7 @@ export class CompanyController {
                     email: true,
                     phone: true,
                     webSiteUrl: true,
-                    name: true,
-                    workStartTime: true,
-                    workEndTime: true
+                    name: true
                 }
             });
 
