@@ -13,7 +13,12 @@ export class ListClientController {
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
             const itemsLimit = Number(itemsPerPage);
 
-            // Base where condition
+       
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      
             const whereCondition = {
                 AND: [
                     {
@@ -38,7 +43,7 @@ export class ListClientController {
                 ]
             };
 
-            // Get distinct clients by email (prioritizing the most recent one)
+            
             const distinctClients = await prisma.client.groupBy({
                 by: ['email'],
                 where: whereCondition,
@@ -56,11 +61,39 @@ export class ListClientController {
 
             const totalCount = distinctClients.length;
 
-            // Get paginated results with distinct emails
+         
+            const currentMonthClients = await prisma.client.groupBy({
+                by: ['email'],
+                where: {
+                    AND: [
+                        ...whereCondition.AND,
+                        {
+                            date_creation: {
+                                gte: startOfMonth,
+                                lte: endOfMonth
+                            }
+                        }
+                    ]
+                },
+                _count: {
+                    _all: true
+                },
+                having: {
+                    email: {
+                        _count: {
+                            gt: 0
+                        }
+                    }
+                }
+            });
+
+            const currentMonthCount = currentMonthClients.length;
+
+           
             const clients = await prisma.client.findMany({
                 where: whereCondition,
                 orderBy: [
-                    { date_creation: 'desc' }, // Get most recent record for each email
+                    { date_creation: 'desc' },
                     { name: 'asc' }
                 ],
                 select: {
@@ -70,12 +103,11 @@ export class ListClientController {
                     phone: true,
                     date_creation: true
                 },
-                distinct: ['email'], // Ensure we get unique emails
+                distinct: ['email'], 
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
             });
 
-            // Format the response
             const formattedClients = clients.map(({ id, name, email, phone }) => ({
                 id,
                 name,
@@ -85,6 +117,7 @@ export class ListClientController {
 
             return res.json({
                 total: totalCount,
+                totalCurrentMonth: currentMonthCount,
                 clients: formattedClients,
                 duplicatesFound: totalCount !== await prisma.client.count({ where: whereCondition })
             });
