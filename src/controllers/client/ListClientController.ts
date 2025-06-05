@@ -44,23 +44,21 @@ export class ListClientController {
                 ]
             };
 
-            // Get distinct clients by email
-            const distinctClients = await prisma.client.groupBy({
-                by: ['email'],
-                where: whereCondition,
-                _count: {
-                    _all: true
-                },
-                having: {
-                    email: {
-                        _count: {
-                            gt: 0
-                        }
-                    }
-                }
-            });
+            // Get total count of distinct clients
+            const totalCountQuery = await prisma.$queryRaw<{ count: bigint }[]>`
+                SELECT COUNT(DISTINCT c.email) as count
+                FROM Client c
+                LEFT JOIN project p ON p.client_id = c.id
+                WHERE 
+                    (c.company_id = ${String(company_id)} OR p.company_id = ${String(company_id)})
+                    ${search ? Prisma.sql`AND (
+                        c.name LIKE ${`%${search}%`} OR 
+                        c.email LIKE ${`%${search}%`} OR 
+                        c.location LIKE ${`%${search}%`}
+                    )` : Prisma.empty}
+            `;
 
-            const totalCount = distinctClients.length;
+            const totalCount = Number(totalCountQuery[0].count);
 
             // Get new clients registered in current month (first time registrations only)
             const newClientsThisMonth = await prisma.$queryRaw<{ count: bigint }[]>`
@@ -108,11 +106,14 @@ export class ListClientController {
                 phone,
             }));
 
+            // Get total raw count for duplicates check
+            const rawCount = await prisma.client.count({ where: whereCondition });
+
             return res.json({
                 total: totalCount,
                 totalCurrentMonth: currentMonthCount,
                 clients: formattedClients,
-                duplicatesFound: totalCount !== await prisma.client.count({ where: whereCondition })
+                duplicatesFound: totalCount !== rawCount
             });
 
         } catch (error) {
