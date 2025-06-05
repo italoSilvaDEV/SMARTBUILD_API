@@ -391,6 +391,14 @@ model Client {
   company          Company?  @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
+
+  @@index([company_id])
+  @@index([name])
+  @@index([email])
+  @@index([document])
+  @@index([company_id, name])
+  @@index([company_id, email])
+  @@index([company_id, email, date_creation(sort: Desc)])
 }
 
 model InvoiceCostProject {

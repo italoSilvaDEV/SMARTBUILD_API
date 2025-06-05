@@ -1,13 +1,20 @@
 import { Router } from 'express';
 import { CreateClientController } from '../controllers/client/CreateClientController';
 import { UpdateClientController } from '../controllers/client/UpdateClientController';
+import { ListClientController } from '../controllers/client/ListClientController';
+import { GetClientFinancialDetailsController } from '../controllers/client/GetClientFinancialDetailsController';
 import { checkToken } from '../middlewares/checkToken';
+
 const clientRoutes = Router();
 
 const createClientController = new CreateClientController();
-clientRoutes.post('/client', checkToken, createClientController.handle);
+const updateClientController = new UpdateClientController();
+const listClientController = new ListClientController();
+const getClientFinancialDetailsController = new GetClientFinancialDetailsController();
 
-const updateClientController = new UpdateClientController()
-clientRoutes.put('/client/:id',checkToken, updateClientController.handle  )
+clientRoutes.post('/client', checkToken, createClientController.handle);
+clientRoutes.put('/client/:id', checkToken, updateClientController.handle);
+clientRoutes.get('/clients', checkToken, listClientController.handle);
+clientRoutes.get('/client/financial/:email', checkToken, getClientFinancialDetailsController.handle);
 
 export { clientRoutes };
