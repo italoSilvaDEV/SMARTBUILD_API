@@ -10,7 +10,18 @@ export class UserAttendanceController {
             const { user_id, user_service_project_id, address, latitude, longitude } = req.body;
 
             // Verifica se o usuário existe
-            const userExists = await prisma.user.findUnique({ where: { id: user_id } });
+            const userExists = await prisma.user.findUnique({
+                where: { id: user_id },
+                include: {
+                    company: {
+                        select: {
+                            id: true,
+                            workStartTime: true,
+                            workEndTime: true
+                        }
+                    }
+                }
+            });
             if (!userExists) {
                 res.status(400).json({ error: 'User not found.' });
                 return;
@@ -113,6 +124,8 @@ export class UserAttendanceController {
                     check_in_address: address,
                     check_in_latitude: latitude,
                     check_in_longitude: longitude,
+                    workStartTime: userExists.company?.workStartTime,
+                    workEndTime: userExists.company?.workEndTime
                 },
             });
 

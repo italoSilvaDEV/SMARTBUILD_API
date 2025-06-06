@@ -529,6 +529,7 @@ export class UserController {
       hourly_price,
       confirm_password,
       isDisabled,
+      isOverTime,
     } = request.body;
 
     // Função de validação
@@ -597,6 +598,7 @@ export class UserController {
             hourly_price,
             profession,
             isDisabled,
+            isOverTime,
           },
         });
       } else {
@@ -611,6 +613,7 @@ export class UserController {
             hourly_price,
             profession,
             isDisabled,
+            isOverTime,
           },
         });
       }
@@ -734,6 +737,7 @@ export class UserController {
           hourly_price: true,
           profession: true,
           isDisabled: true,
+          isOverTime: true,
           office: {
             select: {
               id: true,

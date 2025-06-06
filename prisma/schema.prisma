@@ -496,6 +496,9 @@ model UserAttendance {
   company                 Company?           @relation(fields: [company_id], references: [id])
   company_id              String?
 
+  workStartTime String? // Format: "HH:mm" (24-hour)
+  workEndTime   String? 
+
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")

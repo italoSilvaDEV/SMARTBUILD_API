@@ -16,9 +16,70 @@ interface WorkerGroup {
         id: string;
         name: string;
         hourly_price: number | null;
+        isOverTime: boolean | null;
     };
     hours_worked: number;
+    regular_hours: number;
+    overtime_hours: number;
     price: number;
+}
+
+// Helper function to calculate regular and overtime hours
+function calculateHours(checkIn: Date, checkOut: Date, workStartTime?: string | null, workEndTime?: string | null, isOverTime?: boolean) {
+    const checkInTime = DateTime.fromJSDate(checkIn);
+    const checkOutTime = DateTime.fromJSDate(checkOut);
+    
+    // If work times are not defined or invalid, treat all hours as regular
+    if (!workStartTime || !workEndTime || !workStartTime.includes(':') || !workEndTime.includes(':')) {
+        return {
+            regularHours: Math.ceil(checkOutTime.diff(checkInTime, 'hours').hours),
+            overtimeHours: 0
+        };
+    }
+    
+    // Convert work start/end times to DateTime objects for the same day as check-in
+    const [startHour, startMinute] = workStartTime.split(':').map(Number);
+    const [endHour, endMinute] = workEndTime.split(':').map(Number);
+    
+    // Validate hour and minute values
+    if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute) ||
+        startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 ||
+        startMinute < 0 || startMinute > 59 || endMinute < 0 || endMinute > 59) {
+        return {
+            regularHours: Math.ceil(checkOutTime.diff(checkInTime, 'hours').hours),
+            overtimeHours: 0
+        };
+    }
+    
+    const workStart = checkInTime.set({ hour: startHour, minute: startMinute });
+    const workEnd = checkInTime.set({ hour: endHour, minute: endMinute });
+    
+    // If not eligible for overtime, return all hours as regular
+    if (!isOverTime) {
+        return {
+            regularHours: Math.ceil(checkOutTime.diff(checkInTime, 'hours').hours),
+            overtimeHours: 0
+        };
+    }
+    
+    // Calculate total hours worked
+    const totalHours = checkOutTime.diff(checkInTime, 'hours').hours;
+    
+    // Calculate regular work day hours
+    const regularWorkHours = workEnd.diff(workStart, 'hours').hours;
+    
+    // If worked more than regular hours, calculate overtime
+    if (totalHours > regularWorkHours) {
+        return {
+            regularHours: Math.ceil(regularWorkHours),
+            overtimeHours: Math.ceil(totalHours - regularWorkHours)
+        };
+    }
+    
+    return {
+        regularHours: Math.ceil(totalHours),
+        overtimeHours: 0
+    };
 }
 
 async function findProject(data: IFindProject) {
@@ -106,7 +167,8 @@ async function findProject(data: IFindProject) {
                                             select: {
                                                 name: true,
                                                 hourly_price: true,
-                                                id: true
+                                                id: true,
+                                                isOverTime: true
                                             }
                                         }
                                     },
@@ -179,7 +241,8 @@ async function findAllAttendances(companyId: string, search: string | undefined,
                 select: {
                     name: true,
                     hourly_price: true,
-                    id: true
+                    id: true,
+                    isOverTime: true
                 }
             }
         },
@@ -293,21 +356,31 @@ export class TimeController {
 
             // Processar todos os registros
             const allFormattedAttendances = allAttendances.map(x => {
-                let hoursWorked = 0;
+                let regularHours = 0;
+                let overtimeHours = 0;
+                
                 if (x.check_out_time && x.check_in_time) {
-                    const checkIn = DateTime.fromJSDate(x.check_in_time);
-                    const checkOut = DateTime.fromJSDate(x.check_out_time);
-                    hoursWorked = checkOut.diff(checkIn, 'hours').hours;
+                    const hours = calculateHours(
+                        x.check_in_time,
+                        x.check_out_time,
+                        String(x.workStartTime),
+                        String(x.workEndTime),
+                        x.user.isOverTime || false
+                    );
+                    regularHours = hours.regularHours;
+                    overtimeHours = hours.overtimeHours;
                 }
 
-                const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                const totalHours = regularHours + overtimeHours;
                 const calculatedPrice = x.user.hourly_price
-                    ? x.user.hourly_price * roundedHours
+                    ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                     : 0;
 
                 return {
                     user: x.user,
-                    hours_worked: roundedHours,
+                    hours_worked: totalHours,
+                    regular_hours: regularHours,
+                    overtime_hours: overtimeHours,
                     price: calculatedPrice
                 };
             });
@@ -320,11 +393,15 @@ export class TimeController {
                     acc[userId] = {
                         user: current.user,
                         hours_worked: 0,
+                        regular_hours: 0,
+                        overtime_hours: 0,
                         price: 0
                     };
                 }
 
                 acc[userId].hours_worked += current.hours_worked;
+                acc[userId].regular_hours += current.regular_hours;
+                acc[userId].overtime_hours += current.overtime_hours;
                 acc[userId].price += current.price;
 
                 return acc;
@@ -333,6 +410,8 @@ export class TimeController {
             const consolidatedWorkers = Object.values(workersGroupedByUser).map((worker) => ({
                 user: (worker as WorkerGroup).user,
                 hours_worked: parseFloat((worker as WorkerGroup).hours_worked.toFixed(2)),
+                regular_hours: parseFloat((worker as WorkerGroup).regular_hours.toFixed(2)),
+                overtime_hours: parseFloat((worker as WorkerGroup).overtime_hours.toFixed(2)),
                 price: parseFloat((worker as WorkerGroup).price.toFixed(2))
             }));
 
@@ -360,22 +439,33 @@ export class TimeController {
                             .flatMap(user => user.user_attendances
                                 .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
                                 .map(x => {
-                                    let hoursWorked = 0;
+                                    let regularHours = 0;
+                                    let overtimeHours = 0;
+                                    
                                     if (x.check_out_time && x.check_in_time) {
-                                        const checkIn = DateTime.fromJSDate(x.check_in_time);
-                                        const checkOut = DateTime.fromJSDate(x.check_out_time);
-                                        hoursWorked = checkOut.diff(checkIn, 'hours').hours;
+                                        const hours = calculateHours(
+                                            x.check_in_time,
+                                            x.check_out_time,
+                                            String(x.workStartTime),
+                                            String(x.workEndTime),
+                                            x.user.isOverTime || false
+                                        );
+                                        regularHours = hours.regularHours;
+                                        overtimeHours = hours.overtimeHours;
                                     }
 
-                                    const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                                    const totalHours = regularHours + overtimeHours;
                                     const calculatedPrice = x.user.hourly_price
-                                        ? x.user.hourly_price * roundedHours
+                                        ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                         : 0;
                                     return ({
                                         nameWorker: x.user.name,
                                         date: x.date,
                                         in: x.check_in_time,
                                         out: x.check_out_time,
+                                        regular_hours: regularHours,
+                                        overtime_hours: overtimeHours,
+                                        total_hours: totalHours,
                                         price: calculatedPrice
                                     })
                                 })
@@ -603,7 +693,8 @@ export class TimeController {
                                             user: {
                                                 select: {
                                                     name: true,
-                                                    hourly_price: true
+                                                    hourly_price: true,
+                                                    isOverTime: true
                                                 }
                                             }
                                         },
@@ -625,21 +716,31 @@ export class TimeController {
                     .filter(user => user.user_attendances.length > 0)
                     .flatMap(user => user.user_attendances
                         .map(x => {
-                            let hoursWorked = 0;
+                            let regularHours = 0;
+                            let overtimeHours = 0;
+                            
                             if (x.check_out_time && x.check_in_time) {
-                                const checkIn = DateTime.fromJSDate(x.check_in_time);
-                                const checkOut = DateTime.fromJSDate(x.check_out_time);
-                                hoursWorked = checkOut.diff(checkIn, 'hours').hours;
+                                const hours = calculateHours(
+                                    x.check_in_time,
+                                    x.check_out_time,
+                                    String(x.workStartTime),
+                                    String(x.workEndTime),
+                                    x.user.isOverTime || false
+                                );
+                                regularHours = hours.regularHours;
+                                overtimeHours = hours.overtimeHours;
                             }
 
-                            const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            const totalHours = regularHours + overtimeHours;
                             const calculatedPrice = x.user.hourly_price
-                                ? x.user.hourly_price * roundedHours
+                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
                             return ({
                                 ...x,
                                 userId: x.user_id,
-                                hours_worked: roundedHours,
+                                hours_worked: totalHours,
+                                regular_hours: regularHours,
+                                overtime_hours: overtimeHours,
                                 price: calculatedPrice,
                                 serviceName: s.name // Incluir o nome do serviço para melhor identificação
                             })
