@@ -525,6 +525,7 @@ export class TimeController {
             const existWorker = await prisma.user.findUnique({
                 where: { id: String(worker_id) },
                 include: {
+                    company: true,
                     office: true,
                     UserAttendance: {
                         where: {
@@ -738,15 +739,14 @@ export class TimeController {
                             let overtimeHours = 0;
                             
                             if (x.check_out_time && x.check_in_time) {
-                                const hours = calculateHours(
-                                    x.check_in_time,
-                                    x.check_out_time,
-                                    String(x.workStartTime),
-                                    String(x.workEndTime),
-                                    x.user.isOverTime || false
+                                const hours = calcularHorasTrabalhadas(
+                                    x.check_in_time.toISOString(),
+                                    x.check_out_time.toISOString(),
+                                    x.workStartTime,
+                                    x.workEndTime,
                                 );
-                                regularHours = hours.regularHours;
-                                overtimeHours = hours.overtimeHours;
+                                regularHours = convertHHMMToDecimal(hours.normais);
+                                overtimeHours = convertHHMMToDecimal(hours.extras);
                             }
 
                             const totalHours = regularHours + overtimeHours;
@@ -773,6 +773,8 @@ export class TimeController {
                 indicators: {
                     totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
                     totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
+                    totalRegularHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.regular_hours || 0), 0).toFixed(2)),
+                    totalOvertimeHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.overtime_hours || 0), 0).toFixed(2)),
                     totalServices: serviceCount,
                     totalProjects: projects.length,
                 },
