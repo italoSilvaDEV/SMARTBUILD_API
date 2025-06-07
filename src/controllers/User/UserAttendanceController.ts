@@ -124,8 +124,8 @@ export class UserAttendanceController {
                     check_in_address: address,
                     check_in_latitude: latitude,
                     check_in_longitude: longitude,
-                    workStartTime: userExists.company?.workStartTime,
-                    workEndTime: userExists.company?.workEndTime
+                    workStartTime:  userExists.isOverTime ? userExists.company?.workStartTime : null,
+                    workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
                 },
             });
 
@@ -407,11 +407,28 @@ export class UserAttendanceController {
                 date
             } = req.body;
 
+            // Verifica se o usuário existe
+            const userExists = await prisma.user.findUnique({
+                where: { id: userId },
+                include: {
+                    company: {
+                        select: {
+                            id: true,
+                            workStartTime: true,
+                            workEndTime: true
+                        }
+                    }
+                }
+            });
+            if (!userExists) {
+                res.status(400).json({ error: 'User not found.' });
+                return;
+            }
             // Validar dados obrigatórios
             if (!userId || !serviceProjectId || !date) {
                 return res.status(400).json({ 
                     success: false, 
-                    message: "Dados obrigatórios não fornecidos" 
+                    message: "Required data not provided" 
                 });
             }
 
@@ -419,7 +436,7 @@ export class UserAttendanceController {
             if (!checkInTime && !checkOutTime) {
                 return res.status(400).json({
                     success: false,
-                    message: "É necessário fornecer pelo menos um horário (entrada ou saída)"
+                    message: "At least one time (check-in or check-out) must be provided"
                 });
             }
 
@@ -551,7 +568,7 @@ export class UserAttendanceController {
                 if (!activeAttendance) {
                     return res.status(404).json({
                         success: false,
-                        message: "Não foi encontrado um registro ativo para realizar o check-out"
+                        message: "No active record found to perform check-out"
                     });
                 }
 
@@ -581,7 +598,9 @@ export class UserAttendanceController {
                         check_in_longitude: project?.client?.log ? parseFloat(project.client.log) : 0,
                         check_out_address: checkOutTime ? project?.client?.location || null : null,
                         check_out_latitude: checkOutTime ? (project?.client?.lat ? parseFloat(project.client.lat) : null) : null,
-                        check_out_longitude: checkOutTime ? (project?.client?.log ? parseFloat(project.client.log) : null) : null
+                        check_out_longitude: checkOutTime ? (project?.client?.log ? parseFloat(project.client.log) : null) : null,
+                        workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
+                        workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
                     }
                 });
             }
@@ -591,10 +610,10 @@ export class UserAttendanceController {
                 data: attendance
             });
         } catch (error) {
-            console.error("Erro ao registrar clock in/out:", error);
+            console.error("Error registering clock in/out:", error);
             return res.status(500).json({
                 success: false,
-                message: "Erro ao processar a solicitação",
+                message: "Error processing request",
                 error: (error as Error).message
             });
         }

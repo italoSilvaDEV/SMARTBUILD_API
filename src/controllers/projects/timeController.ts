@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { DateTime } from "luxon";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
 interface IFindProject {
     company_id: string,
@@ -81,6 +82,7 @@ function calculateHours(checkIn: Date, checkOut: Date, workStartTime?: string | 
         overtimeHours: 0
     };
 }
+
 
 async function findProject(data: IFindProject) {
     const startDate = DateTime.fromISO(String(data.start_date))
@@ -360,15 +362,21 @@ export class TimeController {
                 let overtimeHours = 0;
                 
                 if (x.check_out_time && x.check_in_time) {
-                    const hours = calculateHours(
-                        x.check_in_time,
-                        x.check_out_time,
-                        String(x.workStartTime),
-                        String(x.workEndTime),
-                        x.user.isOverTime || false
+                    // const hours = calculateHours(
+                    //     x.check_in_time,
+                    //     x.check_out_time,
+                    //     String(x.workStartTime),
+                    //     String(x.workEndTime),
+                    //     x.user.isOverTime || false
+                    // );
+                    const hours = calcularHorasTrabalhadas(
+                        x.check_in_time.toISOString(),
+                        x.check_out_time.toISOString(),
+                        x.workStartTime,
+                        x.workEndTime,
                     );
-                    regularHours = hours.regularHours;
-                    overtimeHours = hours.overtimeHours;
+                    regularHours = convertHHMMToDecimal(hours.normais);
+                    overtimeHours = convertHHMMToDecimal(hours.extras);
                 }
 
                 const totalHours = regularHours + overtimeHours;
@@ -426,6 +434,8 @@ export class TimeController {
                 indicators: {
                     totalPrice: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.price, 0).toFixed(2)),
                     totalHours: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.hours_worked, 0).toFixed(2)),
+                    totalRegularHours: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.regular_hours, 0).toFixed(2)),
+                    totalOvertimeHours: parseFloat(consolidatedWorkers.reduce((acc, i) => acc + i.overtime_hours, 0).toFixed(2)),
                     totalServices: resultCount,
                     totalProjects: projectsCount,
                 },
@@ -443,15 +453,23 @@ export class TimeController {
                                     let overtimeHours = 0;
                                     
                                     if (x.check_out_time && x.check_in_time) {
-                                        const hours = calculateHours(
-                                            x.check_in_time,
-                                            x.check_out_time,
-                                            String(x.workStartTime),
-                                            String(x.workEndTime),
-                                            x.user.isOverTime || false
+                                        // const hours = calculateHours(
+                                        //     x.check_in_time,
+                                        //     x.check_out_time,
+                                        //     String(x.workStartTime),
+                                        //     String(x.workEndTime),
+                                        //     x.user.isOverTime || false
+                                        // );
+                                        const hours = calcularHorasTrabalhadas(
+                                            x.check_in_time.toISOString(),
+                                            x.check_out_time.toISOString(),
+                                            x.workStartTime,
+                                            x.workEndTime,
                                         );
-                                        regularHours = hours.regularHours;
-                                        overtimeHours = hours.overtimeHours;
+                                        regularHours = convertHHMMToDecimal(hours.normais);
+                                        overtimeHours = convertHHMMToDecimal(hours.extras);
+                                        // regularHours = hours.regularHours;
+                                        // overtimeHours = hours.overtimeHours;
                                     }
 
                                     const totalHours = regularHours + overtimeHours;
