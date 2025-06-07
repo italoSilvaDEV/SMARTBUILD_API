@@ -522,8 +522,21 @@ export class FinanceDashboardController {
                                 );
                             }
                             const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            let regularHours = 0;
+                            let overtimeHours = 0;
+
+                            if (x.check_out_time && x.check_in_time) {
+                                const hours = calcularHorasTrabalhadas(
+                                    x.check_in_time.toISOString(),
+                                    x.check_out_time.toISOString(),
+                                    x.workStartTime,
+                                    x.workEndTime,
+                                );
+                                regularHours = convertHHMMToDecimal(hours.normais);
+                                overtimeHours = convertHHMMToDecimal(hours.extras);
+                            }
                             const calculatedPrice = x.user.hourly_price
-                                ? x.user.hourly_price * roundedHours
+                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
                             return ({
                                 ...x,
