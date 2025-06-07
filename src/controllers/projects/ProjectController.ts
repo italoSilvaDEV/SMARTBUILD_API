@@ -10,6 +10,7 @@ import { createPreviewContract } from "../../templateEmail/createPreviewContract
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 import { error } from "console";
+import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
 
 export interface INewProject {
@@ -461,10 +462,20 @@ export class ProjectController {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
               let hoursWorked = 0;
-              if (attendance.check_out_time) {
-                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              let regularHours = 0;
+              let overtimeHours = 0;
+
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                );
+                regularHours = convertHHMMToDecimal(hours.normais);
+                overtimeHours = convertHHMMToDecimal(hours.extras);
               }
-              return sub + Number(attendance.user.hourly_price) * parseFloat(hoursWorked.toFixed(2))
+              return sub + ((regularHours * (attendance.user.hourly_price || 0)) + (overtimeHours * (attendance.user.hourly_price || 0) * 1.5))
 
             }, 0)
             return subTotal + costSub
@@ -1231,6 +1242,19 @@ export class ProjectController {
               true
             );
           }
+          let regularHours = 0;
+          let overtimeHours = 0;
+
+          if (attendance.check_out_time && attendance.check_in_time) {
+            const hours = calcularHorasTrabalhadas(
+              attendance.check_in_time.toISOString(),
+              attendance.check_out_time.toISOString(),
+              attendance.workStartTime,
+              attendance.workEndTime,
+            );
+            regularHours = convertHHMMToDecimal(hours.normais);
+            overtimeHours = convertHHMMToDecimal(hours.extras);
+          }
           return {
             ...attendance,
             user: {
@@ -1240,9 +1264,9 @@ export class ProjectController {
                 : null,
             },
             hours_worked: parseFloat(hoursWorked.toFixed(2)),
-            price:
-              Number(attendance.user.hourly_price) *
-              parseFloat(hoursWorked.toFixed(2)),
+            price: 
+              (regularHours * (attendance.user.hourly_price || 0)) +
+              (overtimeHours * (attendance.user.hourly_price || 0) * 1.5),
           };
         })
       );
