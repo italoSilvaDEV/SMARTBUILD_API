@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
+import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -138,6 +139,162 @@ export class FindWorkedHoursProjectController {
             // Combinar os resultados de workedhours e userAttendance
             const combinedResults = [...result, ...formattedResult];
             return response.json({ total, result: combinedResults });
+        } catch (error) {
+            console.error(error);
+            if (error instanceof Error) {
+                return response.json({ error: error.message });
+            }
+            return response.json({ error: "Internal server error" });
+        }
+    }
+    async handleGet(request: Request, response: Response) {
+        try {
+            const { project_id, name_user, date_initial, date_final } = request.body;
+
+            if (!project_id) {
+                return response.status(400).json({ error: "Project ID is required" });
+            }
+
+            const filtro: any = { project_id };
+
+            if (name_user) {
+                filtro.name_user = { contains: name_user };
+            }
+            const dateStart = new Date(date_initial);
+            dateStart.setUTCHours(0, 0, 0, 0);
+            const dateEnd = new Date(date_final);
+            dateEnd.setUTCHours(23, 59, 59, 999);
+            if (date_initial && date_final) {
+                filtro.start_date = {
+                    gte: dateStart.toISOString(),
+                    lte: dateEnd.toISOString(),
+                };
+            } else if (date_initial) {
+                filtro.start_date = {
+                    gte: dateStart.toISOString(),
+                    lte: dateEnd.toISOString(),
+                };
+            } else if (date_final) {
+                filtro.start_date = {
+                    lte: dateEnd.toISOString(),
+                };
+            }
+
+            const result = await prisma.workedhours.findMany({
+                where: filtro,
+                select: {
+                    id: true,
+                    project_id: true,
+                    name_user: true,
+                    amount_of_hours: true,
+                    hourly_price: true,
+                    date_creation: true,
+                    start_date: true,
+                    end_date: true
+                },
+                orderBy: {
+                    date_creation: "desc"
+                },
+            });
+
+
+            const resultAttendance = await prisma.userAttendance.findMany({
+                where: {
+                    AND: [
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    projectId: {
+                                        equals: project_id
+                                    }
+                                }
+                            },
+                        },
+                        date_initial && date_final ? {
+                            AND: [{
+                                check_in_time: {
+                                    gte: dateStart.toISOString(),
+                                }
+                            },
+                            {
+                                check_out_time: {
+                                    lte: dateEnd.toISOString(),
+                                }
+                            }]
+                        } : {
+
+                        }
+
+                    ]
+
+
+                },
+                include: {
+                    UserServiceProject: {
+                        select: {
+                            service_project: {
+                                select: {
+                                    price: true,
+                                }
+                            }
+                        }
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true,
+                            hourly_price: true
+                        }
+                    }
+                },
+                orderBy: {
+                    check_in_time: "desc"
+                }
+            });
+            const formattedResult = result.map((workedHours) => {
+                return {
+                    ...workedHours,
+                    overtime_hours: null,
+                    price: workedHours.amount_of_hours&&workedHours.hourly_price? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price): null
+                }
+            })
+            // Calcular as horas trabalhadas
+            const formattedAttendance = resultAttendance.map((attendance) => {
+                
+                let regularHours = 0;
+                let overtimeHours = 0;
+
+                if (attendance.check_out_time && attendance.check_in_time) {
+                    const hours = calcularHorasTrabalhadas(
+                        attendance.check_in_time.toISOString(),
+                        attendance.check_out_time.toISOString(),
+                        attendance.workStartTime,
+                        attendance.workEndTime,
+                    );
+                    regularHours = convertHHMMToDecimal(hours.normais);
+                    overtimeHours = convertHHMMToDecimal(hours.extras);
+                }
+                return {
+                    id: '',
+                    project_id: '',
+                    name_user: attendance.user.name,
+                    hourly_price: String(attendance.user.hourly_price),
+                    amount_of_hours: regularHours,
+                    overtime_hours: overtimeHours ? overtimeHours : null,
+                    price:
+                        (regularHours * (attendance.user.hourly_price || 0)) +
+                        (overtimeHours * (attendance.user.hourly_price || 0) * 1.5),
+                    data_creation: attendance.check_in_time,
+                    start_date: attendance.check_in_time,
+                    end_date: attendance.check_out_time
+                };
+            });
+
+
+            // Combinar os resultados de workedhours e userAttendance
+            const combinedResults = [...formattedResult, ...formattedAttendance];
+            return response.json({ result: combinedResults });
         } catch (error) {
             console.error(error);
             if (error instanceof Error) {

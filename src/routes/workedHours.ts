@@ -16,6 +16,7 @@ workedRours.post("/workedhours", checkToken, createWorkedHoursController.handle)
 
 const findWorkedHoursProjectController = new FindWorkedHoursProjectController();
 workedRours.post("/workedhours/find",checkToken,  findWorkedHoursProjectController.handle);
+workedRours.post("/workedhours/find/overtime", checkToken, findWorkedHoursProjectController.handleGet);
 
 const deleteWorkedHoursController = new DeleteWorkedHoursController()
 workedRours.delete("/workedhours/:id",checkToken,  deleteWorkedHoursController.handle)
