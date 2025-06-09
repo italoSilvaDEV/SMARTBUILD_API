@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
+import { Prisma } from '@prisma/client';
 
 
 async function validCompany(request: Request) {
@@ -601,7 +602,17 @@ export class FinanceDashboardController {
                     }
                 }
             });
+            // Get total count of unique emails
+            const totalCountQuery = await prisma.$queryRaw<{ count: bigint }[]>`
+                SELECT COUNT(DISTINCT LOWER(c.email)) as count
+                FROM Client c
+                LEFT JOIN project p ON p.client_id = c.id
+                WHERE 
+                    (c.company_id = ${String(companyId)} OR p.company_id = ${String(companyId)})
+                   
+            `;
 
+            const totalCount = Number(totalCountQuery[0].count);
             const [
                 estimates,
                 projects,
@@ -664,7 +675,7 @@ export class FinanceDashboardController {
                 estimates,
                 projects,
                 employees: employeesCount,
-                customers: 0,
+                customers: totalCount,
                 inProgressProjects,
                 pendingProjects,
                 completedProjects,
