@@ -26,6 +26,7 @@ model User {
   hourly_price    Float?
   profession      String?
   isDisabled      Boolean? @default(false)
+  isOverTime      Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -68,29 +69,30 @@ model Audit {
 }
 
 model Company {
-  id             String           @id @default(uuid())
-  avatar         String?
-  name           String
-  date_creation  DateTime         @default(now())
-  date_update    DateTime         @updatedAt
-  address        String?
-  district       String?
-  numberHouse    String?
-  complement     String?
-  email          String?
-  phone          String?
-  webSiteUrl     String?
+  id            String   @id @default(uuid())
+  avatar        String?
+  name          String
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  address       String?
+  district      String?
+  numberHouse   String?
+  complement    String?
+  email         String?
+  phone         String?
+  webSiteUrl    String?
+  workStartTime String? // Format: "HH:mm" (24-hour)
+  workEndTime   String? // Format: "HH:mm" (24-hour)
 
-
-  User           User[]
-  Category       Category[]
-  SubCategory    SubCategory[]
-  Service        Service[]
-  ServiceProject ServiceProject[]
-  Catalog        Catalog[]
-  Project        Project[]
-  Client         Client[]
-  UserAttendance UserAttendance[]
+  User             User[]
+  Category         Category[]
+  SubCategory      SubCategory[]
+  Service          Service[]
+  ServiceProject   ServiceProject[]
+  Catalog          Catalog[]
+  Project          Project[]
+  Client           Client[]
+  UserAttendance   UserAttendance[]
   allowedEmployees Int? // Quantidade de funcionários permitida pelo plano
   extraEmployees   Int? // Quantidade de funcionários extras adicionados
 
@@ -98,7 +100,7 @@ model Company {
 
   NotesContrac ContractNotes[]
 
-  stripeCustomerId String? 
+  stripeCustomerId String?
 
   // novo campo
   stripeAccountId String? @unique
@@ -393,8 +395,6 @@ model Client {
   company          Company?  @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
-
-
 }
 
 model InvoiceCostProject {
@@ -495,6 +495,9 @@ model UserAttendance {
   user_service_project_id String
   company                 Company?           @relation(fields: [company_id], references: [id])
   company_id              String?
+
+  workStartTime String? // Format: "HH:mm" (24-hour)
+  workEndTime   String? 
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
@@ -711,17 +714,17 @@ model GroupPermissionsList {
 }
 
 model Subscription {
-  id        String   @id @default(uuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id])
-  startDate DateTime // Data de início da assinatura (quando o plano foi comprado)
-  endDate   DateTime // Data de fim do plano (quando o plano expira)
-  isActive  Boolean  @default(true) // Indica se o plano está ativo ou expirado
-  stripeSubscriptionId String?
-  paymentFailed  Boolean  @default(false)
-  stripeSubscriptionCanceled Boolean @default(false)
+  id                             String    @id @default(uuid())
+  companyId                      String
+  company                        Company   @relation(fields: [companyId], references: [id])
+  planId                         String
+  plan                           Plan      @relation(fields: [planId], references: [id])
+  startDate                      DateTime // Data de início da assinatura (quando o plano foi comprado)
+  endDate                        DateTime // Data de fim do plano (quando o plano expira)
+  isActive                       Boolean   @default(true) // Indica se o plano está ativo ou expirado
+  stripeSubscriptionId           String?
+  paymentFailed                  Boolean   @default(false)
+  stripeSubscriptionCanceled     Boolean   @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
 }
 
@@ -747,10 +750,10 @@ model Plan {
   permissionGroupId String
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
-  
-allowedEmployees  Int?
-  stripeProductId String? // Campo para armazenar o ID do produto no Stripe
-  stripePriceId   String? // Campo para armazenar o ID do preço no Stripe
+
+  allowedEmployees Int?
+  stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
+  stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
 }
 
 model EstimateEmailLog {

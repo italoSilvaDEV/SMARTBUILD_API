@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
-import { Prisma } from '@prisma/client';
+import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
+
 
 
 async function validCompany(request: Request) {
@@ -125,16 +126,34 @@ export class FinanceDashboardController {
                 const attendanceCosts = project.serviceProject.flatMap(sp =>
                     sp.UserServiceProject.flatMap(usp =>
                         usp.user_attendances.map(attendance => {
-                            const hoursWorked = attendance.check_in_time && attendance.check_out_time
-                                ? dayjs(attendance.check_out_time).diff(
-                                    dayjs(attendance.check_in_time),
-                                    "hour",
-                                    true
-                                )
-                                : 0;
+                            // const hoursWorked = attendance.check_in_time && attendance.check_out_time
+                            //     ? dayjs(attendance.check_out_time).diff(
+                            //         dayjs(attendance.check_in_time),
+                            //         "hour",
+                            //         true
+                            //     )
+                            //     : 0;
 
+                            let regularHours = 0;
+                            let overtimeHours = 0;
+
+                            if (attendance.check_out_time && attendance.check_in_time) {
+                                const hours = calcularHorasTrabalhadas(
+                                    attendance.check_in_time.toISOString(),
+                                    attendance.check_out_time.toISOString(),
+                                    attendance.workStartTime,
+                                    attendance.workEndTime,
+                                );
+                                regularHours = convertHHMMToDecimal(hours.normais);
+                                overtimeHours = convertHHMMToDecimal(hours.extras);
+                            }
+
+                            const calculatedPrice = attendance.user.hourly_price
+                                ? (regularHours * attendance.user.hourly_price) + (overtimeHours * attendance.user.hourly_price * 1.5)
+                                : 0;
+                            
                             return {
-                                cost: hoursWorked * Number(attendance.user.hourly_price || 0),
+                                cost: calculatedPrice,
                                 date: attendance.check_in_time
                             };
                         })
@@ -296,8 +315,22 @@ export class FinanceDashboardController {
                                 );
                             }
                             const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            let regularHours = 0;
+                            let overtimeHours = 0;
+
+                            if (x.check_out_time && x.check_in_time) {
+                                const hours = calcularHorasTrabalhadas(
+                                    x.check_in_time.toISOString(),
+                                    x.check_out_time.toISOString(),
+                                    x.workStartTime,
+                                    x.workEndTime,
+                                );
+                                regularHours = convertHHMMToDecimal(hours.normais);
+                                overtimeHours = convertHHMMToDecimal(hours.extras);
+                            }
+
                             const calculatedPrice = x.user.hourly_price
-                                ? x.user.hourly_price * roundedHours
+                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
                             return ({
                                 ...x,
@@ -490,8 +523,21 @@ export class FinanceDashboardController {
                                 );
                             }
                             const roundedHours = parseFloat(hoursWorked.toFixed(2));
+                            let regularHours = 0;
+                            let overtimeHours = 0;
+
+                            if (x.check_out_time && x.check_in_time) {
+                                const hours = calcularHorasTrabalhadas(
+                                    x.check_in_time.toISOString(),
+                                    x.check_out_time.toISOString(),
+                                    x.workStartTime,
+                                    x.workEndTime,
+                                );
+                                regularHours = convertHHMMToDecimal(hours.normais);
+                                overtimeHours = convertHHMMToDecimal(hours.extras);
+                            }
                             const calculatedPrice = x.user.hourly_price
-                                ? x.user.hourly_price * roundedHours
+                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
                             return ({
                                 ...x,
