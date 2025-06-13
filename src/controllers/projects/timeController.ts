@@ -925,7 +925,12 @@ export class TimeController {
                                     check_in_time: attendance.check_in_time,
                                     check_out_time: attendance.check_out_time,
                                     userId: attendance.user.id,
-                                    user_service_project_id: attendance.user_service_project_id
+                                    user_service_project_id: attendance.user_service_project_id,
+                                    client: {
+                                        clientName: project.client?.name,
+                                        clientAddress: project.client?.location,
+                                        clientCityAndState: project.client?.city_and_state
+                                    }
                                 }))
                             )
                     )
