@@ -10,6 +10,7 @@ import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
+import { businessDashboard } from './businessDashboardRoutes'
 import { companyRoutes } from './companyRoutes'
 import { planRoutes } from './planRoutes'
 import { permissionRoutes } from './permissionRoutes'
@@ -42,6 +43,7 @@ router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
+router.use("/business-dashboard", businessDashboard);
 router.use(invoiceRoutes);
 router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
