@@ -959,9 +959,9 @@ export class TimeController {
                 check_out_time: entry.check_out_time,
                 status: entry.status,
                 client: {
-                    clientName: entry.clientName,
-                    clientAddress: entry.clientAddress,
-                    clientCityAndState: entry.clientCityAndState
+                    clientName: entry.client.clientName,
+                    clientAddress: entry.client.clientAddress,
+                    clientCityAndState: entry.client.clientCityAndState
                 }
             }));
 
