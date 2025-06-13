@@ -441,6 +441,9 @@ export class TimeController {
                 },
                 projects: projects.map(i => ({
                     clientData: i.client?.name + ' - ' + i.client?.location,
+                    clientName: i.client?.name,
+                    clientAddress: i.client?.location,
+                    clientCityAndState: i.client?.city_and_state,
                     serviceCount: i.serviceProject.length,
                     workerData: i.serviceProject
                         .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
@@ -869,7 +872,8 @@ export class TimeController {
                 },
                 distinct: ['user_id'] as const,
                 select: { user_id: true }
-            }).then(results => results.length);
+            },
+        ).then(results => results.length);
 
             // Contar projetos com status específicos dentro do período
             const { projects, projectsCount } = await findProject({
@@ -948,7 +952,12 @@ export class TimeController {
                 address: entry.address,
                 check_in_time: entry.check_in_time,
                 check_out_time: entry.check_out_time,
-                status: entry.status
+                status: entry.status,
+                client: {
+                    clientName: entry.clientName,
+                    clientAddress: entry.clientAddress,
+                    clientCityAndState: entry.clientCityAndState
+                }
             }));
 
             // Obter os IDs únicos de UserServiceProject dos registros mais recentes
