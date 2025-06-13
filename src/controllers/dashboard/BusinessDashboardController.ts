@@ -98,18 +98,21 @@ export class BusinessDashboardController {
                 // Total Customers
                 prisma.client.findMany({
                     where: {
+                        ...(Object.keys(dateFilter).length > 0 && {
+                            date_creation: dateFilter
+                        }),
                         OR: [
                             { company_id: valid.response?.id },
+                                
                             {
                                 projects: {
                                     some: {
                                         company_id: valid.response?.id,
-                                        ...(Object.keys(dateFilter).length > 0 && {
-                                            date_creation: dateFilter
-                                        })
+                                       
                                     }
                                 }
-                            }
+                            },
+                            
                         ]
                     },
                     select: {
@@ -123,7 +126,10 @@ export class BusinessDashboardController {
                         isDisabled: false,
                         office: {
                             name: "Worker"
-                        }
+                        },
+                        ...(Object.keys(dateFilter).length > 0 && {
+                            date_creation: dateFilter
+                        })
                     }
                 }),
                 // In Progress Projects
