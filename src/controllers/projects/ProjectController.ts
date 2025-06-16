@@ -918,6 +918,24 @@ export class ProjectController {
     const data: INewProject = req.body;
 
     try {
+      // Validate required fields
+      if (!data.seller_user_id) {
+        return res.status(400).json({ error: "seller_user_id is required" });
+      }
+      if (!data.company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+      if (!data.client) {
+        return res.status(400).json({ error: "client data is required" });
+      }
+      if (!data.client.name || !data.client.email) {
+        return res.status(400).json({ error: "client name and email are required" });
+      }
+
+      // Set default values for optional fields
+      const price = data.price || 0;
+      const status_project = data.status_project || "Pending";
+
       const result = await prisma.client.create({
         data: {
           name: data.client.name,
@@ -949,8 +967,8 @@ export class ProjectController {
       const project = await prisma.project.create({
         data: {
           seller_user_id: data.seller_user_id,
-          price: data.price,
-          status_project: data.status_project,
+          price: price,
+          status_project: status_project,
           client_id: result.id,
           start_date: data.client.start_date,
           deadline: data.client.deadline,

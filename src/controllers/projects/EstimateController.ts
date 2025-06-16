@@ -273,6 +273,11 @@ export class EstimateController {
     try {
       const { projectId } = req.body;
 
+      // Validate projectId
+      if (!projectId) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+
       // Buscar o projeto com seus serviços
       const project = await prisma.project.findUnique({
         where: { id: projectId },
