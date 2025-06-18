@@ -368,6 +368,16 @@ model PdfProject {
   project    Project? @relation(fields: [project_id], references: [id])
   project_id String?
 
+  // vinculo com estimate
+  estimate    Estimate? @relation(fields: [estimate_id], references: [id])
+  estimate_id String?   
+
+  // vinculo com invoice
+  invoice    Invoice? @relation(fields: [invoice_id], references: [id])
+  invoice_id String?  
+
+  type_pdf String?
+
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -497,7 +507,7 @@ model UserAttendance {
   company_id              String?
 
   workStartTime String? // Format: "HH:mm" (24-hour)
-  workEndTime   String? 
+  workEndTime   String?
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
@@ -561,7 +571,8 @@ model Invoice {
   InvoiceEmailLog InvoiceEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
-  payment InvoicePayment?
+  payment    InvoicePayment?
+  PdfProject PdfProject[]
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -648,7 +659,8 @@ model Estimate {
   date_creation   DateTime                 @default(now())
   date_update     DateTime                 @updatedAt
 
-  emailLogs EstimateEmailLog[]
+  emailLogs  EstimateEmailLog[]
+  PdfProject PdfProject[]
 
   @@unique([number, projectId])
 }
