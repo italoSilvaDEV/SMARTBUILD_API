@@ -18,6 +18,8 @@ import { createActivity, deleteActivity, listActivities } from "../controllers/p
 import { TimeController } from "../controllers/projects/timeController";
 import { CreatePdContractfProjectController } from "../controllers/projects/CreatePdfProjectUploadContractController";
 import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController";
+import { CreatePdfProjectEstimateInvoiceController } from "../controllers/projects/CreatePdfProjectEstimateInvoiceController";
+import { FindPdfProjectEstimateInvoiceController } from "../controllers/projects/FindPdfProjectEstimateInvoiceController";
 
 const projectRoutes = Router();
 
@@ -35,9 +37,9 @@ projectRoutes.get(
   checkToken,
   projectController.getAllProjects
 );
-projectRoutes.get("/project/find/:id",checkToken,projectController.getProjectById);
+projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById);
 
-projectRoutes.get("/project/user-seller",checkToken,projectController.getUserSeller);
+projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller);
 
 projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject);
 
@@ -47,8 +49,8 @@ projectRoutes.post(
   projectController.createServiceProject
 );
 
-projectRoutes.put( "/service-project",  checkToken,  projectController.updateServiceProject);
-projectRoutes.delete( "/service-img-project/:id",  checkToken,  projectController.DeleteAllImgServiceProjectController);
+projectRoutes.put("/service-project", checkToken, projectController.updateServiceProject);
+projectRoutes.delete("/service-img-project/:id", checkToken, projectController.DeleteAllImgServiceProjectController);
 
 projectRoutes.post(
   "/img-service-project",
@@ -89,7 +91,7 @@ const uploadpdfContract = multer(
   uploadConfigUtf8.uploadUtf8("./public/tmp/pdfcontractproject")
 );
 // Rota para fazer upload do PDF do contrato
-projectRoutes.post("/project/upload-contract", 
+projectRoutes.post("/project/upload-contract",
   checkToken,
   // uploadpdfContract.single('file'), 
   createContractProjectController.handle.bind(createContractProjectController)
@@ -129,12 +131,12 @@ const updateInvoiceCostProjectController =
   new UpdateInvoiceCostProjectController();
 projectRoutes.put(
   "/invoicecostproject/:id",
-  checkToken, 
+  checkToken,
   updateInvoiceCostProjectController.handle
 );
 
 const deleteCostProjectController = new DeleteCostProjectController()
-projectRoutes.delete("/costProject/:cost_project_id",checkToken,  deleteCostProjectController.handle)
+projectRoutes.delete("/costProject/:cost_project_id", checkToken, deleteCostProjectController.handle)
 
 const updateCostProjectController = new UpdateCostProjectController();
 projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle);
@@ -167,7 +169,7 @@ projectRoutes.patch("/service-project/update/status", checkToken, projectControl
 projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
 
 // Rota para buscar os ServiceProjects relacionados ao usuário
-projectRoutes.post("/service-project/scheduleById",  projectController.getServiceProjectScheduleByIdUser);
+projectRoutes.post("/service-project/scheduleById", projectController.getServiceProjectScheduleByIdUser);
 
 projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectController.getWorkerSchedule);
 
@@ -181,3 +183,17 @@ projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.gen
 projectRoutes.get("/project/generate-pdf-estimate/:id", projectController.generatePdfEstimate);
 
 
+// Nova rota para PDF com relacionamento estimate/invoice
+const createPdfProjectEstimateInvoiceController = new CreatePdfProjectEstimateInvoiceController();
+projectRoutes.post(
+  "/pdfproject/estimate-invoice",
+  checkToken,
+  createPdfProjectEstimateInvoiceController.handle.bind(createPdfProjectEstimateInvoiceController)
+);
+
+const findPdfProjectEstimateInvoiceController = new FindPdfProjectEstimateInvoiceController();
+projectRoutes.post(
+  "/pdfproject/estimate-invoice/find",
+  checkToken,
+  findPdfProjectEstimateInvoiceController.handle
+);

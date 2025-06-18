@@ -550,7 +550,7 @@ export class EstimateController {
                   phone: true
                 }
               },
-              client: {
+              client: { 
                 select: {
                   id: true,
                   name: true,
@@ -559,6 +559,7 @@ export class EstimateController {
               }
             }
           },
+          PdfProject: true,
           timelineEvents: {
             orderBy: {
               date_creation: 'asc'
@@ -574,6 +575,15 @@ export class EstimateController {
       // Generate presigned URL for company avatar if it exists
       if (estimate.project?.company?.avatar) {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
+      }
+
+      // Generate presigned URLs for PDFs if they exist
+      if (estimate.PdfProject && estimate.PdfProject.length > 0) {
+        for (const pdf of estimate.PdfProject) {
+          if (pdf.uri) {
+            pdf.uri = await getPresignedUrl(pdf.uri);
+          }
+        }
       }
 
       // Usar a função utilitária
