@@ -3,7 +3,7 @@ import { compressImage } from "../config/compressImage";
 import { CompanyController } from "../controllers/company/CompanyController";
 import { checkToken } from "../middlewares/checkToken"
 import multer from "multer";
-import uploadConfig from "../config/uploadUtf8";
+import uploadConfig from "../config/uploadUtf8"; 
 
 const companyRoutes = Router()
 
@@ -16,6 +16,12 @@ companyRoutes.post("/company",
     uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.create)
+
+companyRoutes.post("/company/master",
+     checkToken,
+    uploadPhoto.single("avatar"),
+    compressImage("company"),
+    Company.createAccountByMaster)
 
 companyRoutes.put( 
     "/company/update/:id",
