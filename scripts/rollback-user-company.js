@@ -1,6 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+require('dotenv').config();
+const { prisma } = require("../src/utils/prisma.ts");
 
 async function rollbackUserCompany() {
     console.log('🔄 Iniciando rollback UserCompany...');
@@ -29,18 +28,31 @@ async function rollbackUserCompany() {
                     select: {
                         name: true
                     }
+                },
+                office: {
+                    select: {
+                        name: true
+                    }
                 }
             }
         });
 
         console.log('\n📝 Exemplos de dados que serão removidos:');
         sampleData.forEach(relation => {
-            console.log(`- ${relation.user.name} (${relation.user.email}) → ${relation.company.name} [${relation.role}]`);
+            console.log(`- ${relation.user.name} (${relation.user.email}) → ${relation.company.name} [Office: ${relation.office?.name || 'N/A'}]`);
         });
 
-        // 3. Confirmar antes de prosseguir (em produção, adicionar prompt de confirmação)
+        // 3. Confirmar antes de prosseguir
         console.log('\n⚠️  ATENÇÃO: Esta operação irá remover TODOS os registros da tabela UserCompany!');
+        console.log('💡 Para confirmar, execute: node scripts/rollback-user-company.js all --confirm');
         
+        // Verificar se tem flag de confirmação
+        const hasConfirmFlag = process.argv.includes('--confirm');
+        if (!hasConfirmFlag) {
+            console.log('❌ Rollback cancelado. Use --confirm para prosseguir.');
+            return;
+        }
+
         // Remover todos os registros da UserCompany
         const deleteResult = await prisma.userCompany.deleteMany({});
         
@@ -66,6 +78,38 @@ async function rollbackSpecificUsers(userIds) {
     console.log(`🔄 Iniciando rollback específico para ${userIds.length} usuários...`);
     
     try {
+        // Mostrar quais registros serão removidos
+        const relationsToDelete = await prisma.userCompany.findMany({
+            where: {
+                userId: {
+                    in: userIds
+                }
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        email: true
+                    }
+                },
+                company: {
+                    select: {
+                        name: true
+                    }
+                }
+            }
+        });
+
+        if (relationsToDelete.length === 0) {
+            console.log('✅ Nenhum registro encontrado para os usuários especificados.');
+            return;
+        }
+
+        console.log('\n📝 Registros que serão removidos:');
+        relationsToDelete.forEach(relation => {
+            console.log(`- ${relation.user.name} (${relation.user.email}) → ${relation.company.name}`);
+        });
+
         const deleteResult = await prisma.userCompany.deleteMany({
             where: {
                 userId: {
@@ -86,6 +130,38 @@ async function rollbackSpecificCompanies(companyIds) {
     console.log(`🔄 Iniciando rollback específico para ${companyIds.length} empresas...`);
     
     try {
+        // Mostrar quais registros serão removidos
+        const relationsToDelete = await prisma.userCompany.findMany({
+            where: {
+                companyId: {
+                    in: companyIds
+                }
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        email: true
+                    }
+                },
+                company: {
+                    select: {
+                        name: true
+                    }
+                }
+            }
+        });
+
+        if (relationsToDelete.length === 0) {
+            console.log('✅ Nenhum registro encontrado para as empresas especificadas.');
+            return;
+        }
+
+        console.log('\n📝 Registros que serão removidos:');
+        relationsToDelete.forEach(relation => {
+            console.log(`- ${relation.user.name} (${relation.user.email}) → ${relation.company.name}`);
+        });
+
         const deleteResult = await prisma.userCompany.deleteMany({
             where: {
                 companyId: {
@@ -112,7 +188,7 @@ async function main() {
                 await rollbackUserCompany();
                 break;
             case 'users':
-                const userIds = args.slice(1);
+                const userIds = args.slice(1).filter(arg => !arg.startsWith('--'));
                 if (userIds.length === 0) {
                     console.log('❌ Forneça os IDs dos usuários: node rollback-user-company.js users <userId1> <userId2>');
                     process.exit(1);
@@ -120,7 +196,7 @@ async function main() {
                 await rollbackSpecificUsers(userIds);
                 break;
             case 'companies':
-                const companyIds = args.slice(1);
+                const companyIds = args.slice(1).filter(arg => !arg.startsWith('--'));
                 if (companyIds.length === 0) {
                     console.log('❌ Forneça os IDs das empresas: node rollback-user-company.js companies <companyId1> <companyId2>');
                     process.exit(1);
@@ -129,10 +205,13 @@ async function main() {
                 break;
             default:
                 console.log(`
-Uso:
-  node rollback-user-company.js all                           # Remove todos os registros
-  node rollback-user-company.js users <userId1> <userId2>     # Remove registros de usuários específicos
-  node rollback-user-company.js companies <companyId1>        # Remove registros de empresas específicas
+📋 Uso do script de rollback:
+
+  node scripts/rollback-user-company.js all --confirm                    # Remove todos os registros (REQUER --confirm)
+  node scripts/rollback-user-company.js users <userId1> <userId2>        # Remove registros de usuários específicos
+  node scripts/rollback-user-company.js companies <companyId1>           # Remove registros de empresas específicas
+
+⚠️  ATENÇÃO: O comando 'all' é destrutivo e requer a flag --confirm para prosseguir.
                 `);
                 process.exit(1);
         }
