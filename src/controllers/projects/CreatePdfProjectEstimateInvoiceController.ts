@@ -44,23 +44,6 @@ export class CreatePdfProjectEstimateInvoiceController {
                     return res.status(400).json({ error: "Only PDF files are allowed" });
                 }
 
-                // Validar se pelo menos um ID foi fornecido
-                if (!estimate_id && !invoice_id && !project_id) {
-                    this.deleteFiles(file.filename);
-                    return res.status(400).json({ 
-                        error: "At least one of estimate_id, invoice_id, or project_id is required" 
-                    });
-                }
-
-                // Validar se apenas um tipo de relacionamento foi fornecido
-                const relationshipCount = [estimate_id, invoice_id, project_id].filter(Boolean).length;
-                if (relationshipCount > 1) {
-                    this.deleteFiles(file.filename);
-                    return res.status(400).json({ 
-                        error: "Only one relationship (estimate_id, invoice_id, or project_id) can be provided at a time" 
-                    });
-                }
-
                 // Validar se o estimate existe (se fornecido)
                 if (estimate_id) {
                     const estimate = await prisma.estimate.findUnique({
