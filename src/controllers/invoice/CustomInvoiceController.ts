@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import fs from "fs";
 import { generatePdf } from "../../utils/generatePdf";
+import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdfProjectEstimateInvoiceController";
 
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
@@ -925,7 +926,7 @@ export class CustomInvoiceController {
 
   async updateInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value } = req.body;
+    const { userId, coefficientPerfentage, description, dueDate, services, type_value, idPdfProject } = req.body;
 
     try {
       // Verificar se o invoice existe
@@ -950,6 +951,33 @@ export class CustomInvoiceController {
 
       if (existingInvoice.invoiceType !== "custom") {
         return res.status(400).json({ error: "Not a custom invoice" });
+      }
+
+      // Buscar PDF relacionado ao invoice atual para excluir
+      const existingPdfProject = await prisma.pdfProject.findFirst({
+        where: { invoice_id: existingInvoice.id }
+      });
+
+      // Excluir o PDF existente se houver
+      if (existingPdfProject) {
+        try {
+          const pdfController = new CreatePdfProjectEstimateInvoiceController();
+          await pdfController.deletePdfProject(existingPdfProject.id);
+        } catch (error) {
+          console.error("Error deleting existing PDF:", error);
+          // Continuar mesmo se não conseguir excluir o PDF anterior
+        }
+      }
+
+      // Validar se o novo PdfProject existe (se fornecido)
+      if (idPdfProject) {
+        const pdfProject = await prisma.pdfProject.findUnique({
+          where: { id: idPdfProject }
+        });
+        
+        if (!pdfProject) {
+          return res.status(404).json({ error: "PDF Project not found" });
+        }
       }
 
       // Preparar a data de vencimento atualizada
@@ -1016,6 +1044,16 @@ export class CustomInvoiceController {
           InvoiceItems: true
         }
       });
+
+      // Atualizar o novo PdfProject com o invoice_id (se fornecido)
+      if (idPdfProject) {
+        await prisma.pdfProject.update({
+          where: { id: idPdfProject },
+          data: {
+            invoice_id: updatedInvoice.id
+          }
+        });
+      }
 
       // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
