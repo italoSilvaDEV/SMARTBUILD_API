@@ -8,9 +8,14 @@ import { generatePdf } from "../../utils/generatePdf";
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value } = req.body;
+    const { userId, coefficientPerfentage, description, dueDate, services, type_value, idPdfProject } = req.body;
 
     try {
+      // Validar se idPdfProject foi fornecido
+      if (!idPdfProject) {
+        return res.status(400).json({ error: "PDF Project ID is required" });
+      }
+
       // Buscar o projeto
       const project = await prisma.project.findUnique({
         where: { id: projectId },
@@ -26,6 +31,15 @@ export class CustomInvoiceController {
 
       if (!project.client) {
         return res.status(400).json({ error: "Client not found for this project" });
+      }
+
+      // Validar se o PdfProject existe
+      const pdfProject = await prisma.pdfProject.findUnique({
+        where: { id: idPdfProject }
+      });
+
+      if (!pdfProject) {
+        return res.status(404).json({ error: "PDF Project not found" });
       }
 
       // Preparar a data de vencimento
@@ -108,6 +122,14 @@ export class CustomInvoiceController {
         },
         include: {
           InvoiceItems: true // Incluir os itens na resposta
+        }
+      });
+
+      // Atualizar o PdfProject com o invoice_id
+      await prisma.pdfProject.update({
+        where: { id: idPdfProject },
+        data: {
+          invoice_id: newInvoice.id
         }
       });
 
@@ -203,7 +225,7 @@ export class CustomInvoiceController {
   // enviar o pdf para o cliente atravez de email
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId, companyId } = req.body;
+    const { userId, companyId, idPdfProject } = req.body;
 
     try {
       if (!userId) {
@@ -214,7 +236,11 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Company ID is required" });
       }
 
-      // Buscar a fatura com todas as informações necessárias, incluindo fotos dos serviços
+      if (!idPdfProject) {
+        return res.status(400).json({ error: "PDF Project ID is required" });
+      }
+
+      // Buscar a fatura com todas as informações necessárias
       const invoice = await prisma.invoice.findFirst({
         where: { 
           externalInvoiceId: invoiceId,
@@ -253,6 +279,33 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Client email is required" });
       }
 
+      // Atualizar o PdfProject com o invoice_id
+      // await prisma.pdfProject.update({
+      //   where: { id: idPdfProject },
+      //   data: {
+      //     invoice_id: invoice.id
+      //   }
+      // });
+
+      // Buscar o PDF para usar como anexo
+      const pdfProject = await prisma.pdfProject.findUnique({
+        where: { id: idPdfProject }
+      });
+
+      if (!pdfProject || !pdfProject.uri) {
+        return res.status(404).json({ error: "PDF Project not found or has no URI" });
+      }
+
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
       // Configurar o envio de email
       const SMTP_CONFIG = require("../../config/smtp");
       const transporter = nodemailer.createTransport({
@@ -281,108 +334,7 @@ export class CustomInvoiceController {
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
 
-      // Criar um mapa de serviços para facilitar a associação com os itens da fatura
-      const serviceMap = new Map();
-      invoice.project.serviceProject.forEach(service => {
-        serviceMap.set(service.name, service);
-      });
-
-      // Transformar os itens da fatura no formato esperado por generatePdf
-      const tableData = invoice.InvoiceItems.map((item, index) => {
-        // Tentar encontrar o serviço correspondente pelo nome
-        const matchingService = serviceMap.get(item.name);
-        
-        return {
-          id: index + 1,
-          date: "",
-          productOrService: item.name,
-          description: item.description || "",
-          qty: Number(item.quantity),
-          rate: Number(item.price),
-          amount: Number(item.totalAmount),
-          photos: matchingService?.photos?.map((photo: { uri: string }) => ({
-            uri: photo.uri
-          })) || [] // Usar as fotos do serviço correspondente, se existir
-        };
-      });
-
-      const total = `$${Number(invoice.totalAmount).toFixed(2)}`;
-
-      // Preparar os dados das colunas
-      const columnText1 = [
-        clientName,
-      ];
-
-      const columnText2 = [
-        "",
-      ];
-
-      // Adicionar a data de vencimento apenas se for uma fatura e tiver data de vencimento
-      if (invoice.dueDate) {
-        // Formatar a data de vencimento ajustando o fuso horário
-        const dueDate = new Date(invoice.dueDate);
-        
-        // Ajustar para o fuso horário local para evitar problemas com UTC
-        const dueDateUTC = new Date(dueDate.getTime() + dueDate.getTimezoneOffset() * 60000);
-        
-        const formattedDueDate = dueDateUTC.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          timeZone: 'UTC' // Forçar UTC para evitar ajustes de fuso horário
-        });
-        
-        columnText1.push(`Due Date: ${formattedDueDate}`);
-        // Adicionar um espaço vazio correspondente em columnText2 para manter o alinhamento
-        columnText2.push("");
-      }
-
-      // Continuar com o restante dos dados das colunas
-      columnText1.push(
-        "Bill to",
-        clientName,
-        invoice.project.client.location || "",
-        invoice.project.client.city_and_state || "",
-      );
-
-      columnText2.push(
-        "Ship to",
-        clientName,
-        invoice.project.client.location || "",
-        invoice.project.client.city_and_state || "",
-      );
-
-      // Montar o endereço completo
-      const fullAddress = company?.address || "";
-
-      // Buscar notas da empresa
-      const companyNotes = await prisma.contractNotes.findMany({
-        where: { company_id: company?.id },
-        orderBy: { updatedAt: "asc" }
-      });
-
-      // Preparar as notas
-      const sanitizedNotes = companyNotes.map(note => note.notes || "") || [];
-
-      // Preparar o objeto de dados para o PDF
-      const pdfData = {
-        tableData,
-        total,
-        columnText1,
-        columnText2,
-        address: fullAddress,
-        logoUrl: urlLogo || undefined,
-        notes: sanitizedNotes,
-        phone: company?.phone || "",
-        email: company?.email || "",
-        webSiteUrl: company?.webSiteUrl || "",
-        name: company?.name || "",
-        hideRateColumns: true,
-        documentType: 'INVOICE' as 'INVOICE'
-      };
-
-      // Gerar o PDF
-      const pdfPath = await generatePdf(pdfData, clientName, true);
+      const fileName = pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`;
 
       // Enviar o email com o PDF anexado
       await transporter.sendMail({
@@ -392,10 +344,11 @@ export class CustomInvoiceController {
         html: emailTemplate,
         attachments: [
           {
-            filename: `invoice_${invoiceCode}.pdf`,
-            path: pdfPath,
-          },
-        ],
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
       });
 
       // Registrar o envio no histórico
@@ -407,10 +360,15 @@ export class CustomInvoiceController {
         }
       });
 
-      // Remover o PDF após o envio
-      setTimeout(() => {
-        fs.unlinkSync(pdfPath);
-      }, 5000);
+      // Registrar evento na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Sent to ${invoice.project.client.email}`,
+          invoice: {
+            connect: { id: invoice.id }
+          }
+        }
+      });
 
       return res.status(200).json({
         message: "Invoice sent successfully",
