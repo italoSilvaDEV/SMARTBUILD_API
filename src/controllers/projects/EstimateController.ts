@@ -231,7 +231,8 @@ export class EstimateController {
       await prisma.pdfProject.update({
         where: { id: idPdfProject },
         data: {
-          estimate_id: estimate.id
+          estimate_id: estimate.id,
+          project_id: projectId
         }
       });
 

@@ -130,7 +130,8 @@ export class CustomInvoiceController {
       await prisma.pdfProject.update({
         where: { id: idPdfProject },
         data: {
-          invoice_id: newInvoice.id
+          invoice_id: newInvoice.id,
+          project_id: project.id
         }
       });
 
@@ -425,7 +426,8 @@ export class CustomInvoiceController {
               }
             }
           },
-          InvoiceItems: true
+          InvoiceItems: true,
+          PdfProject: true // Incluir o PDF relacionado
         }
       });
 
@@ -435,6 +437,31 @@ export class CustomInvoiceController {
 
       if (invoice.invoiceType !== "custom") {
         return res.status(400).json({ error: "Not a custom invoice" });
+      }
+
+      // Verificar se existe PDF relacionado ao invoice
+      let pdfBuffer = null;
+      let fileName = null;
+      
+      if (invoice.PdfProject && invoice.PdfProject.length > 0) {
+        // Pegar o primeiro PDF relacionado (assumindo que há apenas um)
+        const pdfProject = invoice.PdfProject[0];
+        
+        if (pdfProject.uri) {
+          try {
+            // Gerar URL presigned para o PDF
+            const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+            // Baixar o PDF do S3
+            const pdfResponse = await fetch(pdfUrl);
+            if (pdfResponse.ok) {
+              pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+              fileName = pdfProject.original_file_name || `invoice_${invoice.externalInvoiceId || invoiceId.substring(0, 8)}.pdf`;
+            }
+          } catch (error) {
+            console.warn("Failed to fetch PDF, will send email without attachment:", error);
+          }
+        }
       }
 
       // Configurar o envio de email
@@ -458,8 +485,6 @@ export class CustomInvoiceController {
       const companyName = company?.name || 'Smart Build';
       const phone = company?.phone || '';
       const clientName = invoice.project.client?.name || 'Cliente';
-      const clientLocation = invoice.project.client?.location || '';
-      const clientCityAndState = invoice.project.client?.city_and_state || '';
       const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
 
@@ -467,128 +492,33 @@ export class CustomInvoiceController {
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
 
-      // Criar um mapa de serviços para facilitar a associação com os itens da fatura
-      const serviceMap = new Map();
-      invoice.project.serviceProject.forEach(service => {
-        serviceMap.set(service.name, service);
-      });
-
-      // Transformar os itens da fatura no formato esperado por generatePdf
-      const tableData = invoice.InvoiceItems.map((item, index) => {
-        // Tentar encontrar o serviço correspondente pelo nome
-        const matchingService = serviceMap.get(item.name);
-        
-        return {
-          id: index + 1,
-          date: "",
-          productOrService: item.name,
-          description: item.description || "",
-          qty: Number(item.quantity),
-          rate: Number(item.price),
-          amount: Number(item.totalAmount),
-          photos: matchingService?.photos?.map((photo: { uri: string }) => ({
-            uri: photo.uri
-          })) || [] // Usar as fotos do serviço correspondente, se existir
-        };
-      });
-
-      const total = `$${Number(invoice.totalAmount).toFixed(2)}`;
-
-      // Preparar os dados das colunas
-      const columnText1 = [
-        clientName,
-      ];
-
-      const columnText2 = [
-        "",
-      ];
-
-      // Adicionar a data de vencimento apenas se for uma fatura e tiver data de vencimento
-      if (invoice.dueDate) {
-        // Formatar a data de vencimento ajustando o fuso horário
-        const dueDate = new Date(invoice.dueDate);
-        
-        // Ajustar para o fuso horário local para evitar problemas com UTC
-        const dueDateUTC = new Date(dueDate.getTime() + dueDate.getTimezoneOffset() * 60000);
-        
-        const formattedDueDate = dueDateUTC.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          timeZone: 'UTC' // Forçar UTC para evitar ajustes de fuso horário
-        });
-        
-        columnText1.push(`Due Date: ${formattedDueDate}`);
-        // Adicionar um espaço vazio correspondente em columnText2 para manter o alinhamento
-        columnText2.push("");
-      }
-
-      // Continuar com o restante dos dados das colunas
-      columnText1.push(
-        "Bill to",
-        clientName,
-        clientLocation,
-        clientCityAndState,
-      );
-
-      columnText2.push(
-        "Ship to",
-        clientName,
-        clientLocation,
-        clientCityAndState,
-      );
-
-      // Montar o endereço completo
-      const fullAddress = company?.address || "";
-
-      // Buscar notas da empresa
-      const companyNotes = await prisma.contractNotes.findMany({
-        where: { company_id: company?.id },
-        orderBy: { updatedAt: "asc" }
-      });
-
-      // Preparar as notas
-      const sanitizedNotes = companyNotes.map(note => note.notes || "") || [];
-
-      // Preparar o objeto de dados para o PDF
-      const pdfData = {
-        tableData,
-        total,
-        columnText1,
-        columnText2,
-        address: fullAddress,
-        logoUrl: urlLogo || undefined,
-        notes: sanitizedNotes,
-        phone: company?.phone || "",
-        email: company?.email || "",
-        webSiteUrl: company?.webSiteUrl || "",
-        name: company?.name || "",
-        hideRateColumns: true,
-        documentType: 'INVOICE' as 'INVOICE'
-      };
-
-      // Gerar o PDF
-      const pdfPath = await generatePdf(pdfData, clientName, true);
-
       // Resultados do envio para cada email
       const results = [];
 
       // Processar todos os emails
       for (const email of emails) {
         try {
-          // Enviar o email com o PDF anexado
-          await transporter.sendMail({
+          // Preparar opções de email
+          const mailOptions: any = {
             from: SMTP_CONFIG.user,
             to: email,
             subject: `Invoice #${invoiceCode} - ${companyName}`,
-            html: emailTemplate,
-            attachments: [
+            html: emailTemplate
+          };
+
+          // Adicionar anexo apenas se houver PDF disponível
+          if (pdfBuffer && fileName) {
+            mailOptions.attachments = [
               {
-                filename: `invoice_${invoiceCode}.pdf`,
-                path: pdfPath,
-              },
-            ],
-          });
+                filename: fileName,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+              }
+            ];
+          }
+
+          // Enviar o email
+          await transporter.sendMail(mailOptions);
 
           // Se chegou aqui, o envio foi bem-sucedido
           await prisma.invoiceEmailLog.create({
@@ -645,11 +575,6 @@ export class CustomInvoiceController {
           });
         }
       }
-
-      // Remover o PDF após o envio
-      setTimeout(() => {
-        fs.unlinkSync(pdfPath);
-      }, 5000);
 
       // Retornar todos os resultados após processar todos os emails
       return res.status(200).json({
@@ -1082,7 +1007,8 @@ export class CustomInvoiceController {
         await prisma.pdfProject.update({
           where: { id: idPdfProject },
           data: {
-            invoice_id: updatedInvoice.id
+            invoice_id: updatedInvoice.id,
+            project_id: updatedInvoice.projectId
           }
         });
       }
