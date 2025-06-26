@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -460,7 +461,7 @@ export class StripeController {
     // com stripe e custom
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
+        const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; 
 
         try {
             console.log("Buscando invoices do projeto:", projectId);
@@ -510,6 +511,7 @@ export class StripeController {
                         orderBy: { sentAt: "desc" }
                     },
                     InvoiceItems: true, // Incluir os itens da fatura
+                    PdfProject: true, // Incluir os PDFs relacionados
                     project: {
                         include: {
                             client: {
@@ -549,6 +551,15 @@ export class StripeController {
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
+                    // Gerar URLs presigned para PDFs se existirem
+                    if (invoice.PdfProject && invoice.PdfProject.length > 0) {
+                        for (const pdf of invoice.PdfProject) {
+                            if (pdf.uri) {
+                                pdf.uri = await getPresignedUrl(pdf.uri);
+                            }
+                        }
+                    }
+
                     // Se a invoice não for do tipo "stripe", não tenta atualizar via Stripe.
                     if (invoice.invoiceType !== "stripe") {
                         const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
@@ -664,6 +675,7 @@ export class StripeController {
                     company: true,
                     InvoiceSendHistory: { orderBy: { sentAt: "desc" } },
                     InvoiceItems: true,
+                    PdfProject: true, // Incluir os PDFs relacionados
                     project: {
                         include: {
                             client: {
@@ -703,6 +715,14 @@ export class StripeController {
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
+                    // Gerar URLs presigned para PDFs se existirem
+                    if (invoice.PdfProject && invoice.PdfProject.length > 0) {
+                        for (const pdf of invoice.PdfProject) {
+                            if (pdf.uri) {
+                                pdf.uri = await getPresignedUrl(pdf.uri);
+                            }
+                        }
+                    }
 
                     // Se a invoice não for do tipo "stripe", não tenta atualizar via Stripe.
                     if (invoice.invoiceType !== "stripe") {

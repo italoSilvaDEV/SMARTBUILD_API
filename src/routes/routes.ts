@@ -24,7 +24,7 @@ import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
 import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
-
+import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
 
 const router = Router()
 
@@ -49,7 +49,7 @@ router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
 router.use("/estimate", estimateRoutes);
-
+router.use(fildsPdfProjectRoutes);
 // Novas rotas para planos e permissões
 router.use(planRoutes)
 router.use(permissionRoutes)
