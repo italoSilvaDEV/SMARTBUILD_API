@@ -1,26 +1,28 @@
 import { Router } from "express"
 import { UserController } from "../controllers/User/UserController"
+import { UserMultiCompanyController } from "../controllers/User/UserMultiCompanyController";
 import { checkToken } from "../middlewares/checkToken"
 import { compressImage } from "../config/compressImage";
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
-
+import { isMultiCompanyEnabled } from "../helpers/featureToggle";
 const userRoutes = Router()
 
 const User = new UserController()
+const UserMultiCompany = new UserMultiCompanyController()
 
 //criar usuario
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
-//criar
+
+// Feature toggle para multi-company
+// const multiCompanyEnabled = await isMultiCompanyEnabled();
+
 
 userRoutes.post("/user",
     checkToken,
     uploadPhoto.single("avatar"),
     compressImage("user"),
     User.create)
-
-//login user
-userRoutes.post("/auth", User.authenticate)
 
 //update user
 userRoutes.put("/user", checkToken, User.update)
@@ -64,5 +66,17 @@ userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscri
 
 // Rota para verificar status da assinatura local
 userRoutes.get('/user/local-subscription-status/:userId?', checkToken, User.getLocalSubscriptionsStatus);
+
+// rota com feature toggle para autenticação
+userRoutes.post("/auth", async (req, res) => {
+  const multiCompanyEnabled = await isMultiCompanyEnabled();
+  if (multiCompanyEnabled) {
+    console.log('🔄 Using multi-company authentication');
+    return UserMultiCompany.authenticate(req, res);
+  } else {
+    console.log('🔄 Using single company authentication');
+    return User.authenticate(req, res);
+  }
+});
 
 export { userRoutes }
