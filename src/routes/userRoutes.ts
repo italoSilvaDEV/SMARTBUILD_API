@@ -72,11 +72,14 @@ userRoutes.post("/auth", async (req, res) => {
   const multiCompanyEnabled = await isMultiCompanyEnabled();
   if (multiCompanyEnabled) {
     console.log('🔄 Using multi-company authentication');
-    return UserMultiCompany.authenticate(req, res);
+    return UserMultiCompany.authenticateMultiCompany(req, res);
   } else {
     console.log('🔄 Using single company authentication');
     return User.authenticate(req, res);
   }
+});
+userRoutes.post("/auth/by-company", async (req, res) => {
+  return UserMultiCompany.authenticateByCompany(req, res);
 });
 
 export { userRoutes }

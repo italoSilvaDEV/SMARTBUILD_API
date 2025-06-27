@@ -459,7 +459,7 @@ export class UserController {
         const isAdmin = user.office.name.toLowerCase() === 'administrator';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
-            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
+            error: "Your company's subscription has expired. Please ask your company administrator to renew your plan to continue using the system."
           });
         }
       }
