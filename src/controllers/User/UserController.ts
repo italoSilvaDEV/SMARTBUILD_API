@@ -14,6 +14,7 @@ import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
 import { stripeConfig } from "../../config/stripe";
+import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
 
 export class UserController {
@@ -31,7 +32,7 @@ export class UserController {
 
     // Verificar o limite de funcionários
     const { company_id } = req.body;
-    
+    const isMultiCompany = await isMultiCompanyEnabled()
     if (company_id) {
       try {
         // Buscar a empresa e seus valores de allowedEmployees e extraEmployees
@@ -48,7 +49,7 @@ export class UserController {
           
           // Contar quantos funcionários a empresa já tem
           const currentEmployeesCount = await prisma.user.count({
-            where: { company_id }
+            where: isMultiCompany ? { companies: { some: { companyId: company_id } } } : { company_id }
           });
           
           // Verificar se já atingiu o limite
@@ -156,7 +157,7 @@ export class UserController {
       });
 
 
-      await prisma.user.create({
+      const user = await prisma.user.create({
         data: {
           avatar: String(fileName),
           name: data.name,
@@ -169,10 +170,19 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
-          company_id: data.company_id
+          ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
 
+      if (isMultiCompany) {
+        await prisma.userCompany.create({
+          data: {
+            companyId: data.company_id,
+            userId: user.id,
+            office_id: data.office_id,
+          },
+        });
+      }
 
       const company = await prisma.company.findUnique({
         where: {
@@ -459,7 +469,7 @@ export class UserController {
         const isAdmin = user.office.name.toLowerCase() === 'administrator';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
-            error: "Your company's subscription has expired. Please ask your company administrator to renew your plan to continue using the system."
+            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
           });
         }
       }
@@ -838,7 +848,7 @@ export class UserController {
 
   async serchAllUser(request: Request, response: Response) {
     const { name, email, company_id } = request.body;
-
+    const isMultiCompany = await isMultiCompanyEnabled()
     const filtro: any = {};
     const name_full: any = {};
 
@@ -851,7 +861,7 @@ export class UserController {
 
     // Condição de filtro completa incluindo company_id
     const whereCondition = {
-      AND: [filtro, { OR: [name_full] }, { company_id }]
+      AND: [filtro, { OR: [name_full] }, isMultiCompany ? { companies: { some: { companyId: company_id } } } : { company_id }]
     };
 
     const result = await prisma.user.findMany({

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { Prisma } from "@prisma/client";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
 export class UserServiceProjectController {
   // Criar um novo UserServiceProject
@@ -123,6 +124,7 @@ export class UserServiceProjectController {
   async getById(req: Request, res: Response) {
     try {
       const { id, id_company } = req.params; // ID do ServiceProject
+      const isMultiCompany = await isMultiCompanyEnabled()
       // Obter todos os usuários da empresa (employees)
       const employees = await prisma.user.findMany({
         where: {
@@ -139,13 +141,20 @@ export class UserServiceProjectController {
                 ]
               }
             },
-            {
+            isMultiCompany ? {
+              companies: {
+                some: {
+                  companyId: {
+                    equals: id_company
+                  }
+                }
+              }
+            } : {
               company_id: {
                 equals: id_company
               }
             }
           ]
-
         },
         select: {
           id: true,

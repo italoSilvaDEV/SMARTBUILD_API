@@ -9,6 +9,7 @@ import { prisma } from "../../utils/prisma";
 import bcrypt from "bcrypt";
 import { NewUser } from "../../templateEmail/newUser";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
@@ -133,21 +134,48 @@ export class CompanyController {
             console.log("30. Company criada:", company);
 
             console.log("31. Criando usuário no banco");
-            await prisma.user.create({
-                data: {
-                    avatar: String(fileName),
-                    name: data.name,
-                    email: data.email,
-                    document: data.document,
-                    phone: data.phone,
-                    city_and_state: data.city_and_state,
-                    rules: JSON.stringify(data.rules) || {},
-                    office_id: String(office?.id),
-                    password: hashedPassword,
-                    profession: data.profession,
-                    company_id: company.id
-                },
-            });
+            const isMultiCompany = await isMultiCompanyEnabled()
+            if (isMultiCompany) {
+                const user = await prisma.user.create({
+                    data: {
+                        avatar: String(fileName),
+                        name: data.name,
+                        email: data.email,
+                        document: data.document,
+                        phone: data.phone,
+                        city_and_state: data.city_and_state,
+                        rules: JSON.stringify(data.rules) || {},
+                        office_id: String(office?.id),
+                        password: hashedPassword,
+                        profession: data.profession,
+
+                    },
+                });
+                await prisma.userCompany.create({
+                    data: {
+                        userId: user.id,
+                        companyId: company.id,
+                        office_id: String(office?.id),
+
+                    }
+                });
+            } else {
+                await prisma.user.create({
+                    data: {
+                        avatar: String(fileName),
+                        name: data.name,
+                        email: data.email,
+                        document: data.document,
+                        phone: data.phone,
+                        city_and_state: data.city_and_state,
+                        rules: JSON.stringify(data.rules) || {},
+                        office_id: String(office?.id),
+                        password: hashedPassword,
+                        profession: data.profession,
+                        company_id: company.id
+                    },
+                });
+            }
             console.log("32. Usuário criado");
 
             console.log("33. Deletando arquivo temporário");
@@ -302,31 +330,56 @@ export class CompanyController {
                 data: {
                     name: data.company_name,
                     avatar: String(fileName),
-                    extraEmployees: data.extraEmployees ? 
-                        (typeof data.extraEmployees === 'string' ? 
-                            parseInt(data.extraEmployees) : 
-                            Number(data.extraEmployees)) : 
+                    extraEmployees: data.extraEmployees ?
+                        (typeof data.extraEmployees === 'string' ?
+                            parseInt(data.extraEmployees) :
+                            Number(data.extraEmployees)) :
                         null
                 }
             });
             console.log("30. Company criada:", company);
 
             console.log("31. Criando usuário no banco");
-            await prisma.user.create({
-                data: {
-                    avatar: String(fileName),
-                    name: data.name,
-                    email: data.email,
-                    document: data.document,
-                    phone: data.phone,
-                    city_and_state: data.city_and_state,
-                    rules: JSON.stringify(data.rules) || {},
-                    office_id: String(office?.id),
-                    password: hashedPassword,
-                    profession: data.profession,
-                    company_id: company.id
-                },
-            });
+            const isMultiCompany = await isMultiCompanyEnabled()
+            if (isMultiCompany) {
+                const user = await prisma.user.create({
+                    data: {
+                        avatar: String(fileName),
+                        name: data.name,
+                        email: data.email,
+                        document: data.document,
+                        phone: data.phone,
+                        city_and_state: data.city_and_state,
+                        rules: JSON.stringify(data.rules) || {},
+                        office_id: String(office?.id),
+                        password: hashedPassword,
+                        profession: data.profession,
+                    },
+                });
+                await prisma.userCompany.create({
+                    data: {
+                        userId: user.id,
+                        companyId: company.id,
+                        office_id: String(office?.id),
+                    }
+                });
+            } else {
+                await prisma.user.create({
+                    data: {
+                        avatar: String(fileName),
+                        name: data.name,
+                        email: data.email,
+                        document: data.document,
+                        phone: data.phone,
+                        city_and_state: data.city_and_state,
+                        rules: JSON.stringify(data.rules) || {},
+                        office_id: String(office?.id),
+                        password: hashedPassword,
+                        profession: data.profession,
+                        company_id: company.id
+                    }
+                });
+            }
             console.log("32. Usuário criado");
 
             console.log("33. Deletando arquivo temporário");
@@ -748,12 +801,27 @@ export class CompanyController {
             }
 
             // Buscar o usuário específico
-            const user = await prisma.user.findUnique({
-                where: {
-                    id: userId,
-                    company_id: id // Garantir que o usuário pertence à empresa
-                }
-            });
+            const isMultiCompany = await isMultiCompanyEnabled()
+            let user;
+            if (isMultiCompany) {
+                user = await prisma.user.findUnique({
+                    where: {
+                        id: userId,
+                        companies: {
+                            some: {
+                                companyId: id
+                            }
+                        }
+                    }
+                });
+            } else {
+                user = await prisma.user.findUnique({
+                    where: {
+                        id: userId,
+                        company_id: id // Garantir que o usuário pertence à empresa
+                    }
+                });
+            }
 
             if (!user) {
                 if (req.file) {
