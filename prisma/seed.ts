@@ -99,41 +99,41 @@ async function main() {
     // Verificar permissões existentes
     const existingPermissions = await prisma.permissions.findMany();
     const existingDescriptions = existingPermissions.map(p => p.description);
-    
+
     // Criar apenas permissões que não existem
     const permissionsToCreate = permissionsData.filter(
         p => !existingDescriptions.includes(p.description)
     );
-    
+
     let createdPermissions = [...existingPermissions];
-    
+
     if (permissionsToCreate.length > 0) {
         const newPermissions = await Promise.all(
-            permissionsToCreate.map(permission => 
+            permissionsToCreate.map(permission =>
                 prisma.permissions.create({ data: permission })
             )
         );
-        
+
         createdPermissions = [...existingPermissions, ...newPermissions];
         console.log(`${newPermissions.length} novas permissões criadas`);
     } else {
         console.log('Todas as permissões já existem no banco');
     }
-    
+
     // 2. Verificar e criar grupos de permissões
     // Verificar grupos existentes
     let trialGroup = await prisma.permissionGroup.findFirst({
         where: { description: "Group Trial" }
     });
-    
+
     // let basicGroup = await prisma.permissionGroup.findFirst({
     //     where: { description: "Group Basic" }
     // });
-    
+
     // let proGroup = await prisma.permissionGroup.findFirst({
     //     where: { description: "Group Pro" }
     // });
-    
+
     // Criar grupos que não existem
     if (!trialGroup) {
         trialGroup = await prisma.permissionGroup.create({
@@ -141,40 +141,40 @@ async function main() {
         });
         console.log('Grupo Trial criado');
     }
-    
+
     // if (!basicGroup) {
     //     basicGroup = await prisma.permissionGroup.create({
     //         data: { description: "Group Basic" }
     //     });
     //     console.log('Grupo Basic criado');
     // }
-    
+
     // if (!proGroup) {
     //     proGroup = await prisma.permissionGroup.create({
     //         data: { description: "Group Pro" }
     //     });
     //     console.log('Grupo Pro criado');
     // }
-    
+
     // 3. Verificar e associar permissões aos grupos
     // Verificar permissões já associadas
     const trialPermissions = await prisma.groupPermissionsList.findMany({
         where: { permission_group: trialGroup.id }
     });
-    
+
     // const basicPermissions = await prisma.groupPermissionsList.findMany({
     //     where: { permission_group: basicGroup.id }
     // });
-    
+
     // const proPermissions = await prisma.groupPermissionsList.findMany({
     //     where: { permission_group: proGroup.id }
     // });
-    
+
     // Associar permissões ao grupo Trial (todas as permissões, como o Pro)
     const trialPermissionsIds = trialPermissions.map(p => p.permission_id);
     const trialPermissionsToAdd = createdPermissions
         .filter(p => !trialPermissionsIds.includes(p.id));
-    
+
     if (trialPermissionsToAdd.length > 0) {
         await Promise.all(
             trialPermissionsToAdd.map(permission =>
@@ -188,13 +188,13 @@ async function main() {
         );
         console.log(`${trialPermissionsToAdd.length} permissões adicionadas ao grupo Trial`);
     }
-    
+
     // Associar permissões ao grupo Basic (primeiras 6)
     // const basicPermissionsIds = basicPermissions.map(p => p.permission_id);
     // const basicPermissionsToAdd = createdPermissions
     //     .slice(0, 6)
     //     .filter(p => !basicPermissionsIds.includes(p.id));
-    
+
     // if (basicPermissionsToAdd.length > 0) {
     //     await Promise.all(
     //         basicPermissionsToAdd.map(permission =>
@@ -208,12 +208,12 @@ async function main() {
     //     );
     //     console.log(`${basicPermissionsToAdd.length} permissões adicionadas ao grupo Basic`);
     // }
-    
+
     // // Associar permissões ao grupo Pro (todas)
     // const proPermissionsIds = proPermissions.map(p => p.permission_id);
     // const proPermissionsToAdd = createdPermissions
     //     .filter(p => !proPermissionsIds.includes(p.id));
-    
+
     // if (proPermissionsToAdd.length > 0) {
     //     await Promise.all(
     //         proPermissionsToAdd.map(permission =>
@@ -227,21 +227,21 @@ async function main() {
     //     );
     //     console.log(`${proPermissionsToAdd.length} permissões adicionadas ao grupo Pro`);
     // }
-    
+
     // 4. Verificar e criar planos
     // Verificar planos existentes
     let trialPlan = await prisma.plan.findFirst({
         where: { name: "Trial" }
     });
-    
+
     // let basicPlan = await prisma.plan.findFirst({
     //     where: { name: "Basic" }
     // });
-    
+
     // let proPlan = await prisma.plan.findFirst({
     //     where: { name: "Pro" }
     // });
-    
+
     // Criar planos que não existem
     if (!trialPlan) {
         trialPlan = await prisma.plan.create({
@@ -255,7 +255,7 @@ async function main() {
         });
         console.log('Plano Trial criado');
     }
-    
+
     // if (!basicPlan) {
     //     basicPlan = await prisma.plan.create({
     //         data: {
@@ -270,7 +270,7 @@ async function main() {
     //     });
     //     console.log('Plano Basic criado');
     // }
-    
+
     // if (!proPlan) {
     //     proPlan = await prisma.plan.create({
     //         data: {
@@ -283,7 +283,7 @@ async function main() {
     //     });
     //     console.log('Plano Pro criado');
     // }
-    
+
     console.log('IDs dos planos:');
     console.log({
         trial: trialPlan.id,
@@ -291,6 +291,20 @@ async function main() {
         // pro: proPlan.id
     });
 
+    const config = await prisma.config.findUnique({
+        where: {
+            id: '1'
+        }
+    })
+    if (!config) {
+        await prisma.config.create({
+            data: {
+                id: '1',
+                multiCompanyEnabled: true
+            }
+        })
+    }
+    console.log('config', config)
     console.log('Seed concluído com sucesso!');
 }
 

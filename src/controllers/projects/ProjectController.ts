@@ -11,6 +11,7 @@ import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 import { error } from "console";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
 
 export interface INewProject {
@@ -85,10 +86,10 @@ export class ProjectController {
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search } = req.query;
     const query: any = {};
-    
+
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
-    
+
     if (company_id) query.company_id = { equals: String(company_id) };
     if (id_seller) query.seller_user_id = { equals: id_seller };
 
@@ -204,7 +205,7 @@ export class ProjectController {
 
       // Buscar todos os dados pesados em uma única consulta batch
       const projectIds = projects.map(p => p.id);
-      
+
       // Batch query para estimates - resolver N+1
       const [estimates, invoiceCosts, workedHoursAgg] = await Promise.all([
         prisma.estimate.findMany({
@@ -225,7 +226,7 @@ export class ProjectController {
             timelineEvents: {
               select: {
                 id: true,
-                description: true,              
+                description: true,
                 date_creation: true,
               },
               orderBy: {
@@ -246,7 +247,7 @@ export class ProjectController {
             date_creation: 'desc'
           }
         }),
-        
+
         // Batch query para custos de material
         prisma.invoiceCostProject.findMany({
           where: {
@@ -264,7 +265,7 @@ export class ProjectController {
             }
           }
         }),
-        
+
         // Batch query para horas trabalhadas agregadas
         prisma.workedhours.groupBy({
           by: ['project_id'],
@@ -310,7 +311,7 @@ export class ProjectController {
         const projectEstimates = estimatesMap.get(project.id) || [];
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
-        
+
         const totalCostOfServiceHours = workedHoursData?._sum?.hourly_price || 0;
         const totalNumberOfHoursWorked = workedHoursData?._sum?.amount_of_hours || 0;
         const workersOnThisProject = workedHoursData?._count?.name_user || 0;
@@ -342,10 +343,10 @@ export class ProjectController {
       }
 
       const result = { projects: projectsWithCalculations, total, amount };
-      
+
       // Cachear resultado
       ProjectController.setCache(cacheKey, result);
-      
+
       return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -766,7 +767,7 @@ export class ProjectController {
       if (!serviceProject) {
         return response.status(404).json({ error: "Service Project not found" });
       }
-   
+
 
       // Excluir outras entidades relacionadas
       await prisma.galleryBefore.deleteMany({
@@ -854,15 +855,19 @@ export class ProjectController {
       if (!sellerOffice) {
         return response.status(404).json({ error: "Seller office not found" });
       }
+      const isMultiCompany = await isMultiCompanyEnabled()
+      let result;
+      let total;
 
-      const result = await prisma.user.findMany({
-        where: {
+      if (isMultiCompany) {
+        const whereCondition = {
           AND: [
-            { company_id: { equals: String(company_id) } },
+            { companies: { some: { companyId: String(company_id) } } },
             { office_id: sellerOffice.id },
           ],
-        },
-        select: {
+        };
+
+        const selectFields = {
           id: true,
           avatar: true,
           name: true,
@@ -872,19 +877,65 @@ export class ProjectController {
           city_and_state: true,
           date_creation: true,
           date_update: true,
-        },
-        skip: pageNumber * 20,
-        take: 20,
-        orderBy: {
-          date_creation: "desc",
-        },
-      });
+        };
 
-      const total = await prisma.user.count({
-        where: {
-          office_id: sellerOffice.id,
-        },
-      });
+        const [users, userCount] = await Promise.all([
+          prisma.user.findMany({
+            where: whereCondition,
+            select: selectFields,
+            skip: pageNumber * 20,
+            take: 20,
+            orderBy: {
+              date_creation: "desc",
+            },
+          }),
+          prisma.user.count({
+            where: whereCondition,
+          })
+        ]);
+
+        result = users;
+        total = userCount;
+      } else {
+        const whereCondition = {
+          AND: [
+            { company_id: { equals: String(company_id) } },
+            { office_id: sellerOffice.id },
+          ],
+        };
+
+        const selectFields = {
+          id: true,
+          avatar: true,
+          name: true,
+          email: true,
+          document: true,
+          phone: true,
+          city_and_state: true,
+          date_creation: true,
+          date_update: true,
+        };
+
+        const [users, userCount] = await Promise.all([
+          prisma.user.findMany({
+            where: whereCondition,
+            select: selectFields,
+            skip: pageNumber * 20,
+            take: 20,
+            orderBy: {
+              date_creation: "desc",
+            },
+          }),
+          prisma.user.count({
+            where: whereCondition,
+          })
+        ]);
+
+        result = users;
+        total = userCount;
+      }
+
+
 
       return response.json({ total, result });
     } catch (error) {
@@ -1282,7 +1333,7 @@ export class ProjectController {
                 : null,
             },
             hours_worked: parseFloat(hoursWorked.toFixed(2)),
-            price: 
+            price:
               (regularHours * (attendance.user.hourly_price || 0)) +
               (overtimeHours * (attendance.user.hourly_price || 0) * 1.5),
           };
@@ -1306,20 +1357,33 @@ export class ProjectController {
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
       }
-      const user = await prisma.user.findUnique({
-        where: {
-          id: seller_user_id,
-        },
-        select: {
-          office: {
-            select: {
-              name: true,
+      const isMultiCompany = await isMultiCompanyEnabled()
+      let user = await prisma.user.findUnique({
+          where: {
+            id: seller_user_id,
+          },
+          select: {
+            office: {
+              select: {
+                name: true,
+              },
+            },
+            companies: {
+              select: {
+                office: {
+                  select: {
+                    name: true,
+                  },
+                },
+               
+              },
             },
           },
-        },
-      });
+        });
+
+     
       let projects: any = [];
-      if (user?.office.name.toLocaleLowerCase() == "seller") {
+      if (isMultiCompany && user?.companies.some((x) => x.office.name.toLocaleLowerCase() == "seller") || user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os projetos do vendedor
         projects = await prisma.project.findMany({
           where: {
@@ -1454,7 +1518,7 @@ export class ProjectController {
       if (!seller_user_id) {
         return res.status(400).json({ error: "Seller user ID is required" });
       }
-
+      const isMultiCompany = await isMultiCompanyEnabled()
       const user = await prisma.user.findUnique({
         where: {
           id: seller_user_id,
@@ -1465,11 +1529,20 @@ export class ProjectController {
               name: true,
             },
           },
+          companies: {
+            select: {
+              office: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
       });
 
       let serviceProjects: any = [];
-      if (user?.office.name.toLocaleLowerCase() == "seller") {
+      if (isMultiCompany && user?.companies.some((x) => x.office.name.toLocaleLowerCase() == "seller") || user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os ServiceProjects relacionados ao vendedor
         serviceProjects = await prisma.serviceProject.findMany({
           where: {
@@ -1649,7 +1722,7 @@ export class ProjectController {
 
   async getWorkerSchedule(req: Request, res: Response) {
     const { id } = req.params;
-
+    const isMultiCompany = await isMultiCompanyEnabled()
     try {
       // Validação do ID do worker
       if (!id) {
@@ -1665,9 +1738,18 @@ export class ProjectController {
               name: true,
             },
           },
+          companies: {
+            select: {
+              office: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },  
         },
       });
-      if (user?.office.name.toLocaleLowerCase() !== "worker") {
+      if (isMultiCompany && user?.companies.some((x) => x.office.name.toLocaleLowerCase() == "worker") || user?.office.name.toLocaleLowerCase() == "worker") {
         return res
           .status(400)
           .json({ error: "The id entered must be that of a worker" });
@@ -1930,7 +2012,7 @@ export class ProjectController {
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
-        total, 
+        total,
         columnText1,
         columnText2,
         address: fullAddress || "",
@@ -2126,7 +2208,7 @@ export class ProjectController {
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
-        total, 
+        total,
         columnText1,
         columnText2,
         address: fullAddress || "",
@@ -2309,7 +2391,7 @@ export class ProjectController {
       if (!companyData) {
         return res.status(404).json({ error: "Company not found" });
       }
-      
+
       // Converter o avatar para um presigned URL, se existir
       const logoUrl = companyData.avatar
         ? await getPresignedUrl(companyData.avatar)
@@ -2324,12 +2406,12 @@ export class ProjectController {
         return (note.notes || "").replace(/\t/g, '    ');
       }) || [];
 
-      
+
 
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
-        total, 
+        total,
         columnText1,
         columnText2,
         address: fullAddress || "",
@@ -2346,14 +2428,14 @@ export class ProjectController {
 
       // Ler o arquivo PDF
       const pdfBuffer = fs.readFileSync(pdfPath);
- 
+
       // Configurar os headers para download do PDF
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="estimate_${project.contract_number || project.id}.pdf"`);
-      
+
       // Enviar o PDF como resposta
       res.send(pdfBuffer);
- 
+
       // Remover o arquivo PDF após o envio
       setTimeout(() => {
         fs.unlinkSync(pdfPath);

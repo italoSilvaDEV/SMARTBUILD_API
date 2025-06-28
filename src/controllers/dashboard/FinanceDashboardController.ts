@@ -3,11 +3,14 @@ import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
+import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
 
 
 
 async function validCompany(request: Request) {
     const authHeader = returnPayLoad(request)
+    const { companyId } = request.query
+
     if (authHeader == null) return {
         status: 'error',
         message: 'Token not found'
@@ -15,17 +18,27 @@ async function validCompany(request: Request) {
     const user = await prisma.user.findUnique({
         where: {
             id: authHeader.id
-        }
+        },
     })
     if (!user) return {
         status: 'error',
         message: 'User not found'
     };
-    const response = await prisma.company.findUnique({
-        where: {
-            id: String(user.company_id)
-        }
-    })
+    const isMultiCompany = await isMultiCompanyEnabled()
+    let response;
+    if (isMultiCompany) {
+        response = await prisma.company.findUnique({
+            where: {
+                id: String(companyId)
+            }
+        })
+    } else {
+        response = await prisma.company.findUnique({
+            where: {
+                id: String(user.company_id)
+            }
+        })
+    }
     if (response) {
         return {
             status: 'success',
@@ -637,17 +650,39 @@ export class FinanceDashboardController {
             const companyId = valid.response?.id;
 
             // Contagem de funcionários ativos (isDisabled = false) e com cargo "Worker"
-            const employeesCount = await prisma.user.count({
-                where: {
-                    company_id: companyId,
-                    isDisabled: false, // Filtrar apenas usuários ativos
-                    office: {
-                        name: {
-                            equals: 'Worker'
+            const isMultiCompany = await isMultiCompanyEnabled()
+            var employeesCount: number
+            if (isMultiCompany) {
+                employeesCount = await prisma.user.count({
+                    where: {
+                        companies: {
+                            some: {
+                                companyId
+                            }
+                        },
+                        isDisabled: false, // Filtrar apenas usuários ativos
+                        office: {
+                            name: {
+                                equals: 'Worker'
+                            }
                         }
                     }
-                }
-            });
+                });
+            } else {
+                employeesCount = await prisma.user.count({
+                    where: {
+                        company_id: companyId,
+                        isDisabled: false, // Filtrar apenas usuários ativos
+                        office: {
+                            name: {
+                                equals: 'Worker'
+                            }
+                        }
+                    }
+                });
+            }
+
+
             // Get total count of unique emails
             const totalCountQuery = await prisma.$queryRaw<{ count: bigint }[]>`
                 SELECT COUNT(DISTINCT LOWER(c.email)) as count

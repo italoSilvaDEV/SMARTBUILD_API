@@ -24,10 +24,15 @@ import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
 import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
+import { isMultiCompanyEnabled } from '../helpers/featureToggle'
 import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
 
 const router = Router()
 
+router.get('/config', async (req, res) => {
+  const config = await isMultiCompanyEnabled();
+  res.json({ config })
+})
 // Importante: Colocar o webhook antes dos middlewares JSON
 router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
