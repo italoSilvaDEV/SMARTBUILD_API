@@ -104,30 +104,7 @@ export class UserController {
       const userExists = await prisma.user.findUnique({
         where: { email: data.email },
       });
-      if (userExists) {
-        this.deleteFiles(
-          req.file?.filename?.split(".")[0] + ".webp",
-          req.file?.filename
-        );
-        return res
-          .status(400)
-          .json({ error: "Email has already been registered in the system" });
-      }
-
-      // const documentExists = await prisma.user.findUnique({
-      //   where: { document: data.document },
-      // });
-      // if (documentExists) {
-      //   this.deleteFiles(
-      //     req.file?.filename?.split(".")[0] + ".webp",
-      //     req.file?.filename
-      //   );
-      //   return res.status(400).json({
-      //     error: "Document has already been registered in the system",
-      //   });
-      // }
-
-      // Verificar se o office existe
+        // Verificar se o office existe
       const office = await prisma.user.findMany({
         where: { office_id: data.office_id },
       });
@@ -137,6 +114,33 @@ export class UserController {
           req.file?.filename
         );
         return res.status(400).json({ error: "office invalid" });
+      }
+    
+      if (userExists) {
+        const userCompany = await prisma.userCompany.findFirst({
+          where: {
+            userId: userExists.id,
+            companyId: company_id
+          }
+        })
+
+        if (userCompany) {
+          this.deleteFiles(
+            req.file?.filename?.split(".")[0] + ".webp",
+            req.file?.filename
+          );
+          return res
+            .status(400)
+            .json({ error: "Email has already been registered in the system" });
+        }
+        await prisma.userCompany.create({
+          data: {
+            userId: userExists.id,
+            companyId: company_id,
+            office_id: data.office_id
+          }
+        })
+        return res.status(201).json({ message: "User created successfully" });        
       }
 
       // Senha temporária
