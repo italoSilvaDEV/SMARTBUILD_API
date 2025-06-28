@@ -25,7 +25,7 @@ import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
 import { isMultiCompanyEnabled } from '../helpers/featureToggle'
-
+import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
 
 const router = Router()
 
@@ -54,7 +54,7 @@ router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
 router.use("/estimate", estimateRoutes);
-
+router.use(fildsPdfProjectRoutes);
 // Novas rotas para planos e permissões
 router.use(planRoutes)
 router.use(permissionRoutes)

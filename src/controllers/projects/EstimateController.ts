@@ -142,140 +142,18 @@ export class EstimateController {
     }
   }
 
-  // async create(req: Request, res: Response) {
-  //   try {
-  //     const { projectId } = req.body;
-
-  //     // Buscar o projeto com seus serviços
-  //     const project = await prisma.project.findUnique({
-  //       where: { id: projectId },
-  //       include: {
-  //         serviceProject: true,
-  //         client: true,
-  //         company: true,
-  //         estimates: {
-  //           orderBy: {
-  //             number: 'desc'
-  //           },
-  //           take: 1
-  //         }
-  //       }
-  //     });
-
-  //     if (!project) {
-  //       return res.status(404).json({ error: "Project not found" });
-  //     }
-
-  //     // Gerar o próximo número sequencial
-  //     const lastNumber = project.estimates[0]?.number || '0000';
-  //     const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
-
-  //     // Buscar todos os termos do contrato da empresa
-  //     const contractNotes = await prisma.contractNotes.findMany({
-  //       where: { company_id: project.company_id },
-  //       orderBy: { updatedAt: 'desc' }
-  //     });
-
-  //     // Combinar todos os termos do contrato
-  //     const combinedTerms = contractNotes.length > 0
-  //       ? contractNotes.map(note => note.notes).join('\n\n')
-  //       : "Standard terms and conditions apply.";
-
-  //     // Calcular o valor total com base nos serviços do projeto
-  //     const totalAmount = project.serviceProject.reduce(
-  //       (total, service) => total + (Number(service.price) * Number(service.hours)),
-  //       0
-  //     );
-
-  //     // Map over service projects and ensure unique names by adding a unique identifier
-  //     const serviceProjectsToCreate = project.serviceProject.map((sp, index) => ({
-  //       name: `${sp.name}_${index}`, // Add index to make names unique
-  //       quantity: Number(sp.hours),
-  //       unitPrice: Number(sp.price),
-  //       lineTotal: Number(sp.price) * Number(sp.hours),
-  //       notes: sp.description,
-  //     }));
-
-  //     // Criar o change order
-  //     const estimate = await prisma.estimate.create({
-  //       data: {
-  //         number: nextNumber,
-  //         description: `Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
-  //         terms: combinedTerms,
-  //         totalAmount,
-  //         status: "pending",
-  //         project: {
-  //           connect: { id: projectId }
-  //         },
-  //         serviceProjects: {
-  //           create: serviceProjectsToCreate
-  //         }
-  //       },
-  //     });
-  //     const SMTP_CONFIG = require("../../config/smtp");
-
-  //     const transporter = nodemailer.createTransport({
-  //       host: SMTP_CONFIG.host,
-  //       port: SMTP_CONFIG.port,
-  //       secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
-  //       auth: {
-  //         user: SMTP_CONFIG.user,
-  //         pass: SMTP_CONFIG.pass,
-  //       },
-  //       tls: {
-  //         rejectUnauthorized: false,
-  //       },
-  //     });
-
-  //     // Verificar a configuração do transportador
-  //     transporter.verify((error, success) => {
-  //       if (error) {
-  //         console.error("Erro ao configurar o transportador de e-mail:", error);
-  //       } else {
-  //         console.log(
-  //           "Transportador de e-mail configurado com sucesso:",
-  //           success
-  //         );
-  //       }
-  //     });
-
-  //     const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
-
-  //     const mailOptions = {
-  //       from: SMTP_CONFIG.user,
-  //       to: project.client?.email || '',
-  //       subject: project.company?.name + " - Estimate",
-  //       html: estimateEmail(
-  //         project.client?.name || '',
-  //         companyAvatar,
-  //         project.company?.name || '',
-  //         `${project.contract_number}/${nextNumber}`,
-  //         totalAmount,
-  //         estimate.id,
-  //         project.client?.email || ''
-  //       ),
-  //     };
-
-
-  //     await transporter.sendMail(mailOptions);
-
-  //     // Usar a função utilitária
-  //     await EstimateController.addTimelineEvent(estimate.id, "Created");
-
-  //     return res.status(201).json(estimate);
-  //   } catch (error) {
-  //     console.error(error);
-  //     return res.status(500).json({ error: "Failed to create change order" });
-  //   }
-  // }
-
   async create(req: Request, res: Response) {
     try {
-      const { projectId } = req.body;
+      const { projectId, idPdfProject } = req.body;
 
       // Validate projectId
       if (!projectId) {
         return res.status(400).json({ error: "Project ID is required" });
+      }
+
+      // Validate idPdfProject
+      if (!idPdfProject) {
+        return res.status(400).json({ error: "PDF Project ID is required" });
       }
 
       // Buscar o projeto com seus serviços
@@ -349,70 +227,33 @@ export class EstimateController {
         },
       });
 
-      // ---- GERAR PDF DO ESTIMATE ----
-      // Preparar dados para o PDF
-      const tableData = project.serviceProject.map((service, index) => {
-        const rate = Number(service.price) * Number(service.hours);
-        return {
-          id: index + 1,
-          date: "",
-          productOrService: service.name,
-          description: service.description || "",
-          qty: Number(service.hours),
-          rate,
-          amount: rate,
-          photos: service.photos || []
-        };
+      // Atualizar o PdfProject com o estimate_id
+      await prisma.pdfProject.update({
+        where: { id: idPdfProject },
+        data: {
+          estimate_id: estimate.id,
+          project_id: projectId
+        }
       });
 
-      const total = `$${totalAmount.toFixed(2)}`;
+      // Buscar o PDF para usar como anexo
+      const pdfProject = await prisma.pdfProject.findUnique({
+        where: { id: idPdfProject }
+      });
 
-      // Colunas de informação do cliente
-      const columnText1 = [
-        project.client?.name || "",
-        "Bill to",
-        project.client?.name || "",
-        project.client?.location || "",
-        project.client?.city_and_state || "",
-      ];
+      if (!pdfProject || !pdfProject.uri) {
+        return res.status(404).json({ error: "PDF Project not found or has no URI" });
+      }
 
-      const columnText2 = [
-        "",
-        "Ship to",
-        project.client?.name || "",
-        project.client?.location || "",
-        project.client?.city_and_state || "",
-      ];
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfProject.uri);
 
-      // Buscar logo da empresa
-      const urlLogo = project.company?.avatar 
-        ? await getPresignedUrl(project.company.avatar)
-        : undefined;
-
-      // Preparar notas do contrato para PDF
-      const sanitizedNotes = contractNotes.map(note => note.notes || "");
-
-      // Dados para o PDF
-      const pdfData = {
-        tableData,
-        total,
-        columnText1,
-        columnText2,
-        address: project.company?.address || "",
-        logoUrl: urlLogo,
-        notes: sanitizedNotes,
-        phone: project.company?.phone || "",
-        email: project.company?.email || "",
-        webSiteUrl: project.company?.webSiteUrl || "",
-        name: project.company?.name || "",
-        documentType: 'ESTIMATE' as 'ESTIMATE'
-      };
-
-      // Gerar o PDF
-      const pdfPath = await generatePdf(pdfData, project.client?.name || 'client', true);
-
-      // Ler o arquivo PDF em buffer
-      const pdfBuffer = fs.readFileSync(pdfPath);
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
       // Configurar e enviar o email com o PDF anexado
       const SMTP_CONFIG = require("../../config/smtp");
@@ -439,7 +280,7 @@ export class EstimateController {
       });
 
       const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
-      const fileName = `estimate_${project.contract_number || 'Nº'}_${nextNumber}.pdf`;
+      const fileName = pdfProject.original_file_name || `estimate_${project.contract_number || 'Nº'}_${nextNumber}.pdf`;
 
       const mailOptions = {
         from: SMTP_CONFIG.user,
@@ -464,15 +305,6 @@ export class EstimateController {
       };
 
       await transporter.sendMail(mailOptions);
-
-      // Limpar o arquivo temporário
-      setTimeout(() => {
-        try {
-          fs.unlinkSync(pdfPath);
-        } catch (err) {
-          console.error("Error removing temp PDF file:", err);
-        }
-      }, 1000);
 
       // Usar a função utilitária
       await EstimateController.addTimelineEvent(estimate.id, "Created and sent to client");

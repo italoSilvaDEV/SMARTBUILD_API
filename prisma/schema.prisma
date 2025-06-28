@@ -394,11 +394,33 @@ model PdfProject {
 
   type_pdf String?
 
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
+
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
   @@map("pdf_project")
+}
+
+model fildsPdfProject {
+  id          String @id @default(uuid())
+  sections    String
+  description String? @db.Text
+  
+  // Relacionamentos
+  pdfProject   PdfProject? @relation(fields: [pdfProjectId], references: [id])
+  pdfProjectId String?
+  
+  estimate   Estimate? @relation(fields: [estimateId], references: [id])
+  estimateId String?
+  
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  invoiceId String?
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }
 
 model Client {
@@ -590,6 +612,9 @@ model Invoice {
   payment    InvoicePayment?
   PdfProject PdfProject[]
 
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
+
   @@index([externalInvoiceId, invoiceType])
 }
 
@@ -677,6 +702,9 @@ model Estimate {
 
   emailLogs  EstimateEmailLog[]
   PdfProject PdfProject[]
+
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
 
   @@unique([number, projectId])
 }

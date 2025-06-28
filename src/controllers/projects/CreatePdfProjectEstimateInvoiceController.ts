@@ -4,6 +4,7 @@ import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import mime from "mime-types";
+import S3Storage from "../../utils/S3/s3Storage";
 
 const upload = multer({ dest: './public/tmp/pdfproject' }).single('file');
 
@@ -11,10 +12,44 @@ export class CreatePdfProjectEstimateInvoiceController {
     constructor() {
         this.handle = this.handle.bind(this);
         this.deleteFiles = this.deleteFiles.bind(this);
+        this.deletePdfProject = this.deletePdfProject.bind(this);
     }
 
     deleteFiles(file: string) {
         deleteFile(`./public/tmp/pdfproject/${file}`);
+    }
+
+    async deleteFilesFromS3(file: string) {
+        const s3 = new S3Storage();
+        await s3.deleteFile(file);
+    }
+
+    async deletePdfProject(idPdfProject: string) {
+        try {
+            // Buscar o PdfProject
+            const pdfProject = await prisma.pdfProject.findUnique({
+                where: { id: idPdfProject }
+            });
+
+            if (!pdfProject) {
+                throw new Error("PDF Project not found");
+            }
+
+            // Excluir o arquivo do S3 se existir
+            if (pdfProject.uri) {
+                await this.deleteFilesFromS3(pdfProject.uri);
+            }
+
+            // Excluir o registro do banco
+            await prisma.pdfProject.delete({
+                where: { id: idPdfProject }
+            });
+
+            return { success: true, message: "PDF Project deleted successfully" };
+        } catch (error) {
+            console.error("Error deleting PDF Project:", error);
+            throw error;
+        }
     }
 
     async handle(req: Request, res: Response) {
@@ -42,23 +77,6 @@ export class CreatePdfProjectEstimateInvoiceController {
                 if (fileMimeType !== "application/pdf") {
                     this.deleteFiles(file.filename);
                     return res.status(400).json({ error: "Only PDF files are allowed" });
-                }
-
-                // Validar se pelo menos um ID foi fornecido
-                if (!estimate_id && !invoice_id && !project_id) {
-                    this.deleteFiles(file.filename);
-                    return res.status(400).json({ 
-                        error: "At least one of estimate_id, invoice_id, or project_id is required" 
-                    });
-                }
-
-                // Validar se apenas um tipo de relacionamento foi fornecido
-                const relationshipCount = [estimate_id, invoice_id, project_id].filter(Boolean).length;
-                if (relationshipCount > 1) {
-                    this.deleteFiles(file.filename);
-                    return res.status(400).json({ 
-                        error: "Only one relationship (estimate_id, invoice_id, or project_id) can be provided at a time" 
-                    });
                 }
 
                 // Validar se o estimate existe (se fornecido)
@@ -100,7 +118,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                 // Criar o registro no banco
                 const result = await prisma.pdfProject.create({
                     data: {
-                        original_file_name: file.originalname,
+                        original_file_name: file.originalname, 
                         type_pdf: type_pdf,
                         uri: fileName,
                         project_id: project_id || null,
