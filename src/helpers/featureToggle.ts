@@ -9,6 +9,5 @@ export async function isMultiCompanyEnabled(): Promise<boolean> {
       id: '1'
     }
   })
-  console.log("config", config)
   return config?.multiCompanyEnabled || false;
 }
