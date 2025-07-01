@@ -82,6 +82,7 @@ export class UserMultiCompanyController {
           profession: user.profession,
           companies: user.companies, // Array de companies em vez de uma só
           last_acess: user.last_acess,
+          office: user.office
         }
       });
     } catch (error) {
