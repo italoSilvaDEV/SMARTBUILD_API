@@ -651,7 +651,7 @@ export class CustomInvoiceController {
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { invoice_id: invoice.id },
         include: {
-          fildsPdfProject: true // Incluir os registros relacionados
+          fildsPdfProjects: true // Incluir os registros relacionados
         }
       });
 
@@ -659,7 +659,7 @@ export class CustomInvoiceController {
       if (pdfProject) {
         try {
           // Primeiro excluir todos os registros de fildsPdfProject relacionados ao PdfProject
-          if (pdfProject.fildsPdfProject.length > 0) {
+          if (pdfProject.fildsPdfProjects.length > 0) {
             await prisma.fildsPdfProject.deleteMany({
               where: { pdfProjectId: pdfProject.id }
             });

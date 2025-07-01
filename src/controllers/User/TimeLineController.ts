@@ -18,7 +18,7 @@ export class TimeLineController {
         }, 5 * 60 * 1000);
 
         // Inicializar otimizações de banco de forma segura
-        this.initializeDatabaseOptimizations();
+        // this.initializeDatabaseOptimizations();
     }
 
     private async initializeDatabaseOptimizations(): Promise<void> {
