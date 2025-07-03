@@ -214,6 +214,7 @@ export class ProjectController {
           },
           select: {
             id: true,
+            status: true,
             projectId: true,
             serviceProjects: true,
             canceledBy: {
