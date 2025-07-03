@@ -76,6 +76,32 @@ export class EstimateController {
     await transporter.sendMail(mailOptions);
   }
 
+  // Método utilitário para verificar configuração SMTP
+  private static async verifySMTPConfig() {
+    try {
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      const verification = await transporter.verify();
+      console.log('✅ SMTP Configuration verified:', verification);
+      return verification;
+    } catch (error) {
+      console.error('❌ SMTP Configuration error:', error);
+      throw error;
+    }
+  }
+
   // Função utilitária para registrar eventos na timeline
   private static async addTimelineEvent(estimateId: string, description: string) {
     try {
@@ -846,6 +872,232 @@ export class EstimateController {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to resend estimate email" });
+    }
+  }
+  async sendEmail(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { emailPayload } = req.body;
+
+      // Validar se o payload do email está presente
+      if (!emailPayload) {
+        return res.status(400).json({ error: "Email data is required" });
+      }
+
+      // Criar o payload estruturado do email
+      const dataEmail = {
+        from: emailPayload.from,
+        to: Array.isArray(emailPayload.to) 
+          ? emailPayload.to 
+          : (emailPayload.to ? emailPayload.to.split(',').map((email: string) => email.trim()) : []),
+        cc: Array.isArray(emailPayload.cc) 
+          ? emailPayload.cc 
+          : (emailPayload.cc ? emailPayload.cc.split(',').map((email: string) => email.trim()) : []),
+        bcc: Array.isArray(emailPayload.bcc) 
+          ? emailPayload.bcc 
+          : (emailPayload.bcc ? emailPayload.bcc.split(',').map((email: string) => email.trim()) : []),
+        sendMeCopy: emailPayload.sendMeCopy,
+        subject: emailPayload.subject,
+        body: emailPayload.body
+      };
+
+      // Validar se há pelo menos um destinatário
+      if (!dataEmail.to || dataEmail.to.length === 0) {
+        return res.status(400).json({ error: "Please provide at least one recipient email address" });
+      }
+
+      const estimate = await prisma.estimate.findUnique({
+        where: { id },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
+      }
+
+      // Configurar o transportador de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      
+      // Verificar configuração SMTP
+      try {
+        await EstimateController.verifySMTPConfig();
+      } catch (error) {
+        console.error('SMTP verification failed:', error);
+        return res.status(500).json({ 
+          error: "SMTP configuration error", 
+          details: error instanceof Error ? error.message : 'Unknown error' 
+        });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Resultados do envio
+      const results = [];
+      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
+
+      // Preparar lista completa de destinatários para logging
+      const allRecipients = [
+        ...dataEmail.to,
+        ...dataEmail.cc,
+        ...dataEmail.bcc
+      ];
+
+      // Se sendMeCopy for true, adicionar o remetente aos destinatários
+      if (dataEmail.sendMeCopy && dataEmail.from) {
+        allRecipients.push(dataEmail.from);
+      }
+
+      try {
+        const mailOptions = {
+          from: SMTP_CONFIG.user,
+          to: dataEmail.to,
+          cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
+          bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
+          subject: dataEmail.subject || `${estimate.project?.company?.name} - Estimate`,
+          html:  estimateEmail(
+            estimate.project?.client?.name || '',
+            companyAvatar,
+            estimate.project?.company?.name || '',
+            `${estimate.project?.contract_number}/${estimate.number}`,
+            Number(estimate.totalAmount),
+            estimate.id,
+            estimate.project?.client?.email || '',
+            dataEmail.body
+          ),
+          
+          // Adicionar versão texto para melhorar a entregabilidade
+          text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
+Dear ${estimate.project?.client?.name || 'Client'},
+
+Your Estimate ${estimate.project?.contract_number}/${estimate.number} is ready!
+Total: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(estimate.totalAmount))}
+
+Please access the link to view details and approve the budget:
+${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}
+
+We appreciate your business. Feel free to contact us if you have any questions.
+
+Have a great day!
+${estimate.project?.company?.name || ''}
+          `.trim()
+        };
+
+        // Se sendMeCopy for true, adicionar o remetente ao BCC
+        if (dataEmail.sendMeCopy && dataEmail.from) {
+          if (mailOptions.bcc) {
+            if (Array.isArray(mailOptions.bcc)) {
+              mailOptions.bcc.push(dataEmail.from);
+            } else {
+              mailOptions.bcc = [mailOptions.bcc, dataEmail.from];
+            }
+          } else {
+            mailOptions.bcc = [dataEmail.from];
+          }
+        }
+
+        // Log detalhado antes do envio
+        console.log('📧 Sending email with options:', {
+          from: mailOptions.from,
+          to: mailOptions.to,
+          cc: mailOptions.cc,
+          bcc: mailOptions.bcc,
+          subject: mailOptions.subject,
+          hasHtml: !!mailOptions.html,
+          hasText: !!mailOptions.text,
+          smtpConfig: {
+            host: SMTP_CONFIG.host,
+            port: SMTP_CONFIG.port,
+            secure: SMTP_CONFIG.port === 465,
+            user: SMTP_CONFIG.user
+          }
+        });
+
+        // Enviar o email
+        const emailResponse = await transporter.sendMail(mailOptions);
+        
+        // Log detalhado da resposta
+        console.log('✅ Email sent successfully:', {
+          messageId: emailResponse.messageId,
+          accepted: emailResponse.accepted,
+          rejected: emailResponse.rejected,
+          response: emailResponse.response,
+          envelope: emailResponse.envelope
+        });
+
+        // Log de sucesso para todos os destinatários
+        for (const recipient of allRecipients) {
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient,
+              status: "success",
+              sentAt: new Date()
+            }
+          });
+
+          results.push({ email: recipient, status: "success" });
+        }
+
+        await EstimateController.addTimelineEvent(
+          estimate.id,
+          `Email sent to ${allRecipients.length} recipient(s): ${allRecipients.join(', ')}`
+        );
+
+      } catch (error: any) {
+        // Log de erro para todos os destinatários
+        for (const recipient of allRecipients) {
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient,
+              status: "error",
+              errorMessage: error.message || "Unknown error",
+              sentAt: new Date()
+            }
+          });
+
+          results.push({ email: recipient, status: "error", message: error.message });
+        }
+
+        await EstimateController.addTimelineEvent(
+          estimate.id,
+          `Failed to send email: ${error.message}`
+        );
+      }
+
+      // Retornar os resultados
+      return res.json({
+        success: results.some(r => r.status === "success"),
+        results,
+        dataEmail: {
+          to: dataEmail.to,
+          cc: dataEmail.cc,
+          bcc: dataEmail.bcc,
+          subject: dataEmail.subject,
+          sendMeCopy: dataEmail.sendMeCopy
+        }
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to send estimate email" });
     }
   }
 } 
