@@ -378,6 +378,12 @@ export class EstimateController {
         },
         include: {
           serviceProjects: true,
+          PdfProject: {
+            orderBy: {
+              date_creation: 'desc'
+            },
+            take: 1
+          },
           canceledBy: {
             select: {
               id: true,
@@ -400,6 +406,21 @@ export class EstimateController {
           date_creation: 'desc'
         }
       });
+
+      // Generate presigned URLs for PDFs in all estimates and convert array to single object
+      for (const estimate of estimates) {
+        if (estimate.PdfProject && estimate.PdfProject.length > 0) {
+          const pdf = estimate.PdfProject[0];
+          if (pdf.uri) {
+            pdf.uri = await getPresignedUrl(pdf.uri);
+          }
+          // Convert array to single object
+          (estimate as any).PdfProject = pdf;
+        } else {
+          // Set to null if no PDF found
+          (estimate as any).PdfProject = null;
+        }
+      }
 
       return res.json(estimates);
     } catch (error) {
