@@ -593,7 +593,7 @@ export class EstimateController {
       }
       
       // Atualizar o estimate com a signature
-      await prisma.estimate.update({
+      const estimateUpdated = await prisma.estimate.update({
         where: { id },
         data: {
           clientSignature: JSON.stringify({ signature }),
@@ -727,7 +727,8 @@ export class EstimateController {
       const project = await prisma.project.findUnique({
         where: { id: estimate.projectId },
         include: {
-          user: true
+          user: true,
+          client: true
         }
       });
 
@@ -746,15 +747,19 @@ export class EstimateController {
           }
         });
       }
-
-      await EstimateController.sendStatusUpdateEmail(
-        estimate,
-        project?.user?.email || '',
-        decodedEmail
-      );
-      
-      // Adicionar evento na timeline
-      await EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail);
+      await Promise.all([
+        EstimateController.sendStatusUpdateEmail(
+          estimateUpdated,
+          project?.user?.email || '',
+          decodedEmail
+        ),
+        EstimateController.sendStatusUpdateEmail(
+          estimateUpdated,
+          project?.client?.email || '',
+          decodedEmail
+        ),
+        EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail)
+      ]);            
 
       return res.json(estimate);
     } catch (error) {
