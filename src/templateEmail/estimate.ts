@@ -15,7 +15,7 @@ export const estimateEmail = (
     }).format(value);
 
     // Usar o corpo personalizado se fornecido, caso contrário usar o padrão
-    const emailContent = `${customBody}` || `
+    const emailContent = customBody ? `${customBody}` : `
         <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
         <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">We appreciate your business. Access the link for details and approval of the budget.</p>
         <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Feel free to contact us if you have any questions.</p>

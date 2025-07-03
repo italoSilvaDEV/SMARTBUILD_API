@@ -4,8 +4,9 @@ import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
-import fs from "fs";
-import { generatePdf } from "../../utils/generatePdf";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import crypto from "crypto";
+import { PDFDocument, rgb } from 'pdf-lib';
 
 
 export class EstimateController {
@@ -26,6 +27,24 @@ export class EstimateController {
       console.error("Project not found for estimate:", estimate.id);
       return;
     }
+    // Buscar o PDF para usar como anexo
+    const pdfProject = await prisma.pdfProject.findFirst({
+      where: { estimate_id: estimate.id }
+    });
+    if (!pdfProject || !pdfProject.uri) {
+      console.error("PDF Project not found or has no URI for estimate:", estimate.id);
+      return;
+    }
+    // Gerar URL presigned para o PDF
+    const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+    // Baixar o PDF do S3
+    const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+    }
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+    const fileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}/${estimate.number}.pdf`;
 
     // Obter o avatar da empresa
     const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
@@ -71,6 +90,13 @@ export class EstimateController {
         emailClient,
         estimate.status
       ),
+      attachments: [
+        {
+          filename: fileName,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ],
     };
 
     await transporter.sendMail(mailOptions);
@@ -352,6 +378,12 @@ export class EstimateController {
         },
         include: {
           serviceProjects: true,
+          PdfProject: {
+            orderBy: {
+              date_creation: 'desc'
+            },
+            take: 1
+          },
           canceledBy: {
             select: {
               id: true,
@@ -374,6 +406,21 @@ export class EstimateController {
           date_creation: 'desc'
         }
       });
+
+      // Generate presigned URLs for PDFs in all estimates and convert array to single object
+      for (const estimate of estimates) {
+        if (estimate.PdfProject && estimate.PdfProject.length > 0) {
+          const pdf = estimate.PdfProject[0];
+          if (pdf.uri) {
+            pdf.uri = await getPresignedUrl(pdf.uri);
+          }
+          // Convert array to single object
+          (estimate as any).PdfProject = pdf;
+        } else {
+          // Set to null if no PDF found
+          (estimate as any).PdfProject = null;
+        }
+      }
 
       return res.json(estimates);
     } catch (error) {
@@ -525,12 +572,151 @@ export class EstimateController {
       const { id } = req.params;
       const { signature, email } = req.body;
       const decodedEmail = email ? Buffer.from(email.toString(), 'base64').toString() : 'unknown';
-      const estimate = await prisma.estimate.update({
+      const estimate = await prisma.estimate.findUnique({
+        where: { id },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
+      }
+      
+      // Atualizar o estimate com a signature
+      await prisma.estimate.update({
         where: { id },
         data: {
           clientSignature: JSON.stringify({ signature }),
           status: "approved",
           date_update: new Date()
+        }
+      });
+
+      // Buscar o PDF para usar como anexo
+      const pdfProject = await prisma.pdfProject.findFirst({
+        where: { estimate_id: estimate.id }
+      });
+      
+      if (!pdfProject || !pdfProject.uri) {
+        return res.status(404).json({ error: "PDF Project not found or has no URI" });
+      }
+
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+      // Carregar o PDF original usando pdf-lib
+      const pdfDoc = await PDFDocument.load(originalPdfBuffer);
+      const pages = pdfDoc.getPages();
+
+      // Converter signature de base64 para imagem se ela existir
+      if (signature) {
+        try {
+          // Remove o prefixo data:image se existir
+          const base64Data = signature.replace(/^data:image\/[a-z]+;base64,/, '');
+          const signatureBuffer = Buffer.from(base64Data, 'base64');
+          
+          // Tentar embeddar como PNG primeiro, depois como JPEG
+          let signatureImage;
+          try {
+            signatureImage = await pdfDoc.embedPng(signatureBuffer);
+          } catch (pngError) {
+            try {
+              signatureImage = await pdfDoc.embedJpg(signatureBuffer);
+            } catch (jpgError) {
+              console.error('Failed to embed signature as PNG or JPG:', pngError, jpgError);
+              throw new Error('Invalid signature image format');
+            }
+          }
+
+          // Dimensões da signature
+          const signatureWidth = 100;
+          const signatureHeight = 50;
+          
+          // Adicionar signature em todas as páginas a partir da segunda
+          for (let i = 1; i < pages.length; i++) {
+            const page = pages[i];
+            const { width, height } = page.getSize();
+            
+            // Posicionar a signature no canto inferior direito
+            const x = width - signatureWidth - 50;
+            const y = 50;
+            
+            page.drawImage(signatureImage, {
+              x,
+              y,
+              width: signatureWidth,
+              height: signatureHeight,
+            });
+            
+            // Adicionar data e hora atual abaixo da assinatura
+            const currentDate = new Date();
+            const formattedDate = currentDate.toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZone: 'America/New_York'
+            });
+            
+            page.drawText(`Signed on: ${formattedDate}`, {
+              x,
+              y: y - 15, // 15 pixels abaixo da assinatura
+              size: 8,
+              color: rgb(0.5, 0.5, 0.5) // Cor cinza
+            });
+          }
+        } catch (signatureError) {
+          console.error('Error processing signature:', signatureError);
+          // Continue sem adicionar a signature se houver erro
+        }
+      }
+
+      // Gerar o PDF modificado
+      const modifiedPdfBytes = await pdfDoc.save();
+      const modifiedPdfBuffer = Buffer.from(modifiedPdfBytes);
+
+      // Upload do PDF modificado diretamente para S3
+      const s3 = new S3Client({
+        region: process.env.AMAZON_S3_REGION,
+        credentials: {
+          accessKeyId: process.env.AMAZON_S3_KEY!,
+          secretAccessKey: process.env.AMAZON_S3_SECRET!,
+        },
+      });
+
+      const fileHash = crypto.randomBytes(4).toString("hex");
+      const originalFileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}_${estimate.number}.pdf`;
+      const newFileName = `${fileHash}-${originalFileName.replace(/\s/g, "")}`;
+
+      const putObjectCommand = new PutObjectCommand({
+        Bucket: process.env.AMAZON_S3_BUCKET!,
+        Key: newFileName,
+        Body: modifiedPdfBuffer,
+        ContentType: 'application/pdf',
+      });
+
+      await s3.send(putObjectCommand);
+      
+      // Atualizar o pdfProject com o novo URI
+      await prisma.pdfProject.update({
+        where: { id: pdfProject.id },
+        data: {
+          uri: newFileName
         }
       });
 
@@ -562,6 +748,7 @@ export class EstimateController {
         project?.user?.email || '',
         decodedEmail
       );
+      
       // Adicionar evento na timeline
       await EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail);
 
@@ -921,6 +1108,23 @@ export class EstimateController {
       if (!estimate) {
         return res.status(404).json({ error: "Estimate not found" });
       }
+      // Buscar o PDF para usar como anexo
+      const pdfProject = await prisma.pdfProject.findFirst({
+        where: { estimate_id: estimate.id }
+      });
+      if (!pdfProject || !pdfProject.uri) {
+        return res.status(404).json({ error: "PDF Project not found or has no URI" });
+      }
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+      const fileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}/${estimate.number}.pdf`;
 
       // Configurar o transportador de email
       const SMTP_CONFIG = require("../../config/smtp");
@@ -982,6 +1186,13 @@ export class EstimateController {
             estimate.project?.client?.email || '',
             dataEmail.body
           ),
+          attachments: [
+            {
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            }
+          ],
           
           // Adicionar versão texto para melhorar a entregabilidade
           text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
