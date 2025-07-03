@@ -356,10 +356,11 @@ export class EstimateController {
         ]
       };
 
-      await transporter.sendMail(mailOptions);
+      //nao envia email durante a criaçao
+      // await transporter.sendMail(mailOptions);
 
       // Usar a função utilitária
-      await EstimateController.addTimelineEvent(estimate.id, "Created and sent to client");
+      await EstimateController.addTimelineEvent(estimate.id, "Created");
 
       return res.status(201).json(estimate);
     } catch (error) {
