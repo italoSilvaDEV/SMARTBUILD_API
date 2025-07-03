@@ -921,6 +921,23 @@ export class EstimateController {
       if (!estimate) {
         return res.status(404).json({ error: "Estimate not found" });
       }
+      // Buscar o PDF para usar como anexo
+      const pdfProject = await prisma.pdfProject.findFirst({
+        where: { estimate_id: estimate.id }
+      });
+      if (!pdfProject || !pdfProject.uri) {
+        return res.status(404).json({ error: "PDF Project not found or has no URI" });
+      }
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfProject.uri);
+
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+      const fileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}/${estimate.number}.pdf`;
 
       // Configurar o transportador de email
       const SMTP_CONFIG = require("../../config/smtp");
@@ -982,6 +999,13 @@ export class EstimateController {
             estimate.project?.client?.email || '',
             dataEmail.body
           ),
+          attachments: [
+            {
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            }
+          ],
           
           // Adicionar versão texto para melhorar a entregabilidade
           text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
