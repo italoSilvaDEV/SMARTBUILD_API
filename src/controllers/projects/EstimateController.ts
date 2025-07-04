@@ -654,9 +654,9 @@ export class EstimateController {
             const page = pages[i];
             const { width, height } = page.getSize();
             
-            // Posicionar a signature no canto inferior direito
-            const x = width - signatureWidth - 50;
-            const y = 50;
+            // Posicionar a signature na parte inferior central
+            const x = (width - signatureWidth) / 2;
+            const y = 20; // Mais próximo da margem
             
             page.drawImage(signatureImage, {
               x,
