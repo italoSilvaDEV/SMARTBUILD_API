@@ -22,7 +22,8 @@ export class EstimateController {
       where: { id: estimate.projectId },
       include: {
         client: true,
-        company: true
+        company: true,
+        user: true
       }
     });
 
@@ -82,6 +83,7 @@ export class EstimateController {
 
     const mailOptions = {
       from: SMTP_CONFIG.user,
+      replyTo: project.user?.email,
       to: email,
       subject: "Smart Build - Estimate",
       html: estimateNotificationEmail(
@@ -150,15 +152,15 @@ export class EstimateController {
           }
         }
       });
-      
-//       if (estimate?.project?.user?.phone) {
-//         const text = `📩 *SmartBuild Notification*
-// Estimate ${estimate?.project?.contract_number || ''}/${estimate?.number || ''} 
-// ${description}`;
-//         // Formatar o telefone removendo caracteres não numéricos e garantindo formato correto
-//         const formattedPhone = estimate?.project?.user?.phone.replace(/\D/g, '');
-//         await EstimateController.sendWebhookNotification(formattedPhone, text);
-//       }
+
+      //       if (estimate?.project?.user?.phone) {
+      //         const text = `📩 *SmartBuild Notification*
+      // Estimate ${estimate?.project?.contract_number || ''}/${estimate?.number || ''} 
+      // ${description}`;
+      //         // Formatar o telefone removendo caracteres não numéricos e garantindo formato correto
+      //         const formattedPhone = estimate?.project?.user?.phone.replace(/\D/g, '');
+      //         await EstimateController.sendWebhookNotification(formattedPhone, text);
+      //       }
 
       return await prisma.estimateTimeline.create({
         data: {
@@ -459,7 +461,7 @@ export class EstimateController {
                   phone: true
                 }
               },
-              client: { 
+              client: {
                 select: {
                   id: true,
                   name: true,
@@ -591,7 +593,7 @@ export class EstimateController {
       if (!estimate) {
         return res.status(404).json({ error: "Estimate not found" });
       }
-      
+
       // Atualizar o estimate com a signature
       const estimateUpdated = await prisma.estimate.update({
         where: { id },
@@ -606,7 +608,7 @@ export class EstimateController {
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { estimate_id: estimate.id }
       });
-      
+
       if (!pdfProject || !pdfProject.uri) {
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
@@ -631,7 +633,7 @@ export class EstimateController {
           // Remove o prefixo data:image se existir
           const base64Data = signature.replace(/^data:image\/[a-z]+;base64,/, '');
           const signatureBuffer = Buffer.from(base64Data, 'base64');
-          
+
           // Tentar embeddar como PNG primeiro, depois como JPEG
           let signatureImage;
           try {
@@ -648,23 +650,23 @@ export class EstimateController {
           // Dimensões da signature
           const signatureWidth = 100;
           const signatureHeight = 50;
-          
+
           // Adicionar signature em todas as páginas a partir da segunda
           for (let i = 1; i < pages.length; i++) {
             const page = pages[i];
             const { width, height } = page.getSize();
-            
+
             // Posicionar a signature na parte inferior central
             const x = (width - signatureWidth) / 2;
             const y = 20; // Mais próximo da margem
-            
+
             page.drawImage(signatureImage, {
               x,
               y,
               width: signatureWidth,
               height: signatureHeight,
             });
-            
+
             // Adicionar data e hora atual abaixo da assinatura
             const currentDate = new Date();
             const formattedDate = currentDate.toLocaleString('en-US', {
@@ -676,7 +678,7 @@ export class EstimateController {
               second: '2-digit',
               timeZone: 'America/New_York'
             });
-            
+
             page.drawText(`Signed on: ${formattedDate}`, {
               x,
               y: y - 15, // 15 pixels abaixo da assinatura
@@ -715,7 +717,7 @@ export class EstimateController {
       });
 
       await s3.send(putObjectCommand);
-      
+
       // Atualizar o pdfProject com o novo URI
       await prisma.pdfProject.update({
         where: { id: pdfProject.id },
@@ -759,7 +761,7 @@ export class EstimateController {
           decodedEmail
         ),
         EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail)
-      ]);            
+      ]);
 
       return res.json(estimate);
     } catch (error) {
@@ -958,7 +960,7 @@ export class EstimateController {
     }
   }
 
-  async resendEmail(req: Request, res: Response) { 
+  async resendEmail(req: Request, res: Response) {
     try {
       const { id } = req.params;
       const { emails } = req.body;
@@ -1072,7 +1074,7 @@ export class EstimateController {
   }
   async sendEmail(req: Request, res: Response) {
     let attachmentFiles: Express.Multer.File[] = [];
-    
+
     // Função utilitária para limpar arquivos temporários
     const cleanupTempFiles = (files: Express.Multer.File[]) => {
       if (files && files.length > 0) {
@@ -1106,7 +1108,7 @@ export class EstimateController {
       const validateFileType = (file: Express.Multer.File): boolean => {
         const allowedTypes = [
           'image/jpeg',
-          'image/jpg', 
+          'image/jpg',
           'image/png',
           'image/gif',
           'image/bmp',
@@ -1122,11 +1124,11 @@ export class EstimateController {
         if (invalidFiles.length > 0) {
           // Limpar arquivos temporários
           cleanupTempFiles(attachmentFiles);
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "Invalid file type. Only images (JPEG, PNG, GIF, BMP, WEBP) and PDF files are allowed.",
-            invalidFiles: invalidFiles.map(f => ({ 
-              name: f.originalname, 
-              type: f.mimetype 
+            invalidFiles: invalidFiles.map(f => ({
+              name: f.originalname,
+              type: f.mimetype
             }))
           });
         }
@@ -1135,7 +1137,7 @@ export class EstimateController {
       // Função utilitária para processar emails corretamente
       const parseEmailList = (emailInput: any): string[] => {
         if (!emailInput) return [];
-        
+
         // Se for uma string que parece ser um array JSON, tentar fazer parse
         if (typeof emailInput === 'string') {
           try {
@@ -1153,12 +1155,12 @@ export class EstimateController {
             return emailInput.split(',').map((email: string) => email.trim()).filter(email => email);
           }
         }
-        
+
         // Se já for array, garantir que seja array de strings
         if (Array.isArray(emailInput)) {
           return emailInput.filter(email => email && typeof email === 'string').map(email => email.trim());
         }
-        
+
         return [];
       };
 
@@ -1222,7 +1224,7 @@ export class EstimateController {
 
       // Configurar o transportador de email
       const SMTP_CONFIG = require("../../config/smtp");
-      
+
       // Verificar configuração SMTP
       try {
         await EstimateController.verifySMTPConfig();
@@ -1230,9 +1232,9 @@ export class EstimateController {
         console.error('SMTP verification failed:', error);
         // Limpar arquivos antes de retornar erro
         cleanupTempFiles(attachmentFiles);
-        return res.status(500).json({ 
-          error: "SMTP configuration error", 
-          details: error instanceof Error ? error.message : 'Unknown error' 
+        return res.status(500).json({
+          error: "SMTP configuration error",
+          details: error instanceof Error ? error.message : 'Unknown error'
         });
       }
 
@@ -1309,6 +1311,7 @@ export class EstimateController {
 
         const mailOptions = {
           from: SMTP_CONFIG.user,
+          replyTo: dataEmail.from,
           to: dataEmail.to,
           cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
           bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
@@ -1320,11 +1323,11 @@ export class EstimateController {
             `${estimate.project?.contract_number}/${estimate.number}`,
             Number(estimate.totalAmount),
             estimate.id,
-            estimate.project?.client?.email || '', // Usado APENAS para gerar o link no template
+            estimate.project?.client?.email || '',
             dataEmail.body
           ),
           attachments,
-          
+
           // Adicionar versão texto para melhorar a entregabilidade
           text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
 Dear ${estimate.project?.client?.name || 'Client'},
@@ -1358,6 +1361,7 @@ ${estimate.project?.company?.name || ''}
         // Log detalhado antes do envio
         console.log('📧 Sending email with options:', {
           from: mailOptions.from,
+          replyTo: mailOptions.replyTo,
           to: mailOptions.to,
           cc: mailOptions.cc,
           bcc: mailOptions.bcc,
@@ -1375,7 +1379,7 @@ ${estimate.project?.company?.name || ''}
 
         // Enviar o email
         const emailResponse = await transporter.sendMail(mailOptions);
-        
+
         // Log detalhado da resposta
         console.log('✅ Email sent successfully:', {
           messageId: emailResponse.messageId,
