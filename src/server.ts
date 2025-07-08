@@ -16,7 +16,8 @@ const app = express();
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // Cache preflight por 24 horas
 }));
 
 app.use('/public', express.static(path.join(__dirname, '../public')));
@@ -25,7 +26,7 @@ app.use('/public', express.static(path.join(__dirname, '../public')));
 app.use("/webhook", express.raw({ type: 'application/json' }), router);
 app.use("/webhook/connect", express.raw({ type: 'application/json' }), router);
 
-app.use(express.json())
+app.use(express.json({ limit: '25mb' }));
 app.use(router)
 
 // Register the audit routes
