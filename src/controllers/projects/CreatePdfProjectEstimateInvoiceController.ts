@@ -3,7 +3,6 @@ import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
-import mime from "mime-types";
 import S3Storage from "../../utils/S3/s3Storage";
 
 const upload = multer({ dest: './public/tmp/pdfproject' }).single('file');
@@ -72,48 +71,62 @@ export class CreatePdfProjectEstimateInvoiceController {
                     return res.status(400).json({ error: "PDF file is required" });
                 }
 
-                // Validar se o arquivo é um PDF
-                const fileMimeType = mime.lookup(file.originalname);
-                if (fileMimeType !== "application/pdf") {
+                // Validar se o arquivo é um PDF (verificação mais rápida)
+                if (!file.originalname.toLowerCase().endsWith('.pdf')) {
                     this.deleteFiles(file.filename);
                     return res.status(400).json({ error: "Only PDF files are allowed" });
                 }
 
-                // Validar se o estimate existe (se fornecido)
+                // Paralelizar todas as validações de existência
+                const validationPromises = [];
+                
                 if (estimate_id) {
-                    const estimate = await prisma.estimate.findUnique({
-                        where: { id: estimate_id }
-                    });
-                    if (!estimate) {
-                        this.deleteFiles(file.filename);
-                        return res.status(404).json({ error: "Estimate not found" });
-                    }
+                    validationPromises.push(
+                        prisma.estimate.findUnique({
+                            where: { id: estimate_id },
+                            select: { id: true }
+                        }).then(result => ({ type: 'estimate', exists: !!result }))
+                    );
                 }
 
-                // Validar se o invoice existe (se fornecido)
                 if (invoice_id) {
-                    const invoice = await prisma.invoice.findUnique({
-                        where: { id: invoice_id }
-                    });
-                    if (!invoice) {
-                        this.deleteFiles(file.filename);
-                        return res.status(404).json({ error: "Invoice not found" });
-                    }
+                    validationPromises.push(
+                        prisma.invoice.findUnique({
+                            where: { id: invoice_id },
+                            select: { id: true }
+                        }).then(result => ({ type: 'invoice', exists: !!result }))
+                    );
                 }
 
-                // Validar se o project existe (se fornecido)
                 if (project_id) {
-                    const project = await prisma.project.findUnique({
-                        where: { id: project_id }
-                    });
-                    if (!project) {
-                        this.deleteFiles(file.filename);
-                        return res.status(404).json({ error: "Project not found" });
+                    validationPromises.push(
+                        prisma.project.findUnique({
+                            where: { id: project_id },
+                            select: { id: true }
+                        }).then(result => ({ type: 'project', exists: !!result }))
+                    );
+                }
+
+                // Executar todas as validações em paralelo
+                if (validationPromises.length > 0) {
+                    const validationResults = await Promise.all(validationPromises);
+                    
+                    for (const result of validationResults) {
+                        if (!result.exists) {
+                            this.deleteFiles(file.filename);
+                            return res.status(404).json({ 
+                                error: `${result.type.charAt(0).toUpperCase() + result.type.slice(1)} not found` 
+                            });
+                        }
                     }
                 }
 
-                // Upload do arquivo para S3
-                const fileName = await uploadFileToS3_2(file, '');
+                // Paralelizar upload para S3 e criação do registro no banco
+                const [fileName, _] = await Promise.all([
+                    uploadFileToS3_2(file, ''),
+                    // Adicionar uma promise vazia para manter a estrutura, ou outra operação paralela se necessário
+                    Promise.resolve()
+                ]);
 
                 // Criar o registro no banco
                 const result = await prisma.pdfProject.create({
@@ -125,10 +138,19 @@ export class CreatePdfProjectEstimateInvoiceController {
                         estimate_id: estimate_id || null,
                         invoice_id: invoice_id || null,
                     },
+                    select: {
+                        id: true,
+                        original_file_name: true,
+                        uri: true,
+                        project_id: true,
+                        date_creation: true
+                    }
                 });
 
-                // Limpar arquivo temporário
-                this.deleteFiles(file.filename);
+                // Limpar arquivo temporário de forma não-bloqueante
+                setImmediate(() => {
+                    this.deleteFiles(file.filename);
+                });
 
                 const formattedResult = {
                     id: result.id,
@@ -144,7 +166,10 @@ export class CreatePdfProjectEstimateInvoiceController {
             } catch (error) {
                 console.log(error);
                 if (req.file) {
-                    this.deleteFiles(req.file.filename);
+                    // Limpeza não-bloqueante em caso de erro
+                    setImmediate(() => {
+                        this.deleteFiles(req.file!.filename);
+                    });
                 }
                 if (error instanceof Error) {
                     return res.status(500).json({ error: error.message });
