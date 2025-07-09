@@ -26,13 +26,26 @@ import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 import { estimateRoutes } from './estimateRoutes'
 import { isMultiCompanyEnabled } from '../helpers/featureToggle'
 import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
-
+import { checkToken } from '../middlewares/checkToken'
+import multer from 'multer'
+import uploadConfig from "../config/upload";
+import { UploadImageController } from '../controllers/projects/UploadImageController';
+const uploadImageController = new UploadImageController();
 const router = Router()
-
+// Nova configuração de upload para imagens genéricas
+const uploadImageGeneric = multer(
+  uploadConfig.upload("./public/tmp/image-upload")
+);
 router.get('/config', async (req, res) => {
   const config = await isMultiCompanyEnabled();
   res.json({ config })
 })
+ router.post(
+    "/upload-image",
+    checkToken,
+    uploadImageGeneric.single("file"),
+    uploadImageController.uploadImage
+  );
 // Importante: Colocar o webhook antes dos middlewares JSON
 router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 

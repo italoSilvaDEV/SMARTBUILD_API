@@ -213,18 +213,25 @@ export class EstimateController {
         return res.status(400).json({ error: "PDF Project ID is required" });
       }
 
-      // Buscar o projeto com seus serviços
+      // Buscar o projeto com informações mínimas necessárias
       const project = await prisma.project.findUnique({
         where: { id: projectId },
-        include: {
+        select: {
+          id: true,
+          contract_number: true,
+          company_id: true,
           serviceProject: {
-            include: {
-              photos: true
+            select: {
+              name: true,
+              price: true,
+              hours: true,
+              description: true
             }
           },
-          client: true,
-          company: true,
           estimates: {
+            select: {
+              number: true
+            },
             orderBy: {
               number: 'desc'
             },
@@ -241,11 +248,16 @@ export class EstimateController {
       const lastNumber = project.estimates[0]?.number || '0000';
       const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
 
-      // Buscar todos os termos do contrato da empresa
-      const contractNotes = await prisma.contractNotes.findMany({
-        where: { company_id: project.company_id },
-        orderBy: { updatedAt: 'desc' }
-      });
+      // Buscar contract notes e preparar dados em paralelo
+      const [contractNotes] = await Promise.all([
+        prisma.contractNotes.findMany({
+          where: { company_id: project.company_id },
+          select: {
+            notes: true
+          },
+          orderBy: { updatedAt: 'desc' }
+        })
+      ]);
 
       // Combinar todos os termos do contrato
       const combinedTerms = contractNotes.length > 0
@@ -254,118 +266,56 @@ export class EstimateController {
 
       // Calcular o valor total com base nos serviços do projeto
       const totalAmount = project.serviceProject.reduce(
-        (total, service) => total + (Number(service.price) * Number(service.hours)),
+        (total: number, service: any) => total + (Number(service.price) * Number(service.hours)),
         0
       );
 
-      // Map over service projects and ensure unique names by adding a unique identifier
-      const serviceProjectsToCreate = project.serviceProject.map((sp, index) => ({
-        name: `${sp.name}_${index}`, // Add index to make names unique
+      // Preparar dados dos serviços
+      const serviceProjectsToCreate = project.serviceProject.map((sp: any, index: number) => ({
+        name: `${sp.name}_${index}`,
         quantity: Number(sp.hours),
         unitPrice: Number(sp.price),
         lineTotal: Number(sp.price) * Number(sp.hours),
         notes: sp.description,
       }));
 
-      // Criar o change order
-      const estimate = await prisma.estimate.create({
-        data: {
-          number: nextNumber,
-          description: `Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
-          terms: combinedTerms,
-          totalAmount,
-          status: "pending",
-          project: {
-            connect: { id: projectId }
+      // Criar o estimate e atualizar o PDF em paralelo
+      const [estimate] = await Promise.all([
+        prisma.estimate.create({
+          data: {
+            number: nextNumber,
+            description: `Estimate #${nextNumber} for Project ${project.contract_number || 'N/A'}`,
+            terms: combinedTerms,
+            totalAmount,
+            status: "pending",
+            project: {
+              connect: { id: projectId }
+            },
+            serviceProjects: {
+              create: serviceProjectsToCreate
+            }
           },
-          serviceProjects: {
-            create: serviceProjectsToCreate
+        }),
+        prisma.pdfProject.update({
+          where: { id: idPdfProject },
+          data: {
+            project_id: projectId
           }
-        },
-      });
+        })
+      ]);
 
-      // Atualizar o PdfProject com o estimate_id
-      await prisma.pdfProject.update({
-        where: { id: idPdfProject },
-        data: {
-          estimate_id: estimate.id,
-          project_id: projectId
-        }
-      });
-
-      // Buscar o PDF para usar como anexo
-      const pdfProject = await prisma.pdfProject.findUnique({
-        where: { id: idPdfProject }
-      });
-
-      if (!pdfProject || !pdfProject.uri) {
-        return res.status(404).json({ error: "PDF Project not found or has no URI" });
-      }
-
-      // Gerar URL presigned para o PDF
-      const pdfUrl = await getPresignedUrl(pdfProject.uri);
-
-      // Baixar o PDF do S3
-      const pdfResponse = await fetch(pdfUrl);
-      if (!pdfResponse.ok) {
-        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
-      }
-      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-
-      // Configurar e enviar o email com o PDF anexado
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
-      // Verificar a configuração do transportador
-      transporter.verify((error, success) => {
-        if (error) {
-          console.error("Erro ao configurar o transportador de e-mail:", error);
-        } else {
-          console.log("Transportador de e-mail configurado com sucesso:", success);
-        }
-      });
-
-      const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
-      const fileName = pdfProject.original_file_name || `estimate_${project.contract_number || 'Nº'}_${nextNumber}.pdf`;
-
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
-        to: project.client?.email || '',
-        subject: project.company?.name + " - Estimate",
-        html: estimateEmail(
-          project.client?.name || '',
-          companyAvatar,
-          project.company?.name || '',
-          `${project.contract_number}/${nextNumber}`,
-          totalAmount,
-          estimate.id,
-          project.client?.email || ''
-        ),
-        attachments: [
-          {
-            filename: fileName,
-            content: pdfBuffer,
-            contentType: 'application/pdf'
+      // Operações finais em paralelo
+      Promise.all([
+        prisma.pdfProject.update({
+          where: { id: idPdfProject },
+          data: {
+            estimate_id: estimate.id
           }
-        ]
-      };
-
-      //nao envia email durante a criaçao
-      // await transporter.sendMail(mailOptions);
-
-      // Usar a função utilitária
-      await EstimateController.addTimelineEvent(estimate.id, "Created");
+        }),
+        EstimateController.addTimelineEvent(estimate.id, "Created")
+      ]).catch(error => {
+        console.error("Error in final parallel operations:", error);
+      });
 
       return res.status(201).json(estimate);
     } catch (error) {
