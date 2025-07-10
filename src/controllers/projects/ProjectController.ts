@@ -1059,19 +1059,27 @@ export class ProjectController {
     deleteFile(`./public/tmp/service-project/${filePath}`);
     return res.json();
   }
+  
   async imageUrlServiceProject(req: Request, res: Response) {
     const { serviceProjectId, url } = req.body;
 
-   
-    await prisma.imgServiceProject.create({
-      data: {
-        uri: url,
-        serviceProjectId,
-      },
-    });
+    try {
+      const img = await prisma.imgServiceProject.create({
+        data: {
+          uri: url,
+          serviceProjectId,
+        },
+      });
 
-    return res.json();
+      return res.json(img);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.json({ error: error.message });
+      }
+      return res.json({ error: "Erro interno do servidor" });
+    }
   }
+
   async updateProject(req: Request, res: Response) {
     const { id } = req.params;
     const { seller_user_id, price, status_project, client_id, autorId } =
