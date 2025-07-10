@@ -62,6 +62,11 @@ projectRoutes.post(
   projectController.upLoadPhotoServiceProject
 );
 
+projectRoutes.post(
+  "/img-url-service-project",
+  checkToken, 
+  projectController.imageUrlServiceProject
+);
 
 
 projectRoutes.delete(
