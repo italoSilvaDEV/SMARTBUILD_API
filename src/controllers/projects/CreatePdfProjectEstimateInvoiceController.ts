@@ -51,6 +51,55 @@ export class CreatePdfProjectEstimateInvoiceController {
         }
     }
 
+    async update(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const {  
+                invoiceId, 
+                projectId, 
+            } = req.body;
+
+            if (!id) {
+                return res.status(400).json({ error: "PDF Project ID is required" });
+            }
+
+            // Primeiro verificar se o PDF Project existe
+            const existingPdfProject = await prisma.pdfProject.findUnique({
+                where: { id },
+                select: { id: true, uri: true, original_file_name: true }
+            });
+
+            if (!existingPdfProject) {
+                return res.status(404).json({ error: "PDF Project not found" });
+            }
+
+            
+
+          
+
+            // Atualizar o registro no banco
+            const updatedPdfProject = await prisma.pdfProject.updateMany({
+                where: { id: existingPdfProject.id },
+                data: {
+                    project_id: projectId ,
+                    invoice_id: invoiceId ,
+                    date_update: new Date()
+                },
+            });
+
+            
+
+            return res.json(updatedPdfProject);
+
+        } catch (error) {
+            console.error("Error updating PDF Project:", error);
+            if (error instanceof Error) {
+                return res.status(500).json({ error: error.message });
+            }
+            return res.status(500).json({ error: "Internal error" });
+        }
+    }
+
     async handle(req: Request, res: Response) {
         upload(req, res, async (err) => {
             if (err) {

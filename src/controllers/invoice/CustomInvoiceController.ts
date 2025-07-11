@@ -9,13 +9,13 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value, idPdfProject } = req.body;
+    const { userId, coefficientPerfentage, description, dueDate, services, type_value } = req.body;
 
     try {
       // Validar se idPdfProject foi fornecido
-      if (!idPdfProject) {
-        return res.status(400).json({ error: "PDF Project ID is required" });
-      }
+      // if (!idPdfProject) {
+      //   return res.status(400).json({ error: "PDF Project ID is required" });
+      // }
 
       // Buscar o projeto
       const project = await prisma.project.findUnique({
@@ -35,13 +35,13 @@ export class CustomInvoiceController {
       }
 
       // Validar se o PdfProject existe
-      const pdfProject = await prisma.pdfProject.findUnique({
-        where: { id: idPdfProject }
-      });
+      // const pdfProject = await prisma.pdfProject.findUnique({
+      //   where: { id: idPdfProject }
+      // });
 
-      if (!pdfProject) {
-        return res.status(404).json({ error: "PDF Project not found" });
-      }
+      // if (!pdfProject) {
+      //   return res.status(404).json({ error: "PDF Project not found" });
+      // }
 
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(dueDate) : new Date();
@@ -127,13 +127,13 @@ export class CustomInvoiceController {
       });
 
       // Atualizar o PdfProject com o invoice_id
-      await prisma.pdfProject.update({
-        where: { id: idPdfProject },
-        data: {
-          invoice_id: newInvoice.id,
-          project_id: project.id
-        }
-      });
+      // await prisma.pdfProject.update({
+      //   where: { id: idPdfProject },
+      //   data: {
+      //     invoice_id: newInvoice.id,
+      //     project_id: project.id
+      //   }
+      // });
 
       // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
