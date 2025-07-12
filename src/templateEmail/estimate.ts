@@ -5,13 +5,23 @@ export const estimateEmail = (
     number: string,
     value: number,
     estimateId: string,
-    email: string
+    email: string,
+    customBody?: string
 ) => {
     // Formatar o valor como moeda em dólares
     const formattedValue = new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
     }).format(value);
+
+    // Usar o corpo personalizado se fornecido, caso contrário usar o padrão
+    const emailContent = customBody ? `${customBody}` : `
+        <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">We appreciate your business. Access the link for details and approval of the budget.</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Feel free to contact us if you have any questions.</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">${company}</p>
+    `;
 
     return `
     <!DOCTYPE html>
@@ -98,11 +108,7 @@ export const estimateEmail = (
                                     <table bgcolor="#ffffff" class="bb" align="center" width="600" style="border-collapse: collapse; margin: 0;">
                                         <tr>
                                             <td align="center" style="padding:20px; margin: 0;">
-                                                <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">We appreciate your business. Access the link for details and approval of the budget.</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Feel free to contact us if you have any questions.</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">${company}</p>
+                                                ${emailContent}
                                             </td>
                                         </tr>
                                     </table>

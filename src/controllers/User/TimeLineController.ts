@@ -18,7 +18,7 @@ export class TimeLineController {
         }, 5 * 60 * 1000);
 
         // Inicializar otimizações de banco de forma segura
-        this.initializeDatabaseOptimizations();
+        // this.initializeDatabaseOptimizations();
     }
 
     private async initializeDatabaseOptimizations(): Promise<void> {
@@ -27,10 +27,8 @@ export class TimeLineController {
             setTimeout(async () => {
                 try {
                     console.log('[TIMELINE-CONTROLLER] Initializing database optimizations...');
-                    
                     // Criar índices de performance de forma segura
                     await this.createSafeIndexes();
-                    
                     console.log('[TIMELINE-CONTROLLER] Database optimizations completed');
                 } catch (error) {
                     console.error('[TIMELINE-CONTROLLER] Error in delayed optimization:', error);
@@ -43,39 +41,75 @@ export class TimeLineController {
 
     private async createSafeIndexes(): Promise<void> {
         try {
-            // Criar índices de forma segura
-            await prisma.$executeRaw`
-                CREATE INDEX IF NOT EXISTS idx_timeline_user_service_project_time 
-                ON TimeLine(userServiceProjectId, check_in_time DESC)
-            `;
+            // Verificar e criar índices de forma segura
+            // Verificar se índice timeline_user_service_project_time existe
+            const timelineUserServiceExists = await this.indexExists('TimeLine', 'idx_timeline_user_service_project_time');
+            if (!timelineUserServiceExists) {
+                await prisma.$executeRaw`
+CREATE INDEX idx_timeline_user_service_project_time 
+ON TimeLine(userServiceProjectId, check_in_time DESC)
+`;
+                console.log('[TIMELINE-CONTROLLER] Created index: idx_timeline_user_service_project_time');
+            } else {
+                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_timeline_user_service_project_time');
+            }
 
-            await prisma.$executeRaw`
-                CREATE INDEX IF NOT EXISTS idx_user_attendance_open 
-                ON user_attendance(user_id, user_service_project_id, check_out_time)
-            `;
+            // Verificar se índice user_attendance_open existe
+            const attendanceOpenExists = await this.indexExists('user_attendance', 'idx_user_attendance_open');
+            if (!attendanceOpenExists) {
+                await prisma.$executeRaw`
+CREATE INDEX idx_user_attendance_open 
+ON user_attendance(user_id, user_service_project_id, check_out_time)
+`;
+                console.log('[TIMELINE-CONTROLLER] Created index: idx_user_attendance_open');
+            } else {
+                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_user_attendance_open');
+            }
 
-            await prisma.$executeRaw`
-                CREATE INDEX IF NOT EXISTS idx_timeline_user_date 
-                ON TimeLine(user_id, check_in_time DESC)
-            `;
+            // Verificar se índice timeline_user_date existe
+            const timelineUserDateExists = await this.indexExists('TimeLine', 'idx_timeline_user_date');
+            if (!timelineUserDateExists) {
+                await prisma.$executeRaw`
+CREATE INDEX idx_timeline_user_date 
+ON TimeLine(user_id, check_in_time DESC)
+`;
+                console.log('[TIMELINE-CONTROLLER] Created index: idx_timeline_user_date');
+            } else {
+                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_timeline_user_date');
+            }
 
-            console.log('[TIMELINE-CONTROLLER] Performance indexes created successfully');
+            console.log('[TIMELINE-CONTROLLER] Performance indexes verification completed successfully');
         } catch (error) {
             console.error('[TIMELINE-CONTROLLER] Error creating indexes (non-critical):', error);
             // Não lançar erro para não quebrar a aplicação
         }
     }
 
+    // Método auxiliar para verificar se um índice existe
+    private async indexExists(tableName: string, indexName: string): Promise<boolean> {
+        try {
+            const result = await prisma.$queryRaw`
+SELECT COUNT(*) as count 
+FROM information_schema.statistics 
+WHERE table_schema = DATABASE() 
+AND table_name = ${tableName} 
+AND index_name = ${indexName}
+` as any[];
+            return result[0]?.count > 0;
+        } catch (error) {
+            console.error(`[TIMELINE-CONTROLLER] Error checking index ${indexName}:`, error);
+            return false;
+        }
+    }
+
     private cleanExpiredCache(): void {
         const now = Date.now();
         const keysToDelete: string[] = [];
-        
         this.cache.forEach((value, key) => {
             if (now - value.timestamp > this.CACHE_TTL) {
                 keysToDelete.push(key);
             }
         });
-        
         keysToDelete.forEach(key => this.cache.delete(key));
     }
 
@@ -99,16 +133,16 @@ export class TimeLineController {
         const R = 6371; // Raio da Terra em km
         const dLat = this.toRad(lat2 - lat1);
         const dLon = this.toRad(lon2 - lon1);
-        const a = 
-            Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c; // Distância em km
     }
 
     private toRad(degrees: number): number {
-        return degrees * (Math.PI/180);
+        return degrees * (Math.PI / 180);
     }
 
     private async performAutoCheckOut(
@@ -121,27 +155,27 @@ export class TimeLineController {
         /* Código de auto check-out às 18h comentado
         const now = new Date();
         if (now.getHours() >= 18) {
-            // Busca o registro de attendance aberto
-            const openAttendance = await prisma.userAttendance.findFirst({
-                where: {
-                    user_id,
-                    user_service_project_id,
-                    check_out_time: null,
-                },
-            });
-
-            if (openAttendance) {
-                // Realiza o check-out automático
-                await prisma.userAttendance.update({
-                    where: { id: openAttendance.id },
-                    data: {
-                        check_out_time: now,
-                        check_out_address: check_in_address, // Usa o mesmo endereço do check-in
-                        check_out_latitude: check_in_latitude,
-                        check_out_longitude: check_in_longitude,
-                    },
-                });
-            }
+        // Busca o registro de attendance aberto
+        const openAttendance = await prisma.userAttendance.findFirst({
+        where: {
+        user_id,
+        user_service_project_id,
+        check_out_time: null,
+        },
+        });
+        
+        if (openAttendance) {
+        // Realiza o check-out automático
+        await prisma.userAttendance.update({
+        where: { id: openAttendance.id },
+        data: {
+        check_out_time: now,
+        check_out_address: check_in_address, // Usa o mesmo endereço do check-in
+        check_out_latitude: check_in_latitude,
+        check_out_longitude: check_in_longitude,
+        },
+        });
+        }
         }
         */
     }
@@ -149,7 +183,7 @@ export class TimeLineController {
     // Check-in do usuário - OTIMIZADO (interface mantida igual)
     handleTimeLine = async (req: Request, res: Response): Promise<void> => {
         try {
-            const { 
+            const {
                 user_id,
                 user_service_project_id,
                 check_in_address,
@@ -219,11 +253,10 @@ export class TimeLineController {
             let isLocalWork = false;
 
             // Verifica se as coordenadas foram fornecidas
-            if (check_in_latitude && check_in_longitude && 
-                serviceProject.Project?.client?.lat && 
-                serviceProject.Project?.client?.log && 
+            if (check_in_latitude && check_in_longitude &&
+                serviceProject.Project?.client?.lat &&
+                serviceProject.Project?.client?.log &&
                 serviceProject.Project?.client?.radius) {
-                
                 // Calcula a distância entre os pontos
                 const distance = this.calculateDistance(
                     Number(check_in_latitude),
@@ -250,10 +283,9 @@ export class TimeLineController {
                     is_local_work: isLocalWork,
                 },
             });
-            
             res.status(201).json(attendance);
         } catch (error) {
-            console.log('error',error)
+            console.log('error', error)
             console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
@@ -362,7 +394,6 @@ export class TimeLineController {
     handleTimeLineByWorker = async (req: Request, res: Response): Promise<Response> => {
         try {
             const { user_service_project_id, date } = req.params;
-            
             if (!user_service_project_id) {
                 return res.status(400).json({ error: "user_service_project_id is required" });
             }
@@ -370,12 +401,10 @@ export class TimeLineController {
             // Cache para consultas frequentes (5 minutos para dados que mudam)
             const cacheKey = `timeline_worker_${user_service_project_id}_${date || 'all'}`;
             const cachedResult = this.getCached(cacheKey);
-            
             if (cachedResult) {
                 console.log(`[TIMELINE-CACHE] Cache hit for ${cacheKey}`);
                 return res.status(200).json(cachedResult);
             }
-            
             // Buscar o UserServiceProject para verificar se existe
             const userServiceProject = await prisma.userServiceProject.findFirst({
                 where: {
@@ -410,25 +439,21 @@ export class TimeLineController {
                     }
                 }
             });
-            
             if (!userServiceProject) {
                 console.log(user_service_project_id, 'UserServiceProject not found')
                 return res.status(404).json({ error: "UserServiceProject not found" });
             }
-            
             // Gerar URL assinada para o avatar do usuário, se existir
             let userWithPresignedAvatar = { ...userServiceProject.user };
             if (userServiceProject.user?.avatar) {
                 userWithPresignedAvatar.avatar = await getPresignedUrl(userServiceProject.user.avatar);
             }
-            
             // Preparar filtro de data se fornecido
             let dateFilter = {};
             if (date) {
                 const selectedDate = new Date(date as string);
                 const nextDay = new Date(selectedDate);
                 nextDay.setDate(nextDay.getDate() + 1);
-                
                 dateFilter = {
                     check_in_time: {
                         gte: selectedDate,
@@ -436,7 +461,6 @@ export class TimeLineController {
                     }
                 };
             }
-            
             // Buscar todas as timelines associadas a este UserServiceProject com filtro de data opcional
             // OTIMIZADO: select apenas campos necessários e limit para evitar consultas muito pesadas
             const timelines = await prisma.timeLine.findMany({
@@ -482,7 +506,6 @@ export class TimeLineController {
 
             // Armazenar no cache (TTL menor para dados que mudam frequentemente)
             this.setCache(cacheKey, result);
-            
             return res.status(200).json(result);
         } catch (error) {
             console.error("Error fetching timeline by worker:", error);
@@ -494,13 +517,12 @@ export class TimeLineController {
     deleteTimeline = async (req: Request, res: Response): Promise<void> => {
         try {
             const user = returnPayLoad(req);
-            if(!user){
+            if (!user) {
                 res.status(401).json({ error: 'Unauthorized' });
                 return;
             }
 
             const { id } = req.params;
-            
             // Verify if the timeline exists
             const timeline = await prisma.userAttendance.findUnique({
                 where: { id },
@@ -513,16 +535,12 @@ export class TimeLineController {
                     }
                 }
             });
-            
             if (!timeline) {
                 res.status(404).json({ error: 'Timeline record not found.' });
                 return;
-            }            
-          
-           
+            }
             const clockInTime = timeline?.check_in_time ? new Date(timeline.check_in_time).toLocaleString() : 'N/A';
             const clockOutTime = timeline?.check_out_time ? new Date(timeline.check_out_time).toLocaleString() : 'N/A';
-            
             const auditMessage = `Delete clock-in/clock-out record ${timeline.id} for user ${timeline.user.name} (${timeline.user.id}) on service project ${timeline.UserServiceProject.service_project.name || 'Unnamed project'} (${timeline.UserServiceProject.service_project.id}). Clock-in: ${clockInTime}, Clock-out: ${clockOutTime}`;
             logAudit(auditMessage, user.id);
             await prisma.userAttendance.delete({

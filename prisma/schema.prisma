@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Config {
+  id String @id @default(uuid())
+  multiCompanyEnabled Boolean @default(false)
+}
+
 model User {
   id              String   @id @default(uuid())
   avatar          String?
@@ -45,10 +50,15 @@ model User {
 
   InvoiceSendHistory InvoiceSendHistory[]
 
-  company    Company?   @relation(fields: [company_id], references: [id])
+  // Relacionamento original 1:N (mantido)
+  company    Company? @relation(fields: [company_id], references: [id])
   company_id String?
-  Invoice    Invoice[]
-  TimeLine   TimeLine[]
+
+  // Nova relação N:N através da tabela UserCompany
+  companies UserCompany[]
+
+  Invoice  Invoice[]
+  TimeLine TimeLine[]
 
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
@@ -84,7 +94,12 @@ model Company {
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String? // Format: "HH:mm" (24-hour)
 
-  User             User[]
+  // Relacionamento original 1:N (mantido)
+  User User[]
+
+  // Nova relação N:N através da tabela UserCompany
+  userCompanies UserCompany[]
+
   Category         Category[]
   SubCategory      SubCategory[]
   Service          Service[]
@@ -138,11 +153,12 @@ model Webhooks {
 }
 
 model Office {
-  id            String   @id @default(uuid())
+  id            String        @id @default(uuid())
   name          String
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  date_creation DateTime      @default(now())
+  date_update   DateTime      @updatedAt
   User          User[]
+  UserCompany   UserCompany[]
 }
 
 model Rules {
@@ -368,11 +384,43 @@ model PdfProject {
   project    Project? @relation(fields: [project_id], references: [id])
   project_id String?
 
+  // vinculo com estimate
+  estimate    Estimate? @relation(fields: [estimate_id], references: [id])
+  estimate_id String?
+
+  // vinculo com invoice
+  invoice    Invoice? @relation(fields: [invoice_id], references: [id])
+  invoice_id String?
+
+  type_pdf String?
+
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
+
   autorId       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
   @@map("pdf_project")
+}
+
+model fildsPdfProject {
+  id          String @id @default(uuid())
+  sections    String
+  description String? @db.Text
+  
+  // Relacionamentos
+  pdfProject   PdfProject? @relation(fields: [pdfProjectId], references: [id])
+  pdfProjectId String?
+  
+  estimate   Estimate? @relation(fields: [estimateId], references: [id])
+  estimateId String?
+  
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  invoiceId String?
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
 }
 
 model Client {
@@ -497,7 +545,7 @@ model UserAttendance {
   company_id              String?
 
   workStartTime String? // Format: "HH:mm" (24-hour)
-  workEndTime   String? 
+  workEndTime   String?
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
@@ -561,7 +609,11 @@ model Invoice {
   InvoiceEmailLog InvoiceEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
-  payment InvoicePayment?
+  payment    InvoicePayment?
+  PdfProject PdfProject[]
+
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -648,7 +700,11 @@ model Estimate {
   date_creation   DateTime                 @default(now())
   date_update     DateTime                 @updatedAt
 
-  emailLogs EstimateEmailLog[]
+  emailLogs  EstimateEmailLog[]
+  PdfProject PdfProject[]
+
+  // Relacionamento com fildsPdfProject
+  fildsPdfProjects fildsPdfProject[]
 
   @@unique([number, projectId])
 }
@@ -791,4 +847,24 @@ model InvoiceEmailLog {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+// Nova tabela de junção para relacionamento N:N entre User e Company
+model UserCompany {
+  id        String   @id @default(uuid())
+  userId    String
+  companyId String
+  createdAt DateTime @default(now())
+
+  office_id String
+  office    Office  @relation(fields: [office_id], references: [id])
+  // Relacionamentos
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Constraint para evitar duplicatas
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("user_company")
 }

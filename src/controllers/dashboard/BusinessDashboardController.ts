@@ -3,9 +3,12 @@ import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
+import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
 
 async function validCompany(request: Request) {
     const authHeader = returnPayLoad(request)
+    const { companyId } = request.query
+
     if (authHeader == null) return {
         status: 'error',
         message: 'Token not found'
@@ -13,21 +16,32 @@ async function validCompany(request: Request) {
     const user = await prisma.user.findUnique({
         where: {
             id: authHeader.id
-        }
+        },
     })
     if (!user) return {
         status: 'error',
         message: 'User not found'
     };
-    const response = await prisma.company.findUnique({
-        where: {
-            id: String(user.company_id)
-        }
-    })
+    const isMultiCompany = await isMultiCompanyEnabled()
+    let response;
+    if (isMultiCompany) {
+        response = await prisma.company.findUnique({
+            where: {
+                id: String(companyId)
+            }
+        })
+    } else {
+        response = await prisma.company.findUnique({
+            where: {
+                id: String(user.company_id)
+            }
+        })
+    }
     if (response) {
         return {
             status: 'success',
             response,
+
         }
     }
 
@@ -52,6 +66,7 @@ export class BusinessDashboardController {
     async dashboardCards(req: Request, res: Response) {
         try {
             const valid = await validCompany(req);
+
             if (valid.status === 'error') {
                 return res.status(404).json({ error: valid.message });
             }
@@ -103,16 +118,16 @@ export class BusinessDashboardController {
                         }),
                         OR: [
                             { company_id: valid.response?.id },
-                                
+
                             {
                                 projects: {
                                     some: {
                                         company_id: valid.response?.id,
-                                       
+
                                     }
                                 }
                             },
-                            
+
                         ]
                     },
                     select: {
@@ -666,7 +681,7 @@ export class BusinessDashboardController {
             };
 
             const [pendingEstimates, acceptedEstimates, deniedEstimates] = await Promise.all([
-                
+
                 prisma.project.count({
                     where: {
                         company_id: valid.response?.id,
