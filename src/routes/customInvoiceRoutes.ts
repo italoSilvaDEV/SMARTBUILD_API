@@ -7,6 +7,7 @@ const customInvoiceController = new CustomInvoiceController();
 
 // Criar invoice personalizado
 customInvoiceRoutes.post("/custom/invoice/:projectId", checkToken, customInvoiceController.createInvoice);
+customInvoiceRoutes.get("/custom/invoice/:projectId/generate-number", checkToken, customInvoiceController.generateNumber);
 
 // Buscar invoices por projeto
 customInvoiceRoutes.get("/custom/invoices/:projectId", checkToken, customInvoiceController.getInvoicesByProject);

@@ -1404,4 +1404,48 @@ ${estimate.project?.company?.name || ''}
       return res.status(500).json({ error: "Failed to send estimate email" });
     }
   }
+
+  async generateNumber(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+
+      // Validate projectId
+      if (!projectId) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+
+      // Buscar o projeto
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          estimates: {
+            select: {
+              number: true
+            },
+            orderBy: {
+              number: 'desc'
+            },
+            take: 1
+          }
+        }
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Gerar o próximo número sequencial
+      const lastNumber = project.estimates[0]?.number || '0000';
+      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+
+      return res.json({ 
+        number: nextNumber,
+        projectId: projectId
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to generate estimate number" });
+    }
+  }
 } 

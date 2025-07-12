@@ -1032,4 +1032,54 @@ export class CustomInvoiceController {
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
+
+  async generateNumber(req: Request, res: Response) {
+    const { projectId } = req.params;
+
+    try {
+      // Buscar o projeto
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          company: true,
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Obter o maior número de invoice para a empresa especificada
+      const latestInvoice = await prisma.invoice.findFirst({
+        where: { 
+          companyId: project.company_id, 
+          invoiceType: "custom",
+          externalInvoiceId: { not: null }
+        },
+        orderBy: [
+          { createdAt: "desc" },
+          { externalInvoiceId: "desc" }
+        ]
+      });
+
+      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
+      let nextInvoiceNumber = 1000;
+      if (latestInvoice && latestInvoice.externalInvoiceId) {
+        // Tentar extrair o número do último invoice
+        const lastNumber = parseInt(latestInvoice.externalInvoiceId);
+        if (!isNaN(lastNumber)) {
+          nextInvoiceNumber = lastNumber + 1;
+        }
+      }
+
+      return res.status(200).json({
+        number: nextInvoiceNumber.toString(),
+        projectId: projectId,
+        invoiceType: "custom"
+      });
+    } catch (error: any) {
+      console.error("Error generating custom invoice number:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
 } 
