@@ -51,6 +51,16 @@ export class UserMultiCompanyController {
       // Gerar URL assinada para o avatar, se existir
       const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
 
+      // Gerar URLs assinadas para os avatares das empresas
+      const companiesWithAvatarUrls = await Promise.all(
+        user.companies.map(async (userCompany) => ({
+          ...userCompany,
+          company: {
+            ...userCompany.company,
+            avatar: userCompany.company.avatar ? await getPresignedUrl(userCompany.company.avatar) : null
+          }
+        }))
+      );
 
 
       const token = Jwt.sign(
@@ -69,7 +79,6 @@ export class UserMultiCompanyController {
       return res.json({
         msg: "Authentication completed successfully!",
         token,
-
         user: {
           id: user.id,
           name: user.name,
@@ -80,7 +89,7 @@ export class UserMultiCompanyController {
           phone: user.phone,
           hourly_price: user.hourly_price,
           profession: user.profession,
-          companies: user.companies, // Array de companies em vez de uma só
+          companies: companiesWithAvatarUrls, // Array de companies com avatarUrl
           last_acess: user.last_acess,
           office: user.office
         }
