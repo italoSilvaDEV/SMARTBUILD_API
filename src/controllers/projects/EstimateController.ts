@@ -1448,4 +1448,42 @@ ${estimate.project?.company?.name || ''}
       return res.status(500).json({ error: "Failed to generate estimate number" });
     }
   }
+
+  async generateGlobalNumber(req: Request, res: Response) {
+    try {
+      const { companyId } = req.params;
+
+      // Validate companyId
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Buscar o último estimate da empresa (independente do projeto)
+      const lastEstimate = await prisma.estimate.findFirst({
+        where: {
+          project: {
+            company_id: companyId
+          }
+        },
+        select: {
+          number: true
+        },
+        orderBy: {
+          number: 'desc'
+        }
+      });
+
+      // Gerar o próximo número sequencial global
+      const lastNumber = lastEstimate?.number || '0000';
+      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+
+      return res.json({ 
+        number: nextNumber,
+        companyId: companyId
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to generate global estimate number" });
+    }
+  }
 } 

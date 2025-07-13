@@ -13,6 +13,7 @@ const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-
 estimateRoutes.post("/", checkToken, estimateController.create);
 estimateRoutes.get("/project/:projectId", checkToken, estimateController.findByProject);
 estimateRoutes.get("/project/:projectId/generate-number", checkToken, estimateController.generateNumber);
+estimateRoutes.get("/global/:companyId/generate-number", checkToken, estimateController.generateGlobalNumber);
 estimateRoutes.get("/:id", estimateController.findById);
 estimateRoutes.put("/:id", checkToken, estimateController.update);
 estimateRoutes.patch("/:id/status",  estimateController.updateStatus);
