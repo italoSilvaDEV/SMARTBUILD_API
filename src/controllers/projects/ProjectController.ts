@@ -1019,12 +1019,31 @@ export class ProjectController {
         }
       });
 
+      // Buscar o último project da empresa para verificar contract_number
+      const lastProject = await prisma.project.findFirst({
+        where: {
+          company_id: data.company_id,
+          contract_number: { not: null }
+        },
+        select: {
+          contract_number: true
+        },
+        orderBy: {
+          contract_number: 'desc'
+        }
+      });
+
       console.log('🔄 [ProjectController] Último estimate encontrado:', lastEstimate);
+      console.log('🔄 [ProjectController] Último project encontrado:', lastProject);
 
-      // Gerar o próximo número usando a mesma lógica do estimate
-      const lastNumber = lastEstimate?.number || '0000';
-      const nextNumber = Number(lastNumber) + 1;
+      // Comparar os números e usar o maior para manter sincronização (MESMA LÓGICA DO generateGlobalNumber)
+      const lastEstimateNumber = Number(lastEstimate?.number || '0');
+      const lastProjectNumber = Number(lastProject?.contract_number || '0');
+      const highestNumber = Math.max(lastEstimateNumber, lastProjectNumber);
+      
+      const nextNumber = highestNumber + 1;
 
+      console.log('✅ [ProjectController] Números comparados - Estimate:', lastEstimateNumber, 'Project:', lastProjectNumber);
       console.log('✅ [ProjectController] Próximo contract_number:', nextNumber);
 
       // Criação do projeto com número sincronizado

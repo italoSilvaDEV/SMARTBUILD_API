@@ -48,7 +48,7 @@ export class EstimateController {
       throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
     }
     const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-    const fileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}/${estimate.number}.pdf`;
+    const fileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
 
     // Obter o avatar da empresa
     const companyAvatar = await getPresignedUrl(project.company?.avatar || '');
@@ -292,6 +292,7 @@ export class EstimateController {
       }));
 
       // Criar o estimate e atualizar o PDF em paralelo
+      console.log('💾 [EstimateController] Criando estimate com número:', nextNumber);
       const [estimate] = await Promise.all([
         prisma.estimate.create({
           data: {
@@ -668,7 +669,7 @@ export class EstimateController {
       });
 
       const fileHash = crypto.randomBytes(4).toString("hex");
-      const originalFileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}_${estimate.number}.pdf`;
+              const originalFileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
       const newFileName = `${fileHash}-${originalFileName.replace(/\s/g, "")}`;
 
       const putObjectCommand = new PutObjectCommand({
@@ -977,7 +978,7 @@ export class EstimateController {
               estimate.project?.client?.name || '',
               companyAvatar,
               estimate.project?.company?.name || '',
-              `${estimate.project?.contract_number}/${estimate.number}`,
+              estimate.number,
               Number(estimate.totalAmount),
               estimate.id,
               estimate.project?.client?.email || ''
@@ -1182,7 +1183,7 @@ export class EstimateController {
         throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-      const fileName = pdfProject.original_file_name || `estimate_${estimate.project?.contract_number}/${estimate.number}.pdf`;
+      const fileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
 
       // Configurar o transportador de email
       const SMTP_CONFIG = require("../../config/smtp");
@@ -1282,7 +1283,7 @@ export class EstimateController {
             estimate.project?.client?.name || '',
             companyAvatar,
             estimate.project?.company?.name || '',
-            `${estimate.project?.contract_number}/${estimate.number}`,
+            estimate.number,
             Number(estimate.totalAmount),
             estimate.id,
             estimate.project?.client?.email || '',
@@ -1294,7 +1295,7 @@ export class EstimateController {
           text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
 Dear ${estimate.project?.client?.name || 'Client'},
 
-Your Estimate ${estimate.project?.contract_number}/${estimate.number} is ready!
+Your Estimate ${estimate.number} is ready!
 Total: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(estimate.totalAmount))}
 
 Please access the link to view details and approve the budget:
