@@ -230,7 +230,14 @@ export class EstimateController {
               description: true
             }
           },
-          // Não precisamos buscar estimates aqui, faremos query direta no fallback
+          estimates: {
+            select: {
+              number: true
+            },
+            orderBy: {
+              date_creation: 'desc'
+            }
+          }
         }
       });
 
@@ -251,17 +258,23 @@ export class EstimateController {
           return res.status(400).json({ error: "Project does not have a contract number" });
         }
 
-        // Fallback: usar query SQL direta para encontrar o próximo número sequencial
-        const result = await prisma.$queryRaw<Array<{next_number: number}>>`
-          SELECT COALESCE(
-            MAX(CAST(SUBSTRING(number, LOCATE('/', number) + 1) AS UNSIGNED)), 0
-          ) + 1 as next_number
-          FROM estimate 
-          WHERE projectId = ${projectId} 
-          AND number LIKE ${`${project.contract_number}/%`}
-        `;
-
-        const nextEstimateNumber = result[0]?.next_number || 1;
+        // Fallback: gerar número sequencial no formato correto project_number/estimate_number
+        let nextEstimateNumber = 1;
+        
+        if (project.estimates.length > 0) {
+          // Encontrar o maior número de estimate já existente
+          const estimateNumbers = project.estimates
+            .map(estimate => {
+              const parts = estimate.number.split('/');
+              return parts.length > 1 ? Number(parts[1]) : 0;
+            })
+            .filter(num => !isNaN(num) && num > 0);
+          
+          if (estimateNumbers.length > 0) {
+            const maxEstimateNumber = Math.max(...estimateNumbers);
+            nextEstimateNumber = maxEstimateNumber + 1;
+          }
+        }
 
         // Formatar: project_number/estimate_number (ex: 1358/0001)
         const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
@@ -1441,7 +1454,15 @@ ${estimate.project?.company?.name || ''}
         where: { id: projectId },
         select: {
           id: true,
-          contract_number: true
+          contract_number: true,
+          estimates: {
+            select: {
+              number: true
+            },
+            orderBy: {
+              date_creation: 'desc'
+            }
+          }
         }
       });
 
@@ -1453,18 +1474,28 @@ ${estimate.project?.company?.name || ''}
         return res.status(400).json({ error: "Project does not have a contract number" });
       }
 
-      // Usar query SQL direta para encontrar o próximo número sequencial
-      // Mais performático e robusto contra concorrência
-      const result = await prisma.$queryRaw<Array<{next_number: number}>>`
-        SELECT COALESCE(
-          MAX(CAST(SUBSTRING(number, LOCATE('/', number) + 1) AS UNSIGNED)), 0
-        ) + 1 as next_number
-        FROM estimate 
-        WHERE projectId = ${projectId} 
-        AND number LIKE ${`${project.contract_number}/%`}
-      `;
-
-      const nextEstimateNumber = result[0]?.next_number || 1;
+      // Gerar o próximo número sequencial do estimate para este projeto
+      let nextEstimateNumber = 1;
+      
+      console.log('🔍 [EstimateController] Estimates existentes:', project.estimates.map(e => e.number));
+      
+      if (project.estimates.length > 0) {
+        // Encontrar o maior número de estimate já existente
+        const estimateNumbers = project.estimates
+          .map(estimate => {
+            const parts = estimate.number.split('/');
+            return parts.length > 1 ? Number(parts[1]) : 0;
+          })
+          .filter(num => !isNaN(num) && num > 0);
+        
+        console.log('🔍 [EstimateController] Números extraídos:', estimateNumbers);
+        
+        if (estimateNumbers.length > 0) {
+          const maxEstimateNumber = Math.max(...estimateNumbers);
+          nextEstimateNumber = maxEstimateNumber + 1;
+          console.log('🔍 [EstimateController] Maior número encontrado:', maxEstimateNumber);
+        }
+      }
 
       // Formatar: project_number/estimate_number (ex: 1358/0001)
       const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
