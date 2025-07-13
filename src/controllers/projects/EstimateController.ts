@@ -1452,9 +1452,12 @@ ${estimate.project?.company?.name || ''}
   async generateGlobalNumber(req: Request, res: Response) {
     try {
       const { companyId } = req.params;
+      
+      console.log('🌐 [EstimateController] Chamando generateGlobalNumber para companyId:', companyId);
 
       // Validate companyId
       if (!companyId) {
+        console.log('❌ [EstimateController] Company ID não fornecido');
         return res.status(400).json({ error: "Company ID is required" });
       }
 
@@ -1473,16 +1476,39 @@ ${estimate.project?.company?.name || ''}
         }
       });
 
-      // Gerar o próximo número sequencial global
-      const lastNumber = lastEstimate?.number || '0000';
-      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+      // Buscar o último project da empresa para verificar contract_number
+      const lastProject = await prisma.project.findFirst({
+        where: {
+          company_id: companyId,
+          contract_number: { not: null }
+        },
+        select: {
+          contract_number: true
+        },
+        orderBy: {
+          contract_number: 'desc'
+        }
+      });
+
+      console.log('🔍 [EstimateController] Último estimate encontrado:', lastEstimate);
+      console.log('🔍 [EstimateController] Último project encontrado:', lastProject);
+
+      // Comparar os números e usar o maior para manter sincronização
+      const lastEstimateNumber = Number(lastEstimate?.number || '0');
+      const lastProjectNumber = Number(lastProject?.contract_number || '0');
+      const highestNumber = Math.max(lastEstimateNumber, lastProjectNumber);
+      
+      const nextNumber = String(highestNumber + 1).padStart(4, '0');
+
+      console.log('✅ [EstimateController] Números comparados - Estimate:', lastEstimateNumber, 'Project:', lastProjectNumber);
+      console.log('✅ [EstimateController] Próximo número gerado:', nextNumber);
 
       return res.json({ 
         number: nextNumber,
         companyId: companyId
       });
     } catch (error) {
-      console.error(error);
+      console.error('❌ [EstimateController] Erro ao gerar número global:', error);
       return res.status(500).json({ error: "Failed to generate global estimate number" });
     }
   }
