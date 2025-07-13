@@ -254,9 +254,26 @@ export class EstimateController {
         nextNumber = preGeneratedNumber;
       } else {
         console.log('⚠️ [EstimateController] Número pré-gerado não fornecido, gerando novo...');
-        // Fallback: gerar número sequencial como antes
-        const lastNumber = project.estimates[0]?.number || '0000';
-        nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+        
+        if (!project.contract_number) {
+          return res.status(400).json({ error: "Project does not have a contract number" });
+        }
+
+        // Fallback: gerar número sequencial no formato correto project_number/estimate_number
+        let nextEstimateNumber = 1;
+        
+        if (project.estimates.length > 0) {
+          const lastEstimate = project.estimates[0];
+          // Extrair apenas a parte do estimate number (após a barra)
+          const lastEstimateNumber = lastEstimate.number.split('/')[1];
+          if (lastEstimateNumber) {
+            nextEstimateNumber = Number(lastEstimateNumber) + 1;
+          }
+        }
+
+        // Formatar: project_number/estimate_number (ex: 1358/0001)
+        const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
+        nextNumber = `${project.contract_number}/${formattedEstimateNumber}`;
         console.log('🔄 [EstimateController] Número gerado como fallback:', nextNumber);
       }
 
@@ -1427,11 +1444,12 @@ ${estimate.project?.company?.name || ''}
         return res.status(400).json({ error: "Project ID is required" });
       }
 
-      // Buscar o projeto
+      // Buscar o projeto com contract_number
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         select: {
           id: true,
+          contract_number: true,
           estimates: {
             select: {
               number: true
@@ -1448,12 +1466,32 @@ ${estimate.project?.company?.name || ''}
         return res.status(404).json({ error: "Project not found" });
       }
 
-      // Gerar o próximo número sequencial
-      const lastNumber = project.estimates[0]?.number || '0000';
-      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+      if (!project.contract_number) {
+        return res.status(400).json({ error: "Project does not have a contract number" });
+      }
+
+      // Gerar o próximo número sequencial do estimate para este projeto
+      let nextEstimateNumber = 1;
+      
+      if (project.estimates.length > 0) {
+        const lastEstimate = project.estimates[0];
+        // Extrair apenas a parte do estimate number (após a barra)
+        const lastEstimateNumber = lastEstimate.number.split('/')[1];
+        if (lastEstimateNumber) {
+          nextEstimateNumber = Number(lastEstimateNumber) + 1;
+        }
+      }
+
+      // Formatar: project_number/estimate_number (ex: 1358/0001)
+      const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
+      const fullNumber = `${project.contract_number}/${formattedEstimateNumber}`;
+
+      console.log('🔢 [EstimateController] Gerando número para projeto:', project.contract_number);
+      console.log('🔢 [EstimateController] Próximo estimate:', formattedEstimateNumber);
+      console.log('🔢 [EstimateController] Número completo:', fullNumber);
 
       return res.json({ 
-        number: nextNumber,
+        number: fullNumber,
         projectId: projectId
       });
     } catch (error) {
