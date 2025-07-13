@@ -1037,7 +1037,14 @@ export class ProjectController {
       console.log('🔄 [ProjectController] Último project encontrado:', lastProject);
 
       // Comparar os números e usar o maior para manter sincronização (MESMA LÓGICA DO generateGlobalNumber)
-      const lastEstimateNumber = Number(lastEstimate?.number || '0');
+      // Extrair apenas o número do projeto dos estimates (antes da barra)
+      let lastEstimateNumber = 0;
+      if (lastEstimate?.number) {
+        const parts = lastEstimate.number.split('/');
+        // Se tem formato projeto/estimate, pegar a primeira parte. Se não, pegar o número inteiro
+        lastEstimateNumber = Number(parts[0]) || 0;
+      }
+      
       const lastProjectNumber = Number(lastProject?.contract_number || '0');
       const highestNumber = Math.max(lastEstimateNumber, lastProjectNumber);
       
