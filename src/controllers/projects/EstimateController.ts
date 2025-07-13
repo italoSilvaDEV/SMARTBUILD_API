@@ -230,15 +230,7 @@ export class EstimateController {
               description: true
             }
           },
-          estimates: {
-            select: {
-              number: true
-            },
-            orderBy: {
-              number: 'desc'
-            },
-            take: 1
-          }
+          // Não precisamos buscar estimates aqui, faremos query direta no fallback
         }
       });
 
@@ -259,17 +251,17 @@ export class EstimateController {
           return res.status(400).json({ error: "Project does not have a contract number" });
         }
 
-        // Fallback: gerar número sequencial no formato correto project_number/estimate_number
-        let nextEstimateNumber = 1;
-        
-        if (project.estimates.length > 0) {
-          const lastEstimate = project.estimates[0];
-          // Extrair apenas a parte do estimate number (após a barra)
-          const lastEstimateNumber = lastEstimate.number.split('/')[1];
-          if (lastEstimateNumber) {
-            nextEstimateNumber = Number(lastEstimateNumber) + 1;
-          }
-        }
+        // Fallback: usar query SQL direta para encontrar o próximo número sequencial
+        const result = await prisma.$queryRaw<Array<{next_number: number}>>`
+          SELECT COALESCE(
+            MAX(CAST(SUBSTRING(number, LOCATE('/', number) + 1) AS UNSIGNED)), 0
+          ) + 1 as next_number
+          FROM estimate 
+          WHERE projectId = ${projectId} 
+          AND number LIKE ${`${project.contract_number}/%`}
+        `;
+
+        const nextEstimateNumber = result[0]?.next_number || 1;
 
         // Formatar: project_number/estimate_number (ex: 1358/0001)
         const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
@@ -1449,16 +1441,7 @@ ${estimate.project?.company?.name || ''}
         where: { id: projectId },
         select: {
           id: true,
-          contract_number: true,
-          estimates: {
-            select: {
-              number: true
-            },
-            orderBy: {
-              number: 'desc'
-            },
-            take: 1
-          }
+          contract_number: true
         }
       });
 
@@ -1470,17 +1453,18 @@ ${estimate.project?.company?.name || ''}
         return res.status(400).json({ error: "Project does not have a contract number" });
       }
 
-      // Gerar o próximo número sequencial do estimate para este projeto
-      let nextEstimateNumber = 1;
-      
-      if (project.estimates.length > 0) {
-        const lastEstimate = project.estimates[0];
-        // Extrair apenas a parte do estimate number (após a barra)
-        const lastEstimateNumber = lastEstimate.number.split('/')[1];
-        if (lastEstimateNumber) {
-          nextEstimateNumber = Number(lastEstimateNumber) + 1;
-        }
-      }
+      // Usar query SQL direta para encontrar o próximo número sequencial
+      // Mais performático e robusto contra concorrência
+      const result = await prisma.$queryRaw<Array<{next_number: number}>>`
+        SELECT COALESCE(
+          MAX(CAST(SUBSTRING(number, LOCATE('/', number) + 1) AS UNSIGNED)), 0
+        ) + 1 as next_number
+        FROM estimate 
+        WHERE projectId = ${projectId} 
+        AND number LIKE ${`${project.contract_number}/%`}
+      `;
+
+      const nextEstimateNumber = result[0]?.next_number || 1;
 
       // Formatar: project_number/estimate_number (ex: 1358/0001)
       const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
