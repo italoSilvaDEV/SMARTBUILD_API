@@ -201,7 +201,7 @@ export class EstimateController {
 
   async create(req: Request, res: Response) {
     try {
-      const { projectId, idPdfProject } = req.body;
+      const { projectId, idPdfProject, preGeneratedNumber } = req.body;
 
       // Validate projectId
       if (!projectId) {
@@ -212,6 +212,8 @@ export class EstimateController {
       if (!idPdfProject) {
         return res.status(400).json({ error: "PDF Project ID is required" });
       }
+
+      console.log('🔢 [EstimateController] Número pré-gerado recebido:', preGeneratedNumber);
 
       // Buscar o projeto com informações mínimas necessárias
       const project = await prisma.project.findUnique({
@@ -244,9 +246,19 @@ export class EstimateController {
         return res.status(404).json({ error: "Project not found" });
       }
 
-      // Gerar o próximo número sequencial
-      const lastNumber = project.estimates[0]?.number || '0000';
-      const nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+      // ✅ USAR NÚMERO PRÉ-GERADO OU GERAR NOVO COMO FALLBACK
+      let nextNumber: string;
+      
+      if (preGeneratedNumber) {
+        console.log('✅ [EstimateController] Usando número pré-gerado:', preGeneratedNumber);
+        nextNumber = preGeneratedNumber;
+      } else {
+        console.log('⚠️ [EstimateController] Número pré-gerado não fornecido, gerando novo...');
+        // Fallback: gerar número sequencial como antes
+        const lastNumber = project.estimates[0]?.number || '0000';
+        nextNumber = String(Number(lastNumber) + 1).padStart(4, '0');
+        console.log('🔄 [EstimateController] Número gerado como fallback:', nextNumber);
+      }
 
       // Buscar contract notes e preparar dados em paralelo
       const [contractNotes] = await Promise.all([
