@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Config {
-  id String @id @default(uuid())
+  id                  String  @id @default(uuid())
   multiCompanyEnabled Boolean @default(false)
 }
 
@@ -243,7 +243,7 @@ model ServiceProject {
   costProject        CostProject[]
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
-  Project            Project?             @relation(fields: [projectId], references: [id])
+  Project            Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId          String?
   UserServiceProject UserServiceProject[]
   Activities         Activities[]
@@ -341,7 +341,7 @@ model ContractProject {
   date_creation      DateTime @default(now())
   date_update        DateTime @updatedAt
 
-  project   Project? @relation(fields: [projectId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String?
 
   @@map("contract_project")
@@ -381,15 +381,15 @@ model PdfProject {
   original_file_name String?
   uri                String?
 
-  project    Project? @relation(fields: [project_id], references: [id])
+  project    Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   project_id String?
 
   // vinculo com estimate
-  estimate    Estimate? @relation(fields: [estimate_id], references: [id])
+  estimate    Estimate? @relation(fields: [estimate_id], references: [id], onDelete: Cascade)
   estimate_id String?
 
   // vinculo com invoice
-  invoice    Invoice? @relation(fields: [invoice_id], references: [id])
+  invoice    Invoice? @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
   invoice_id String?
 
   type_pdf String?
@@ -405,20 +405,20 @@ model PdfProject {
 }
 
 model fildsPdfProject {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   sections    String
   description String? @db.Text
-  
+
   // Relacionamentos
   pdfProject   PdfProject? @relation(fields: [pdfProjectId], references: [id])
   pdfProjectId String?
-  
+
   estimate   Estimate? @relation(fields: [estimateId], references: [id])
   estimateId String?
-  
+
   invoice   Invoice? @relation(fields: [invoiceId], references: [id])
   invoiceId String?
-  
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 }
@@ -455,7 +455,7 @@ model InvoiceCostProject {
   date_update                 DateTime      @updatedAt
   project_id                  String?
   costProject                 CostProject[]
-  project                     Project?      @relation(fields: [project_id], references: [id])
+  project                     Project?      @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
   @@index([project_id], map: "invoice_cost_project_project_id_fkey")
   @@map("invoice_cost_project")
@@ -499,7 +499,7 @@ model Workedhours {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  project    Project? @relation(fields: [project_id], references: [id])
+  project    Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   project_id String?
 
   @@map("worked_hours")
@@ -592,10 +592,10 @@ model Invoice {
   externalDocNumber String?
 
   // Relacionamento com Project e Company
-  project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id])
+  project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
-  company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id])
+  company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id], onDelete: Cascade)
   companyId String?
 
   user_create User?   @relation(fields: [user_id], references: [id])
@@ -690,10 +690,10 @@ model Estimate {
   canceledById       String?
   cancellationReason String?   @db.Text
 
-  project   Project @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
-  canceledBy User? @relation(name: "canceledEstimates", fields: [canceledById], references: [id])
+  canceledBy User? @relation(name: "canceledEstimates", fields: [canceledById], references: [id], onDelete: Cascade)
 
   serviceProjects EstimateServiceProject[]
   timelineEvents  EstimateTimeline[]

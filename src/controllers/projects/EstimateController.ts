@@ -557,50 +557,6 @@ export class EstimateController {
     }
   }
 
-  async estimateToTrash(req: Request, res: Response) {
-    const {
-      id
-    } = req.body
-
-    if (!id) {
-      return res.status(400).json({
-        error: "Estimate id is required"
-      })
-    }
-
-    const estimate = await prisma.estimate.findUnique({
-      where: {
-        id
-      }
-    })
-
-    if (!estimate) {
-      return res.status(404).json({
-        error: "Estimate not found"
-      })
-    }
-
-    try {
-      const estimateUpdate = await prisma.estimate.update({
-        where: {
-          id
-        },
-        data: {
-          status: "trash"
-        }
-      })
-
-      return res.status(200).json({
-        message: "Estimate moved to trash successfully",
-        data: estimateUpdate
-      })
-    } catch (error) {
-      return res.status(500).json({
-        error: "Failed to move estimate to trash"
-      })
-    }
-  }
-
   async addSignature(req: Request, res: Response) {
     try {
       const { id } = req.params;

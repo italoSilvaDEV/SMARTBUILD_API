@@ -32,6 +32,7 @@ const uploadServiceProject = multer(
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
+projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
 projectRoutes.patch("/project/update/start_date", checkToken, projectController.startDateProject);
 projectRoutes.patch("/project/update/deadline", checkToken, projectController.deadlineProject);
 projectRoutes.get(
@@ -64,7 +65,7 @@ projectRoutes.post(
 
 projectRoutes.post(
   "/img-url-service-project",
-  checkToken, 
+  checkToken,
   projectController.imageUrlServiceProject
 );
 

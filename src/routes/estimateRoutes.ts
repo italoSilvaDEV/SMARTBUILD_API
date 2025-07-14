@@ -24,6 +24,5 @@ estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, estimateCont
 estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateController.updateService);
 estimateRoutes.post("/:id/resend", checkToken, estimateController.resendEmail);
 estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), estimateController.sendEmail);
-estimateRoutes.put("/trash", checkToken, estimateController.estimateToTrash);
 
 export { estimateRoutes }; 
