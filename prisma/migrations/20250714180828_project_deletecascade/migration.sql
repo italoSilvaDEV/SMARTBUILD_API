@@ -2,16 +2,16 @@
 ALTER TABLE `contract_project` DROP FOREIGN KEY `contract_project_projectId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `estimate` DROP FOREIGN KEY `Estimate_canceledById_fkey`;
+ALTER TABLE `Estimate` DROP FOREIGN KEY `Estimate_canceledById_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `estimate` DROP FOREIGN KEY `Estimate_projectId_fkey`;
+ALTER TABLE `Estimate` DROP FOREIGN KEY `Estimate_projectId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
+ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
+ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
 
 -- DropForeignKey
 ALTER TABLE `invoice_cost_project` DROP FOREIGN KEY `invoice_cost_project_project_id_fkey`;
