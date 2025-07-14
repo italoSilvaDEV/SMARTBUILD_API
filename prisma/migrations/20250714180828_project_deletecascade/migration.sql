@@ -1,7 +1,4 @@
 -- DropForeignKey
-ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
-
--- DropForeignKey
 ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
 
 -- DropForeignKey
