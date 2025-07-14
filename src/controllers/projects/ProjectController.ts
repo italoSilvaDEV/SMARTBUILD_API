@@ -1232,6 +1232,8 @@ export class ProjectController {
       id
     } = req.params;
 
+    console.log("Apagando projeto de id:", id)
+
     if (!id) {
       return res.status(400).json({
         error: "Project id is required"
