@@ -16,7 +16,7 @@ estimateRoutes.get("/project/:projectId/generate-number", checkToken, estimateCo
 estimateRoutes.get("/global/:companyId/generate-number", checkToken, estimateController.generateGlobalNumber);
 estimateRoutes.get("/:id", estimateController.findById);
 estimateRoutes.put("/:id", checkToken, estimateController.update);
-estimateRoutes.patch("/:id/status",  estimateController.updateStatus);
+estimateRoutes.patch("/:id/status", estimateController.updateStatus);
 estimateRoutes.patch("/:id/sign", estimateController.addSignature);
 estimateRoutes.put("/:id/cancel", checkToken, estimateController.cancel);
 estimateRoutes.post("/:id/service", checkToken, estimateController.addService);
@@ -24,5 +24,6 @@ estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, estimateCont
 estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateController.updateService);
 estimateRoutes.post("/:id/resend", checkToken, estimateController.resendEmail);
 estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), estimateController.sendEmail);
+estimateRoutes.post("/trash", checkToken, estimateController.estimateToTrash);
 
 export { estimateRoutes }; 

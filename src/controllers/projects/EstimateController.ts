@@ -247,20 +247,20 @@ export class EstimateController {
 
       // ✅ USAR NÚMERO PRÉ-GERADO OU GERAR NOVO COMO FALLBACK
       let nextNumber: string;
-      
+
       if (preGeneratedNumber) {
         console.log('✅ [EstimateController] Usando número pré-gerado:', preGeneratedNumber);
         nextNumber = preGeneratedNumber;
       } else {
         console.log('⚠️ [EstimateController] Número pré-gerado não fornecido, gerando novo...');
-        
+
         if (!project.contract_number) {
           return res.status(400).json({ error: "Project does not have a contract number" });
         }
 
         // Fallback: gerar número sequencial no formato correto project_number/estimate_number
         let nextEstimateNumber = 1;
-        
+
         if (project.estimates.length > 0) {
           // Encontrar o maior número de estimate já existente
           const estimateNumbers = project.estimates
@@ -269,7 +269,7 @@ export class EstimateController {
               return parts.length > 1 ? Number(parts[1]) : 0;
             })
             .filter(num => !isNaN(num) && num > 0);
-          
+
           if (estimateNumbers.length > 0) {
             const maxEstimateNumber = Math.max(...estimateNumbers);
             nextEstimateNumber = maxEstimateNumber + 1;
@@ -514,8 +514,6 @@ export class EstimateController {
     }
   }
 
-
-
   async updateStatus(req: Request, res: Response) {
     try {
       const { id } = req.params;
@@ -539,6 +537,7 @@ export class EstimateController {
           user: true
         }
       });
+
       if (status === "rejected") {
         await EstimateController.sendStatusUpdateEmail(
           estimate,
@@ -555,6 +554,50 @@ export class EstimateController {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to update estimate status" });
+    }
+  }
+
+  async estimateToTrash(req: Request, res: Response) {
+    const {
+      id
+    } = req.body
+
+    if (!id) {
+      return res.status(400).json({
+        error: "Estimate id is required"
+      })
+    }
+
+    const estimate = await prisma.estimate.findUnique({
+      where: {
+        id
+      }
+    })
+
+    if (!estimate) {
+      return res.status(404).json({
+        error: "Estimate not found"
+      })
+    }
+
+    try {
+      const estimateUpdate = await prisma.estimate.update({
+        where: {
+          id
+        },
+        data: {
+          status: "trash"
+        }
+      })
+
+      return res.status(200).json({
+        message: "Estimate moved to trash successfully",
+        data: estimateUpdate
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Failed to move estimate to trash"
+      })
     }
   }
 
@@ -691,7 +734,7 @@ export class EstimateController {
       });
 
       const fileHash = crypto.randomBytes(4).toString("hex");
-              const originalFileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
+      const originalFileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
       const newFileName = `${fileHash}-${originalFileName.replace(/\s/g, "")}`;
 
       const putObjectCommand = new PutObjectCommand({
@@ -1476,9 +1519,9 @@ ${estimate.project?.company?.name || ''}
 
       // Gerar o próximo número sequencial do estimate para este projeto
       let nextEstimateNumber = 1;
-      
+
       console.log('🔍 [EstimateController] Estimates existentes:', project.estimates.map(e => e.number));
-      
+
       if (project.estimates.length > 0) {
         // Encontrar o maior número de estimate já existente
         const estimateNumbers = project.estimates
@@ -1487,9 +1530,9 @@ ${estimate.project?.company?.name || ''}
             return parts.length > 1 ? Number(parts[1]) : 0;
           })
           .filter(num => !isNaN(num) && num > 0);
-        
+
         console.log('🔍 [EstimateController] Números extraídos:', estimateNumbers);
-        
+
         if (estimateNumbers.length > 0) {
           const maxEstimateNumber = Math.max(...estimateNumbers);
           nextEstimateNumber = maxEstimateNumber + 1;
@@ -1505,7 +1548,7 @@ ${estimate.project?.company?.name || ''}
       console.log('🔢 [EstimateController] Próximo estimate:', formattedEstimateNumber);
       console.log('🔢 [EstimateController] Número completo:', fullNumber);
 
-      return res.json({ 
+      return res.json({
         number: fullNumber,
         projectId: projectId
       });
@@ -1518,7 +1561,7 @@ ${estimate.project?.company?.name || ''}
   async generateGlobalNumber(req: Request, res: Response) {
     try {
       const { companyId } = req.params;
-      
+
       console.log('🌐 [EstimateController] Chamando generateGlobalNumber para companyId:', companyId);
 
       // Validate companyId
@@ -1568,16 +1611,16 @@ ${estimate.project?.company?.name || ''}
         lastEstimateNumber = Number(parts[0]) || 0;
         console.log('🔍 [EstimateController] Extraindo do estimate:', lastEstimate.number, '→', parts[0], '→', lastEstimateNumber);
       }
-      
+
       const lastProjectNumber = Number(lastProject?.contract_number || '0');
       const highestNumber = Math.max(lastEstimateNumber, lastProjectNumber);
-      
+
       const nextNumber = String(highestNumber + 1).padStart(4, '0');
 
       console.log('✅ [EstimateController] Números comparados - Estimate:', lastEstimateNumber, 'Project:', lastProjectNumber);
       console.log('✅ [EstimateController] Próximo número gerado:', nextNumber);
 
-      return res.json({ 
+      return res.json({
         number: nextNumber,
         companyId: companyId
       });
