@@ -1251,6 +1251,48 @@ export class ProjectController {
     }
 
     try {
+      await prisma.invoiceCostProject.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.serviceProject.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.workedhours.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.pdfProject.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.estimate.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.contractProject.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.invoice.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
       await prisma.project.delete({
         where: { id }
       });
