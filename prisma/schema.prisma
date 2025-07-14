@@ -256,7 +256,7 @@ model Activities {
   id   String @id @default(uuid())
   text String
 
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 
   author   User?   @relation(fields: [authorId], references: [id])
@@ -270,7 +270,7 @@ model ImgServiceProject {
   id               String          @id @default(uuid())
   uri              String          @unique
   date_creation    DateTime        @default(now())
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 }
 
@@ -356,7 +356,7 @@ model ServiceStages {
 
   user             User            @relation(fields: [id_user_update], references: [id])
   id_user_update   String
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 }
 
@@ -364,7 +364,7 @@ model GalleryBefore {
   id               String          @id @default(uuid())
   url              String
   date_creation    DateTime        @default(now())
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 }
 
@@ -372,7 +372,7 @@ model GalleryAfter {
   id               String          @id @default(uuid())
   url              String
   date_creation    DateTime        @default(now())
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 }
 
@@ -410,13 +410,13 @@ model fildsPdfProject {
   description String? @db.Text
 
   // Relacionamentos
-  pdfProject   PdfProject? @relation(fields: [pdfProjectId], references: [id])
+  pdfProject   PdfProject? @relation(fields: [pdfProjectId], references: [id], onDelete: Cascade)
   pdfProjectId String?
 
-  estimate   Estimate? @relation(fields: [estimateId], references: [id])
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId String?
 
-  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String?
 
   date_creation DateTime @default(now())
@@ -472,11 +472,11 @@ model CostProject {
   autorId                 String?
   date_creation           DateTime            @default(now())
   date_update             DateTime            @updatedAt
-  invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id])
+  invoiceCostProject      InvoiceCostProject? @relation(fields: [invoice_cost_project_id], references: [id], onDelete: Cascade)
   invoice_cost_project_id String?
   user                    User?               @relation("userLikedProject", fields: [userId], references: [id])
 
-  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id])
+  ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
 
   @@index([invoice_cost_project_id], map: "cost_project_invoice_cost_project_id_fkey")
@@ -513,7 +513,7 @@ model UserServiceProject {
   user    User   @relation(fields: [user_id], references: [id])
   user_id String
 
-  service_project    ServiceProject @relation(fields: [service_project_id], references: [id])
+  service_project    ServiceProject @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
   service_project_id String
 
   user_attendances UserAttendance[]
@@ -539,7 +539,7 @@ model UserAttendance {
   date                    DateTime           @default(now())
   user                    User               @relation(fields: [user_id], references: [id])
   user_id                 String
-  UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id])
+  UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id], onDelete: Cascade)
   user_service_project_id String
   company                 Company?           @relation(fields: [company_id], references: [id])
   company_id              String?
@@ -563,9 +563,9 @@ model TimeLine {
   date_update          DateTime           @updatedAt
   user                 User               @relation(fields: [user_id], references: [id])
   user_id              String
-  service_project      ServiceProject     @relation(fields: [service_project_id], references: [id])
+  service_project      ServiceProject     @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
   service_project_id   String
-  UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id])
+  UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id], onDelete: Cascade)
   userServiceProjectId String
 }
 
@@ -625,7 +625,7 @@ model InvoiceSendHistory {
 
   // Relacionamento com Invoice
   invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
@@ -672,7 +672,7 @@ model InvoicePayment {
   updatedAt     DateTime @updatedAt
 
   // Relação com Invoice (um pagamento pertence a uma fatura)
-  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
 }
 
@@ -714,14 +714,14 @@ model EstimateTimeline {
   description   String   @db.Text
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-  estimate      Estimate @relation(fields: [estimateId], references: [id])
+  estimate      Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId    String
 }
 
 model EstimateServiceProject {
   id String @id @default(uuid())
 
-  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId String
 
   name        String
@@ -819,7 +819,7 @@ model EstimateEmailLog {
   errorMessage String?  @db.Text
   sentAt       DateTime @default(now())
 
-  estimate   Estimate @relation(fields: [estimateId], references: [id])
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId String
 
   date_creation DateTime @default(now())
@@ -831,7 +831,7 @@ model InvoiceTimeline {
   description   String   @db.Text
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId     String
 }
 
@@ -842,7 +842,7 @@ model InvoiceEmailLog {
   errorMessage String?  @db.Text
   sentAt       DateTime @default(now())
 
-  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String
 
   date_creation DateTime @default(now())
