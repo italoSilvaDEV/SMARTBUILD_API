@@ -1,5 +1,26 @@
 -- DropForeignKey
+ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `invoice_cost_project` DROP FOREIGN KEY `invoice_cost_project_project_id_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_estimate_id_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_invoice_id_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_project_id_fkey`;
+
+-- DropForeignKey
 ALTER TABLE `ServiceProject` DROP FOREIGN KEY `ServiceProject_projectId_fkey`;
+
+-- DropForeignKey
+ALTER TABLE `worked_hours` DROP FOREIGN KEY `worked_hours_project_id_fkey`;
 
 -- AddForeignKey
 ALTER TABLE `ServiceProject` ADD CONSTRAINT `ServiceProject_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
