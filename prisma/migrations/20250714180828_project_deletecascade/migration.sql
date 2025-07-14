@@ -1,22 +1,4 @@
 -- DropForeignKey
-ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
-
--- DropForeignKey
-ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
-
--- DropForeignKey
-ALTER TABLE `invoice_cost_project` DROP FOREIGN KEY `invoice_cost_project_project_id_fkey`;
-
--- DropForeignKey
-ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_estimate_id_fkey`;
-
--- DropForeignKey
-ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_invoice_id_fkey`;
-
--- DropForeignKey
-ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_project_id_fkey`;
-
--- DropForeignKey
 ALTER TABLE `serviceproject` DROP FOREIGN KEY `ServiceProject_projectId_fkey`;
 
 -- AddForeignKey
