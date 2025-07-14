@@ -1,5 +1,5 @@
 -- DropForeignKey
-ALTER TABLE `Contract_project` DROP FOREIGN KEY `contract_project_projectId_fkey`;
+ALTER TABLE `contract_project` DROP FOREIGN KEY `contract_project_projectId_fkey`;
 
 -- DropForeignKey
 ALTER TABLE `Estimate` DROP FOREIGN KEY `Estimate_canceledById_fkey`;
