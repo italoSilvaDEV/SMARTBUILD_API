@@ -2,7 +2,7 @@
 ALTER TABLE `serviceproject` DROP FOREIGN KEY `ServiceProject_projectId_fkey`;
 
 -- AddForeignKey
-ALTER TABLE `ServiceProject` ADD CONSTRAINT `ServiceProject_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `serviceProject` ADD CONSTRAINT `ServiceProject_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `contract_project` ADD CONSTRAINT `contract_project_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
