@@ -1,4 +1,4 @@
-export const invoiceCustom = (name: string, logo: string, code: string, invoiceAmount: string, companyName: string, phone: string) => {
+export const invoiceCustom = (name: string, logo: string, code: string, invoiceAmount: string, companyName: string, phone: string, customBody?: string) => {
     // Formatar o valor para mostrar em dólares
     const formattedValue = invoiceAmount.includes('$') 
         ? invoiceAmount 
@@ -85,9 +85,13 @@ export const invoiceCustom = (name: string, logo: string, code: string, invoiceA
                                         <td align="center" style="padding:20px; margin: 0;">
                                             <div style="font-size:14px;color:#333333;line-height:1.6;text-align:center;max-width:500px;margin:0 auto;">
                                                 <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Hope you're doing well! I am here to inform you that a new invoice for <strong>${formattedValue}</strong> is available for you! 🎉</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">If you have any questions, we're here to help! 😉</p>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>
+                                                ${customBody ? 
+                                                  `<div style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;white-space:pre-wrap;">${customBody}</div>` 
+                                                  : 
+                                                  `<p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Hope you're doing well! I am here to inform you that a new invoice for <strong>${formattedValue}</strong> is available for you! 🎉</p>
+                                                  <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">If you have any questions, we're here to help! 😉</p>
+                                                  <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>`
+                                                }
                                                 <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;"><strong>${companyName}</strong></p>
                                                 ${phone ? `<p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">${phone}</p>` : ''}
                                             </div>

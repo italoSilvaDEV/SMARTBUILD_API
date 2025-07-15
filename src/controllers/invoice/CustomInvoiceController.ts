@@ -227,7 +227,7 @@ export class CustomInvoiceController {
   // enviar o pdf para o cliente atravez de email
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { userId, companyId, idPdfProject } = req.body;
+    const { userId, companyId, idPdfProject, customSubject, customBody } = req.body;
 
     try {
       if (!userId) {
@@ -334,15 +334,18 @@ export class CustomInvoiceController {
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
+      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '', customBody);
 
       const fileName = pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`;
+
+      // Usar subject personalizado se fornecido, senão usar o padrão
+      const emailSubject = customSubject || `Invoice #${invoiceCode} - ${companyName}`;
 
       // Enviar o email com o PDF anexado
       await transporter.sendMail({
         from: SMTP_CONFIG.user,
         to: invoice.project.client.email,
-        subject: `Invoice #${invoiceCode} - ${companyName}`,
+        subject: emailSubject,
         html: emailTemplate,
         attachments: [
           {
