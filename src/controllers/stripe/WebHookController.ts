@@ -72,37 +72,47 @@ export class StripeWebHooksController {
                 console.log("processando pagamento checkout.session.completed");
                 const session = event.data.object as Stripe.Checkout.Session;
 
-                if (
-                    session.mode === "subscription" &&
-                    session.metadata?.planId &&
-                    session.metadata?.companyId
-                ) {
-                    const { planId, companyId } = session.metadata;
-                    console.log("Checkout completado para companyId:", companyId, "planId:", planId);
+                if (session.mode === "subscription") {
+                    // ✅ Sistema interno usa metadata
+                    const { planId, companyId, referralId } = session.metadata || {};
+                    
+                    // ✅ Log separado: Rewardful usa client_reference_id
+                    if (session.client_reference_id) {
+                        console.log('🎯 [Rewardful] Referral ID detectado:', session.client_reference_id);
+                    }
+                    
+                    // ✅ Log separado: Sistema interno usa metadata  
+                    if (referralId && referralId !== session.client_reference_id) {
+                        console.log('📋 [Backup] Referral ID também encontrado nos metadados:', referralId);
+                    }
 
-                    // Atualizar a empresa com o novo plano e allowedEmployees
-                    await prisma.company.update({
-                        where: { id: companyId },
-                        data: { 
-                            planId,
-                            // Verificar se temos allowedEmployees no metadata
-                            ...(session.metadata.allowedEmployees && {
-                                allowedEmployees: parseInt(session.metadata.allowedEmployees)
-                            })
-                        }
-                    });
+                    if (companyId && planId) {
+                        console.log("✅ Checkout completado para companyId:", companyId, "planId:", planId);
 
-                    console.log("✅ Empresa atualizada com novo plano");
+                        // Atualizar a empresa com o novo plano e allowedEmployees
+                        await prisma.company.update({
+                            where: { id: companyId },
+                            data: { 
+                                planId,
+                                // Verificar se temos allowedEmployees no metadata
+                                ...(session.metadata?.allowedEmployees && {
+                                    allowedEmployees: parseInt(session.metadata.allowedEmployees)
+                                })
+                            }
+                        });
 
-                    // Identificar a assinatura Stripe criada por este checkout
-                    const stripeSubscriptionId = typeof session.subscription === "string"
-                        ? session.subscription
-                        : session.subscription?.id;
+                        console.log("✅ Empresa atualizada com novo plano");
 
-                    console.log("✅ Nova assinatura Stripe ID:", stripeSubscriptionId);
+                        // Identificar a assinatura Stripe criada por este checkout
+                        const stripeSubscriptionId = typeof session.subscription === "string"
+                            ? session.subscription
+                            : session.subscription?.id;
 
-                    // NÃO vamos desativar assinaturas antigas aqui
-                    // Isso será feito de forma segura no evento subscription.created
+                        console.log("✅ Nova assinatura Stripe ID:", stripeSubscriptionId);
+
+                        // NÃO vamos desativar assinaturas antigas aqui
+                        // Isso será feito de forma segura no evento subscription.created
+                    }
                 }
             }
 
@@ -261,75 +271,86 @@ export class StripeWebHooksController {
                             ? session.subscription === sub.id
                             : session.subscription.id === sub.id)
                     );
-// paramos aqui 
-                    if (relatedSession && relatedSession.metadata?.companyId) {
-                        console.log("   ✔️  Encontrado companyId na sessão de checkout:", relatedSession.metadata.companyId);
+                    if (relatedSession) {
+                        console.log("   ✔️  Encontrada sessão de checkout relacionada:", relatedSession.id);
 
-                        // Usar o companyId da sessão de checkout
-                        const companyIdFromSession = relatedSession.metadata.companyId;
-
-                        // Atualizar a metadata da assinatura para incluir o companyId
-                        await stripe.subscriptions.update(sub.id, {
-                            metadata: {
-                                ...sub.metadata,
-                                companyId: companyIdFromSession
-                            }
-                        });
-
-                        // Acessando o planId corretamente a partir do price.id
-                        const priceId = sub.items.data[0].price.id;
-
-                        // Buscar o plano baseado no priceId
-                        const plan = await prisma.plan.findFirst({
-                            where: { stripePriceId: priceId },
-                        });
-
-                        if (!plan) {
-                            console.log("   ⚠️  Nenhum plano encontrado com o price.id:", priceId);
-                            return res.json({ received: true });
+                        // ✅ Sistema interno usa metadata
+                        const companyIdFromSession = relatedSession.metadata?.companyId;
+                        
+                        // ✅ Log do Rewardful se existir
+                        if (relatedSession.client_reference_id) {
+                            console.log('🎯 [Rewardful] Referral ID na sessão:', relatedSession.client_reference_id);
                         }
 
-                        console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
+                        if (companyIdFromSession) {
+                            console.log("   ✔️  Encontrado companyId:", companyIdFromSession);
 
-                        // Salvar o stripeCustomerId na tabela Company
-                        const stripeCustomerId = typeof sub.customer === 'string' 
-                            ? sub.customer 
-                            : sub.customer.id;
-                        
-                        console.log("   • Customer ID para salvar:", stripeCustomerId);
-                        
-                        // Atualizar o plano e o stripeCustomerId da empresa
-                        await prisma.company.update({
-                            where: { id: companyIdFromSession },
-                            data: { 
-                                planId: plan.id,
-                                stripeCustomerId: stripeCustomerId,
-                                // Verificar se a sessão tem allowedEmployees no metadata
-                                ...(relatedSession.metadata?.allowedEmployees && {
-                                    allowedEmployees: parseInt(relatedSession.metadata.allowedEmployees)
-                                })
+                            // Atualizar a metadata da assinatura para incluir o companyId
+                            await stripe.subscriptions.update(sub.id, {
+                                metadata: {
+                                    ...sub.metadata,
+                                    companyId: companyIdFromSession
+                                }
+                            });
+
+                            // Acessando o planId corretamente a partir do price.id
+                            const priceId = sub.items.data[0].price.id;
+
+                            // Buscar o plano baseado no priceId
+                            const plan = await prisma.plan.findFirst({
+                                where: { stripePriceId: priceId },
+                            });
+
+                            if (!plan) {
+                                console.log("   ⚠️  Nenhum plano encontrado com o price.id:", priceId);
+                                return res.json({ received: true });
                             }
-                        });
-                        console.log("   ✔️  company.planId atualizado para", plan.id);
-                        console.log("   ✔️  company.stripeCustomerId atualizado para", stripeCustomerId);
 
-                        // Criar assinatura no banco
-                        const newSubscription = await prisma.subscription.create({
-                            data: {
-                                companyId: companyIdFromSession,
-                                planId: plan.id,
-                                startDate: new Date(sub.current_period_start * 1000),
-                                endDate: new Date(sub.current_period_end * 1000),
-                                isActive: true, // Sempre começar como ativa, independente do status no Stripe
-                                stripeSubscriptionId: sub.id,
-                                stripeSubscriptionCanceled: false, // Inicializar como não cancelada
-                                paymentFailed: false, // Inicializar como sem falha de pagamento
-                                stripeDateSubscriptionCanceled: null // Inicializar como não cancelada
-                            }
-                        });
+                            console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
 
-                        console.log("   ✔️  Assinatura criada com sucesso:", newSubscription.id);
-                        return res.json({ received: true });
+                            // Salvar o stripeCustomerId na tabela Company
+                            const stripeCustomerId = typeof sub.customer === 'string' 
+                                ? sub.customer 
+                                : sub.customer.id;
+                            
+                            console.log("   • Customer ID para salvar:", stripeCustomerId);
+                            
+                            // Atualizar o plano e o stripeCustomerId da empresa
+                            await prisma.company.update({
+                                where: { id: companyIdFromSession },
+                                data: { 
+                                    planId: plan.id,
+                                    stripeCustomerId: stripeCustomerId,
+                                    // Verificar se a sessão tem allowedEmployees no metadata
+                                    ...(relatedSession.metadata?.allowedEmployees && {
+                                        allowedEmployees: parseInt(relatedSession.metadata.allowedEmployees)
+                                    })
+                                }
+                            });
+                            console.log("   ✔️  company.planId atualizado para", plan.id);
+                            console.log("   ✔️  company.stripeCustomerId atualizado para", stripeCustomerId);
+
+                            // Criar assinatura no banco
+                            const newSubscription = await prisma.subscription.create({
+                                data: {
+                                    companyId: companyIdFromSession,
+                                    planId: plan.id,
+                                    startDate: new Date(sub.current_period_start * 1000),
+                                    endDate: new Date(sub.current_period_end * 1000),
+                                    isActive: true, // Sempre começar como ativa, independente do status no Stripe
+                                    stripeSubscriptionId: sub.id,
+                                    stripeSubscriptionCanceled: false, // Inicializar como não cancelada
+                                    paymentFailed: false, // Inicializar como sem falha de pagamento
+                                    stripeDateSubscriptionCanceled: null // Inicializar como não cancelada
+                                }
+                            });
+
+                            console.log("   ✔️  Assinatura criada com sucesso:", newSubscription.id);
+                            return res.json({ received: true });
+                        } else {
+                            console.log("   ⚠️  Não foi possível encontrar a sessão relacionada à assinatura");
+                            return res.json({ received: true });
+                        }
                     } else {
                         console.log("   ⚠️  Não foi possível encontrar a sessão relacionada à assinatura");
                         return res.json({ received: true });

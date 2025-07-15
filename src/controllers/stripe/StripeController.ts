@@ -986,7 +986,11 @@ export class StripeController {
 
     async createCheckoutSession(req: Request, res: Response) {
         try {
-            const { planId, companyId } = req.body;
+            const { 
+                planId, 
+                companyId,
+                referralId // ✅ Receber o referral ID do front-end
+            } = req.body;
 
             if (!planId || !companyId) {
                 return res.status(400).json({ error: "IDs do plano e da empresa são obrigatórios" });
@@ -1035,6 +1039,18 @@ export class StripeController {
                 endDate.setDate(endDate.getDate() + plan.validityDuration);
             }
 
+            // ✅ SOLUÇÃO FINAL: Separação de responsabilidades
+            // client_reference_id: APENAS para Rewardful (referral ID)
+            // metadata: Para sistema interno (companyId, planId, etc.)
+            
+            const clientReferenceId = referralId || null; // Apenas referral ID (ou null)
+            
+            if (referralId) {
+                console.log('🎯 [Rewardful] Referral ID enviado para rastreamento:', referralId);
+            } else {
+                console.log('📋 [Info] Nenhum referral ID - checkout direto');
+            }
+
             // Configuração base da sessão de checkout
             const sessionConfig: Stripe.Checkout.SessionCreateParams = {
                 payment_method_types: ['card'],
@@ -1047,8 +1063,9 @@ export class StripeController {
                 mode: 'subscription',
                 success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
                 cancel_url: `${process.env.URL_FRONT}/login`,
-                client_reference_id: companyId,
+                client_reference_id: clientReferenceId, // ✅ APENAS referralId (para Rewardful)
                 metadata: {
+                    // ✅ Sistema interno usa metadata (sem limites de tamanho)
                     planId,
                     companyId,
                     startDate: startDate.toISOString(),
@@ -1059,7 +1076,9 @@ export class StripeController {
                         company.allowedEmployees.toString() : 
                         plan.allowedEmployees !== null ? 
                             plan.allowedEmployees.toString() : 
-                            null
+                            null,
+                    // ✅ Referral ID também no metadata para backup/debugging
+                    ...(referralId && { referralId })
                 }
             };
 
@@ -1072,8 +1091,10 @@ export class StripeController {
             // Criar a sessão de checkout
             const session = await stripe.checkout.sessions.create(sessionConfig);
 
-            // Se a empresa não tinha stripeCustomerId, vamos capturá-lo no webhook
-            // O webhook customer.subscription.created vai associar o cliente à empresa
+            console.log('✅ [StripeController] Sessão de checkout criada com sucesso:', session.id);
+            if (referralId) {
+                console.log('✅ [Rewardful] Referral ID incluído no checkout para rastreamento');
+            }
 
             return res.status(200).json({
                 checkoutUrl: session.url,
