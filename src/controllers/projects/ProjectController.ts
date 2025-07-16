@@ -625,6 +625,7 @@ export class ProjectController {
             id: data.id,
           },
           data: {
+            name: data.name,
             description: data.description,
             hours: data.hours,
             price: data.price,
