@@ -4,13 +4,29 @@ ALTER TABLE `contract_project` DROP FOREIGN KEY `contract_project_projectId_fkey
 -- DropForeignKey
 ALTER TABLE `ServiceProject` DROP FOREIGN KEY `ServiceProject_projectId_fkey`;
 
+-- DropForeignKey
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_project_id_fkey`;
+
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_estimate_id_fkey`;
+ALTER TABLE `pdf_project` DROP FOREIGN KEY `pdf_project_invoice_id_fkey`;
+ALTER TABLE `invoice_cost_project` DROP FOREIGN KEY `invoice_cost_project_project_id_fkey`;
+ALTER TABLE `worked_hours` DROP FOREIGN KEY `worked_hours_project_id_fkey`;
+ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_projectId_fkey`;
+ALTER TABLE `Invoice` DROP FOREIGN KEY `Invoice_companyId_fkey`;
+ALTER TABLE `Estimate` DROP FOREIGN KEY `Estimate_projectId_fkey`;
+ALTER TABLE `Estimate` DROP FOREIGN KEY `Estimate_canceledById_fkey`;
+
+
+
+
+
 -- AddForeignKey
 ALTER TABLE `ServiceProject` ADD CONSTRAINT `ServiceProject_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `contract_project` ADD CONSTRAINT `contract_project_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
+-- AddForeignKey 
 ALTER TABLE `pdf_project` ADD CONSTRAINT `pdf_project_project_id_fkey` FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
