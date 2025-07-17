@@ -16,7 +16,7 @@ estimateRoutes.get("/project/:projectId/generate-number", checkToken, estimateCo
 estimateRoutes.get("/global/:companyId/generate-number", checkToken, estimateController.generateGlobalNumber);
 estimateRoutes.get("/:id", estimateController.findById);
 estimateRoutes.put("/:id", checkToken, estimateController.update);
-estimateRoutes.patch("/:id/status",  estimateController.updateStatus);
+estimateRoutes.patch("/:id/status", estimateController.updateStatus);
 estimateRoutes.patch("/:id/sign", estimateController.addSignature);
 estimateRoutes.put("/:id/cancel", checkToken, estimateController.cancel);
 estimateRoutes.post("/:id/service", checkToken, estimateController.addService);

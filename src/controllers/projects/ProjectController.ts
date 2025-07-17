@@ -625,6 +625,7 @@ export class ProjectController {
             id: data.id,
           },
           data: {
+            name: data.name,
             description: data.description,
             hours: data.hours,
             price: data.price,
@@ -1044,10 +1045,10 @@ export class ProjectController {
         // Se tem formato projeto/estimate, pegar a primeira parte. Se não, pegar o número inteiro
         lastEstimateNumber = Number(parts[0]) || 0;
       }
-      
+
       const lastProjectNumber = Number(lastProject?.contract_number || '0');
       const highestNumber = Math.max(lastEstimateNumber, lastProjectNumber);
-      
+
       const nextNumber = highestNumber + 1;
 
       console.log('✅ [ProjectController] Números comparados - Estimate:', lastEstimateNumber, 'Project:', lastProjectNumber);
@@ -1097,7 +1098,7 @@ export class ProjectController {
     deleteFile(`./public/tmp/service-project/${filePath}`);
     return res.json();
   }
-  
+
   async imageUrlServiceProject(req: Request, res: Response) {
     const { serviceProjectId, url } = req.body;
 
@@ -1228,10 +1229,77 @@ export class ProjectController {
   }
 
   async deleteProject(req: Request, res: Response) {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
+
+    console.log("Apagando projeto de id:", id)
+
+    if (!id) {
+      return res.status(400).json({
+        error: "Project id is required"
+      })
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id }
+    })
+
+    if (!project) {
+      return res.status(404).json({
+        error: "Project not found"
+      })
+    }
+
     try {
-      await prisma.project.delete({ where: { id } });
-      return res.status(204).end();
+      await prisma.invoiceCostProject.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.serviceProject.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.workedhours.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.pdfProject.deleteMany({
+        where: {
+          project_id: id
+        }
+      })
+
+      await prisma.estimate.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.contractProject.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.invoice.deleteMany({
+        where: {
+          projectId: id
+        }
+      })
+
+      await prisma.project.delete({
+        where: { id }
+      });
+      return res.status(200).json({
+        message: "Project deleted successfully",
+      })
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1418,29 +1486,29 @@ export class ProjectController {
       }
       const isMultiCompany = await isMultiCompanyEnabled()
       let user = await prisma.user.findUnique({
-          where: {
-            id: seller_user_id,
-          },
-          select: {
-            office: {
-              select: {
-                name: true,
-              },
+        where: {
+          id: seller_user_id,
+        },
+        select: {
+          office: {
+            select: {
+              name: true,
             },
-            companies: {
-              select: {
-                office: {
-                  select: {
-                    name: true,
-                  },
+          },
+          companies: {
+            select: {
+              office: {
+                select: {
+                  name: true,
                 },
-               
               },
+
             },
           },
-        });
+        },
+      });
 
-     
+
       let projects: any = [];
       if (isMultiCompany && user?.companies.some((x) => x.office.name.toLocaleLowerCase() == "seller") || user?.office.name.toLocaleLowerCase() == "seller") {
         // Buscar os projetos do vendedor
@@ -1805,7 +1873,7 @@ export class ProjectController {
                 },
               },
             },
-          },  
+          },
         },
       });
       if (isMultiCompany && user?.companies.some((x) => x.office.name.toLocaleLowerCase() == "worker") || user?.office.name.toLocaleLowerCase() == "worker") {

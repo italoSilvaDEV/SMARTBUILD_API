@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { UnifiedInvoiceController } from "../controllers/invoice/UnifiedInvoiceController";
 import { checkToken } from "../middlewares/checkToken";
+import { CustomInvoiceController } from "../controllers/invoice/CustomInvoiceController";
 
 const invoiceRoutes = Router();
 const unifiedInvoiceController = new UnifiedInvoiceController();
+const customInvoiceController = new CustomInvoiceController();
 
 // Criar invoice (tipo definido no body)
 invoiceRoutes.post("/invoice/:projectId", checkToken, unifiedInvoiceController.createInvoice.bind(unifiedInvoiceController));
@@ -19,5 +21,8 @@ invoiceRoutes.post("/invoice/:invoiceId/send", checkToken, unifiedInvoiceControl
 
 // Cancelar invoice
 invoiceRoutes.post("/invoice/:invoiceId/cancel", checkToken, unifiedInvoiceController.cancelInvoice.bind(unifiedInvoiceController));
+
+// Deletar invoice
+invoiceRoutes.delete("/invoice/delete/:id", checkToken, customInvoiceController.deleteInvoice.bind(customInvoiceController));
 
 export { invoiceRoutes }; 
