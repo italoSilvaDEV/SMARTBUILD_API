@@ -1368,6 +1368,9 @@ export class UserController {
           }
         }
       });
+
+      console.log("user", user);
+      console.log("user.company", user?.company);
       
       if (!user || !user.company?.id) {
         return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
