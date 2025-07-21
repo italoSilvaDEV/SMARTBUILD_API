@@ -3,7 +3,7 @@ import { compressImage } from "../config/compressImage";
 import { CompanyController } from "../controllers/company/CompanyController";
 import { checkToken } from "../middlewares/checkToken"
 import multer from "multer";
-import uploadConfig from "../config/uploadUtf8"; 
+import uploadConfig from "../config/uploadUtf8";
 
 const companyRoutes = Router()
 
@@ -13,17 +13,16 @@ const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/company"))
 //criar
 companyRoutes.post("/company",
     // checkToken,
-    uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.create)
 
 companyRoutes.post("/company/master",
-     checkToken,
+    checkToken,
     uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.createAccountByMaster)
 
-companyRoutes.put( 
+companyRoutes.put(
     "/company/update/:id",
     checkToken,
     uploadPhoto.single("avatar"), // Handles the file upload and stores it temporarily    
@@ -44,7 +43,7 @@ companyRoutes.put('/company/:companyId/notes/:noteId', checkToken, Company.updat
 companyRoutes.delete('/company/:companyId/notes/:noteId', checkToken, Company.deleteNote);
 companyRoutes.get('/company/:companyId/notes', checkToken, Company.listNotes);
 
-companyRoutes.get("/company/proxy/image",  Company.proxyImage);
+companyRoutes.get("/company/proxy/image", Company.proxyImage);
 
 // Proxy de imagem por URI
 companyRoutes.get("/service/proxy/image-by-uri", Company.proxyImageByUri);
@@ -58,4 +57,4 @@ companyRoutes.put(
     Company.updateCompanyAndUser
 );
 
-export {companyRoutes}
+export { companyRoutes }

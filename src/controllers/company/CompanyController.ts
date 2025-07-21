@@ -20,84 +20,40 @@ export class CompanyController {
         deleteFile(`./public/tmp/company/${file}`);
         deleteFile(`./public/tmp/company/${requestFile}`);
     }
-    async create(req: Request, res: Response) {
-        console.log("1. Iniciando create da company");
-        console.log("2. Request file:", req.file);
-        console.log("3. Request body:", req.body);
 
+    async create(req: Request, res: Response) {
         function validateNewUser(data: INewCompany): string | null {
-            console.log("4. Validando dados do usuário:", data);
             if (!data.company_name) return "Company name is mandatory";
             if (!data.name) return "Name is required";
             if (!data.email) return "Email is required";
-            if (!data.document) return "Document is required";
             if (!data.password) return "Password is required";
             return null;
         }
 
-        // Verificar se existe arquivo antes de tentar processar
-        if (!req.file) {
-            console.log("5. Erro: Nenhum arquivo foi enviado");
-            return res.status(400).json({ error: "Avatar file is required" });
-        }
-
-        const filePath = req.file?.filename?.split(".")[0] + ".webp";
-        console.log("6. FilePath construído:", filePath);
-        console.log("7. Caminho completo:", `./public/tmp/company/${filePath}`);
-
-        const s3Bucket = process.env.AMAZON_S3_BUCKET!;
-        console.log("8. S3 Bucket:", s3Bucket);
-
         try {
-            console.log("9. Iniciando upload para S3");
-            const fileName = await uploadImageWebpToS3(`./public/tmp/company/${filePath}`, s3Bucket);
-            console.log("10. Upload concluído, fileName:", fileName);
-
             const errors = validationResult(req);
-            console.log("11. Erros de validação:", errors.array());
 
             if (!errors.isEmpty()) {
-                console.log("12. Encontrados erros de validação");
-                this.deleteFiles(
-                    req.file?.filename?.split(".")[0] + ".webp",
-                    req.file?.filename
-                );
                 return res.status(400).json({ errors: errors.array() });
             }
 
             const data: INewCompany = req.body;
-            console.log("13. Dados da company:", data);
-
             const validationError = validateNewUser(data);
-            console.log("14. Erro de validação do usuário:", validationError);
 
             if (validationError) {
-                console.log("15. Erro na validação dos dados do usuário");
-                this.deleteFiles(
-                    req.file?.filename?.split(".")[0] + ".webp",
-                    req.file?.filename
-                );
                 return res.status(400).json({ error: validationError });
             }
 
-            console.log("16. Verificando email duplicado");
             const userExists = await prisma.user.findUnique({
                 where: { email: data.email },
             });
-            console.log("17. Usuário existente:", userExists);
 
             if (userExists) {
-                console.log("18. Email já registrado");
-                this.deleteFiles(
-                    req.file?.filename?.split(".")[0] + ".webp",
-                    req.file?.filename
-                );
                 return res
                     .status(400)
                     .json({ error: "Email has already been registered in the system" });
             }
 
-            console.log("22. Buscando cargo de administrador");
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
@@ -105,25 +61,13 @@ export class CompanyController {
                     }
                 }
             });
-            console.log("23. Cargo encontrado:", office);
 
-            // Criptografar a senha fornecida pelo usuário
-            // Verificar se a senha é um array e usar o primeiro elemento
             const passwordToHash = Array.isArray(data.password) ? data.password[0] : data.password;
-            console.log("24. Tipo da senha:", typeof passwordToHash);
             const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
-            console.log("24. Senha criptografada");
 
-            // era pra ser enviado com email a url logo como nao tem mais email nao precisa
-            // console.log("26. Gerando URL presigned para logo");
-            // const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
-            // console.log("27. URL do logo:", urlLogo);
-
-            console.log("29. Criando company no banco");
             const company = await prisma.company.create({
                 data: {
                     name: data.company_name,
-                    avatar: String(fileName),
                     extraEmployees: data.extraEmployees ?
                         (typeof data.extraEmployees === 'string' ?
                             parseInt(data.extraEmployees) :
@@ -131,24 +75,20 @@ export class CompanyController {
                         null
                 }
             });
-            console.log("30. Company criada:", company);
 
-            console.log("31. Criando usuário no banco");
             const isMultiCompany = await isMultiCompanyEnabled()
             if (isMultiCompany) {
                 const user = await prisma.user.create({
                     data: {
-                        avatar: String(fileName),
                         name: data.name,
                         email: data.email,
-                        document: data.document,
-                        phone: data.phone,
-                        city_and_state: data.city_and_state,
+                        document: null,
+                        phone: null,
+                        city_and_state: null,
                         rules: JSON.stringify(data.rules) || {},
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
-
                     },
                 });
                 await prisma.userCompany.create({
@@ -162,12 +102,11 @@ export class CompanyController {
             } else {
                 await prisma.user.create({
                     data: {
-                        avatar: String(fileName),
                         name: data.name,
                         email: data.email,
-                        document: data.document,
-                        phone: data.phone,
-                        city_and_state: data.city_and_state,
+                        document: null,
+                        phone: null,
+                        city_and_state: null,
                         rules: JSON.stringify(data.rules) || {},
                         office_id: String(office?.id),
                         password: hashedPassword,
@@ -176,10 +115,6 @@ export class CompanyController {
                     },
                 });
             }
-            console.log("32. Usuário criado");
-
-            console.log("33. Deletando arquivo temporário");
-            deleteFile(`./public/tmp/company/${req.file?.filename}`);
 
             return res.status(201).json(company);
         } catch (error: any) {
