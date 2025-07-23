@@ -46,7 +46,8 @@ export class CreateCategoryController {
                 const category = await prisma.category.findFirst({
                     where: {
                         category_name: category_name,
-                        type_category: type_category
+                        type_category: type_category,
+                        company_id: company_id
                     }
                 });
 
