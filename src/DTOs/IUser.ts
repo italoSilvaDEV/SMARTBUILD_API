@@ -42,7 +42,7 @@ export interface INewCompany {
   avatar?: string;
   name: string;
   email: string;
-  document: string;
+  document?: string;
   phone?: string;
   city_and_state?: string;
   rules?: JSON;
