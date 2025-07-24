@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { prisma } from "../../utils/prisma";
+import { prisma } from "../../../utils/prisma";
 import axios from "axios";
-import { refreshAccessToken } from "./QuickBooksTokenService";
-import { oauthClient } from "./QuickBooksOAuthClient";
+
+import { oauthClient } from "../util/QuickBooksOAuthClient";
+import { refreshAccessToken } from "../util/QuickBooksTokenService";
 
 // Defina a interface para os itens da fatura
 interface InvoiceLineItem {

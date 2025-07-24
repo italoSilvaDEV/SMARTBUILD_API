@@ -1,6 +1,7 @@
-import { prisma } from "../../utils/prisma";
+
 import axios from "axios";
 import querystring from "querystring";
+import { prisma } from "../../../utils/prisma";
 
 export async function refreshAccessToken(refreshToken: string, userId: string) {
   try {

@@ -401,7 +401,6 @@ export class CompanyController {
         }
     }
 
-
     async updateCompanyData(req: Request, res: Response): Promise<Response> {
         const { id } = req.params;
         const {

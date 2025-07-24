@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { StripeController } from "../stripe/StripeController";
-import { QuickBooksInvoiceController } from "../quickbooks/QuickBooksInvoiceController";
+import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import { CustomInvoiceController } from "./CustomInvoiceController";
 import { prisma } from "../../utils/prisma";
 
