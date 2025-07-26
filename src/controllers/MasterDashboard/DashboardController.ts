@@ -8,10 +8,16 @@ export class DashboardController {
             const { year } = request.query;
             const selectedYear = year ? parseInt(year as string) : new Date().getFullYear();
 
+            // Buscar total de usuários clientes (usuários que têm empresa associada e office Administrator)
             const clients = await prisma.user.findMany({
                 where: {
                     company_id: {
                         not: null
+                    },
+                    office: {
+                        name: {
+                            equals: "Administrator"
+                        }
                     }
                 },
                 select: {
@@ -44,10 +50,16 @@ export class DashboardController {
 
             const permissionsGroups = await prisma.permissionGroup.findMany()
 
+            // Buscar usuários clientes criados no ano especificado e calcular dados cumulativos
             const clientsData = await prisma.user.findMany({
                 where: {
                     company_id: {
                         not: null
+                    },
+                    office: {
+                        name: {
+                            equals: "Administrator"
+                        }
                     },
                     date_creation: {
                         gte: new Date(`${selectedYear}-01-01`),
@@ -67,6 +79,11 @@ export class DashboardController {
                 where: {
                     company_id: {
                         not: null
+                    },
+                    office: {
+                        name: {
+                            equals: "Administrator"
+                        }
                     },
                     date_creation: {
                         lt: new Date(`${selectedYear}-01-01`)
@@ -99,6 +116,11 @@ export class DashboardController {
                 where: {
                     company_id: {
                         not: null
+                    },
+                    office: {
+                        name: {
+                            equals: "Administrator"
+                        }
                     }
                 },
                 select: {
@@ -126,7 +148,7 @@ export class DashboardController {
             const formattedRecentClients = await Promise.all(
                 recentClients.map(async (client) => {
                     let avatarUrl = null;
-
+                    
                     if (client.avatar) {
                         try {
                             avatarUrl = await getPresignedUrl(client.avatar);
@@ -176,8 +198,8 @@ export class DashboardController {
             // Formatar dados da distribuição de planos com percentuais
             const formattedPlansDistribution = plansDistribution.map(planDist => {
                 const planDetail = plansDetails.find(p => p.id === planDist.planId);
-                const percentage = totalActiveSubscriptions > 0
-                    ? Math.round((planDist._count.planId / totalActiveSubscriptions) * 100)
+                const percentage = totalActiveSubscriptions > 0 
+                    ? Math.round((planDist._count.planId / totalActiveSubscriptions) * 100) 
                     : 0;
 
                 return {
