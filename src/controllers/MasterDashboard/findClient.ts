@@ -24,15 +24,20 @@ export class FindClientById {
                         select: {
                             id: true
                         }
-                    },
-                    Subscription: {
-                        include: {
-                            plan: true
-                        },
-                        orderBy: {
-                            startDate: 'desc'
-                        }
                     }
+                }
+            });
+
+            // Buscar TODAS as assinaturas da empresa separadamente (ativas e inativas)
+            const allSubscriptions = await prisma.subscription.findMany({
+                where: {
+                    companyId: companyId
+                },
+                include: {
+                    plan: true
+                },
+                orderBy: {
+                    startDate: 'desc'
                 }
             });
 
@@ -69,7 +74,7 @@ export class FindClientById {
                 total: company.User.length
             };
 
-            const totalSpent = company.Subscription.reduce((total, subscription) => {
+            const totalSpent = allSubscriptions.reduce((total, subscription) => {
                 const price = subscription.plan?.price ? Number(subscription.plan.price) : 0;
                 const startDate = new Date(subscription.startDate);
                 const endDate = subscription.isActive ? new Date() : new Date(subscription.endDate);
@@ -96,7 +101,7 @@ export class FindClientById {
                 return total + totalForSubscription;
             }, 0);
 
-            const activeSubscription = company.Subscription.find(sub => sub.isActive);
+            const activeSubscription = allSubscriptions.find(sub => sub.isActive);
 
             let currentPlan = null;
             if (activeSubscription) {
@@ -109,7 +114,7 @@ export class FindClientById {
                 };
             }
 
-            const subscriptionHistory = company.Subscription.map(subscription => {
+            const subscriptionHistory = allSubscriptions.map(subscription => {
                 const startDate = new Date(subscription.startDate);
                 const endDate = new Date(subscription.endDate);
                 const isActive = subscription.isActive;
