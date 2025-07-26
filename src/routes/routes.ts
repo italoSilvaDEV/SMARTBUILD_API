@@ -5,12 +5,13 @@ import { catalogRoutes } from './catalogRoutes'
 import { projectRoutes } from './projectRoutes'
 import { clientRoutes } from './clientRoutes'
 import { workedRours } from './workedHours'
-import {serviceStageRoutes} from './serviceStagesRoutes'
+import { serviceStageRoutes } from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { businessDashboard } from './businessDashboardRoutes'
+import { dashboardMasterRoutes } from './dashboardMasterRoutes'
 import { companyRoutes } from './companyRoutes'
 import { planRoutes } from './planRoutes'
 import { permissionRoutes } from './permissionRoutes'
@@ -40,12 +41,12 @@ router.get('/config', async (req, res) => {
   const config = await isMultiCompanyEnabled();
   res.json({ config })
 })
- router.post(
-    "/upload-image",
-    checkToken,
-    uploadImageGeneric.single("file"),
-    uploadImageController.uploadImage
-  );
+router.post(
+  "/upload-image",
+  checkToken,
+  uploadImageGeneric.single("file"),
+  uploadImageController.uploadImage
+);
 // Importante: Colocar o webhook antes dos middlewares JSON
 router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
@@ -62,6 +63,7 @@ router.use(stripeRoutes)
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
 router.use("/business-dashboard", businessDashboard);
+router.use(dashboardMasterRoutes);
 router.use(invoiceRoutes);
 router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
