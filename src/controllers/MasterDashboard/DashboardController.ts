@@ -129,6 +129,7 @@ export class DashboardController {
                     avatar: true,
                     company: {
                         select: {
+                            id: true,
                             name: true,
                             Project: {
                                 select: {
