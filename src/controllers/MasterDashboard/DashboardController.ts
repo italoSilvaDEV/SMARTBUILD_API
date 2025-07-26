@@ -148,7 +148,7 @@ export class DashboardController {
             const formattedRecentClients = await Promise.all(
                 recentClients.map(async (client) => {
                     let avatarUrl = null;
-                    
+
                     if (client.avatar) {
                         try {
                             avatarUrl = await getPresignedUrl(client.avatar);
@@ -198,8 +198,8 @@ export class DashboardController {
             // Formatar dados da distribuição de planos com percentuais
             const formattedPlansDistribution = plansDistribution.map(planDist => {
                 const planDetail = plansDetails.find(p => p.id === planDist.planId);
-                const percentage = totalActiveSubscriptions > 0 
-                    ? Math.round((planDist._count.planId / totalActiveSubscriptions) * 100) 
+                const percentage = totalActiveSubscriptions > 0
+                    ? Math.round((planDist._count.planId / totalActiveSubscriptions) * 100)
                     : 0;
 
                 return {
