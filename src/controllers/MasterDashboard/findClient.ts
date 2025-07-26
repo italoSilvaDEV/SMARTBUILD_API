@@ -28,16 +28,14 @@ export class FindClientById {
                 }
             });
 
-            // Buscar TODAS as assinaturas da empresa separadamente (ativas e inativas)
-            const allSubscriptions = await prisma.subscription.findMany({
+            // Buscar assinatura ativa atual
+            const activeSubscription = await prisma.subscription.findFirst({
                 where: {
-                    companyId: companyId
+                    companyId: companyId,
+                    isActive: true
                 },
                 include: {
                     plan: true
-                },
-                orderBy: {
-                    startDate: 'desc'
                 }
             });
 
@@ -74,34 +72,7 @@ export class FindClientById {
                 total: company.User.length
             };
 
-            const totalSpent = allSubscriptions.reduce((total, subscription) => {
-                const price = subscription.plan?.price ? Number(subscription.plan.price) : 0;
-                const startDate = new Date(subscription.startDate);
-                const endDate = subscription.isActive ? new Date() : new Date(subscription.endDate);
-
-                // Calcular diferença em meses
-                const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 +
-                    (endDate.getMonth() - startDate.getMonth()) + 1;
-
-                // Para planos mensais, multiplicar pelo número de meses
-                // Para outros tipos, considerar apenas o preço unitário
-                const validityType = subscription.plan?.validityType;
-                let totalForSubscription = 0;
-
-                if (validityType === 'MONTHLY') {
-                    totalForSubscription = price * Math.max(1, months);
-                } else if (validityType === 'ANNUAL') {
-                    const years = Math.ceil(months / 12);
-                    totalForSubscription = price * years;
-                } else {
-                    // Para FREE, CUSTOM, DAYS
-                    totalForSubscription = price;
-                }
-
-                return total + totalForSubscription;
-            }, 0);
-
-            const activeSubscription = allSubscriptions.find(sub => sub.isActive);
+            
 
             let currentPlan = null;
             if (activeSubscription) {
@@ -114,34 +85,13 @@ export class FindClientById {
                 };
             }
 
-            const subscriptionHistory = allSubscriptions.map(subscription => {
-                const startDate = new Date(subscription.startDate);
-                const endDate = new Date(subscription.endDate);
-                const isActive = subscription.isActive;
-
-                // Formatar o mês de referência
-                const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-                const month = `${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`;
-
-                return {
-                    id: subscription.id,
-                    planName: subscription.plan?.name || 'Plano não encontrado',
-                    price: subscription.plan?.price ? Number(subscription.plan.price) : 0,
-                    month: month,
-                    startDate: subscription.startDate,
-                    endDate: subscription.endDate,
-                    status: isActive ? 'Active' : 'Expired',
-                    isActive: isActive,
-                    validityType: subscription.plan?.validityType || 'Unknown'
-                };
-            });
+            
 
             return response.json({
                 company: {
                     id: company.id,
                     name: company.name,
-                    avatar: companyAvatarUrl,
-                    totalSpent: totalSpent
+                    avatar: companyAvatarUrl
                 },
                 clientDetails: {
                     name: adminUser.name,
@@ -154,8 +104,7 @@ export class FindClientById {
                     totalProjects: company.Project.length,
                     totalInvoices: company.invoices.length
                 },
-                currentPlan: currentPlan,
-                subscriptionHistory: subscriptionHistory
+                currentPlan: currentPlan
             });
 
         } catch (error) {
