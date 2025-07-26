@@ -164,6 +164,7 @@ export class DashboardController {
                         name: client.name,
                         avatar: avatarUrl,
                         companyName: client.company?.name || 'Sem empresa',
+                        companyId: client.company?.id || null,
                         projectsCount: client.company?.Project?.length || 0
                     };
                 })
