@@ -516,15 +516,10 @@ export class CompanyController {
         try {
             const response = await prisma.company.findMany({
                 include: {
-                    User: {
-                        where: {
-                            office: {
-                                name: {
-                                    equals: "Administrator"
-                                }
-                            }
-                        },
-                        take: 1
+                    userCompanies: {
+                        include: {
+                            user: true
+                        }
                     }
                 }
             });
@@ -534,9 +529,9 @@ export class CompanyController {
                 response.map(async (company) => ({
                     ...company,
                     avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
-                    User: company.User[0] ? {
-                        ...company.User[0],
-                        avatar: company.User[0]?.avatar ? await getPresignedUrl(company.User[0].avatar) : null
+                    User: company.userCompanies[0] ? {
+                        ...company.userCompanies[0].user,
+                        avatar: company.userCompanies[0].user?.avatar ? await getPresignedUrl(company.userCompanies[0].user.avatar) : null
                     } : null
                 }))
             );
