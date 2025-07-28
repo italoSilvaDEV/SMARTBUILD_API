@@ -517,7 +517,18 @@ export class CompanyController {
             const response = await prisma.company.findMany({
                 include: {
                     userCompanies: {
-                        include: {
+                        where: {
+                            user: {
+                                is: {
+                                    office: {
+                                        is: {
+                                            name: "Administrator"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        select: {
                             user: true
                         }
                     }
