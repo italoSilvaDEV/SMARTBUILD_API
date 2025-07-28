@@ -11,8 +11,8 @@ export class DashboardController {
             // Buscar total de usuários clientes (usuários que têm empresa associada e office Administrator)
             const clients = await prisma.user.findMany({
                 where: {
-                    company_id: {
-                        not: null
+                    companies: {
+                        some: {}
                     },
                     office: {
                         name: {
@@ -22,9 +22,13 @@ export class DashboardController {
                 },
                 select: {
                     id: true,
-                    company: {
+                    companies: {
                         select: {
-                            name: true
+                            company: {
+                                select: {
+                                    name: true
+                                }
+                            }
                         }
                     }
                 }
@@ -53,8 +57,8 @@ export class DashboardController {
             // Buscar usuários clientes criados no ano especificado e calcular dados cumulativos
             const clientsData = await prisma.user.findMany({
                 where: {
-                    company_id: {
-                        not: null
+                    companies: {
+                        some: {}
                     },
                     office: {
                         name: {
@@ -114,8 +118,8 @@ export class DashboardController {
             // Buscar os 5 clientes mais recentes
             const recentClients = await prisma.user.findMany({
                 where: {
-                    company_id: {
-                        not: null
+                    companies: {
+                        some: {}
                     },
                     office: {
                         name: {
@@ -127,13 +131,17 @@ export class DashboardController {
                     id: true,
                     name: true,
                     avatar: true,
-                    company: {
+                    companies: {
                         select: {
-                            id: true,
-                            name: true,
-                            Project: {
+                            company: {
                                 select: {
-                                    id: true
+                                    id: true,
+                                    name: true,
+                                    Project: {
+                                        select: {
+                                            id: true
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -163,9 +171,9 @@ export class DashboardController {
                         id: client.id,
                         name: client.name,
                         avatar: avatarUrl,
-                        companyName: client.company?.name || 'Sem empresa',
-                        companyId: client.company?.id || null,
-                        projectsCount: client.company?.Project?.length || 0
+                        companyName: client.companies[0].company.name || 'Sem empresa',
+                        companyId: client.companies[0].company.id || null,
+                        projectsCount: client.companies[0].company.Project?.length || 0
                     };
                 })
             );
