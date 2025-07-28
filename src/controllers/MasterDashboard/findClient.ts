@@ -10,9 +10,13 @@ export class FindClientById {
             const company = await prisma.company.findUnique({
                 where: { id: companyId },
                 include: {
-                    User: {
+                    userCompanies: {
                         include: {
-                            office: true
+                            user: {
+                                include: {
+                                    office: true
+                                }
+                            },
                         }
                     },
                     Project: {
@@ -45,8 +49,8 @@ export class FindClientById {
                 });
             }
 
-            const adminUser = company.User.find(user =>
-                user.office?.name === "Administrator"
+            const adminUser = company.userCompanies.find(user =>
+                user.user.office?.name === "Administrator"
             );
 
             if (!adminUser) {
@@ -66,13 +70,13 @@ export class FindClientById {
             }
 
             const usersByRole = {
-                admin: company.User.filter(user => user.office?.name === "Administrator").length,
-                worker: company.User.filter(user => user.office?.name === "Worker").length,
-                seller: company.User.filter(user => user.office?.name === "Seller").length,
-                total: company.User.length
+                admin: company.userCompanies.filter(user => user.user.office?.name === "Administrator").length,
+                worker: company.userCompanies.filter(user => user.user.office?.name === "Worker").length,
+                seller: company.userCompanies.filter(user => user.user.office?.name === "Seller").length,
+                total: company.userCompanies.length
             };
 
-            
+
 
             let currentPlan = null;
             if (activeSubscription) {
@@ -85,7 +89,7 @@ export class FindClientById {
                 };
             }
 
-            
+
 
             return response.json({
                 company: {
@@ -94,10 +98,10 @@ export class FindClientById {
                     avatar: companyAvatarUrl
                 },
                 clientDetails: {
-                    name: adminUser.name,
-                    email: adminUser.email,
-                    phone: adminUser.phone,
-                    cityAndState: adminUser.city_and_state
+                    name: adminUser.user.name,
+                    email: adminUser.user.email,
+                    phone: adminUser.user.phone,
+                    cityAndState: adminUser.user.city_and_state
                 },
                 usersData: usersByRole,
                 overview: {
