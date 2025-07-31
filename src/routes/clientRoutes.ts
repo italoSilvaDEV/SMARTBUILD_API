@@ -14,7 +14,7 @@ const getClientFinancialDetailsController = new GetClientFinancialDetailsControl
 
 clientRoutes.post('/client', checkToken, createClientController.handle);
 clientRoutes.put('/client/:id', checkToken, updateClientController.handle);
-clientRoutes.get('/clients', checkToken, listClientController.handle);
+clientRoutes.get('/clients', checkToken, listClientController.handleNewClients);
 clientRoutes.get('/client/financial/:email', checkToken, getClientFinancialDetailsController.handle);
 
 export { clientRoutes };

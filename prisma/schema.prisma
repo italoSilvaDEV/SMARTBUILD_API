@@ -334,6 +334,8 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
+  // tenho que colocar o radio radius mudar script para colocar radio
+  radius           Float?
   location String? @db.Text
   log String? @db.VarChar(191)
   lat String? @db.VarChar(191)
@@ -452,7 +454,6 @@ model Client {
   company          Company?        @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
-  // CompanyClient    CompanyClient[]
   @@unique([email, company_id])
 }
 

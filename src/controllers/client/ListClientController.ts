@@ -3,10 +3,11 @@ import { prisma } from "../../utils/prisma";
 import { Prisma } from "@prisma/client";
 
 export class ListClientController {
+    // ANTIGO
     async handle(req: Request, res: Response) {
         try {
             const { company_id, search = "" } = req.query;
-            
+
             if (!company_id) {
                 return res.status(400).json({ error: "Company ID is required" });
             }
@@ -114,6 +115,100 @@ export class ListClientController {
                 duplicatesFound: totalCount !== rawCount
             });
 
+        } catch (error) {
+            console.error("Error listing clients:", error);
+            if (error instanceof Error) {
+                return res.status(500).json({ error: error.message });
+            }
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+    // ATUAL
+    async handleNewClients(req: Request, res: Response) {
+        try {
+            const { company_id, search = "" } = req.query;
+
+            if (!company_id) {
+                return res.status(400).json({ error: "Company ID is required" });
+            }
+
+            // Datas do mês atual
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59
+            );
+
+            // Filtro de busca com tipagem explícita
+            const searchFilter: Prisma.ClientWhereInput = search
+                ? {
+                    OR: [
+                        {
+                            name: {
+                              contains: String(search),
+                            },
+                          },
+                          {
+                            email: {
+                              contains: String(search),
+                            },
+                          },
+                          {
+                            location: {
+                              contains: String(search),
+                            },
+                          },
+                    ],
+                }
+                : {};
+
+            // Buscar clientes
+            const clientsQuery = await prisma.client.findMany({
+                where: {
+                    company_id: String(company_id),
+                    ...searchFilter,
+                },
+                orderBy: [{ date_creation: "desc" }, { name: "asc" }],
+            });
+
+            // Contagem total
+            const totalCount = await prisma.client.count({
+                where: {
+                    company_id: String(company_id),
+                    ...searchFilter,
+                },
+            });
+
+            // Contagem de novos clientes neste mês
+            const newClientsThisMonth = await prisma.client.count({
+                where: {
+                    company_id: String(company_id),
+                    date_creation: {
+                        gte: startOfMonth,
+                        lte: endOfMonth,
+                    },
+                },
+            });
+
+            // Formatar resposta
+            const formattedClients = clientsQuery.map(({ id, name, email, phone }) => ({
+                id,
+                name,
+                email,
+                phone,
+            }));
+
+            return res.json({
+                total: totalCount,
+                totalCurrentMonth: newClientsThisMonth,
+                clients: formattedClients,
+                duplicatesFound: false,
+            });
         } catch (error) {
             console.error("Error listing clients:", error);
             if (error instanceof Error) {

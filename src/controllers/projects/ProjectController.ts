@@ -988,23 +988,46 @@ export class ProjectController {
       // Set default values for optional fields
       const price = data.price || 0;
       const status_project = data.status_project || "Pending";
-      
 
-      const result = await prisma.client.create({
-        data: {
-          name: data.client.name,
-          email: data.client.email,
-          document: data.client.document,
-          phone: data.client.phone,
-          location: data.client.location,
-          birth_date: data.client.birth_date,
-          lat: data.client.lat,
-          log: data.client.log,
-          radius: Number(data.client.radius),
-          company_id: data.company_id,
+      let client = await prisma.client.findUnique({
+        where: {
+          email_company_id: {
+            email: data.client.email,
+            company_id: data.company_id,
+          },
         },
       });
 
+      if (client) {
+        // Cliente já existe → atualizar apenas os dados básicos
+        client = await prisma.client.update({
+          where: { id: client.id },
+          data: {
+            name: data.client.name,
+            document: data.client.document,
+            phone: data.client.phone,
+            birth_date: data.client.birth_date,
+            // NÃO atualizar lat, log, radius aqui!
+          },
+        });
+      } else {
+        //  Cliente novo → criar incluindo lat, log, radius
+        client = await prisma.client.create({
+          data: {
+            name: data.client.name,
+            email: data.client.email,
+            document: data.client.document,
+            phone: data.client.phone,
+            birth_date: data.client.birth_date,
+            location: data.client.location,
+            lat: data.client.lat,
+            log: data.client.log,
+            radius: data.client.radius ? Number(data.client.radius) : null,
+            company_id: data.company_id,
+          },
+        });
+      }
+      
       // 🔄 USAR O SISTEMA DE NUMERAÇÃO GLOBAL DO ESTIMATE
       // Buscar o último estimate da empresa para sincronizar numeração
       const lastEstimate = await prisma.estimate.findFirst({
@@ -1061,11 +1084,15 @@ export class ProjectController {
           seller_user_id: data.seller_user_id,
           price: price,
           status_project: status_project,
-          client_id: result.id,
+          client_id: client.id,
           start_date: data.client.start_date,
           deadline: data.client.deadline,
           company_id: data.company_id,
           contract_number: nextNumber, // Usar número sincronizado
+          location: data.client.location,
+          lat: data.client.lat,
+          log: data.client.log,
+          radius: data.client.radius ? Number(data.client.radius) : null,
         },
       });
 
