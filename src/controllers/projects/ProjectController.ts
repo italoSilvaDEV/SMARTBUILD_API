@@ -988,6 +988,7 @@ export class ProjectController {
       // Set default values for optional fields
       const price = data.price || 0;
       const status_project = data.status_project || "Pending";
+      
 
       const result = await prisma.client.create({
         data: {

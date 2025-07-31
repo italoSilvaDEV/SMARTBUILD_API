@@ -3,13 +3,13 @@ ALTER TABLE `project` ADD COLUMN `lat` VARCHAR(191) NULL,
     ADD COLUMN `location` TEXT NULL,
     ADD COLUMN `log` VARCHAR(191) NULL;
 
--- CreateTable
-CREATE TABLE `CompanyClient` (
-    `clientId` VARCHAR(191) NOT NULL,
-    `companyId` VARCHAR(191) NOT NULL,
+-- -- CreateTable
+-- CREATE TABLE `CompanyClient` (
+--     `clientId` VARCHAR(191) NOT NULL,
+--     `companyId` VARCHAR(191) NOT NULL,
 
-    PRIMARY KEY (`clientId`, `companyId`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--     PRIMARY KEY (`clientId`, `companyId`)
+-- ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- -- CreateTable
 -- CREATE TABLE `sync_preferences` (
