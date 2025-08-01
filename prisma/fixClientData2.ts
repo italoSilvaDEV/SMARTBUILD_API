@@ -40,8 +40,16 @@ class Mysql {
       await conn.execute(
         `UPDATE \`${this.config.database}\`.project p
          JOIN \`${this.config.database}\`.Client c ON p.client_id = c.id
-         SET p.location = c.location, p.lat = c.lat, p.log = c.log
-         WHERE c.location IS NOT NULL OR c.lat IS NOT NULL OR c.log IS NOT NULL`
+         SET 
+            p.location = c.location, 
+            p.lat = c.lat, 
+            p.log = c.log,
+            p.radius = c.radius
+         WHERE 
+            c.location IS NOT NULL 
+            OR c.lat IS NOT NULL 
+            OR c.log IS NOT NULL
+            OR c.radius IS NOT NULL`
       );
       console.log('OK TRANSFER LOCATION TO PROJECTS');
     } finally {

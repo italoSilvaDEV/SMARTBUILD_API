@@ -150,19 +150,19 @@ export class ListClientController {
                     OR: [
                         {
                             name: {
-                              contains: String(search),
+                                contains: String(search),
                             },
-                          },
-                          {
+                        },
+                        {
                             email: {
-                              contains: String(search),
+                                contains: String(search),
                             },
-                          },
-                          {
+                        },
+                        {
                             location: {
-                              contains: String(search),
+                                contains: String(search),
                             },
-                          },
+                        },
                     ],
                 }
                 : {};
@@ -174,6 +174,11 @@ export class ListClientController {
                     ...searchFilter,
                 },
                 orderBy: [{ date_creation: "desc" }, { name: "asc" }],
+                include: {
+                    _count: {
+                        select: { projects: true },
+                    },
+                },
             });
 
             // Contagem total
@@ -196,11 +201,12 @@ export class ListClientController {
             });
 
             // Formatar resposta
-            const formattedClients = clientsQuery.map(({ id, name, email, phone }) => ({
+            const formattedClients = clientsQuery.map(({ id, name, email, phone, _count }) => ({
                 id,
                 name,
                 email,
                 phone,
+                projects: _count.projects,
             }));
 
             return res.json({
