@@ -32,17 +32,24 @@ export class FindCategoriesController {
                             service: true
                         }
                     }
-                },
-                orderBy: {
-                    type_category: "asc"
                 }
             });
 
+            const categoriesWithServiceCount = categories.map(category => ({
+                ...category,
+                totalServices: category.sub_category.reduce((total, subCategory) => {
+                    return total + (subCategory.service ? subCategory.service.length : 0);
+                }, 0)
+            })).sort((a, b) => b.totalServices - a.totalServices);
+
             const resultWithPresigned = await Promise.all(
-                categories.map(async (prev) => ({
-                    ...prev,
-                    category_img: prev.category_img ? await getPresignedUrl(prev.category_img) : null,
-                }))
+                categoriesWithServiceCount.map(async (prev) => {
+                    const { totalServices, ...categoryWithoutCount } = prev;
+                    return {
+                        ...categoryWithoutCount,
+                        category_img: prev.category_img ? await getPresignedUrl(prev.category_img) : null,
+                    };
+                })
             );
 
 
