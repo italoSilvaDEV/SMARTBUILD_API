@@ -32,6 +32,9 @@ export class FindCategoriesController {
                             service: true
                         }
                     }
+                },
+                orderBy: {
+                    type_category: "asc"
                 }
             });
 
