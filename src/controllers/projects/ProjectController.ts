@@ -123,10 +123,9 @@ export class ProjectController {
           },
         },
         {
-          client: {
-            location: {
-              contains: search,
-            },
+          location: {
+            // Alterado de client.location para project.location
+            contains: search,
           },
         },
       ];
@@ -155,6 +154,7 @@ export class ProjectController {
           date_update: true,
           seller_user_id: true,
           company_id: true,
+          location: true,
           client: {
             select: {
               id: true,
@@ -324,6 +324,10 @@ export class ProjectController {
 
         return {
           ...project,
+          client: {
+            ...project.client,
+            location: project.location, // Substitui client.location por project.location
+          },
           costofwork: costOfWork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
@@ -362,8 +366,10 @@ export class ProjectController {
     try {
       const project = await prisma.project.findUnique({
         where: { id },
+        
         include: {
           client: true,
+          
           serviceProject: {
             include: {
               UserServiceProject: {
@@ -541,6 +547,10 @@ export class ProjectController {
 
         res.json({
           ...project,
+          client: {
+            ...project.client,
+            location: project.location, // Substitui client.location por project.location
+          },
           user: {
             ...project.user,
             avatar: project.user?.avatar
@@ -1027,7 +1037,7 @@ export class ProjectController {
           },
         });
       }
-      
+
       // 🔄 USAR O SISTEMA DE NUMERAÇÃO GLOBAL DO ESTIMATE
       // Buscar o último estimate da empresa para sincronizar numeração
       const lastEstimate = await prisma.estimate.findFirst({

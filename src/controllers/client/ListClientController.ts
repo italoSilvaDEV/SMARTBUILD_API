@@ -201,13 +201,23 @@ export class ListClientController {
             });
 
             // Formatar resposta
-            const formattedClients = clientsQuery.map(({ id, name, email, phone, _count }) => ({
-                id,
-                name,
-                email,
-                phone,
-                projects: _count.projects,
-            }));
+            const formattedClients = clientsQuery.map((
+                {
+                    id, name, email, phone, _count, location,
+                    lat, log, birth_date, document, radius
+                }) => ({
+                    id,
+                    name,
+                    email,
+                    phone,
+                    birth_date,
+                    document,
+                    location,
+                    lat,
+                    log,
+                    projects: _count.projects,
+                    radius,
+                }));
 
             return res.json({
                 total: totalCount,
