@@ -66,6 +66,8 @@ model User {
   canceledEstimates Estimate[] @relation("canceledEstimates")
   Audit             Audit[]
 
+  SyncPreferences SyncPreferences[] @relation("SyncPreferences")
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -120,9 +122,12 @@ model Company {
   // novo campo
   stripeAccountId String? @unique
 
-  Subscription Subscription[]
-  Plan         Plan?          @relation(fields: [planId], references: [id])
-  planId       String?
+  Subscription  Subscription[]
+  Plan          Plan?           @relation(fields: [planId], references: [id])
+  planId        String?
+  CompanyClient CompanyClient[]
+
+  SyncPreferences SyncPreferences[] @relation("SyncPreferences")
 }
 
 model ContractNotes {
@@ -329,6 +334,10 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
+  location String? @db.Text
+  log String? @db.VarChar(191)
+  lat String? @db.VarChar(191)
+
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
   @@map("project")
@@ -424,7 +433,7 @@ model fildsPdfProject {
 }
 
 model Client {
-  id               String    @id @default(uuid())
+  id               String          @id @default(uuid())
   avatar           String?
   name             String
   email            String
@@ -432,17 +441,28 @@ model Client {
   phone            String?
   city_and_state   String?
   birth_date       String?
-  location         String?   @db.Text
+  location         String?         @db.Text
   lat              String?
   log              String?
   radius           Float?
   autorId          String?
-  date_creation    DateTime  @default(now())
-  date_update      DateTime  @updatedAt
+  date_creation    DateTime        @default(now())
+  date_update      DateTime        @updatedAt
   projects         Project[]
-  company          Company?  @relation(fields: [company_id], references: [id])
+  company          Company?        @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
+  CompanyClient    CompanyClient[]
+}
+
+model CompanyClient {
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+
+  company   Company @relation(fields: [companyId], references: [id])
+  companyId String
+
+  @@id([clientId, companyId])
 }
 
 model InvoiceCostProject {
@@ -867,4 +887,32 @@ model UserCompany {
   @@index([userId])
   @@index([companyId])
   @@map("user_company")
+}
+
+
+model SyncPreferences {
+  id String @id @default(uuid())
+
+  typesEntity TypesEntity
+  typeSync    SyncType    @default(bidirectional) // Novo campo enum
+
+  userCreate User   @relation(name: "SyncPreferences", fields: [userId], references: [id])
+  userId     String
+
+  company   Company @relation(name: "SyncPreferences", fields: [companyId], references: [id])
+  companyId String
+
+  @@map("sync_preferences") // Renomeia a tabela no banco
+}
+
+enum TypesEntity {
+  customers
+  invoices
+  payments
+}
+
+enum SyncType {
+  bidirectional
+  QuickBooksToSmartBuild
+  SmartBuildToQuickBooks
 }

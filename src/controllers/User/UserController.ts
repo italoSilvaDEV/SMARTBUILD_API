@@ -40,21 +40,21 @@ export class UserController {
           where: { id: company_id },
           select: { allowedEmployees: true, extraEmployees: true }
         });
-        
+
         if (company) {
           // Calcular o número máximo de funcionários permitidos
           const allowedEmployees = company.allowedEmployees || 0;
           const extraEmployees = company.extraEmployees || 0;
           const maxEmployees = allowedEmployees + extraEmployees;
-          
+
           // Contar quantos funcionários a empresa já tem
           const currentEmployeesCount = await prisma.user.count({
             where: isMultiCompany ? { companies: { some: { companyId: company_id } } } : { company_id }
           });
-          
+
           // Verificar se já atingiu o limite
           if (currentEmployeesCount >= maxEmployees) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               error: `Unable to create new user. Company has reached the maximum number of employees allowed (${maxEmployees}).`
             });
           }
@@ -72,9 +72,11 @@ export class UserController {
       if (!data.office_id) return "Office ID is required";
       return null;
     }
+
     const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
     const s3Bucket = process.env.AMAZON_S3_BUCKET!;
     let fileName: string | null = null;
+
     try {
       // const fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
       if (req.file) {
@@ -82,6 +84,7 @@ export class UserController {
       }
       // console.log('Upload concluído:', fileName);
       const errors = validationResult(req);
+
       if (!errors.isEmpty()) {
         this.deleteFiles(
           req.file?.filename?.split(".")[0] + ".webp",
@@ -91,6 +94,7 @@ export class UserController {
       }
 
       const data: INewUser = req.body;
+
       const validationError = validateNewUser(data);
       if (validationError) {
         this.deleteFiles(
@@ -100,14 +104,11 @@ export class UserController {
         return res.status(400).json({ error: validationError });
       }
 
-      // Verifica se o email existe
-      const userExists = await prisma.user.findUnique({
-        where: { email: data.email },
-      });
-        // Verificar se o office existe
+      // Verificar se o office existe
       const office = await prisma.user.findMany({
         where: { office_id: data.office_id },
       });
+
       if (!office) {
         this.deleteFiles(
           req.file?.filename?.split(".")[0] + ".webp",
@@ -115,7 +116,12 @@ export class UserController {
         );
         return res.status(400).json({ error: "office invalid" });
       }
-    
+
+      // Verifica se o email existe
+      const userExists = await prisma.user.findUnique({
+        where: { email: data.email },
+      });
+
       if (userExists) {
         const userCompany = await prisma.userCompany.findFirst({
           where: {
@@ -133,6 +139,7 @@ export class UserController {
             .status(400)
             .json({ error: "Email has already been registered in the system" });
         }
+
         await prisma.userCompany.create({
           data: {
             userId: userExists.id,
@@ -140,7 +147,7 @@ export class UserController {
             office_id: data.office_id
           }
         })
-        return res.status(201).json({ message: "User created successfully" });        
+        return res.status(201).json({ message: "User created successfully" });
       }
 
       // Senha temporária
@@ -427,7 +434,7 @@ export class UserController {
           if (!subscription || !subscription.stripeSubscriptionId) {
             // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
             isExpired = true;
-          } 
+          }
           else {
             try {
               // Inicializar cliente Stripe
@@ -446,8 +453,8 @@ export class UserController {
               // Verificar status da assinatura
               if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
                 // Verificar se tem data de cancelamento programada
-                isExpired = stripeSubscription.cancel_at 
-                  ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
+                isExpired = stripeSubscription.cancel_at
+                  ? new Date(stripeSubscription.cancel_at * 1000) < new Date()
                   : false;
               } else {
                 // Status inativo (canceled, unpaid, incomplete_expired, etc)
@@ -460,7 +467,7 @@ export class UserController {
               }
 
               console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
-            } 
+            }
             catch (stripeError) {
               console.error('Erro ao verificar assinatura no Stripe:', stripeError);
               // Fallback para verificação local em caso de erro
@@ -479,14 +486,14 @@ export class UserController {
       }
 
       const token = Jwt.sign(
-        { 
-          id: user.id, 
-          name: user.name, 
-          email: user.email 
+        {
+          id: user.id,
+          name: user.name,
+          email: user.email
         },
         String(process.env.SECRET_JWT),
-        { 
-          expiresIn: "30d" 
+        {
+          expiresIn: "30d"
         }
       );
 
@@ -573,17 +580,46 @@ export class UserController {
       }
 
       // Check if email is different and already in use
+      // if (email !== user.email) {
+      //   const emailExists = await prisma.user.findUnique({
+      //     where: { email },
+      //   });
+      //   if (emailExists) {
+      //     return response
+      //       .status(400)
+      //       .json({ error: "Email already registered" });
+      //   }
+      // }
+
+      // Check if email is different and already in use in the same company
       if (email !== user.email) {
-        const emailExists = await prisma.user.findUnique({
+        const userWithEmail = await prisma.user.findUnique({
           where: { email },
         });
-        if (emailExists) {
-          return response
-            .status(400)
-            .json({ error: "Email already registered" });
-        }
-      }
 
+        if (userWithEmail && user.company_id) {
+          const userCompany = await prisma.userCompany.findFirst({
+            where: {
+              userId: userWithEmail.id,
+              companyId: user.company_id // ou passe company_id via body, se necessário
+            }
+          });
+
+          if (userCompany) {
+            return response.status(400).json({
+              error: "Email has already been registered in the system for this company"
+            });
+          }
+          await prisma.userCompany.create({
+            data: {
+              userId: userWithEmail.id,
+              companyId: user.company_id,
+              office_id: office.id,
+            },
+          });
+        }
+        
+      }
 
 
       if (current_password && password) {
@@ -1186,11 +1222,11 @@ export class UserController {
     try {
       const userIdFromParam = req.params.userId;
       const userId = userIdFromParam;
-      
+
       if (!userId) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
-       
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -1213,11 +1249,11 @@ export class UserController {
           }
         }
       });
-      
+
       if (!user || !user.company?.id) {
         return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
       }
-      
+
       let subscriptionInfo = null;
       let isExpired = false;
       let stripeSubscriptionCanceled = false;
@@ -1247,9 +1283,9 @@ export class UserController {
         },
         orderBy: { endDate: 'desc' }
       });
-      
+
       subscriptionInfo = subscription;
-      
+
       // Lógica simplificada para verificação de planos e assinaturas
       if (!planInfo) {
         // Sem plano definido, considerar expirado
@@ -1269,7 +1305,7 @@ export class UserController {
         if (!subscription || !subscription.stripeSubscriptionId) {
           // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
           isExpired = true;
-        } 
+        }
         else {
           try {
             // Inicializar cliente Stripe
@@ -1288,8 +1324,8 @@ export class UserController {
             // Verificar status da assinatura
             if (stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing') {
               // Verificar se tem data de cancelamento programada
-              isExpired = stripeSubscription.cancel_at 
-                ? new Date(stripeSubscription.cancel_at * 1000) < new Date() 
+              isExpired = stripeSubscription.cancel_at
+                ? new Date(stripeSubscription.cancel_at * 1000) < new Date()
                 : false;
             } else {
               // Status inativo (canceled, unpaid, incomplete_expired, etc)
@@ -1299,7 +1335,7 @@ export class UserController {
             // Verificar se a assinatura tem problema de pagamento no banco
             if (stripeSubscription.status === 'past_due' || stripeSubscription.status === 'unpaid') {
               paymentFailed = true;
-              
+
               // Atualizar no banco se identificamos pelo Stripe
               if (!subscription.paymentFailed) {
                 await prisma.subscription.update({
@@ -1310,7 +1346,7 @@ export class UserController {
             }
 
             console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
-          } 
+          }
           catch (stripeError) {
             console.error('Erro ao verificar assinatura no Stripe:', stripeError);
             // Fallback para verificação local em caso de erro
@@ -1318,7 +1354,7 @@ export class UserController {
           }
         }
       }
-      
+
       // Retornar apenas os dados solicitados
       return res.json({
         subscription: subscriptionInfo,
@@ -1327,10 +1363,10 @@ export class UserController {
         paymentFailed,
         permissions
       });
-      
+
     } catch (error) {
       console.error("Erro ao verificar status da assinatura:", error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
     }
@@ -1340,11 +1376,11 @@ export class UserController {
     try {
       const userIdFromParam = req.params.userId;
       const userId = userIdFromParam;
-      
+
       if (!userId) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
-       
+
       // Buscar o usuário com sua empresa e o plano associado
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -1368,11 +1404,11 @@ export class UserController {
           }
         }
       });
-      
+
       if (!user || !user.company?.id) {
         return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
       }
-      
+
       // Obter permissões do plano
       let permissions: string[] = [];
       if (user.company.Plan?.permissionGroup?.GroupPermissionsList) {
@@ -1396,14 +1432,14 @@ export class UserController {
         },
         orderBy: { startDate: 'desc' }
       });
-      
+
       // Definir valores padrão
       let isExpired = true;
       let stripeSubscriptionCanceled = false;
       let paymentFailed = false;
 
 
-       // Lógica de verificação de planos e assinaturas
+      // Lógica de verificação de planos e assinaturas
       if (!planInfo) {
         // Sem plano definido, considerar expirado
         isExpired = true;
@@ -1425,7 +1461,7 @@ export class UserController {
           paymentFailed = subscription.paymentFailed;
         }
       }
-      
+
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
         subscription,
@@ -1435,10 +1471,10 @@ export class UserController {
         permissions,
         plan: planInfo
       });
-      
+
     } catch (error) {
       console.error("Erro ao verificar status da assinatura local:", error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
     }

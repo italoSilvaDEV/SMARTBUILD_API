@@ -1,11 +1,13 @@
 import { Request, Response } from "express";
-import { prisma } from "../../utils/prisma";
+import { prisma } from "../../../utils/prisma";
 import axios from "axios";
 import querystring from "querystring";
-import { refreshAccessToken } from "./QuickBooksTokenService";
-import { oauthClient } from "./QuickBooksOAuthClient";
+
+import { oauthClient } from "../util/QuickBooksOAuthClient";
+import { refreshAccessToken } from "../util/QuickBooksTokenService";
 
 export class QuickBooksController {
+  // faz o oauth para o quickbooks
   async authorize(req: Request, res: Response) {
     try {
       const { userId } = req.params;
@@ -60,7 +62,7 @@ export class QuickBooksController {
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
-
+  //ainda nao utlizada pelo frontend
   async callback(req: Request, res: Response) {
     console.log("inicio de callback")
     try {
@@ -156,7 +158,7 @@ export class QuickBooksController {
       return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?error=${encodeURIComponent(error.message)}`);
     }
   }
-
+  //utlizada pelo frontend para checar se o usuario esta conectado ao quickbooks
   async checkStatus(req: Request, res: Response) {
     try {
       const { userId } = req.params;
@@ -257,7 +259,7 @@ export class QuickBooksController {
       });
     }
   }
-
+  //refresh token ainda nao utlizada pelo frontend
   async refreshToken(req: Request, res: Response) {
     try {
       const { userId } = req.params;
