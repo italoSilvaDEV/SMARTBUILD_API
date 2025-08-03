@@ -125,8 +125,7 @@ model Company {
   Subscription  Subscription[]
   Plan          Plan?           @relation(fields: [planId], references: [id])
   planId        String?
-  CompanyClient CompanyClient[]
-
+  
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
 }
 
@@ -334,9 +333,12 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
+ // tenho que colocar o radio radius mudar script para colocar radio
+  radius           Float?
   location String? @db.Text
   log String? @db.VarChar(191)
   lat String? @db.VarChar(191)
+
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -452,17 +454,6 @@ model Client {
   company          Company?        @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
-  CompanyClient    CompanyClient[]
-}
-
-model CompanyClient {
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId String
-
-  company   Company @relation(fields: [companyId], references: [id])
-  companyId String
-
-  @@id([clientId, companyId])
 }
 
 model InvoiceCostProject {
