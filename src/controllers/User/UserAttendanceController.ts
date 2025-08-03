@@ -579,9 +579,9 @@ export class UserAttendanceController {
                     },
                     data: {
                         check_out_time: new Date(checkOutTime),
-                        check_out_address: project?.client?.location || null,
-                        check_out_latitude: project?.client?.lat ? parseFloat(project.client.lat) : null,
-                        check_out_longitude: project?.client?.log ? parseFloat(project.client.log) : null
+                        check_out_address: project?.location || null,
+                        check_out_latitude: project?.lat ? parseFloat(project.lat) : null,
+                        check_out_longitude: project?.log ? parseFloat(project.log) : null
                     }
                 });
             } else {
@@ -593,10 +593,10 @@ export class UserAttendanceController {
                         check_in_time: new Date(checkInTime),
                         check_out_time: checkOutTime ? new Date(checkOutTime) : null,
                         date: new Date(date),
-                        check_in_address: project?.client?.location || "",
-                        check_in_latitude: project?.client?.lat ? parseFloat(project.client.lat) : 0,
-                        check_in_longitude: project?.client?.log ? parseFloat(project.client.log) : 0,
-                        check_out_address: checkOutTime ? project?.client?.location || null : null,
+                        check_in_address: project?.location || "",
+                        check_in_latitude: project?.lat ? parseFloat(project.lat) : 0,
+                        check_in_longitude: project?.log ? parseFloat(project.log) : 0,
+                        check_out_address: checkOutTime ? project?.location || null : null,
                         check_out_latitude: checkOutTime ? (project?.client?.lat ? parseFloat(project.client.lat) : null) : null,
                         check_out_longitude: checkOutTime ? (project?.client?.log ? parseFloat(project.client.log) : null) : null,
                         workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,

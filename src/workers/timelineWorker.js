@@ -102,9 +102,9 @@ class TimelineWorker {
                 isValid: !!result,
                 hasOpenAttendance: (result?.user_attendances?.length || 0) > 0,
                 clientCoords: result?.service_project?.Project?.client ? {
-                    lat: result.service_project.Project.client.lat,
-                    lon: result.service_project.Project.client.log,
-                    radius: result.service_project.Project.client.radius
+                    lat: result.service_project.Project.lat,
+                    lon: result.service_project.Project.log,
+                    radius: result.service_project.Project.radius
                 } : null
             };
 

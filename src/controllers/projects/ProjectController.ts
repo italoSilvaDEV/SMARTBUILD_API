@@ -1586,8 +1586,8 @@ export class ProjectController {
           : project.deadline; // Inclui o último dia
 
         // Formatar endereço do cliente
-        const description = project.client?.location
-          ? project.client.location
+        const description = project.location
+          ? project.location
           : "No address available";
 
         return {
@@ -1783,8 +1783,8 @@ export class ProjectController {
         );
 
         // Formatar descrição e informações adicionais
-        const description = service.Project?.client?.location
-          ? service.Project.client.location
+        const description = service.Project?.location
+          ? service.Project.location
           : "No address available";
 
         return {
@@ -1833,6 +1833,7 @@ export class ProjectController {
               Project: {
                 select: {
                   id: true,
+                  location: true,
                   client: {
                     select: {
                       location: true,
@@ -1863,8 +1864,8 @@ export class ProjectController {
 
           const initial = service.start_date; // Formato 'YYYY-MM-DD'
           const end = service.deadline; // Formato 'YYYY-MM-DD'
-          const description = service.Project?.client?.location
-            ? service.Project.client.location
+          const description = service.Project?.location
+            ? service.Project.location
             : "No address available";
 
           return {
@@ -1947,8 +1948,8 @@ export class ProjectController {
           : null;
 
         // Formatar descrição e informações adicionais
-        const description = service.Project?.client?.location
-          ? service.Project.client.location
+        const description = service.Project?.location
+          ? service.Project.location
           : "No address available";
 
         return {
@@ -2118,7 +2119,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2126,7 +2127,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2314,7 +2315,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2322,7 +2323,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2511,7 +2512,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2519,7 +2520,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
