@@ -14,3 +14,7 @@ ALTER TABLE `sync_preferences` ADD CONSTRAINT `sync_preferences_userId_fkey` FOR
 
 -- AddForeignKey
 ALTER TABLE `sync_preferences` ADD CONSTRAINT `sync_preferences_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+
+
