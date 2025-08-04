@@ -39,8 +39,8 @@ projectRoutes.get(
   "/project/find",
   checkToken,
   projectController.getAllProjects
-);
-projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById);
+);//ok novo modelo
+projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById);//ok novo modelo
 
 projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller);
 

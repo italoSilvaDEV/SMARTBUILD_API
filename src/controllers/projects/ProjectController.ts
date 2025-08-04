@@ -123,10 +123,9 @@ export class ProjectController {
           },
         },
         {
-          client: {
-            location: {
-              contains: search,
-            },
+          location: {
+            // Alterado de client.location para project.location
+            contains: search,
           },
         },
       ];
@@ -155,6 +154,7 @@ export class ProjectController {
           date_update: true,
           seller_user_id: true,
           company_id: true,
+          location: true,
           client: {
             select: {
               id: true,
@@ -324,6 +324,10 @@ export class ProjectController {
 
         return {
           ...project,
+          client: {
+            ...project.client,
+            location: project.location, // Substitui client.location por project.location
+          },
           costofwork: costOfWork,
           cost_of_service_hours: totalCostOfServiceHours,
           total_number_of_hours_worked: totalNumberOfHoursWorked,
@@ -362,8 +366,10 @@ export class ProjectController {
     try {
       const project = await prisma.project.findUnique({
         where: { id },
+        
         include: {
           client: true,
+          
           serviceProject: {
             include: {
               UserServiceProject: {
@@ -541,6 +547,10 @@ export class ProjectController {
 
         res.json({
           ...project,
+          client: {
+            ...project.client,
+            location: project.location, // Substitui client.location por project.location
+          },
           user: {
             ...project.user,
             avatar: project.user?.avatar
@@ -989,20 +999,44 @@ export class ProjectController {
       const price = data.price || 0;
       const status_project = data.status_project || "Pending";
 
-      const result = await prisma.client.create({
-        data: {
-          name: data.client.name,
-          email: data.client.email,
-          document: data.client.document,
-          phone: data.client.phone,
-          location: data.client.location,
-          birth_date: data.client.birth_date,
-          lat: data.client.lat,
-          log: data.client.log,
-          radius: Number(data.client.radius),
-          company_id: data.company_id,
+      let client = await prisma.client.findUnique({
+        where: {
+          email_company_id: {
+            email: data.client.email,
+            company_id: data.company_id,
+          },
         },
       });
+
+      if (client) {
+        // Cliente já existe → atualizar apenas os dados básicos
+        client = await prisma.client.update({
+          where: { id: client.id },
+          data: {
+            name: data.client.name,
+            document: data.client.document,
+            phone: data.client.phone,
+            birth_date: data.client.birth_date,
+            // NÃO atualizar lat, log, radius aqui!
+          },
+        });
+      } else {
+        //  Cliente novo → criar incluindo lat, log, radius
+        client = await prisma.client.create({
+          data: {
+            name: data.client.name,
+            email: data.client.email,
+            document: data.client.document,
+            phone: data.client.phone,
+            birth_date: data.client.birth_date,
+            location: data.client.location,
+            lat: data.client.lat,
+            log: data.client.log,
+            radius: data.client.radius ? Number(data.client.radius) : null,
+            company_id: data.company_id,
+          },
+        });
+      }
 
       // 🔄 USAR O SISTEMA DE NUMERAÇÃO GLOBAL DO ESTIMATE
       // Buscar o último estimate da empresa para sincronizar numeração
@@ -1060,11 +1094,15 @@ export class ProjectController {
           seller_user_id: data.seller_user_id,
           price: price,
           status_project: status_project,
-          client_id: result.id,
+          client_id: client.id,
           start_date: data.client.start_date,
           deadline: data.client.deadline,
           company_id: data.company_id,
           contract_number: nextNumber, // Usar número sincronizado
+          location: data.client.location,
+          lat: data.client.lat,
+          log: data.client.log,
+          radius: data.client.radius ? Number(data.client.radius) : null,
         },
       });
 
@@ -1548,8 +1586,8 @@ export class ProjectController {
           : project.deadline; // Inclui o último dia
 
         // Formatar endereço do cliente
-        const description = project.client?.location
-          ? project.client.location
+        const description = project.location
+          ? project.location
           : "No address available";
 
         return {
@@ -1745,8 +1783,8 @@ export class ProjectController {
         );
 
         // Formatar descrição e informações adicionais
-        const description = service.Project?.client?.location
-          ? service.Project.client.location
+        const description = service.Project?.location
+          ? service.Project.location
           : "No address available";
 
         return {
@@ -1795,6 +1833,7 @@ export class ProjectController {
               Project: {
                 select: {
                   id: true,
+                  location: true,
                   client: {
                     select: {
                       location: true,
@@ -1825,8 +1864,8 @@ export class ProjectController {
 
           const initial = service.start_date; // Formato 'YYYY-MM-DD'
           const end = service.deadline; // Formato 'YYYY-MM-DD'
-          const description = service.Project?.client?.location
-            ? service.Project.client.location
+          const description = service.Project?.location
+            ? service.Project.location
             : "No address available";
 
           return {
@@ -1909,8 +1948,8 @@ export class ProjectController {
           : null;
 
         // Formatar descrição e informações adicionais
-        const description = service.Project?.client?.location
-          ? service.Project.client.location
+        const description = service.Project?.location
+          ? service.Project.location
           : "No address available";
 
         return {
@@ -2080,7 +2119,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2088,7 +2127,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2276,7 +2315,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2284,7 +2323,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2473,7 +2512,7 @@ export class ProjectController {
         project.client?.name || "",
         "Bill to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 
@@ -2481,7 +2520,7 @@ export class ProjectController {
         "",
         "Ship to",
         project.client?.name || "",
-        project.client?.location || "",
+        project.location || "",
         project.client?.city_and_state || "",
       ];
 

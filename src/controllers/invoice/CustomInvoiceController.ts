@@ -857,14 +857,14 @@ export class CustomInvoiceController {
       columnText1.push(
         "Bill to",
         clientName,
-        invoice.project.client.location || "",
+        invoice.project.location || "",
         invoice.project.client.city_and_state || "",
       );
 
       columnText2.push(
         "Ship to",
         clientName,
-        invoice.project.client.location || "",
+        invoice.project.location || "",
         invoice.project.client.city_and_state || "",
       );
 
