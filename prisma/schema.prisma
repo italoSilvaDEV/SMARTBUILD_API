@@ -122,11 +122,14 @@ model Company {
   // novo campo
   stripeAccountId String? @unique
 
-  Subscription  Subscription[]
-  Plan          Plan?           @relation(fields: [planId], references: [id])
-  planId        String?
+  Subscription Subscription[]
+  Plan         Plan?          @relation(fields: [planId], references: [id])
+  planId       String?
 
-  SyncPreferences SyncPreferences[] @relation("SyncPreferences")
+  SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
+  QuickBooksAccount QuickBooksAccount?
+
+  SyncLog SyncLog[] @relation("synclog")
 }
 
 model ContractNotes {
@@ -333,12 +336,10 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
-
-  radius           Float?
+  radius   Float?
   location String? @db.Text
-  log String? @db.VarChar(191)
-  lat String? @db.VarChar(191)
-
+  log      String? @db.VarChar(191)
+  lat      String? @db.VarChar(191)
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -435,7 +436,7 @@ model fildsPdfProject {
 }
 
 model Client {
-  id               String          @id @default(uuid())
+  id               String    @id @default(uuid())
   avatar           String?
   name             String
   email            String
@@ -443,31 +444,24 @@ model Client {
   phone            String?
   city_and_state   String?
   birth_date       String?
-  location         String?         @db.Text
+  location         String?   @db.Text
   lat              String?
   log              String?
   radius           Float?
   autorId          String?
-  date_creation    DateTime        @default(now())
-  date_update      DateTime        @updatedAt
+  date_creation    DateTime  @default(now())
+  date_update      DateTime  @updatedAt
   projects         Project[]
-  company          Company?        @relation(fields: [company_id], references: [id])
+  company          Company?  @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
+  sync_version     Int       @default(0)
 
+  idQuickbooks String?
+
+  @@unique([idQuickbooks, company_id])
   @@unique([email, company_id])
 }
-
-// model CompanyClient {
-//   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-//   clientId String
-
-//   company   Company @relation(fields: [companyId], references: [id])
-//   companyId String
-
-//   @@id([clientId, companyId])
-// }
-
 
 model InvoiceCostProject {
   id                          String        @id @default(uuid())
@@ -667,6 +661,9 @@ model QuickBooksAccount {
   updatedAt            DateTime @updatedAt
   user                 User?    @relation(fields: [user_id], references: [id])
   user_id              String?  @unique
+
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?  @unique
 }
 
 model InvoiceItem {
@@ -893,7 +890,6 @@ model UserCompany {
   @@map("user_company")
 }
 
-
 model SyncPreferences {
   id String @id @default(uuid())
 
@@ -919,4 +915,18 @@ enum SyncType {
   bidirectional
   QuickBooksToSmartBuild
   SmartBuildToQuickBooks
+}
+
+model SyncLog {
+  id        String   @id @default(uuid())
+  entity    String // Ex.: "Client"
+  action    String // Ex.: "Inserted", "Updated", "Skipped"
+  entityId  String // ID do cliente
+  timestamp DateTime @default(now())
+  details   Json // Dados adicionais (ex.: diffs, erros)
+
+  company   Company @relation(name: "synclog", fields: [companyId], references: [id])
+  companyId String // ID da empresa associada
+
+  @@map("sync_log") // Renomeia a tabela no banco
 }

@@ -82,6 +82,9 @@ export class QuickBooksController {
         return res.status(404).json({ error: "User not found" });
       }
 
+      // Pegue o company_id do usuário
+      const userCompanyId = user.company_id;
+
       const clientId = process.env.QUICKBOOKS_CLIENT_ID;
       console.log("valor do clientId", clientId)
       const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
@@ -132,7 +135,8 @@ export class QuickBooksController {
             realmId: realmId as string,
             expiresAt,
             scopes: savedScope,
-            needsReauthorization: false
+            needsReauthorization: false,
+            company_id: userCompanyId,
           }
         });
       } else {
@@ -145,7 +149,8 @@ export class QuickBooksController {
             refreshToken: refresh_token,
             expiresAt,
             scopes: savedScope,
-            needsReauthorization: false
+            needsReauthorization: false,
+            company_id: userCompanyId,
           }
         });
       }
@@ -155,7 +160,7 @@ export class QuickBooksController {
       // return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?success=true`);
     } catch (error: any) {
       console.error("Erro no callback do QuickBooks:", error);
-      return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?error=${encodeURIComponent(error.message)}`);
+      return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(error.message)}`);
     }
   }
   //utlizada pelo frontend para checar se o usuario esta conectado ao quickbooks

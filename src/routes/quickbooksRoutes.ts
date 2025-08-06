@@ -30,7 +30,7 @@ quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSync
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
 quickbooksRoutes.delete("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.delete);
 
-// quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksClientController.syncClients);
+quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksClientController.syncClients);
 
 
 
