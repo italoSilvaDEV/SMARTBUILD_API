@@ -334,6 +334,7 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
+  radius   Float?
   location String? @db.Text
   log String? @db.VarChar(191)
   lat String? @db.VarChar(191)
