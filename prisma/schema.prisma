@@ -125,7 +125,7 @@ model Company {
   Subscription  Subscription[]
   Plan          Plan?           @relation(fields: [planId], references: [id])
   planId        String?
-  CompanyClient CompanyClient[]
+  // CompanyClient CompanyClient[]
 
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
 }
@@ -453,18 +453,18 @@ model Client {
   company          Company?        @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
-  CompanyClient    CompanyClient[]
+  // CompanyClient    CompanyClient[]
 }
 
-model CompanyClient {
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId String
+// model CompanyClient {
+//   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+//   clientId String
 
-  company   Company @relation(fields: [companyId], references: [id])
-  companyId String
+//   company   Company @relation(fields: [companyId], references: [id])
+//   companyId String
 
-  @@id([clientId, companyId])
-}
+//   @@id([clientId, companyId])
+// }
 
 model InvoiceCostProject {
   id                          String        @id @default(uuid())

@@ -26,7 +26,7 @@ class Mysql {
     port: 3306,
     user: 'admin',
     password: '123456',
-    database: 'backup25jul2',
+    database: 'backup0308',
   };
 
   private async getConnection() {
