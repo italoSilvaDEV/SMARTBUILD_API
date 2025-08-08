@@ -4,12 +4,15 @@ import { QuickBooksInvoiceController } from "../controllers/quickbooks/invoice/Q
 import { checkToken } from "../middlewares/checkToken";
 import { SyncPreferencesController } from "../controllers/quickbooks/syncPreference/syncPreferenceController";
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
+import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
+
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
 const quickbooksInvoiceController = new QuickBooksInvoiceController();
 const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
+const syncOrchestratorController = new SyncOrchestratorController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId", quickbooksController.authorize);
@@ -30,8 +33,14 @@ quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSync
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
 quickbooksRoutes.delete("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.delete);
 
+// rotas de sincronizar customers
 quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksClientController.syncClients);
 
+// Rotas do orquestrador de sincronização
+quickbooksRoutes.post("/quickbooks/orchestrate-sync/:companyId/:userId", checkToken, syncOrchestratorController.orchestrateSync);
+quickbooksRoutes.post("/quickbooks/execute-sync/:companyId/:userId", checkToken, syncOrchestratorController.executeExistingSync);
+quickbooksRoutes.get("/quickbooks/sync-status/:companyId/:userId", checkToken, syncOrchestratorController.getSyncStatus);
 
 
+ 
 export { quickbooksRoutes }; 

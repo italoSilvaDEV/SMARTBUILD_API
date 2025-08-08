@@ -67,6 +67,7 @@ model User {
   Audit             Audit[]
 
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
+  SyncStatus SyncStatus[] @relation("SyncStatus")
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -130,6 +131,7 @@ model Company {
   QuickBooksAccount QuickBooksAccount?
 
   SyncLog SyncLog[] @relation("synclog")
+  SyncStatus SyncStatus[] @relation("SyncStatus")
 }
 
 model ContractNotes {
@@ -929,4 +931,49 @@ model SyncLog {
   companyId String // ID da empresa associada
 
   @@map("sync_log") // Renomeia a tabela no banco
+}
+
+model SyncStatus {
+  id        String   @id @default(uuid())
+  
+  // Identificação da sincronização
+  companyId String
+  userId    String
+  entity    TypesEntity // customers, invoices, payments
+  syncType  SyncType    // QuickBooksToSmartBuild, SmartBuildToQuickBooks, bidirectional
+  
+  // Status da sincronização
+  status         SyncStatusType @default(PENDING)
+  lastSyncAt     DateTime?      // Última sincronização bem-sucedida
+  lastAttemptAt  DateTime?      // Última tentativa (sucesso ou falha)
+  nextSyncAt     DateTime?      // Próxima sincronização programada
+  
+  // Controle de progresso
+  totalRecords   Int @default(0)
+  processedRecords Int @default(0)
+  successRecords Int @default(0)
+  errorRecords   Int @default(0)
+  
+  // Informações de erro
+  lastError      String? @db.Text
+  errorCount     Int @default(0)
+  
+  // Metadados
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relações
+  company   Company @relation(name: "SyncStatus", fields: [companyId], references: [id])
+  user      User    @relation(name: "SyncStatus", fields: [userId], references: [id])
+  
+  @@unique([companyId, userId, entity, syncType])
+  @@map("sync_status")
+}
+
+enum SyncStatusType {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PAUSED
 }
