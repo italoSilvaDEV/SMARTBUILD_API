@@ -3,6 +3,7 @@ import QuickBooks from "node-quickbooks";
 import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
+import { jsonSafe } from "./quickbooksHelpers";
 
 // Rate limiter para evitar erro 429 da API QuickBooks
 const limiter = new Bottleneck({
@@ -57,7 +58,7 @@ export class QuickBooksClientController {
       // 3. Verificar se o accessToken expirou e refresh se necessário
       let account = quickBooksAccount;
       if (account.expiresAt && new Date() > account.expiresAt) {
-        const refreshResult = await refreshAccessToken(account.refreshToken, userId);
+        const refreshResult = await refreshAccessToken(account.refreshToken, account.id);
         if (!refreshResult.success) {
           return res.status(401).json({ error: "Falha ao renovar token: " + refreshResult.error });
         }
@@ -92,7 +93,7 @@ export class QuickBooksClientController {
 
       // 5. Buscar todos os clientes usando o método correto da biblioteca
       console.log("DEBUG: Buscando clientes com findCustomers...");
-      
+
       const result: any = await limiter.schedule(() =>
         new Promise((resolve, reject) => {
           qb.findCustomers({ fetchAll: true }, (err: any, data: any) => {
@@ -110,31 +111,40 @@ export class QuickBooksClientController {
       const allClients = result.QueryResponse?.Customer || [];
 
       let totalSynced = 0;
-      for (const qbClient of allClients) {
-        const email = qbClient.PrimaryEmailAddr?.Address;
-        if (!email) continue;
+     
 
-        // Busca composta por email + company_id
-        const localClient = await prisma.client.findFirst({
-          where: {
-            email: email,
-            company_id: companyId,
+      // Helpers
+      const stashRaw = async (qbCust: any, reason: string, status = "NEW") => {
+        await prisma.quickBooksCustomerRaw.create({
+          data: {
+            companyId,
+            quickbooksId: qbCust?.Id ?? null,
+            payload: qbCust ?? {},
+            reason,
+            status,
           },
         });
+      };
 
-        const syncData = {
+      const mapFromQb = (qbClient: any, localClient?: any) => {
+        const qbUpdatedAt =
+          qbClient.MetaData?.LastUpdatedTime ? new Date(qbClient.MetaData.LastUpdatedTime) : null;
+      
+        return {
           name: qbClient.DisplayName,
-          email: qbClient.PrimaryEmailAddr.Address,
-          document: qbClient.TaxIdentifier || null, // Melhor fonte para CPF/CNPJ
+          email: qbClient.PrimaryEmailAddr?.Address ?? localClient?.email,
+          document: qbClient.TaxIdentifier || null,
           phone: qbClient.PrimaryPhone?.FreeFormNumber || null,
           city_and_state: qbClient.BillAddr
             ? `${qbClient.BillAddr.City || ""}, ${qbClient.BillAddr.CountrySubDivisionCode || ""}`.trim()
             : null,
           birth_date: qbClient.BirthDate || null,
           location: qbClient.BillAddr?.Line1 || null,
-          date_update: qbClient.MetaData && qbClient.MetaData.LastUpdatedTime
-            ? new Date(qbClient.MetaData.LastUpdatedTime)
-            : new Date(),
+      
+          // ❌ NÃO setar date_update (ele é @updatedAt)
+          // ✅ Setar o espelho do QBO
+          quickbooksUpdatedAt: qbUpdatedAt,
+      
           idQuickbooks: qbClient.Id,
           sync_version: localClient ? (localClient.sync_version || 0) + 1 : 0,
           avatar: localClient?.avatar || null,
@@ -142,57 +152,109 @@ export class QuickBooksClientController {
           log: localClient?.log || null,
           radius: localClient?.radius || null,
           autorId: localClient?.autorId || userId,
-          // projects: undefined, // Não atualiza projetos aqui
           stripeCustomerId: localClient?.stripeCustomerId || null,
           company_id: companyId,
         };
+      };
 
-        if (localClient) {
-          if (
-            qbClient.MetaData &&
-            new Date(qbClient.MetaData.LastUpdatedTime) > localClient.date_update
-          ) {
-            await prisma.client.update({
-              where: { id: localClient.id },
-              data: syncData,
-            });
-            await prisma.syncLog.create({
-              data: {
-                entity: "customers",
-                action: "Updated",
-                entityId: localClient.id,
-                companyId,
-                details: { reason: "QuickBooks mais recente", oldData: localClient, newData: syncData },
-              },
-            });
-            totalSynced++;
-          } else {
-            await prisma.syncLog.create({
-              data: {
-                entity: "customers",
-                action: "Skipped",
-                entityId: localClient.id,
-                companyId,
-                details: { reason: "Data mais recente localmente" },
-              },
-            });
+      for (const qbClient of allClients) {
+        const qbId = qbClient.Id as string | undefined;
+        const emailFromQb: string | undefined = qbClient.PrimaryEmailAddr?.Address;
+     
+        if (qbId) {
+          const byId = await prisma.client.findFirst({
+            where: { company_id: companyId, idQuickbooks: qbId },
+          });
+        
+          if (byId) {
+            const qbUpdatedAt = qbClient.MetaData?.LastUpdatedTime
+              ? new Date(qbClient.MetaData.LastUpdatedTime)
+              : null;
+        
+            // Agora comparamos com o espelho salvo, NÃO com date_update
+            const lastSeenRemote = byId.quickbooksUpdatedAt ?? new Date(0);
+        
+            if (qbUpdatedAt && qbUpdatedAt > lastSeenRemote) {
+              const data = mapFromQb(qbClient, byId);
+              await prisma.client.update({ where: { id: byId.id }, data });
+              await prisma.syncLog.create({
+                data: {
+                  entity: "customers",
+                  action: "Updated",
+                  entityId: byId.id,
+                  companyId,
+                  details: jsonSafe({ reason: "QBO newer", oldData: byId, newData: data }),
+                },
+              });
+              totalSynced++;
+            } else {
+              await prisma.syncLog.create({
+                data: {
+                  entity: "customers",
+                  action: "Skipped",
+                  entityId: byId.id,
+                  companyId,
+                  details: jsonSafe({ reason: "QBO not newer than local mirror", qbUpdatedAt, lastSeenRemote }),
+                },
+              });
+            }
+            continue; // já resolvido por idQuickbooks
           }
-        } else {
-          const newClient = await prisma.client.create({ data: syncData });
+        }
+
+        // 2) Não há link por idQuickbooks — agora depende do e-mail
+        if (!emailFromQb) {
+          await stashRaw(qbClient, "MISSING_EMAIL");
           await prisma.syncLog.create({
             data: {
               entity: "customers",
-              action: "Inserted",
-              entityId: newClient.id,
+              action: "Skipped",
+              entityId: qbId ?? "unknown",
               companyId,
-              details: syncData,
+              details: jsonSafe({ reason: "Missing email from QBO" })
             },
           });
-          totalSynced++;
+          continue;
         }
+
+        // Verifica se já existe cliente local por e-mail (unicidade por company)
+        const existingByEmail = await prisma.client.findFirst({
+          where: { company_id: companyId, email: emailFromQb },
+        });
+
+        if (existingByEmail) {
+          // Não sobrescreve por e-mail; manda para staging
+          await stashRaw(qbClient, "DUPLICATE_EMAIL");
+          await prisma.syncLog.create({
+            data: {
+              entity: "customers",
+              action: "Skipped",
+              entityId: existingByEmail.id,
+              companyId,
+              details: jsonSafe({ reason: "Duplicate email on Local; stashed to RAW", email: emailFromQb })
+            },
+          });
+          continue;
+        }
+
+        // 3) Pode criar novo Client com esse email e gravar idQuickbooks
+        const data = mapFromQb(qbClient);
+        const newClient = await prisma.client.create({ data });
+        await prisma.syncLog.create({
+          data: {
+            entity: "customers",
+            action: "Inserted",
+            entityId: newClient.id,
+            companyId,
+            details: jsonSafe(data),
+          },
+        });
+        totalSynced++;
       }
 
       res.status(200).json({ message: "Sincronização concluída", synced: totalSynced });
+
+
     } catch (error: any) {
       console.error("Erro na sincronização de clientes:", error);
       res.status(500).json({ error: "Erro interno na sincronização", details: error.message });

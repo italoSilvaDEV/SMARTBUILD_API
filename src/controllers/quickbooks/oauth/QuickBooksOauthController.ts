@@ -198,7 +198,7 @@ export class QuickBooksController {
       if (isTokenExpired) {
         try {
           // Chamar a função de refresh token
-          const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+          const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
           
           if (refreshResult.success) {
             // Se o refresh foi bem-sucedido, retorna os dados atualizados
@@ -279,7 +279,7 @@ export class QuickBooksController {
       }
 
       // Chamar a função de refresh token
-      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
       
       if (!refreshResult.success) {
         return res.status(401).json({ 

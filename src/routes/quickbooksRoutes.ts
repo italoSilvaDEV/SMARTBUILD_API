@@ -5,7 +5,7 @@ import { checkToken } from "../middlewares/checkToken";
 import { SyncPreferencesController } from "../controllers/quickbooks/syncPreference/syncPreferenceController";
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
-
+import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -13,6 +13,7 @@ const quickbooksInvoiceController = new QuickBooksInvoiceController();
 const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
+const qbOutbound = new QuickBooksCustomerOutboundController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId", quickbooksController.authorize);
@@ -41,6 +42,15 @@ quickbooksRoutes.post("/quickbooks/orchestrate-sync/:companyId/:userId", checkTo
 quickbooksRoutes.post("/quickbooks/execute-sync/:companyId/:userId", checkToken, syncOrchestratorController.executeExistingSync);
 quickbooksRoutes.get("/quickbooks/sync-status/:companyId/:userId", checkToken, syncOrchestratorController.getSyncStatus);
 
+// Exportação inicial (Local -> QBO) — cria Customer no QBO p/ quem não tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/export-clients/:companyId/:userId", checkToken, qbOutbound.exportMissingToQBO);
 
- 
+// Push de updates (Local -> QBO) — atualiza no QBO quem já tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/push-clients/:companyId/:userId", checkToken, qbOutbound.pushLocalUpdatesToQBO);
+
+
+
+
+
+
 export { quickbooksRoutes }; 

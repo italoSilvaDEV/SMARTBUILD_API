@@ -67,7 +67,7 @@ model User {
   Audit             Audit[]
 
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
-  SyncStatus SyncStatus[] @relation("SyncStatus")
+  SyncStatus      SyncStatus[]      @relation("SyncStatus")
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -130,7 +130,7 @@ model Company {
   SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
   QuickBooksAccount QuickBooksAccount?
 
-  SyncLog SyncLog[] @relation("synclog")
+  SyncLog    SyncLog[]    @relation("synclog")
   SyncStatus SyncStatus[] @relation("SyncStatus")
 }
 
@@ -459,7 +459,10 @@ model Client {
   stripeCustomerId String?
   sync_version     Int       @default(0)
 
-  idQuickbooks String?
+  quickbooksUpdatedAt DateTime?
+
+  idQuickbooks          String?
+  QuickBooksCustomerRaw QuickBooksCustomerRaw[]
 
   @@unique([idQuickbooks, company_id])
   @@unique([email, company_id])
@@ -934,38 +937,38 @@ model SyncLog {
 }
 
 model SyncStatus {
-  id        String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Identificação da sincronização
   companyId String
   userId    String
   entity    TypesEntity // customers, invoices, payments
-  syncType  SyncType    // QuickBooksToSmartBuild, SmartBuildToQuickBooks, bidirectional
-  
+  syncType  SyncType // QuickBooksToSmartBuild, SmartBuildToQuickBooks, bidirectional
+
   // Status da sincronização
-  status         SyncStatusType @default(PENDING)
-  lastSyncAt     DateTime?      // Última sincronização bem-sucedida
-  lastAttemptAt  DateTime?      // Última tentativa (sucesso ou falha)
-  nextSyncAt     DateTime?      // Próxima sincronização programada
-  
+  status        SyncStatusType @default(PENDING)
+  lastSyncAt    DateTime? // Última sincronização bem-sucedida
+  lastAttemptAt DateTime? // Última tentativa (sucesso ou falha)
+  nextSyncAt    DateTime? // Próxima sincronização programada
+
   // Controle de progresso
-  totalRecords   Int @default(0)
+  totalRecords     Int @default(0)
   processedRecords Int @default(0)
-  successRecords Int @default(0)
-  errorRecords   Int @default(0)
-  
+  successRecords   Int @default(0)
+  errorRecords     Int @default(0)
+
   // Informações de erro
-  lastError      String? @db.Text
-  errorCount     Int @default(0)
-  
+  lastError  String? @db.Text
+  errorCount Int     @default(0)
+
   // Metadados
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relações
-  company   Company @relation(name: "SyncStatus", fields: [companyId], references: [id])
-  user      User    @relation(name: "SyncStatus", fields: [userId], references: [id])
-  
+  company Company @relation(name: "SyncStatus", fields: [companyId], references: [id])
+  user    User    @relation(name: "SyncStatus", fields: [userId], references: [id])
+
   @@unique([companyId, userId, entity, syncType])
   @@map("sync_status")
 }
@@ -976,4 +979,19 @@ enum SyncStatusType {
   COMPLETED
   FAILED
   PAUSED
+}
+
+model QuickBooksCustomerRaw {
+  id           String   @id @default(uuid())
+  companyId    String
+  clientId     String? // <-- novo
+  client       Client?  @relation(fields: [clientId], references: [id])
+  quickbooksId String? // pode vir vazio quando der erro antes de criar no QBO
+  payload      Json // Customer completo do QBO (ou o que você quiser logar)
+  reason       String // DUPLICATE_EMAIL | MISSING_EMAIL | OTHER
+  status       String // NEW | REVIEWED | IGNORED | MERGED
+  detectedAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([quickbooksId])
 }
