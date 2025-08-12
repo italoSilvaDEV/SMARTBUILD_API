@@ -302,7 +302,8 @@ export class SyncOrchestratorController {
                      else if (typeSync === 'bidirectional') {
                         // OUTBOUND (export + updates) -> INBOUND
                         const exported = await this.executeCustomerExportToQuickBooks(companyId, userId);
-                        const pushed = await this.executeCustomerPushUpdatesToQuickBooks(companyId, userId);
+                        const pushed = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
+                        // const pushed = await this.executeCustomerPushUpdatesToQuickBooks(companyId, userId);
                         // const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
                         // syncResult = { direction: 'Both', exported, pushed, inbound };
                         syncResult = { direction: 'Both', exported, pushed };

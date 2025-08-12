@@ -30,7 +30,7 @@ export class QuickBooksClientController {
           companyId,
           userId,
           typesEntity: "customers",
-          typeSync: "QuickBooksToSmartBuild",
+          typeSync: { in: ['QuickBooksToSmartBuild', 'bidirectional'] },
         },
       });
 
