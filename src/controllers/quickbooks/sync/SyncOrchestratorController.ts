@@ -4,6 +4,7 @@ import { SyncPreferencesController } from "../syncPreference/syncPreferenceContr
 import { QuickBooksClientController } from "../customer/QuickBooksCustomerController";
 import { SyncStatus, SyncPreferences } from "@prisma/client";
 import { QuickBooksCustomerOutboundController } from "../customer/QuickbooksCustomerOutboundController";
+import { quickbooksQueue } from "../../../queue/quickbooksQueue";
 
 
 export class SyncOrchestratorController {
@@ -40,44 +41,72 @@ export class SyncOrchestratorController {
         const { syncPreferences } = req.body;
 
         if (!userId || !companyId) {
-            return res.status(400).json({
-                error: "User ID e Company ID são obrigatórios"
-            });
+            return res.status(400).json({ error: "User ID e Company ID são obrigatórios" });
         }
-
-        if (!syncPreferences || !Array.isArray(syncPreferences)) {
-            return res.status(400).json({
-                error: "Preferências de sincronização são obrigatórias"
-            });
+        if (!Array.isArray(syncPreferences) || syncPreferences.length === 0) {
+            return res.status(400).json({ error: "Preferências de sincronização são obrigatórias" });
         }
 
         try {
-            // 1. Criar/atualizar preferências de sincronização
-            const createdPreferences = await this.createOrUpdatePreferences(
-                syncPreferences,
-                userId,
-                companyId
-            );
+            // 1) Cria/atualiza preferências (rápido)
+            const createdPreferences = await this.createOrUpdatePreferences(syncPreferences, userId, companyId);
 
-            // 2. Executar sincronizações baseadas nas preferências
-            const syncResults = await this.executeSync(createdPreferences, companyId, userId);
+            // 2) Evita duplicar job para o mesmo par company/user
+            const jobId = `sync:${companyId}:${userId}`;
+            const existing = await quickbooksQueue.getJob(jobId);
 
-            return res.status(200).json({
-                message: "Orquestração de sincronização concluída",
-                preferences: createdPreferences,
-                syncResults: syncResults
-            });
+            if (existing) {
+                const state = await existing.getState();
+                const emAndamento = ["waiting", "active", "delayed", "paused", "waiting-children"] as const;
 
+                if (emAndamento.includes(state as any)) {
+                    return res.status(202).json({
+                        message: "There is already a synchronization in progress, please wait",
+                        jobId: existing.id,
+                        state,
+                        // opcional, se tiver criado a rota de job:
+                        // statusUrl: `/quickbooks/jobs/${existing.id}`,
+                    });
+                }
 
+                // Estado terminal (completed/failed) → remove e recria
+                await existing.remove();
+            }
 
+            // 3) Cria novo job (com proteção contra corrida)
+            try {
+                const job = await quickbooksQueue.add(
+                    "orchestrate",
+                    { companyId, userId, prefs: createdPreferences },
+                    { jobId }
+                );
+
+                return res.status(202).json({
+                    message: "We are synchronizing your clients",
+                    jobId: job.id,
+                    preferences: createdPreferences,
+                    // statusUrl: `/quickbooks/jobs/${job.id}`,
+                });
+            } catch (e: any) {
+                // Se outra requisição criou o job no mesmo instante
+                if (typeof e?.message === "string" && e.message.toLowerCase().includes("already exists")) {
+                    const concurrent = await quickbooksQueue.getJob(jobId);
+                    const state = concurrent ? await concurrent.getState() : "unknown";
+                    return res.status(202).json({
+                        message: "Uma sincronização acabou de ser iniciada.",
+                        jobId,
+                        state,
+                        // statusUrl: concurrent ? `/quickbooks/jobs/${concurrent.id}` : undefined,
+                    });
+                }
+                throw e;
+            }
         } catch (error: any) {
             console.error("Erro na orquestração de sincronização:", error);
-            return res.status(500).json({
-                error: "Erro interno na orquestração",
-                details: error.message
-            });
+            return res.status(500).json({ error: "Erro interno na orquestração", details: error.message });
         }
     }
+
 
     /**
      * Executa apenas a sincronização baseada nas preferências existentes
@@ -225,7 +254,7 @@ export class SyncOrchestratorController {
     /**
      * Executa as sincronizações baseadas nas preferências
      */
-    private async executeSync(
+    async executeSync(
         preferences: SyncPreferences[],
         companyId: string,
         userId: string
@@ -282,7 +311,7 @@ export class SyncOrchestratorController {
             });
 
             try {
-             
+
                 // Executar sincronização baseada no tipo
                 let syncResult: any = { steps: [] };
 
@@ -296,10 +325,10 @@ export class SyncOrchestratorController {
                         const exported = await this.executeCustomerExportToQuickBooks(companyId, userId);
                         // const pushed = await this.executeCustomerPushUpdatesToQuickBooks(companyId, userId);
                         // syncResult = { direction: 'Local->QBO', exported, pushed };
-                        syncResult = { direction: 'Local->QBO', exported};
-                        
+                        syncResult = { direction: 'Local->QBO', exported };
+
                     }
-                     else if (typeSync === 'bidirectional') {
+                    else if (typeSync === 'bidirectional') {
                         // OUTBOUND (export + updates) -> INBOUND
                         const exported = await this.executeCustomerExportToQuickBooks(companyId, userId);
                         const pushed = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
