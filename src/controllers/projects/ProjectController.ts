@@ -602,7 +602,6 @@ export class ProjectController {
     const data: IputServiceData = req.body;
     console.log(data);
     try {
-      // Verificar se o serviço existe
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
@@ -2604,6 +2603,74 @@ export class ProjectController {
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor",
       });
+    }
+  }
+
+  async updateFieldsServiceProject(req: Request, res: Response) {
+    const {
+      id,
+      name,
+      description,
+      price
+    } = req.body
+
+    if (!id) {
+      return res.status(400).json({
+        error: "id service is required"
+      })
+    }
+
+    const service = await prisma.serviceProject.findUnique({
+      where: {
+        id
+      }
+    })
+
+    if (!service) {
+      return res.status(400).json({
+        error: "service not found"
+      })
+    }
+
+    if (!name && !description && !price) {
+      return res.status(400).json({
+        error: "at least one field is required"
+      })
+    }
+
+    try {
+      const updateData: {
+        name?: string,
+        description?: string,
+        price?: number
+      } = {}
+
+      if (name !== undefined && name !== service.name && name.trim().length > 0) {
+        updateData.name = name
+      }
+      if (description !== undefined && description !== service.description && description.trim().length > 0) {
+        updateData.description = description
+      }
+
+      if (price !== undefined && price !== service.price) {
+        updateData.price = price
+      }
+
+      const updatedService = await prisma.serviceProject.update({
+        where: {
+          id
+        },
+        data: updateData
+      })
+
+      return res.status(200).json({
+        message: "Service project updated successfully",
+        data: updatedService
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal server error, to update fields service project"
+      })
     }
   }
 }
