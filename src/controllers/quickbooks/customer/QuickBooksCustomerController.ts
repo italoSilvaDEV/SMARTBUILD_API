@@ -4,6 +4,7 @@ import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { jsonSafe } from "./quickbooksHelpers";
+import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 
 // Rate limiter para evitar erro 429 da API QuickBooks
 const limiter = new Bottleneck({
@@ -14,6 +15,7 @@ const limiter = new Bottleneck({
 export class QuickBooksClientController {
   async syncClients(req: Request, res: Response) {
     const { companyId, userId } = req.params;
+    const syncExecutionId = (req as any).syncExecutionId; // ID da execução se vier do orchestrator
 
     if (!userId) {
       return res.status(400).json({ error: "User ID não fornecido" });
@@ -177,25 +179,23 @@ export class QuickBooksClientController {
             if (qbUpdatedAt && qbUpdatedAt > lastSeenRemote) {
               const data = mapFromQb(qbClient, byId);
               await prisma.client.update({ where: { id: byId.id }, data });
-              await prisma.syncLog.create({
-                data: {
-                  entity: "customers",
-                  action: "Updated",
-                  entityId: byId.id,
-                  companyId,
-                  details: jsonSafe({ reason: "QBO newer", oldData: byId, newData: data }),
-                },
+              await createSyncLog({
+                entity: "customers",
+                action: "Updated",
+                entityId: byId.id,
+                companyId,
+                details: jsonSafe({ reason: "QBO newer", oldData: byId, newData: data }),
+                syncExecutionId
               });
               totalSynced++;
             } else {
-              await prisma.syncLog.create({
-                data: {
-                  entity: "customers",
-                  action: "Skipped",
-                  entityId: byId.id,
-                  companyId,
-                  details: jsonSafe({ reason: "QBO not newer than local mirror", qbUpdatedAt, lastSeenRemote }),
-                },
+              await createSyncLog({
+                entity: "customers",
+                action: "Skipped",
+                entityId: byId.id,
+                companyId,
+                details: jsonSafe({ reason: "QBO not newer than local mirror", qbUpdatedAt, lastSeenRemote }),
+                syncExecutionId
               });
             }
             continue; // já resolvido por idQuickbooks
@@ -205,14 +205,13 @@ export class QuickBooksClientController {
         // 2) Não há link por idQuickbooks — agora depende do e-mail
         if (!emailFromQb) {
           await stashRaw(qbClient, "MISSING_EMAIL");
-          await prisma.syncLog.create({
-            data: {
-              entity: "customers",
-              action: "Skipped",
-              entityId: qbId ?? "unknown",
-              companyId,
-              details: jsonSafe({ reason: "Missing email from QBO" })
-            },
+          await createSyncLog({
+            entity: "customers",
+            action: "Skipped",
+            entityId: qbId ?? "unknown",
+            companyId,
+            details: jsonSafe({ reason: "Missing email from QBO" }),
+            syncExecutionId
           });
           continue;
         }
@@ -225,14 +224,13 @@ export class QuickBooksClientController {
         if (existingByEmail) {
           // Não sobrescreve por e-mail; manda para staging
           await stashRaw(qbClient, "DUPLICATE_EMAIL");
-          await prisma.syncLog.create({
-            data: {
-              entity: "customers",
-              action: "Skipped",
-              entityId: existingByEmail.id,
-              companyId,
-              details: jsonSafe({ reason: "Duplicate email on Local; stashed to RAW", email: emailFromQb })
-            },
+          await createSyncLog({
+            entity: "customers",
+            action: "Skipped",
+            entityId: existingByEmail.id,
+            companyId,
+            details: jsonSafe({ reason: "Duplicate email on Local; stashed to RAW", email: emailFromQb }),
+            syncExecutionId
           });
           continue;
         }
@@ -240,14 +238,13 @@ export class QuickBooksClientController {
         // 3) Pode criar novo Client com esse email e gravar idQuickbooks
         const data = mapFromQb(qbClient);
         const newClient = await prisma.client.create({ data });
-        await prisma.syncLog.create({
-          data: {
-            entity: "customers",
-            action: "Inserted",
-            entityId: newClient.id,
-            companyId,
-            details: jsonSafe(data),
-          },
+        await createSyncLog({
+          entity: "customers",
+          action: "Inserted",
+          entityId: newClient.id,
+          companyId,
+          details: jsonSafe(data),
+          syncExecutionId
         });
         totalSynced++;
       }

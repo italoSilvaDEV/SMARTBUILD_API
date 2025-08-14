@@ -5,6 +5,7 @@ import { prisma } from "../../../utils/prisma";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { jsonSafe } from "../customer/quickbooksHelpers";
+import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 
@@ -93,14 +94,12 @@ export class QuickBooksWebhookWorker {
           await this.upsertCustomerFromQBO(companyId, qbCustomer);
         } catch (e: any) {
           console.error("[QBO Webhook] erro entity:", id, e?.message || e);
-          await prisma.syncLog.create({
-            data: {
-              entity: "customers",
-              action: "WebhookError",
-              entityId: id,
-              companyId,
-              details: jsonSafe({ message: e?.message || String(e), op }),
-            },
+          await createSyncLog({
+            entity: "customers",
+            action: "WebhookError",
+            entityId: id,
+            companyId,
+            details: jsonSafe({ message: e?.message || String(e), op }),
           });
         }
       }
@@ -175,14 +174,12 @@ export class QuickBooksWebhookWorker {
       if (qbUpdatedAt && qbUpdatedAt > lastSeenRemote) {
         const data = mapFromQb(byId);
         await prisma.client.update({ where: { id: byId.id }, data });
-        await prisma.syncLog.create({
-          data: {
-            entity: "customers",
-            action: "UpdatedFromWebhook",
-            entityId: byId.id,
-            companyId,
-            details: jsonSafe({ reason: "QBO newer via webhook", qbId, qbUpdatedAt }),
-          },
+        await createSyncLog({
+          entity: "customers",
+          action: "UpdatedFromWebhook",
+          entityId: byId.id,
+          companyId,
+          details: jsonSafe({ reason: "QBO newer via webhook", qbId, qbUpdatedAt }),
         });
       }
       return;
@@ -190,14 +187,12 @@ export class QuickBooksWebhookWorker {
 
     // 2) Não temos idQuickbooks local — tente achar por e-mail
     if (!emailFromQb) {
-      await prisma.syncLog.create({
-        data: {
-          entity: "customers",
-          action: "WebhookSkipped",
-          entityId: qbId,
-          companyId,
-          details: jsonSafe({ reason: "Missing email from QBO" }),
-        },
+      await createSyncLog({
+        entity: "customers",
+        action: "WebhookSkipped",
+        entityId: qbId,
+        companyId,
+        details: jsonSafe({ reason: "Missing email from QBO" }),
       });
       return;
     }
@@ -210,42 +205,36 @@ export class QuickBooksWebhookWorker {
       // linka o idQuickbooks e atualiza campos vindos do QBO
       const data = mapFromQb(existingByEmail);
       await prisma.client.update({ where: { id: existingByEmail.id }, data });
-      await prisma.syncLog.create({
-        data: {
-          entity: "customers",
-          action: "LinkedAndUpdatedFromWebhook",
-          entityId: existingByEmail.id,
-          companyId,
-          details: jsonSafe({ reason: "Matched by email", qbId, email: emailFromQb }),
-        },
+      await createSyncLog({
+        entity: "customers",
+        action: "LinkedAndUpdatedFromWebhook",
+        entityId: existingByEmail.id,
+        companyId,
+        details: jsonSafe({ reason: "Matched by email", qbId, email: emailFromQb }),
       });
       return;
     }
 
     // 3) Criar novo local
     const created = await prisma.client.create({ data: mapFromQb() });
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "InsertedFromWebhook",
-        entityId: created.id,
-        companyId,
-        details: jsonSafe({ qbId, email: emailFromQb }),
-      },
+    await createSyncLog({
+      entity: "customers",
+      action: "InsertedFromWebhook",
+      entityId: created.id,
+      companyId,
+      details: jsonSafe({ qbId, email: emailFromQb }),
     });
   }
 
   private static async handleDeleteCustomer(companyId: string, qbId: string) {
     // QBO não hard-deleta; a operação vem como Delete. Você pode marcar localmente (ex.: flag “inactive”).
     // Aqui, só logamos.
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "WebhookDelete",
-        entityId: qbId,
-        companyId,
-        details: jsonSafe({ qbId }), // <- antes estava objeto puro
-      },
+    await createSyncLog({
+      entity: "customers",
+      action: "WebhookDelete",
+      entityId: qbId,
+      companyId,
+      details: jsonSafe({ qbId }), // <- antes estava objeto puro
     });
   }
 

@@ -42,6 +42,7 @@ quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksC
 quickbooksRoutes.post("/quickbooks/orchestrate-sync/:companyId/:userId", checkToken, syncOrchestratorController.orchestrateSync);
 quickbooksRoutes.post("/quickbooks/execute-sync/:companyId/:userId", checkToken, syncOrchestratorController.executeExistingSync);
 quickbooksRoutes.get("/quickbooks/sync-status/:companyId/:userId", checkToken, syncOrchestratorController.getSyncStatus);
+quickbooksRoutes.get("/quickbooks/sync-history/:companyId/:userId/:entity/:syncType", checkToken, syncOrchestratorController.getSyncExecutionHistory);
 
 // Exportação inicial (Local -> QBO) — cria Customer no QBO p/ quem não tem idQuickbooks
 quickbooksRoutes.post("/quickbooks/export-clients/:companyId/:userId", checkToken, qbOutbound.exportMissingToQBO);

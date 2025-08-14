@@ -6,6 +6,7 @@ import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { jsonSafe, deepEqual } from "./quickbooksHelpers";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { baseDisplayName, isDuplicateNameError, withSuffix } from "../util/uniqueDisplayName";
+import { createSyncLog } from "./FireAndForgetUpsertToQBO";
 
 
 const limiter = new Bottleneck({
@@ -67,6 +68,8 @@ export class QuickBooksCustomerOutboundController {
    */
   exportMissingToQBO = async (req: Request, res: Response) => {
     const { companyId, userId } = req.params;
+    const syncExecutionId = (req as any).syncExecutionId; // ID da execução se vier do orchestrator
+    
     try {
       const qb = await this.getQbClientOrThrow(userId, companyId);
 
@@ -197,14 +200,13 @@ export class QuickBooksCustomerOutboundController {
 
           if (!newId) {
             errors++;
-            await prisma.syncLog.create({
-              data: {
-                entity: "customers",
-                action: "Error",
-                entityId: client.id,
-                companyId,
-                details: jsonSafe({ reason: "QBO create returned without Id", raw: result }),
-              },
+            await createSyncLog({
+              entity: "customers",
+              action: "Error",
+              entityId: client.id,
+              companyId,
+              details: jsonSafe({ reason: "QBO create returned without Id", raw: result }),
+              syncExecutionId
             });
             continue;
           }
@@ -214,31 +216,29 @@ export class QuickBooksCustomerOutboundController {
             data: { idQuickbooks: newId, quickbooksUpdatedAt: newLastUpdated },
           });
 
-          await prisma.syncLog.create({
-            data: {
-              entity: "customers",
-              action: "CreatedInQBO",
-              entityId: client.id,
-              companyId,
-              details: jsonSafe({
-                quickbooksId: newId,
-                lastUpdated: newLastUpdated,
-                usedSuffix: (customerObj?.DisplayName ?? "").includes(display) && (customerObj?.DisplayName ?? "") !== display
-              }),
-            },
+          await createSyncLog({
+            entity: "customers",
+            action: "CreatedInQBO",
+            entityId: client.id,
+            companyId,
+            details: jsonSafe({
+              quickbooksId: newId,
+              lastUpdated: newLastUpdated,
+              usedSuffix: (customerObj?.DisplayName ?? "").includes(display) && (customerObj?.DisplayName ?? "") !== display
+            }),
+            syncExecutionId
           });
 
           created++;
         } catch (err: any) {
           errors++;
-          await prisma.syncLog.create({
-            data: {
-              entity: "customers",
-              action: "Error",
-              entityId: client.id,
-              companyId,
-              details: jsonSafe({ message: err?.Fault ?? err?.message ?? String(err) }),
-            },
+          await createSyncLog({
+            entity: "customers",
+            action: "Error",
+            entityId: client.id,
+            companyId,
+            details: jsonSafe({ message: err?.Fault ?? err?.message ?? String(err) }),
+            syncExecutionId
           });
         }
       }
