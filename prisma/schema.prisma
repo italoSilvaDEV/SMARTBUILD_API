@@ -900,6 +900,7 @@ model SyncPreferences {
 
   typesEntity TypesEntity
   typeSync    SyncType    @default(bidirectional) // Novo campo enum
+  isDisable   Boolean     @default(false)         // Campo para desabilitar sync
 
   userCreate User   @relation(name: "SyncPreferences", fields: [userId], references: [id])
   userId     String

@@ -216,7 +216,7 @@ export class SyncOrchestratorController {
         const createdPreferences: SyncPreferences[] = [];
 
         for (const preference of syncPreferences) {
-            const { typesEntity, typeSync } = preference;
+            const { typesEntity, typeSync, isDisable = false } = preference;
 
             // Verificar se já existe uma preferência para esta entidade
             const existing = await prisma.syncPreferences.findFirst({
@@ -231,7 +231,7 @@ export class SyncOrchestratorController {
                 // Atualizar existente
                 const updated = await prisma.syncPreferences.update({
                     where: { id: existing.id },
-                    data: { typeSync }
+                    data: { typeSync, isDisable }
                 });
                 createdPreferences.push(updated);
             } else {
@@ -240,6 +240,7 @@ export class SyncOrchestratorController {
                     data: {
                         typesEntity,
                         typeSync,
+                        isDisable,
                         userId,
                         companyId
                     }
@@ -262,7 +263,19 @@ export class SyncOrchestratorController {
         const syncResults = [];
 
         for (const preference of preferences) {
-            const { typesEntity, typeSync } = preference;
+            const { typesEntity, typeSync, isDisable } = preference;
+
+            // Verificar se a sincronização está desabilitada
+            if (isDisable) {
+                syncResults.push({
+                    entity: typesEntity,
+                    syncType: typeSync,
+                    status: 'DISABLED',
+                    reason: 'Sincronização desabilitada nas preferências',
+                    lastSyncAt: null
+                });
+                continue;
+            }
 
             // Verificar se já existe um status de sincronização
             let syncStatus = await (prisma as any).syncStatus.findFirst({
@@ -272,7 +285,7 @@ export class SyncOrchestratorController {
                     entity: typesEntity,
                     syncType: typeSync
                 }
-            });
+            }); 
 
             // Verificar se pode executar a sincronização
             const canSync = await this.canExecuteSync(syncStatus);

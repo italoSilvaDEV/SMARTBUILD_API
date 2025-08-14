@@ -45,6 +45,18 @@ export class QuickBooksWebhookWorker {
         continue;
       }
 
+      if (!account.user_id) {
+        console.warn("[QBO Webhook] Conta sem user_id, ignorando evento");
+        continue;
+      }
+
+      // Verificar se a sincronização está habilitada para esta empresa
+      const syncEnabled = await this.isSyncEnabledForCompany(companyId, account.user_id);
+      if (!syncEnabled) {
+        console.log(`[QBO Webhook] Sincronização desabilitada para company=${companyId} user=${account.user_id}`);
+        continue;
+      }
+
       // Filtre somente Customer events
       const customerEvents = entities.filter((e: any) => e.name?.toLowerCase() === "customer");
       for (const evt of customerEvents) {
@@ -235,5 +247,24 @@ export class QuickBooksWebhookWorker {
         details: jsonSafe({ qbId }), // <- antes estava objeto puro
       },
     });
+  }
+
+  // Função helper para verificar se a sincronização está habilitada para uma empresa
+  private static async isSyncEnabledForCompany(companyId: string, userId: string): Promise<boolean> {
+    try {
+      const syncPreference = await prisma.syncPreferences.findFirst({
+        where: {
+          companyId,
+          userId,
+          typesEntity: 'customers',
+          isDisable: false
+        }
+      });
+      
+      return !!syncPreference;
+    } catch (error) {
+      console.error("[isSyncEnabledForCompany] Erro ao verificar preferências:", error);
+      return false;
+    }
   }
 }

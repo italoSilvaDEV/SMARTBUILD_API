@@ -32,6 +32,7 @@ quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quic
 quickbooksRoutes.get("/quickbooks/sync-preferences/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
 quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSyncPreferenceController.create);
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
+quickbooksRoutes.patch("/quickbooks/sync-preferences/:id/disable", checkToken, quickbooksSyncPreferenceController.updateIsDisable);
 quickbooksRoutes.delete("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.delete);
 
 // rotas de sincronizar customers
