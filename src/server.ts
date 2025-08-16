@@ -6,6 +6,7 @@ import { setupWebhook } from './config/stripeWebHook';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
 import { setupConnectWebhook } from './config/stripeWebHookConnect';
+import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
 const cors = require('cors');
 
 
@@ -25,6 +26,9 @@ app.use('/public', express.static(path.join(__dirname, '../public')));
 // Webhook deve vir antes do express.json() para não interferir na verificação da assinatura
 app.use("/webhook", express.raw({ type: 'application/json' }), router);
 app.use("/webhook/connect", express.raw({ type: 'application/json' }), router);
+
+// ⚠️ Para o QBO, nesse caso, você PRECISA de um app.use raw genérico cobrindo /webhooks
+app.use("/webhooks", express.raw({ type: "*/*" }), router);
 
 app.use(express.json({ limit: '25mb' }));
 app.use(router)

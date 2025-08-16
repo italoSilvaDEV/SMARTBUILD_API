@@ -1,7 +1,7 @@
 import { Worker } from 'worker_threads';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { CreateTimelineData, BatchCreateTimelineData, TimelineJob } from '../workers/timelineWorker';
+import { CreateTimelineData, BatchCreateTimelineData, TimelineJob } from '../workers/timelineWorker/timelineWorker';
 
 interface WorkerResult {
     jobId: string;
