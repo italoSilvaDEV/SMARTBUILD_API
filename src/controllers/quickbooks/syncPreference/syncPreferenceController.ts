@@ -93,4 +93,25 @@ export class SyncPreferencesController {
       return res.status(500).json({ error: "Erro interno ao deletar preferência" });
     }
   }
+
+  async updateIsDisable(req: Request, res: Response) {
+    const { id } = req.params;
+    const { isDisable } = req.body;
+
+    if (typeof isDisable !== 'boolean') {
+      return res.status(400).json({ error: "isDisable deve ser um valor booleano" });
+    }
+
+    try {
+      const updated = await prisma.syncPreferences.update({
+        where: { id },
+        data: { isDisable },
+      });
+
+      return res.json(updated);
+    } catch (error: any) {
+      console.error("Erro ao atualizar isDisable:", error);
+      return res.status(500).json({ error: "Erro interno ao atualizar isDisable" });
+    }
+  }
 }

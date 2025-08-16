@@ -1,167 +1,260 @@
 import { Request, Response } from "express";
-import QuickBooks from "node-quickbooks"; // SDK QuickBooks
-import Bottleneck from "bottleneck"; // Para gerenciar rate limits
+import QuickBooks from "node-quickbooks";
+import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
+import { jsonSafe } from "./quickbooksHelpers";
+import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 
-
+// Rate limiter para evitar erro 429 da API QuickBooks
 const limiter = new Bottleneck({
   maxConcurrent: 1,
-  minTime: 1000, // 1 requisição por segundo para respeitar rate limits
+  minTime: 1100, // 1,1s para respeitar o limite real da Intuit (máx. 500 req/hora)
 });
 
 export class QuickBooksClientController {
-//   async syncClients(req: Request, res: Response) {
-//     const { companyId, userId } = req.params;
+  async syncClients(req: Request, res: Response) {
+    const { companyId, userId } = req.params;
+    const syncExecutionId = (req as any).syncExecutionId; // ID da execução se vier do orchestrator
 
-//     if (!userId) {
-//       return res.status(400).json({ error: "User ID não fornecido" });
-//     }
+    if (!userId) {
+      return res.status(400).json({ error: "User ID não fornecido" });
+    }
 
-//     if (!companyId) {
-//       return res.status(400).json({ error: "Company ID não fornecido" });
-//     }
+    if (!companyId) {
+      return res.status(400).json({ error: "Company ID não fornecido" });
+    }
 
-//     try {
-//       // Buscar as credenciais do QuickBooksAccount para o userId
-//       const quickBooksAccount = await prisma.quickBooksAccount.findUnique({
-//         where: { user_id: userId },
-//       });
+    try {
+      // 1. Verificar SyncPreferences antes de tudo
+      const syncPref = await prisma.syncPreferences.findFirst({
+        where: {
+          companyId,
+          userId,
+          typesEntity: "customers",
+          typeSync: { in: ['QuickBooksToSmartBuild', 'bidirectional'] },
+        },
+      });
 
-//       if (!quickBooksAccount) {
-//         return res.status(404).json({ error: "Conta QuickBooks não encontrada para o usuário" });
-//       }
+      if (!syncPref) {
+        return res.status(403).json({
+          error:
+            "Sincronização não permitida: verifique se está configurada para buscar clientes do QuickBooks para SmartBuild.",
+        });
+      }
 
-//       // Verificar se o accessToken expirou
-//       const now = new Date();
-//       if (quickBooksAccount.expiresAt && now > quickBooksAccount.expiresAt) {
-//         const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
-//         if (!refreshResult.success) {
-//           return res.status(401).json({ error: "Falha ao renovar o token de acesso: " + refreshResult.error });
-//         }
-//       }
+      // 2. Buscar credenciais do QuickBooksAccount pelo userId E companyId (garante que está no contexto certo)
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: {
+          user_id: userId,
+          company_id: companyId,
+        },
+      });
 
-//       // Recarregar as credenciais atualizadas após o refresh, se ocorreu
-//       const updatedAccount = await prisma.quickBooksAccount.findUnique({
-//         where: { user_id: userId },
-//       });
+      if (!quickBooksAccount) {
+        return res
+          .status(404)
+          .json({ error: "Conta QuickBooks não encontrada para o usuário/empresa" });
+      }
 
-//       if (!updatedAccount) {
-//         return res.status(404).json({ error: "Conta QuickBooks não encontrada após refresh" });
-//       }
+      // 3. Verificar se o accessToken expirou e refresh se necessário
+      let account = quickBooksAccount;
+      if (account.expiresAt && new Date() > account.expiresAt) {
+        const refreshResult = await refreshAccessToken(account.refreshToken, account.id);
+        if (!refreshResult.success) {
+          return res.status(401).json({ error: "Falha ao renovar token: " + refreshResult.error });
+        }
+        // Buscar o account atualizado pós-refresh
+        const refreshed = await prisma.quickBooksAccount.findUnique({
+          where: { id: account.id },
+        });
+        if (!refreshed) {
+          return res
+            .status(404)
+            .json({ error: "Conta QuickBooks não encontrada após refresh" });
+        }
+        account = refreshed; // aqui garantimos que 'account' nunca será null
+      }
 
-//       // Instanciar o QuickBooks com as credenciais dinâmicas
-//       const qb = new QuickBooks(
-//         {
-//           consumerKey: process.env.QB_CONSUMER_KEY, // Substituir por credencial global se aplicável
-//           consumerSecret: process.env.QB_CONSUMER_SECRET, // Substituir por credencial global se aplicável
-//           token: updatedAccount.accessToken,
-//           tokenSecret: updatedAccount.refreshToken, // Ajuste: tokenSecret pode não ser o mesmo que refreshToken; veja nota abaixo
-//         },
-//         updatedAccount.realmId,
-//         true // useSandbox, ajuste para false em produção
-//       );
+      // 4. Instanciar QuickBooks SDK corretamente
+      const qb = new QuickBooks(
+        process.env.QB_CLIENT_ID!,
+        process.env.QB_CLIENT_SECRET!,
+        account.accessToken,
+        false, // Não é tokenSecret (usar OAuth2)
+        account.realmId,
+        true, // Use sandbox? Troque para false em produção!
+        true, // Use the new API
+        null,
+        "2.0",
+        account.refreshToken
+      );
 
-//       let startPosition = 1;
-//       const maxResults = 100;
-//       let allClients: any[] = [];
-//       let totalSynced = 0;
+      console.log("DEBUG: qb object created:", typeof qb);
+      console.log("DEBUG: qb.findCustomers exists:", typeof qb.findCustomers);
 
-//       // Loop paginado para buscar todos os clientes
-//       while (true) {
-//         const clients = await limiter.schedule(() =>
-//           qb.customerQuery({
-//             where: [`CompanyId = '${companyId}'`],
-//             startPosition,
-//             maxResults,
-//           })
-//         );
-//         const customerList = clients.QueryResponse.Customer || [];
-//         allClients = allClients.concat(customerList);
+      // 5. Buscar todos os clientes usando o método correto da biblioteca
+      console.log("DEBUG: Buscando clientes com findCustomers...");
 
-//         if (customerList.length < maxResults) break;
-//         startPosition += maxResults;
-//       }
+      const result: any = await limiter.schedule(() =>
+        new Promise((resolve, reject) => {
+          qb.findCustomers({ fetchAll: true }, (err: any, data: any) => {
+            if (err) {
+              console.error("DEBUG: Erro na busca de clientes:", err);
+              reject(err);
+            } else {
+              console.log("DEBUG: Clientes encontrados:", data?.QueryResponse?.Customer?.length || 0);
+              resolve(data);
+            }
+          });
+        })
+      );
 
-//       // Processar cada cliente do QuickBooks
-//       for (const qbClient of allClients) {
-//         const email = qbClient.PrimaryEmailAddr?.Address;
-//         if (!email) continue; // Ignora clientes sem e-mail
+      const allClients = result.QueryResponse?.Customer || [];
 
-//         const localClient = await prisma.client.findUnique({
-//           where: { email },
-//         });
+      let totalSynced = 0;
+     
 
-//         const syncData = {
-//           name: qbClient.DisplayName,
-//           email: qbClient.PrimaryEmailAddr.Address,
-//           document: qbClient.Other?.[0]?.FreeFormNumber || null,
-//           phone: qbClient.PrimaryPhone?.FreeFormNumber || null,
-//           city_and_state: `${qbClient.BillAddr?.City || ""}, ${qbClient.BillAddr?.CountrySubDivisionCode || ""}`.trim() || null,
-//           birth_date: qbClient.BirthDate || null,
-//           location: qbClient.BillAddr?.Line1 || null,
-//           date_update: new Date(qbClient.MetaData.LastUpdatedTime),
-//           idQuickbooks: qbClient.Id, // Armazena o ID do QuickBooks
-//           sync_version: localClient ? localClient.sync_version + 1 : 0, // Incrementa a versão
-//           // Campos preservados do local (não sobrescritos)
-//           avatar: localClient?.avatar || null,
-//           lat: localClient?.lat || null,
-//           log: localClient?.log || null,
-//           radius: localClient?.radius || null,
-//           autorId: localClient?.autorId || userId || null,
-//           projects: localClient?.projects || [],
-//           stripeCustomerId: localClient?.stripeCustomerId || null, // Preservado, não sobrescrito
-//           company_id: companyId,
-//         };
+      // Helpers
+      const stashRaw = async (qbCust: any, reason: string, status = "NEW") => {
+        await prisma.quickBooksCustomerRaw.create({
+          data: {
+            companyId,
+            quickbooksId: qbCust?.Id ?? null,
+            payload: qbCust ?? {},
+            reason,
+            status,
+          },
+        });
+      };
 
-//         if (localClient) {
-//           // Estratégia conservadora: só atualiza se QuickBooks for mais recente
-//           if (new Date(qbClient.MetaData.LastUpdatedTime) > localClient.date_update) {
-//             await prisma.client.update({
-//               where: { id: localClient.id },
-//               data: syncData,
-//             });
-//             await prisma.syncLog.create({
-//               data: {
-//                 entity: "Client",
-//                 action: "Updated",
-//                 entityId: localClient.id,
-//                 companyId,
-//                 details: { reason: "QuickBooks mais recente", oldData: localClient, newData: syncData },
-//               },
-//             });
-//             totalSynced++;
-//           } else {
-//             await prisma.syncLog.create({
-//               data: {
-//                 entity: "Client",
-//                 action: "Skipped",
-//                 entityId: localClient.id,
-//                 companyId,
-//                 details: { reason: "Data mais recente localmente" },
-//               },
-//             });
-//           }
-//         } else {
-//           // Novo cliente
-//           const newClient = await prisma.client.create({ data: syncData });
-//           await prisma.syncLog.create({
-//             data: {
-//               entity: "Client",
-//               action: "Inserted",
-//               entityId: newClient.id,
-//               companyId,
-//               details: syncData,
-//             },
-//           });
-//           totalSynced++;
-//         }
-//       }
+      const mapFromQb = (qbClient: any, localClient?: any) => {
+        const qbUpdatedAt =
+          qbClient.MetaData?.LastUpdatedTime ? new Date(qbClient.MetaData.LastUpdatedTime) : null;
+      
+        return {
+          name: qbClient.DisplayName,
+          email: qbClient.PrimaryEmailAddr?.Address ?? localClient?.email,
+          document: qbClient.TaxIdentifier || null,
+          phone: qbClient.PrimaryPhone?.FreeFormNumber || null,
+          city_and_state: qbClient.BillAddr
+            ? `${qbClient.BillAddr.City || ""}, ${qbClient.BillAddr.CountrySubDivisionCode || ""}`.trim()
+            : null,
+          birth_date: qbClient.BirthDate || null,
+          location: qbClient.BillAddr?.Line1 || null,
+      
+          // ❌ NÃO setar date_update (ele é @updatedAt)
+          // ✅ Setar o espelho do QBO
+          quickbooksUpdatedAt: qbUpdatedAt,
+      
+          idQuickbooks: qbClient.Id,
+          sync_version: localClient ? (localClient.sync_version || 0) + 1 : 0,
+          avatar: localClient?.avatar || null,
+          lat: localClient?.lat || null,
+          log: localClient?.log || null,
+          radius: localClient?.radius || null,
+          autorId: localClient?.autorId || userId,
+          stripeCustomerId: localClient?.stripeCustomerId || null,
+          company_id: companyId,
+        };
+      };
 
-//       res.status(200).json({ message: "Sincronização concluída", synced: totalSynced });
-//     } catch (error) {
-//       console.error("Erro na sincronização de clientes:", error);
-//       res.status(500).json({ error: "Erro interno na sincronização" });
-//     }
-//   }
+      for (const qbClient of allClients) {
+        const qbId = qbClient.Id as string | undefined;
+        const emailFromQb: string | undefined = qbClient.PrimaryEmailAddr?.Address;
+     
+        if (qbId) {
+          const byId = await prisma.client.findFirst({
+            where: { company_id: companyId, idQuickbooks: qbId },
+          });
+        
+          if (byId) {
+            const qbUpdatedAt = qbClient.MetaData?.LastUpdatedTime
+              ? new Date(qbClient.MetaData.LastUpdatedTime)
+              : null;
+        
+            // Agora comparamos com o espelho salvo, NÃO com date_update
+            const lastSeenRemote = byId.quickbooksUpdatedAt ?? new Date(0);
+        
+            if (qbUpdatedAt && qbUpdatedAt > lastSeenRemote) {
+              const data = mapFromQb(qbClient, byId);
+              await prisma.client.update({ where: { id: byId.id }, data });
+              await createSyncLog({
+                entity: "customers",
+                action: "Updated",
+                entityId: byId.id,
+                companyId,
+                details: jsonSafe({ reason: "QBO newer", oldData: byId, newData: data }),
+                syncExecutionId
+              });
+              totalSynced++;
+            } else {
+              await createSyncLog({
+                entity: "customers",
+                action: "Skipped",
+                entityId: byId.id,
+                companyId,
+                details: jsonSafe({ reason: "QBO not newer than local mirror", qbUpdatedAt, lastSeenRemote }),
+                syncExecutionId
+              });
+            }
+            continue; // já resolvido por idQuickbooks
+          }
+        }
+
+        // 2) Não há link por idQuickbooks — agora depende do e-mail
+        if (!emailFromQb) {
+          await stashRaw(qbClient, "MISSING_EMAIL");
+          await createSyncLog({
+            entity: "customers",
+            action: "Skipped",
+            entityId: qbId ?? "unknown",
+            companyId,
+            details: jsonSafe({ reason: "Missing email from QBO" }),
+            syncExecutionId
+          });
+          continue;
+        }
+
+        // Verifica se já existe cliente local por e-mail (unicidade por company)
+        const existingByEmail = await prisma.client.findFirst({
+          where: { company_id: companyId, email: emailFromQb },
+        });
+
+        if (existingByEmail) {
+          // Não sobrescreve por e-mail; manda para staging
+          await stashRaw(qbClient, "DUPLICATE_EMAIL");
+          await createSyncLog({
+            entity: "customers",
+            action: "Skipped",
+            entityId: existingByEmail.id,
+            companyId,
+            details: jsonSafe({ reason: "Duplicate email on Local; stashed to RAW", email: emailFromQb }),
+            syncExecutionId
+          });
+          continue;
+        }
+
+        // 3) Pode criar novo Client com esse email e gravar idQuickbooks
+        const data = mapFromQb(qbClient);
+        const newClient = await prisma.client.create({ data });
+        await createSyncLog({
+          entity: "customers",
+          action: "Inserted",
+          entityId: newClient.id,
+          companyId,
+          details: jsonSafe(data),
+          syncExecutionId
+        });
+        totalSynced++;
+      }
+
+      res.status(200).json({ message: "Sincronização concluída", synced: totalSynced });
+
+
+    } catch (error: any) {
+      console.error("Erro na sincronização de clientes:", error);
+      res.status(500).json({ error: "Erro interno na sincronização", details: error.message });
+    }
+  }
 }

@@ -31,6 +31,7 @@ import { checkToken } from '../middlewares/checkToken'
 import multer from 'multer'
 import uploadConfig from "../config/upload";
 import { UploadImageController } from '../controllers/projects/UploadImageController';
+import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -60,6 +61,7 @@ router.use(workedRours)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
+router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);
 router.use("/business-dashboard", businessDashboard);
