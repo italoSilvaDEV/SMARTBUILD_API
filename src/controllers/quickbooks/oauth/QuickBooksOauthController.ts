@@ -66,11 +66,20 @@ export class QuickBooksController {
   async callback(req: Request, res: Response) {
     console.log("inicio de callback")
     try {
-      const { code, state, realmId } = req.query;
+      const { error, code, state, realmId } = req.query;
       const userId = state as string;
 
+      if (error) {
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(String(error))}`
+        );
+      }
+
       if (!code || !realmId || !userId) {
-        return res.status(400).json({ error: "Missing required parameters" });
+        // return res.status(400).json({ error: "Missing required parameters" });
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=missing_params`
+        );
       }
 
       // Verificar se o usuário existe
