@@ -75,6 +75,12 @@ export class GetAllEstimatesByCompanyController {
                                     price: true,
                                     status: true
                                 }
+                            },
+                            company: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
                             }
                         },
                     },
