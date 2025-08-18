@@ -109,7 +109,16 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
+                    totalAmount: Number(estimate.totalAmount),
                     PdfProject: presignedUrls,
+                    servicesProject: estimate.serviceProjects.map((service) => {
+                        return {
+                            ...service,
+                            lineTotal: Number(service.lineTotal),
+                            unitPrice: Number(service.unitPrice),
+                            quantity: Number(service.quantity)
+                        }
+                    }),
                     user: user?.name
                 }
             }))
