@@ -102,16 +102,18 @@ export class GetAllEstimatesByCompanyController {
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
                         return await getPresignedUrl(pdf.uri)
-                    } else if (estimate.project.client?.avatar) {
+                    }
+                    if (estimate.project.client?.avatar) {
                         return await getPresignedUrl(estimate.project.client.avatar)
                     }
-                }))
+                    return null
+                }).filter(Boolean))
 
                 return {
                     ...estimate,
                     totalAmount: Number(estimate.totalAmount),
                     PdfProject: presignedUrls,
-                    servicesProject: estimate.serviceProjects.map((service) => {
+                    serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
                             ...service,
                             lineTotal: Number(service.lineTotal),
