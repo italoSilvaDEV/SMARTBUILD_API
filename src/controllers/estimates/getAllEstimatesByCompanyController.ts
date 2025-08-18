@@ -47,8 +47,6 @@ export class GetAllEstimatesByCompanyController {
                             status_project: true,
                             autorId: true,
                             location: true,
-                        },
-                        include: {
                             client: {
                                 select: {
                                     id: true,
@@ -60,7 +58,7 @@ export class GetAllEstimatesByCompanyController {
                                     date_update: true,
                                 }
                             }
-                        }
+                        },
                     },
                     serviceProjects: {
                         select: {
