@@ -124,7 +124,7 @@ export class GetAllEstimatesByCompanyController {
             }))
 
             return res.status(200).json({
-                estimatesWithPresignedUrls
+                data: estimatesWithPresignedUrls
             })
         } catch (error) {
             return res.status(500).json({
