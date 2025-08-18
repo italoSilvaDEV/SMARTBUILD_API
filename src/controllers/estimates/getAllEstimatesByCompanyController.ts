@@ -65,6 +65,16 @@ export class GetAllEstimatesByCompanyController {
                                     email: true,
                                     avatar: true
                                 }
+                            },
+                            serviceProject: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    description: true,
+                                    hours: true,
+                                    price: true,
+                                    status: true
+                                }
                             }
                         },
                     },
