@@ -57,6 +57,14 @@ export class GetAllEstimatesByCompanyController {
                                     date_creation: true,
                                     date_update: true,
                                 }
+                            },
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                    avatar: true
+                                }
                             }
                         },
                     },
@@ -91,18 +99,15 @@ export class GetAllEstimatesByCompanyController {
             })
 
             const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
-                const user = await prisma.user.findUnique({
-                    where: {
-                        id: estimate.project.autorId || ""
-                    }
-                })
-
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
                         return await getPresignedUrl(pdf.uri)
                     }
                     if (estimate.project.client?.avatar) {
                         return await getPresignedUrl(estimate.project.client.avatar)
+                    }
+                    if (estimate.project.user?.avatar) {
+                        return await getPresignedUrl(estimate.project.user.avatar)
                     }
                     return null
                 }).filter(Boolean))
@@ -119,7 +124,6 @@ export class GetAllEstimatesByCompanyController {
                             quantity: Number(service.quantity)
                         }
                     }),
-                    user: user?.name
                 }
             }))
 
