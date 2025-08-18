@@ -46,6 +46,20 @@ export class GetAllEstimatesByCompanyController {
                             id: true,
                             status_project: true,
                             autorId: true,
+                            location: true,
+                        },
+                        include: {
+                            client: {
+                                select: {
+                                    id: true,
+                                    avatar: true,
+                                    name: true,
+                                    email: true,
+                                    city_and_state: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                }
+                            }
                         }
                     },
                     serviceProjects: {
@@ -82,6 +96,8 @@ export class GetAllEstimatesByCompanyController {
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
                         return await getPresignedUrl(pdf.uri)
+                    } else if (estimate.project.client?.avatar) {
+                        return await getPresignedUrl(estimate.project.client.avatar)
                     }
                 }))
 
