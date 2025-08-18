@@ -3,12 +3,16 @@ import { checkToken } from "../middlewares/checkToken";
 import { EstimateController } from "../controllers/projects/EstimateController";
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
+import { GetAllEstimatesByCompanyController } from "../controllers/estimates/getAllEstimatesByCompanyController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
+const getAllEstimatesByCompanyController = new GetAllEstimatesByCompanyController();
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
+
+estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByCompanyController.handle);
 
 estimateRoutes.post("/", checkToken, estimateController.create);
 estimateRoutes.get("/project/:projectId", checkToken, estimateController.findByProject);
