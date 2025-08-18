@@ -1,5 +1,6 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
@@ -77,8 +78,21 @@ export class GetAllEstimatesByCompanyController {
                 }
             })
 
+            const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
+                const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
+                    if (pdf.uri) {
+                        return await getPresignedUrl(pdf.uri)
+                    }
+                }))
+
+                return {
+                    ...estimate,
+                    PdfProject: presignedUrls
+                }
+            }))
+
             return res.status(200).json({
-                estimates
+                estimatesWithPresignedUrls
             })
         } catch (error) {
             return res.status(500).json({
