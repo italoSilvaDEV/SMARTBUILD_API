@@ -93,6 +93,12 @@ export class GetAllEstimatesByCompanyController {
             })
 
             const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
+                const user = await prisma.user.findUnique({
+                    where: {
+                        id: estimate.project.autorId || ""
+                    }
+                })
+
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
                         return await getPresignedUrl(pdf.uri)
@@ -103,7 +109,8 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
-                    PdfProject: presignedUrls
+                    PdfProject: presignedUrls,
+                    user: user?.name
                 }
             }))
 
