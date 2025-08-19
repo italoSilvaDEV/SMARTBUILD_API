@@ -26,7 +26,7 @@ const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-
 estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByCompanyController.handle);
 estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
 estimateRoutes.delete("/:estimateId", checkToken, deleteEstimateController.handle);
-estimateRoutes.delete("/:id/service/:serviceId/:estimateId", checkToken, deleteServiceEstimateController.handle);
+estimateRoutes.delete("/service/:serviceId/:estimateId", checkToken, deleteServiceEstimateController.handle);
 estimateRoutes.patch("/update/fields", checkToken, updateEstimateFieldsController.handle);
 estimateRoutes.patch("/update/service-fields", checkToken, updateServiceEstimateController.handle);
 
