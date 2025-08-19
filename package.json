@@ -8,8 +8,8 @@
     "dev": "npm-run-all -p dev:api dev:worker",
 
     "build": "tsc",
-    "start": "node dist/src/server.js",
-    "start:worker": "node dist/worker/quickbooksWorker.js",
+    "start:worker": "node dist/workers/quickbooks/quickbooksWorker.js",
+    "start":  "node dist/server.js",
 
     "test": "jest",
     "test:watch": "jest --watch",
