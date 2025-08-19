@@ -5,24 +5,11 @@ export class DeleteServiceEstimateController {
     async handle(req: Request, res: Response) {
         const {
             serviceId,
-            estimateId
         } = req.params
 
-        if (!serviceId || !estimateId) {
+        if (!serviceId) {
             return res.status(400).json({
-                error: "Service ID and Estimate ID are required"
-            })
-        }
-
-        const estimate = await prisma.estimate.findUnique({
-            where: {
-                id: estimateId
-            }
-        })
-
-        if (!estimate) {
-            return res.status(404).json({
-                error: "Estimate not found"
+                error: "Service ID required"
             })
         }
 
@@ -35,12 +22,6 @@ export class DeleteServiceEstimateController {
         if (!service) {
             return res.status(404).json({
                 error: "Service not found"
-            })
-        }
-
-        if (service.estimateId !== estimateId) {
-            return res.status(400).json({
-                error: "Service does not belong to the estimate"
             })
         }
 
