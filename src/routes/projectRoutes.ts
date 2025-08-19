@@ -202,6 +202,12 @@ projectRoutes.post(
   createPdfProjectEstimateInvoiceController.handle.bind(createPdfProjectEstimateInvoiceController)
 );
 
+projectRoutes.put(
+  "/pdfproject/estimate-invoice/update-estimate-id",
+  checkToken,
+  createPdfProjectEstimateInvoiceController.updateEstimateId.bind(createPdfProjectEstimateInvoiceController)
+);
+
 // Rota PUT para atualizar PDF Project
 projectRoutes.put(
   "/pdfproject/estimate-invoice/:id",
