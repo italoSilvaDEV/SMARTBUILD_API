@@ -37,7 +37,7 @@ export class CreateNewEstimateController {
                 data: {
                     number: preGeneratedNumber,
                     approvedAt,
-                    totalAmount,
+                    totalAmount: Number(totalAmount),
                     description,
                     terms,
                     status,
@@ -60,7 +60,7 @@ export class CreateNewEstimateController {
                     id: estimate.id
                 },
                 data: {
-                    totalAmount: totalAmount
+                    totalAmount: Number(totalAmount)
                 }
             })
 
@@ -84,7 +84,10 @@ export class CreateNewEstimateController {
 
             return res.status(201).json({
                 message: "Estimate created successfully",
-                data: estimate
+                data: {
+                    ...estimate,
+                    totalAmount: Number(totalAmount)
+                }
             })
         } catch (error) {
             return res.status(500).json({
