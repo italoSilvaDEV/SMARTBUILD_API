@@ -79,7 +79,23 @@ export class GetAllEstimatesByCompanyController {
                             company: {
                                 select: {
                                     id: true,
-                                    name: true
+                                    name: true,
+                                    email: true,
+                                    phone: true,
+                                    address: true,
+                                    district: true,
+                                    numberHouse: true,
+                                    avatar: true,
+                                    complement: true,
+                                    webSiteUrl: true,
+                                    NotesContrac: {
+                                        select: {
+                                            id: true,
+                                            notes: true,
+                                            updatedAt: true,
+                                            createdAt: true
+                                        }
+                                    }
                                 }
                             }
                         },
