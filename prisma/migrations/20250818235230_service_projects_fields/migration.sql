@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `Estimateserviceproject` ADD COLUMN `deadline` VARCHAR(191) NULL,
+ALTER TABLE `EstimateServiceProject` ADD COLUMN `deadline` VARCHAR(191) NULL,
     ADD COLUMN `hours` DECIMAL(65, 30) NULL,
     ADD COLUMN `id_service` VARCHAR(191) NULL,
     ADD COLUMN `price` DECIMAL(65, 30) NULL,
