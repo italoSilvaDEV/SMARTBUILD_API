@@ -1,14 +1,16 @@
 import { Request, Response } from "express";
-import { prisma } from "../../utils/prisma";
+import { prisma } from "../../../utils/prisma";
 import axios from "axios";
 import querystring from "querystring";
-import { refreshAccessToken } from "./QuickBooksTokenService";
-import { oauthClient } from "./QuickBooksOAuthClient";
+
+import { oauthClient } from "../util/QuickBooksOAuthClient";
+import { refreshAccessToken } from "../util/QuickBooksTokenService";
 
 export class QuickBooksController {
+  // faz o oauth para o quickbooks
   async authorize(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
       console.log("valor do userId", userId)
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
@@ -39,7 +41,7 @@ export class QuickBooksController {
           'address'
         ],
         redirect_uri: redirectUri,
-        state: userId // Passamos o userId como state para recuperar no callback
+        state: `${userId}-${companyId}` // Passamos o userId como state para recuperar no callback
       };
 
       // Construir URL de autorização
@@ -60,15 +62,24 @@ export class QuickBooksController {
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
-
+  //ainda nao utlizada pelo frontend
   async callback(req: Request, res: Response) {
     console.log("inicio de callback")
     try {
-      const { code, state, realmId } = req.query;
-      const userId = state as string;
+      const { error, code, state, realmId } = req.query;
+      const [userId, companyId] = state as string;
+
+      if (error) {
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(String(error))}`
+        );
+      }
 
       if (!code || !realmId || !userId) {
-        return res.status(400).json({ error: "Missing required parameters" });
+        // return res.status(400).json({ error: "Missing required parameters" });
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=missing_params`
+        );
       }
 
       // Verificar se o usuário existe
@@ -79,6 +90,9 @@ export class QuickBooksController {
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      // Pegue o company_id do usuário
+      const userCompanyId = companyId;
 
       const clientId = process.env.QUICKBOOKS_CLIENT_ID;
       console.log("valor do clientId", clientId)
@@ -130,7 +144,8 @@ export class QuickBooksController {
             realmId: realmId as string,
             expiresAt,
             scopes: savedScope,
-            needsReauthorization: false
+            needsReauthorization: false,
+            company_id: userCompanyId,
           }
         });
       } else {
@@ -143,7 +158,8 @@ export class QuickBooksController {
             refreshToken: refresh_token,
             expiresAt,
             scopes: savedScope,
-            needsReauthorization: false
+            needsReauthorization: false,
+            company_id: userCompanyId,
           }
         });
       }
@@ -153,10 +169,10 @@ export class QuickBooksController {
       // return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?success=true`);
     } catch (error: any) {
       console.error("Erro no callback do QuickBooks:", error);
-      return res.redirect(`${process.env.URL_FRONT}/quickbooks-config?error=${encodeURIComponent(error.message)}`);
+      return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(error.message)}`);
     }
   }
-
+  //utlizada pelo frontend para checar se o usuario esta conectado ao quickbooks
   async checkStatus(req: Request, res: Response) {
     try {
       const { userId } = req.params;
@@ -191,7 +207,7 @@ export class QuickBooksController {
       if (isTokenExpired) {
         try {
           // Chamar a função de refresh token
-          const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+          const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
           
           if (refreshResult.success) {
             // Se o refresh foi bem-sucedido, retorna os dados atualizados
@@ -257,7 +273,7 @@ export class QuickBooksController {
       });
     }
   }
-
+  //refresh token ainda nao utlizada pelo frontend
   async refreshToken(req: Request, res: Response) {
     try {
       const { userId } = req.params;
@@ -272,7 +288,7 @@ export class QuickBooksController {
       }
 
       // Chamar a função de refresh token
-      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
       
       if (!refreshResult.success) {
         return res.status(401).json({ 

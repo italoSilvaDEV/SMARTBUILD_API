@@ -66,6 +66,9 @@ model User {
   canceledEstimates Estimate[] @relation("canceledEstimates")
   Audit             Audit[]
 
+  SyncPreferences SyncPreferences[] @relation("SyncPreferences")
+  SyncStatus      SyncStatus[]      @relation("SyncStatus")
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -123,6 +126,12 @@ model Company {
   Subscription Subscription[]
   Plan         Plan?          @relation(fields: [planId], references: [id])
   planId       String?
+
+  SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
+  QuickBooksAccount QuickBooksAccount?
+
+  SyncLog    SyncLog[]    @relation("synclog")
+  SyncStatus SyncStatus[] @relation("SyncStatus")
 }
 
 model ContractNotes {
@@ -202,22 +211,23 @@ model SubCategory {
 }
 
 model Service {
-  id              String           @id @default(uuid())
-  service_name    String
-  type_variable   String
-  price_type      String
-  price_fixe      Decimal?
-  price_minimum   Decimal?
-  price_maximum   Decimal?
-  autorId         String?
-  date_creation   DateTime         @default(now())
-  date_update     DateTime         @updatedAt
-  service         SubCategory      @relation(fields: [sub_category_id], references: [id])
-  sub_category_id String
-  ServiceProject  ServiceProject[]
-  company         Company?         @relation(fields: [company_id], references: [id])
-  company_id      String?
-  description     String?          @db.Text
+  id                     String                   @id @default(uuid())
+  service_name           String
+  type_variable          String
+  price_type             String
+  price_fixe             Decimal?
+  price_minimum          Decimal?
+  price_maximum          Decimal?
+  autorId                String?
+  date_creation          DateTime                 @default(now())
+  date_update            DateTime                 @updatedAt
+  service                SubCategory              @relation(fields: [sub_category_id], references: [id])
+  sub_category_id        String
+  ServiceProject         ServiceProject[]
+  company                Company?                 @relation(fields: [company_id], references: [id])
+  company_id             String?
+  description            String?                  @db.Text
+  EstimateServiceProject EstimateServiceProject[]
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
@@ -328,6 +338,11 @@ model Project {
   seller_user_id String?
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
+
+  radius   Float?
+  location String? @db.Text
+  log      String? @db.VarChar(191)
+  lat      String? @db.VarChar(191)
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -443,6 +458,15 @@ model Client {
   company          Company?  @relation(fields: [company_id], references: [id])
   company_id       String?
   stripeCustomerId String?
+  sync_version     Int       @default(0)
+
+  quickbooksUpdatedAt DateTime?
+
+  idQuickbooks          String?
+  QuickBooksCustomerRaw QuickBooksCustomerRaw[]
+
+  @@unique([idQuickbooks, company_id])
+  @@unique([email, company_id])
 }
 
 model InvoiceCostProject {
@@ -643,6 +667,9 @@ model QuickBooksAccount {
   updatedAt            DateTime @updatedAt
   user                 User?    @relation(fields: [user_id], references: [id])
   user_id              String?  @unique
+
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?  @unique
 }
 
 model InvoiceItem {
@@ -730,6 +757,14 @@ model EstimateServiceProject {
   unitPrice   Decimal
   lineTotal   Decimal
   notes       String? @db.Text
+
+  id_service String?
+  service    Service? @relation(fields: [id_service], references: [id])
+
+  hours      Decimal?
+  price      Decimal?
+  start_date String?
+  deadline   String?
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -867,4 +902,146 @@ model UserCompany {
   @@index([userId])
   @@index([companyId])
   @@map("user_company")
+}
+
+model SyncPreferences {
+  id String @id @default(uuid())
+
+  typesEntity TypesEntity
+  typeSync    SyncType    @default(bidirectional) // Novo campo enum
+  isDisable   Boolean     @default(false) // Campo para desabilitar sync
+
+  userCreate User   @relation(name: "SyncPreferences", fields: [userId], references: [id])
+  userId     String
+
+  company   Company @relation(name: "SyncPreferences", fields: [companyId], references: [id])
+  companyId String
+
+  @@map("sync_preferences") // Renomeia a tabela no banco
+}
+
+enum TypesEntity {
+  customers
+  invoices
+  payments
+}
+
+enum SyncType {
+  bidirectional
+  QuickBooksToSmartBuild
+  SmartBuildToQuickBooks
+}
+
+model SyncLog {
+  id        String   @id @default(uuid())
+  entity    String // Ex.: "Client"
+  action    String // Ex.: "Inserted", "Updated", "Skipped"
+  entityId  String // ID do cliente
+  timestamp DateTime @default(now())
+  details   Json // Dados adicionais (ex.: diffs, erros)
+
+  company   Company @relation(name: "synclog", fields: [companyId], references: [id])
+  companyId String // ID da empresa associada
+
+  // Relacionamento com execução (opcional para logs avulsos)
+  syncExecution   SyncExecution? @relation(fields: [syncExecutionId], references: [id])
+  syncExecutionId String?
+
+  @@map("sync_log") // Renomeia a tabela no banco
+}
+
+model SyncStatus {
+  id String @id @default(uuid())
+
+  // Identificação da sincronização
+  companyId String
+  userId    String
+  entity    TypesEntity // customers, invoices, payments
+  syncType  SyncType // QuickBooksToSmartBuild, SmartBuildToQuickBooks, bidirectional
+
+  // Status da sincronização ATUAL
+  status        SyncStatusType @default(PENDING)
+  lastSyncAt    DateTime? // Última sincronização bem-sucedida
+  lastAttemptAt DateTime? // Última tentativa (sucesso ou falha)
+  nextSyncAt    DateTime? // Próxima sincronização programada
+
+  // Informações da última execução
+  lastError  String? @db.Text
+  errorCount Int     @default(0)
+
+  // Metadados
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  company Company @relation(name: "SyncStatus", fields: [companyId], references: [id])
+  user    User    @relation(name: "SyncStatus", fields: [userId], references: [id])
+
+  // Relacionamento com histórico de execuções
+  executions SyncExecution[]
+
+  @@unique([companyId, userId, entity, syncType])
+  @@map("sync_status")
+}
+
+model SyncExecution {
+  id String @id @default(uuid())
+
+  // Identificação da execução
+  companyId String
+  userId    String
+  entity    TypesEntity
+  syncType  SyncType
+
+  // Status desta execução específica
+  status      SyncStatusType @default(PENDING)
+  startedAt   DateTime       @default(now())
+  completedAt DateTime?
+  duration    Int? // duração em milissegundos
+
+  // Controle de progresso desta execução
+  totalRecords     Int @default(0)
+  processedRecords Int @default(0)
+  successRecords   Int @default(0)
+  errorRecords     Int @default(0)
+
+  // Informações de erro desta execução
+  lastError String? @db.Text
+
+  // Metadados adicionais
+  triggerType String? // "manual", "scheduled", "webhook", "api"
+  jobId       String? // ID do job no Bull/Redis
+  details     Json? // dados extras sobre a execução
+
+  // Relações
+  syncStatus   SyncStatus @relation(fields: [syncStatusId], references: [id], onDelete: Cascade)
+  syncStatusId String
+
+  // Logs relacionados a esta execução
+  logs SyncLog[]
+
+  @@map("sync_execution")
+}
+
+enum SyncStatusType {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PAUSED
+}
+
+model QuickBooksCustomerRaw {
+  id           String   @id @default(uuid())
+  companyId    String
+  clientId     String? // <-- novo
+  client       Client?  @relation(fields: [clientId], references: [id])
+  quickbooksId String? // pode vir vazio quando der erro antes de criar no QBO
+  payload      Json // Customer completo do QBO (ou o que você quiser logar)
+  reason       String // DUPLICATE_EMAIL | MISSING_EMAIL | OTHER
+  status       String // NEW | REVIEWED | IGNORED | MERGED
+  detectedAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([quickbooksId])
 }

@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { prisma } from "../../utils/prisma";
+import { prisma } from "../../../utils/prisma";
 import axios from "axios";
-import { refreshAccessToken } from "./QuickBooksTokenService";
-import { oauthClient } from "./QuickBooksOAuthClient";
+
+import { oauthClient } from "../util/QuickBooksOAuthClient";
+import { refreshAccessToken } from "../util/QuickBooksTokenService";
 
 // Defina a interface para os itens da fatura
 interface InvoiceLineItem {
@@ -55,7 +56,7 @@ export class QuickBooksInvoiceController {
       let accessToken = quickBooksAccount.accessToken;
       if (new Date() > quickBooksAccount.expiresAt) {
         console.log("Token expirado, tentando refresh...");
-        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, userId);
+        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
         console.log("Resultado do refresh:", refreshResult);
         if (!refreshResult.success) {
           return res.status(401).json({ error: "Failed to refresh QuickBooks token", details: refreshResult.error });
@@ -446,7 +447,7 @@ export class QuickBooksInvoiceController {
               if (!invoice.user_id) {
                 return { ...invoice, error: "User ID is missing" };
               }
-              const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, invoice.user_id);
+              const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
               if (!refreshResult.success) {
                 return { ...invoice, error: "Failed to refresh token" };
               }
@@ -543,7 +544,7 @@ export class QuickBooksInvoiceController {
         if (!invoice.user_id) {
           return { ...invoice, error: "User ID is missing" };
         }
-        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, invoice.user_id);
+        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
         if (!refreshResult.success) {
           return { ...invoice, error: "Failed to refresh token" };
         }
@@ -635,7 +636,7 @@ export class QuickBooksInvoiceController {
         if (!invoice.user_id) {
           return { ...invoice, error: "User ID is missing" };
         }
-        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, invoice.user_id);
+        const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
         if (!refreshResult.success) {
           return { ...invoice, error: "Failed to refresh token" };
         }

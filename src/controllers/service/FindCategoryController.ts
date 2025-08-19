@@ -3,30 +3,22 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class FindCategoriesController {
-
     async handle(request: Request, response: Response) {
         try {
-            const { company_id, type_category, search } = request.body;
+            const {
+                company_id,
+            } = request.body;
 
-            if (!type_category) {
-                throw new Error("Type category is required!");
+            if (!company_id) {
+                return response.status(400).json({
+                    error: "Company ID is required!"
+                });
             }
-
-            const filtro: any = {
-                type_category: { equals: type_category },
-
-            };
-
-            if (search) {
-                filtro.OR = [
-                    { category_name: { contains: search } },
-                    { sub_category: { some: { service: { some: { service_name: { contains: search } } } } } }
-                ];
-            }
-            if (company_id) filtro.company_id = company_id
 
             const categories = await prisma.category.findMany({
-                where: filtro,
+                where: {
+                    company_id: company_id
+                },
                 select: {
                     id: true,
                     type_category: true,
@@ -42,15 +34,28 @@ export class FindCategoriesController {
                     }
                 }
             });
+
+            const categoriesWithServiceCount = categories.map(category => ({
+                ...category,
+                totalServices: category.sub_category.reduce((total, subCategory) => {
+                    return total + (subCategory.service ? subCategory.service.length : 0);
+                }, 0)
+            })).sort((a, b) => b.totalServices - a.totalServices);
+
             const resultWithPresigned = await Promise.all(
-                categories.map(async (prev) => ({
-                    ...prev,
-                    category_img: prev.category_img ? await getPresignedUrl(prev.category_img) : null, // Gera URL assinada
-                }))
+                categoriesWithServiceCount.map(async (prev) => {
+                    const { totalServices, ...categoryWithoutCount } = prev;
+                    return {
+                        ...categoryWithoutCount,
+                        category_img: prev.category_img ? await getPresignedUrl(prev.category_img) : null,
+                    };
+                })
             );
 
 
-            return response.json(resultWithPresigned);
+            return response.status(200).json(
+                resultWithPresigned
+            );
         } catch (error) {
             console.error(error);
             if (error instanceof Error) {

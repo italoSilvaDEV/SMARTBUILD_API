@@ -1,8 +1,9 @@
-import { prisma } from "../../utils/prisma";
+
 import axios from "axios";
 import querystring from "querystring";
+import { prisma } from "../../../utils/prisma";
 
-export async function refreshAccessToken(refreshToken: string, userId: string) {
+export async function refreshAccessToken(refreshToken: string, accountId: string) {
   try {
     const clientId = process.env.QUICKBOOKS_CLIENT_ID;
     const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
@@ -30,7 +31,7 @@ export async function refreshAccessToken(refreshToken: string, userId: string) {
 
     // Atualizar tokens no banco de dados
     await prisma.quickBooksAccount.updateMany({
-      where: { user_id: userId },
+      where: { id: accountId },
       data: {
         accessToken: access_token,
         refreshToken: refresh_token,
