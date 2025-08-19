@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `project` ADD COLUMN `lat` VARCHAR(191) NULL,
+    ADD COLUMN `location` TEXT NULL,
+    ADD COLUMN `log` VARCHAR(191) NULL,
+     ADD COLUMN `radius` DOUBLE NULL;

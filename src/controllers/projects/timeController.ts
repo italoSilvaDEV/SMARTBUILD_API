@@ -1237,7 +1237,7 @@ export class TimeController {
                                     user_service_project_id: attendance.user_service_project_id,
                                     client: {
                                         clientName: project.client?.name,
-                                        clientAddress: project.client?.location,
+                                        clientAddress: project.location,
                                         clientCityAndState: project.client?.city_and_state
                                     }
                                 }))

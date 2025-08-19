@@ -40,6 +40,7 @@ export class GetClientFinancialDetailsController {
                             status_project: true,
                             start_date: true,
                             date_creation: true,
+                            location: true,
                             serviceProject: {
                                 select: {
                                     id: true,
@@ -79,6 +80,7 @@ export class GetClientFinancialDetailsController {
                 title: project.serviceProject?.[0]?.name || 'Untitled Project',
                 start_date: project.start_date,
                 status: project.status_project,
+                location: project.location,
                 value: Number(project.serviceProject.reduce((total, service) => {
                     return total + Number(service.hours) * Number(service.price);
                 }, 0)),

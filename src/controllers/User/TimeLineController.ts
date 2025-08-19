@@ -181,7 +181,7 @@ AND index_name = ${indexName}
     }
 
     // Check-in do usuário - OTIMIZADO (interface mantida igual)
-    handleTimeLine = async (req: Request, res: Response): Promise<void> => {
+    handleTimeLine = async (req: Request, res: Response): Promise<void> => { 
         try {
             const {
                 user_id,
@@ -254,19 +254,19 @@ AND index_name = ${indexName}
 
             // Verifica se as coordenadas foram fornecidas
             if (check_in_latitude && check_in_longitude &&
-                serviceProject.Project?.client?.lat &&
-                serviceProject.Project?.client?.log &&
-                serviceProject.Project?.client?.radius) {
+                serviceProject.Project?.lat &&
+                serviceProject.Project?.log &&
+                serviceProject.Project?.radius) {
                 // Calcula a distância entre os pontos
                 const distance = this.calculateDistance(
                     Number(check_in_latitude),
                     Number(check_in_longitude),
-                    Number(serviceProject.Project.client.lat),
-                    Number(serviceProject.Project.client.log)
+                    Number(serviceProject.Project.lat),
+                    Number(serviceProject.Project.log)
                 );
 
                 // Verifica se está dentro do raio (convertendo o raio para km)
-                const radiusInKm = Number(serviceProject.Project.client.radius) / 1000;
+                const radiusInKm = Number(serviceProject.Project.radius) / 1000;
                 isLocalWork = distance <= radiusInKm;
             }
 
@@ -494,11 +494,11 @@ AND index_name = ${indexName}
                 },
                 // Coordenadas do projeto para cálculo de distância no frontend
                 projectCoordinates: userServiceProject?.service_project?.Project?.client ? {
-                    location: userServiceProject.service_project.Project.client.location,
-                    latitude: userServiceProject.service_project.Project.client.lat ? Number(userServiceProject.service_project.Project.client.lat) : null,
-                    longitude: userServiceProject.service_project.Project.client.log ? Number(userServiceProject.service_project.Project.client.log) : null,
-                    radius: userServiceProject.service_project.Project.client.radius ? Number(userServiceProject.service_project.Project.client.radius) : null,
-                    radiusInKm: userServiceProject.service_project.Project.client.radius ? Number(userServiceProject.service_project.Project.client.radius) / 1000 : null
+                    location: userServiceProject.service_project.Project.location,
+                    latitude: userServiceProject.service_project.Project.lat ? Number(userServiceProject.service_project.Project.lat) : null,
+                    longitude: userServiceProject.service_project.Project.log ? Number(userServiceProject.service_project.Project.log) : null,
+                    radius: userServiceProject.service_project.Project.radius ? Number(userServiceProject.service_project.Project.radius) : null,
+                    radiusInKm: userServiceProject.service_project.Project.radius ? Number(userServiceProject.service_project.Project.radius) / 1000 : null
                 } : null,
                 timelines,
                 dateFilter: date ? new Date(date as string).toISOString().split('T')[0] : null
