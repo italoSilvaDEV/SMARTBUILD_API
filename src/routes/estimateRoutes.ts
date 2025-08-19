@@ -7,6 +7,8 @@ import { GetAllEstimatesByCompanyController } from "../controllers/estimates/get
 import { ConvertToProjectController } from "../controllers/estimates/convertToProjectController";
 import { DeleteEstimateController } from "../controllers/estimates/deleteEstimateController";
 import { DeleteServiceEstimateController } from "../controllers/estimates/deleteServiceEstimateController";
+import { UpdateEstimateFieldsController } from "../controllers/estimates/updateEstimateController";
+import { UpdateServiceEstimateController } from "../controllers/estimates/updateServiceEstimateController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -14,6 +16,8 @@ const getAllEstimatesByCompanyController = new GetAllEstimatesByCompanyControlle
 const convertToProjectController = new ConvertToProjectController();
 const deleteEstimateController = new DeleteEstimateController();
 const deleteServiceEstimateController = new DeleteServiceEstimateController();
+const updateEstimateFieldsController = new UpdateEstimateFieldsController();
+const updateServiceEstimateController = new UpdateServiceEstimateController();
 
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
@@ -23,6 +27,8 @@ estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByComp
 estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
 estimateRoutes.delete("/:estimateId", checkToken, deleteEstimateController.handle);
 estimateRoutes.delete("/:id/service/:serviceId/:estimateId", checkToken, deleteServiceEstimateController.handle);
+estimateRoutes.patch("/update/:estimateId", checkToken, updateEstimateFieldsController.handle);
+estimateRoutes.patch("/update/:estimateId/:serviceId", checkToken, updateServiceEstimateController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);
