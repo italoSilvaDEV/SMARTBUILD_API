@@ -28,8 +28,6 @@ const uploadServiceProject = multer(
   uploadConfig.upload("./public/tmp/service-project")
 );
 
-// Instância do novo controller
-
 projectRoutes.post("/project", checkToken, projectController.createProject);
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
 projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
