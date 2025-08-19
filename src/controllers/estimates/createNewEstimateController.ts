@@ -14,7 +14,7 @@ export class CreateNewEstimateController {
             idPdfProject,
         } = req.body
 
-        if (!projectId || !idPdfProject || !preGeneratedNumber) {
+        if (!projectId || !idPdfProject || !preGeneratedNumber || !totalAmount) {
             return res.status(400).json({
                 error: "Project ID, PDF Project ID and preGeneratedNumber are required"
             })
