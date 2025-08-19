@@ -16,7 +16,7 @@ const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
 
 // Rotas de autorização
-quickbooksRoutes.get("/quickbooks/authorize/:userId", quickbooksController.authorize);
+quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize);
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);

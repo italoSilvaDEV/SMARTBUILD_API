@@ -10,7 +10,7 @@ export class QuickBooksController {
   // faz o oauth para o quickbooks
   async authorize(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
       console.log("valor do userId", userId)
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
@@ -41,7 +41,7 @@ export class QuickBooksController {
           'address'
         ],
         redirect_uri: redirectUri,
-        state: userId // Passamos o userId como state para recuperar no callback
+        state: `${userId}-${companyId}` // Passamos o userId como state para recuperar no callback
       };
 
       // Construir URL de autorização
@@ -67,7 +67,7 @@ export class QuickBooksController {
     console.log("inicio de callback")
     try {
       const { error, code, state, realmId } = req.query;
-      const userId = state as string;
+      const [userId, companyId] = state as string;
 
       if (error) {
         return res.redirect(
@@ -92,7 +92,7 @@ export class QuickBooksController {
       }
 
       // Pegue o company_id do usuário
-      const userCompanyId = user.company_id;
+      const userCompanyId = companyId;
 
       const clientId = process.env.QUICKBOOKS_CLIENT_ID;
       console.log("valor do clientId", clientId)
