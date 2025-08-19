@@ -49,20 +49,18 @@ export class CreateNewEstimateController {
                 }
             })
 
-            const servicesProjects = await prisma.estimateServiceProject.findMany({
+            await prisma.estimateServiceProject.findMany({
                 where: {
                     estimateId: estimate.id
                 }
             })
-
-            const totalPrice = servicesProjects.reduce((acc, service) => acc + Number(service.price), 0)
 
             await prisma.estimate.update({
                 where: {
                     id: estimate.id
                 },
                 data: {
-                    totalAmount: totalPrice
+                    totalAmount: totalAmount
                 }
             })
 
