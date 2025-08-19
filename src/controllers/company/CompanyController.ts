@@ -87,6 +87,7 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
+                        company_id: company.id
                     },
                 });
                 console.log("Criou user", user)
