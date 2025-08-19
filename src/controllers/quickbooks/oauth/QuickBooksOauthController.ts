@@ -12,6 +12,7 @@ export class QuickBooksController {
     try {
       const { userId, companyId } = req.params;
       console.log("valor do userId", userId)
+      console.log("valor do companyId", companyId)
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -41,7 +42,7 @@ export class QuickBooksController {
           'address'
         ],
         redirect_uri: redirectUri,
-        state: `${userId}-${companyId}` // Passamos o userId como state para recuperar no callback
+        state: `${userId}|${companyId}` // Usar | em vez de - para evitar conflito com UUIDs
       };
 
       // Construir URL de autorização
@@ -67,7 +68,34 @@ export class QuickBooksController {
     console.log("inicio de callback")
     try {
       const { error, code, state, realmId } = req.query;
-      const [userId, companyId] = state as string;
+      console.log("valor do state", state)
+      console.log("tipo do state", typeof state)
+      console.log("state é string?", typeof state === 'string')
+      console.log("state existe?", !!state)
+      
+      // Corrigir: state pode vir como string ou array do Express
+      let stateString: string;
+      if (Array.isArray(state)) {
+        stateString = state[0] as string;
+      } else if (typeof state === 'string') {
+        stateString = state;
+      } else {
+        console.log("err state callback - tipo inválido")
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=invalid_state`
+        );
+      }
+      
+      if (!stateString) {
+        console.log("err state callback - string vazia")
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=invalid_state`
+        );
+      }
+      
+      const [userId, companyId] = stateString.split('|'); // Separador | usado para evitar conflito com UUIDs
+      console.log("userId extraído:", userId);
+      console.log("companyId extraído:", companyId);
 
       if (error) {
         return res.redirect(
@@ -75,7 +103,7 @@ export class QuickBooksController {
         );
       }
 
-      if (!code || !realmId || !userId) {
+      if (!code || !realmId || !userId || !companyId) {
         // return res.status(400).json({ error: "Missing required parameters" });
         return res.redirect(
           `${process.env.URL_FRONT}/stripe-config?error=missing_params`
