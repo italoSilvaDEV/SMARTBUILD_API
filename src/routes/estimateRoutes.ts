@@ -27,8 +27,8 @@ estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByComp
 estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
 estimateRoutes.delete("/:estimateId", checkToken, deleteEstimateController.handle);
 estimateRoutes.delete("/:id/service/:serviceId/:estimateId", checkToken, deleteServiceEstimateController.handle);
-estimateRoutes.patch("/update/:estimateId", checkToken, updateEstimateFieldsController.handle);
-estimateRoutes.patch("/update/:estimateId/:serviceId", checkToken, updateServiceEstimateController.handle);
+estimateRoutes.patch("/update/fields", checkToken, updateEstimateFieldsController.handle);
+estimateRoutes.patch("/update/service-fields", checkToken, updateServiceEstimateController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);
