@@ -68,7 +68,7 @@ export class CreateServiceEstimateController {
                     unitPrice,
                     lineTotal,
                     notes,
-                    id_service,
+                    id_service: id_service || null,
                     hours,
                     price,
                     start_date,
