@@ -6,7 +6,7 @@ export class DeleteServiceEstimateController {
         const {
             serviceId,
             estimateId
-        } = req.body
+        } = req.params
 
         if (!serviceId || !estimateId) {
             return res.status(400).json({
