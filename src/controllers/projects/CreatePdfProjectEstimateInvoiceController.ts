@@ -54,9 +54,9 @@ export class CreatePdfProjectEstimateInvoiceController {
     async update(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const {  
-                invoiceId, 
-                projectId, 
+            const {
+                invoiceId,
+                projectId,
             } = req.body;
 
             if (!id) {
@@ -73,21 +73,21 @@ export class CreatePdfProjectEstimateInvoiceController {
                 return res.status(404).json({ error: "PDF Project not found" });
             }
 
-            
 
-          
+
+
 
             // Atualizar o registro no banco
             const updatedPdfProject = await prisma.pdfProject.updateMany({
                 where: { id: existingPdfProject.id },
                 data: {
-                    project_id: projectId ,
-                    invoice_id: invoiceId ,
+                    project_id: projectId,
+                    invoice_id: invoiceId,
                     date_update: new Date()
                 },
             });
 
-            
+
 
             return res.json(updatedPdfProject);
 
@@ -105,13 +105,13 @@ export class CreatePdfProjectEstimateInvoiceController {
             if (err) {
                 return res.status(400).json({ error: 'Error uploading file' });
             }
-            
+
             try {
-                const { 
-                    estimate_id, 
-                    invoice_id, 
-                    project_id, 
-                    type_pdf 
+                const {
+                    estimate_id,
+                    invoice_id,
+                    project_id,
+                    type_pdf
                 } = req.body;
 
                 const file = req.file;
@@ -128,7 +128,7 @@ export class CreatePdfProjectEstimateInvoiceController {
 
                 // Paralelizar todas as validações de existência
                 const validationPromises = [];
-                
+
                 if (estimate_id) {
                     validationPromises.push(
                         prisma.estimate.findUnique({
@@ -159,12 +159,12 @@ export class CreatePdfProjectEstimateInvoiceController {
                 // Executar todas as validações em paralelo
                 if (validationPromises.length > 0) {
                     const validationResults = await Promise.all(validationPromises);
-                    
+
                     for (const result of validationResults) {
                         if (!result.exists) {
                             this.deleteFiles(file.filename);
-                            return res.status(404).json({ 
-                                error: `${result.type.charAt(0).toUpperCase() + result.type.slice(1)} not found` 
+                            return res.status(404).json({
+                                error: `${result.type.charAt(0).toUpperCase() + result.type.slice(1)} not found`
                             });
                         }
                     }
@@ -180,7 +180,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                 // Criar o registro no banco
                 const result = await prisma.pdfProject.create({
                     data: {
-                        original_file_name: file.originalname, 
+                        original_file_name: file.originalname,
                         type_pdf: type_pdf,
                         uri: fileName,
                         project_id: project_id || null,
@@ -226,5 +226,51 @@ export class CreatePdfProjectEstimateInvoiceController {
                 return res.status(500).json({ error: "Internal error" });
             }
         });
+    }
+
+    async updateEstimateId(req: Request, res: Response) {
+        const {
+            pdfId,
+            estimateId
+        } = req.body
+
+        if (!pdfId) {
+            return res.status(400).json({
+                error: "PDF ID NOT FOUND"
+            })
+        }
+
+        const pdf = await prisma.pdfProject.findUnique({
+            where: {
+                id: pdfId
+            }
+        })
+
+        if (!pdf) {
+            return res.status(404).json({
+                error: "PDF NOT FOUND"
+            })
+        }
+
+        try {
+            const updated = await prisma.pdfProject.update({
+                where: {
+                    id: pdfId
+                },
+                data: {
+                    estimate_id: estimateId
+                }
+            })
+
+            return res.status(200).json({
+                message: "Estimate ID updated successfully",
+                data: updated
+            })
+
+        } catch (error) {
+            return res.status(500).json({
+                error: "Internal server error"
+            })
+        }
     }
 } 
