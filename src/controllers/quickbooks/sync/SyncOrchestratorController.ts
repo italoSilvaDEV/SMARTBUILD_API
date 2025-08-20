@@ -517,8 +517,8 @@ export class SyncOrchestratorController {
                 });
 
             } catch (error: any) {
-                console.error(`❌ Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
-                console.error(`❌ Detalhes do erro:`, {
+                console.error(` Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
+                console.error(` Detalhes do erro:`, {
                     message: error?.message,
                     details: error?.details,
                     debugInfo: error?.debugInfo,

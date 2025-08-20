@@ -152,7 +152,7 @@ export class QuickBooksController {
       console.log("##### expires_in", expires_in)
       console.log("##### scope", scope)
       
-      // ✅ VALIDAÇÃO IMEDIATA: Verificar se o realmId é válido para QuickBooks Online Accounting
+      // VALIDAÇÃO IMEDIATA: Verificar se o realmId é válido para QuickBooks Online Accounting
       try {
         console.log("🔍 Validando realmId para QuickBooks Online Accounting...");
         
@@ -429,6 +429,136 @@ export class QuickBooksController {
       });
     } catch (error: any) {
       console.error("Error refreshing QuickBooks token:", error);
+      return res.status(500).json({ 
+        error: "Internal Server Error",
+        details: error.message
+      });
+    }
+  }
+
+  //  NOVO: Desconectar QuickBooks
+  async disconnect(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const { revokeOnQuickBooks = false } = req.body; // Opção para revogar no QuickBooks também
+
+      // Verificar se o usuário existe
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Buscar a conta QuickBooks do usuário
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(404).json({ 
+          error: "QuickBooks account not found",
+          message: "Usuário não possui conta QuickBooks conectada" 
+        });
+      }
+
+      // Se solicitado, revogar o token no QuickBooks
+      if (revokeOnQuickBooks) {
+        try {
+          console.log(" Revogando token no QuickBooks...");
+          
+          // Revogar refresh token no QuickBooks (isso invalida todos os tokens)
+          const revokeResponse = await fetch('https://developer.api.intuit.com/v2/oauth2/tokens/revoke', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${Buffer.from(`${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+              'token': quickBooksAccount.refreshToken
+            })
+          });
+
+          if (revokeResponse.ok) {
+            console.log(" Token revogado com sucesso no QuickBooks");
+          } else {
+            console.warn(" Falha ao revogar token no QuickBooks, continuando com desconexão local");
+          }
+        } catch (revokeError: any) {
+          console.error(" Erro ao revogar token no QuickBooks:", revokeError);
+          // Continua mesmo se a revogação falhar
+        }
+      }
+
+      // Remover a conta QuickBooks da nossa base de dados
+      await prisma.quickBooksAccount.delete({
+        where: { id: quickBooksAccount.id }
+      });
+
+      console.log(` Conta QuickBooks desconectada para usuário ${userId}`);
+
+      return res.status(200).json({
+        message: "QuickBooks desconectado com sucesso",
+        disconnectedAt: new Date(),
+        revokedOnQuickBooks: revokeOnQuickBooks,
+        accountInfo: {
+          realmId: quickBooksAccount.realmId,
+          connectedSince: quickBooksAccount.createdAt
+        }
+      });
+
+    } catch (error: any) {
+      console.error(" Erro ao desconectar QuickBooks:", error);
+      return res.status(500).json({ 
+        error: "Internal Server Error",
+        details: error.message
+      });
+    }
+  }
+
+  //  NOVO: Forçar reautorização (marca como needsReauthorization)
+  async forceReauthorization(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+
+      // Verificar se o usuário existe
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Buscar a conta QuickBooks do usuário
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(404).json({ 
+          error: "QuickBooks account not found" 
+        });
+      }
+
+      // Marcar como precisando reautorização
+      await prisma.quickBooksAccount.update({
+        where: { id: quickBooksAccount.id },
+        data: { 
+          needsReauthorization: true,
+          updatedAt: new Date()
+        }
+      });
+
+      return res.status(200).json({
+        message: "Reautorização forçada com sucesso",
+        needsReauthorization: true,
+        authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${quickBooksAccount.company_id}`
+      });
+
+    } catch (error: any) {
+      console.error(" Erro ao forçar reautorização:", error);
       return res.status(500).json({ 
         error: "Internal Server Error",
         details: error.message

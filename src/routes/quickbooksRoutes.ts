@@ -21,6 +21,10 @@ quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);
 
+//  NOVAS: Rotas de desconexão
+quickbooksRoutes.delete("/quickbooks/disconnect/:userId", checkToken, quickbooksController.disconnect);
+quickbooksRoutes.post("/quickbooks/force-reauth/:userId", checkToken, quickbooksController.forceReauthorization);
+
 // Rotas de invoice
 quickbooksRoutes.post("/quickbooks/invoice/:projectId", checkToken, quickbooksInvoiceController.createInvoice.bind(quickbooksInvoiceController));
 quickbooksRoutes.get("/quickbooks/invoices/:projectId", checkToken, quickbooksInvoiceController.getInvoicesByProject.bind(quickbooksInvoiceController));
