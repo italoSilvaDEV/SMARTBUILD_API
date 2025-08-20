@@ -25,6 +25,12 @@ export class DeleteEstimateController {
             })
         }
 
+        if (estimate.status !== "approved") {
+            return res.status(400).json({
+                error: "Estimate must be approved to be deleted"
+            })
+        }
+
         try {
             await prisma.estimate.delete({
                 where: {
