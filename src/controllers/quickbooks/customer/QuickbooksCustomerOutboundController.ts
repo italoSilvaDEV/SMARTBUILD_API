@@ -48,8 +48,8 @@ export class QuickBooksCustomerOutboundController {
 
     // Instancia QB SDK
     const qb = new QuickBooks(
-      process.env.QB_CLIENT_ID!,
-      process.env.QB_CLIENT_SECRET!,
+      process.env.QUICKBOOKS_CLIENT_ID!,
+      process.env.QUICKBOOKS_CLIENT_SECRET!,
       account.accessToken,
       false,
       account.realmId,
@@ -69,7 +69,7 @@ export class QuickBooksCustomerOutboundController {
   exportMissingToQBO = async (req: Request, res: Response) => {
     const { companyId, userId } = req.params;
     const syncExecutionId = (req as any).syncExecutionId; // ID da execução se vier do orchestrator
-    
+
     try {
       const qb = await this.getQbClientOrThrow(userId, companyId);
 
@@ -171,8 +171,22 @@ export class QuickBooksCustomerOutboundController {
 
       return res.status(200).json({ message: "Exportação inicial concluída", created, errors });
     } catch (error: any) {
-      console.error("Erro na exportação inicial:", error);
-      return res.status(500).json({ error: "Erro na exportação inicial", details: error.message });
+      console.error("❌ Erro na exportação inicial:", error);
+      console.error("❌ Erro detalhado na exportação:", {
+        message: error?.message,
+        fault: error?.Fault,
+        code: error?.code,
+        status: error?.status,
+        stack: error?.stack
+      });
+
+      return res.status(500).json({
+        error: "Erro na exportação inicial",
+        details: error?.Fault || error?.message || "Erro desconhecido",
+        debugInfo: {
+          environment: process.env.QUICKBOOKS_ENVIRONMENT || 'sandbox'
+        }
+      });
     }
   };
 
@@ -414,275 +428,289 @@ export class QuickBooksCustomerOutboundController {
 
       return res.status(200).json({ message: "Push to QBO finished", updated: updatedCount });
     } catch (error: any) {
-      console.error("Erro ao enviar atualizações ao QBO:", error);
+      console.error("❌ Erro ao enviar atualizações ao QBO:", error);
+      console.error("❌ Erro detalhado no push:", {
+        message: error?.message,
+        fault: error?.Fault,
+        code: error?.code,
+        status: error?.status,
+        stack: error?.stack
+      });
+
       return res
         .status(500)
-        .json({ error: "Erro ao enviar atualizações ao QBO", details: error.message });
+        .json({
+          error: "Erro ao enviar atualizações ao QBO",
+          details: error?.Fault || error?.message || "Erro desconhecido",
+          debugInfo: {
+            environment: process.env.QUICKBOOKS_ENVIRONMENT || 'sandbox'
+          }
+        });
     }
   };
 
 
-/**
- * Upsert de UM cliente local no QBO.
- * - Se não tem idQuickbooks: cria
- *   -> tenta SEM sufixo; se der "Duplicate Name", tenta COM sufixo
- * - Se tem: atualiza (com checagens de conflito e no-op)
- * Retorna { created?: string; updated?: boolean }
- */
-async upsertOneLocalClientToQBOInternal(companyId: string, userId: string, clientId: string) {
-  const qb = await this.getQbClientOrThrow(userId, companyId);
+  /**
+   * Upsert de UM cliente local no QBO.
+   * - Se não tem idQuickbooks: cria
+   *   -> tenta SEM sufixo; se der "Duplicate Name", tenta COM sufixo
+   * - Se tem: atualiza (com checagens de conflito e no-op)
+   * Retorna { created?: string; updated?: boolean }
+   */
+  async upsertOneLocalClientToQBOInternal(companyId: string, userId: string, clientId: string) {
+    const qb = await this.getQbClientOrThrow(userId, companyId);
 
-  const c = await prisma.client.findUnique({ where: { id: clientId } });
-  if (!c || c.company_id !== companyId) {
-    throw new Error("Client not found or company mismatch");
-  }
+    const c = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!c || c.company_id !== companyId) {
+      throw new Error("Client not found or company mismatch");
+    }
 
-  // CREATE se não tem idQuickbooks
-  if (!c.idQuickbooks) {
-    const email = sanitizeEmail(c.email);
-    const display = baseDisplayName(c);
+    // CREATE se não tem idQuickbooks
+    if (!c.idQuickbooks) {
+      const email = sanitizeEmail(c.email);
+      const display = baseDisplayName(c);
 
-    const buildPayload = (displayName: string) => ({
-      DisplayName: displayName,
-      PrimaryEmailAddr: email ? { Address: email } : undefined,
-      PrimaryPhone: c.phone ? { FreeFormNumber: c.phone } : undefined,
-      BillAddr: c.location ? { Line1: c.location } : undefined,
-    });
+      const buildPayload = (displayName: string) => ({
+        DisplayName: displayName,
+        PrimaryEmailAddr: email ? { Address: email } : undefined,
+        PrimaryPhone: c.phone ? { FreeFormNumber: c.phone } : undefined,
+        BillAddr: c.location ? { Line1: c.location } : undefined,
+      });
 
-    let result: any;
-    try {
-      // 1) tenta criar SEM sufixo
-      result = await limiter.schedule(
-        () =>
-          new Promise((resolve, reject) => {
-            qb.createCustomer(buildPayload(display), (err: any, data: any) =>
-              err ? reject(err) : resolve(data)
-            );
-          })
-      );
-    } catch (err: any) {
-      // 2) se nome duplicado, tenta novamente COM sufixo
-      if (isDuplicateNameError(err)) {
-        const displayWithSuffix = withSuffix(display, c);
+      let result: any;
+      try {
+        // 1) tenta criar SEM sufixo
         result = await limiter.schedule(
           () =>
             new Promise((resolve, reject) => {
-              qb.createCustomer(buildPayload(displayWithSuffix), (e: any, data: any) =>
-                e ? reject(e) : resolve(data)
+              qb.createCustomer(buildPayload(display), (err: any, data: any) =>
+                err ? reject(err) : resolve(data)
               );
             })
         );
-      } else {
-        // outros erros seguem o fluxo padrão
+      } catch (err: any) {
+        // 2) se nome duplicado, tenta novamente COM sufixo
+        if (isDuplicateNameError(err)) {
+          const displayWithSuffix = withSuffix(display, c);
+          result = await limiter.schedule(
+            () =>
+              new Promise((resolve, reject) => {
+                qb.createCustomer(buildPayload(displayWithSuffix), (e: any, data: any) =>
+                  e ? reject(e) : resolve(data)
+                );
+              })
+          );
+        } else {
+          // outros erros seguem o fluxo padrão
+          await prisma.syncLog.create({
+            data: {
+              entity: "customers",
+              action: "Error",
+              entityId: c.id,
+              companyId,
+              details: jsonSafe({ message: err?.Fault ?? err?.message ?? String(err) }),
+            },
+          });
+          return { created: undefined, updated: false };
+        }
+      }
+
+      const customerObj = result?.Customer ?? result;
+      const newId = customerObj?.Id;
+      const newLastUpdated = customerObj?.MetaData?.LastUpdatedTime
+        ? new Date(customerObj.MetaData.LastUpdatedTime)
+        : new Date();
+
+      if (!newId) {
         await prisma.syncLog.create({
           data: {
             entity: "customers",
             action: "Error",
             entityId: c.id,
             companyId,
-            details: jsonSafe({ message: err?.Fault ?? err?.message ?? String(err) }),
+            details: jsonSafe({ reason: "QBO create returned without Id", raw: result }),
           },
         });
         return { created: undefined, updated: false };
       }
-    }
 
-    const customerObj = result?.Customer ?? result;
-    const newId = customerObj?.Id;
-    const newLastUpdated = customerObj?.MetaData?.LastUpdatedTime
-      ? new Date(customerObj.MetaData.LastUpdatedTime)
-      : new Date();
+      await prisma.client.update({
+        where: { id: c.id },
+        data: { idQuickbooks: newId, quickbooksUpdatedAt: newLastUpdated },
+      });
 
-    if (!newId) {
       await prisma.syncLog.create({
         data: {
           entity: "customers",
-          action: "Error",
+          action: "CreatedInQBO",
           entityId: c.id,
           companyId,
-          details: jsonSafe({ reason: "QBO create returned without Id", raw: result }),
+          details: jsonSafe({
+            quickbooksId: newId,
+            lastUpdated: newLastUpdated,
+            displayNameUsed: customerObj?.DisplayName ?? display,
+          }),
+        },
+      });
+
+      return { created: newId, updated: false };
+    }
+
+    // UPDATE se já tem idQuickbooks (mantém sua lógica atual)
+    const lastRemote = c.quickbooksUpdatedAt ?? new Date(0);
+    const localNewer = c.date_update > new Date(lastRemote.getTime() + 3000); // 3s
+    if (!localNewer) {
+      await prisma.syncLog.create({
+        data: {
+          entity: "customers",
+          action: "Skipped",
+          entityId: c.id,
+          companyId,
+          details: jsonSafe({
+            reason: "Local not newer than last QBO mirror (cooling-off)",
+            date_update: c.date_update,
+            lastRemote,
+          }),
         },
       });
       return { created: undefined, updated: false };
     }
 
-    await prisma.client.update({
-      where: { id: c.id },
-      data: { idQuickbooks: newId, quickbooksUpdatedAt: newLastUpdated },
-    });
+    const current: any = await limiter.schedule(
+      () =>
+        new Promise((resolve, reject) => {
+          qb.getCustomer(c.idQuickbooks!, (err: any, data: any) =>
+            err ? reject(err) : resolve(data)
+          );
+        })
+    );
 
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "CreatedInQBO",
-        entityId: c.id,
-        companyId,
-        details: jsonSafe({
-          quickbooksId: newId,
-          lastUpdated: newLastUpdated,
-          displayNameUsed: customerObj?.DisplayName ?? display,
-        }),
-      },
-    });
+    const qbCustomer = current?.Customer;
+    if (!qbCustomer) {
+      await prisma.quickBooksCustomerRaw.create({
+        data: {
+          companyId,
+          quickbooksId: c.idQuickbooks,
+          reason: "NotFoundInQBO",
+          payload: jsonSafe({ clientId: c.id, email: c.email, name: c.name }),
+          status: "IGNORED",
+        },
+      });
+      await prisma.syncLog.create({
+        data: {
+          entity: "customers",
+          action: "OrphanDetected",
+          entityId: c.id,
+          companyId,
+          details: jsonSafe({
+            reason: "QBO customer not found for idQuickbooks — moved to QuickBooksCustomerRaw",
+            idQuickbooks: c.idQuickbooks,
+          }),
+        },
+      });
+      return { created: undefined, updated: false };
+    }
 
-    return { created: newId, updated: false };
-  }
+    const qbUpdatedAt = qbCustomer.MetaData?.LastUpdatedTime
+      ? new Date(qbCustomer.MetaData.LastUpdatedTime)
+      : null;
 
-  // UPDATE se já tem idQuickbooks (mantém sua lógica atual)
-  const lastRemote = c.quickbooksUpdatedAt ?? new Date(0);
-  const localNewer = c.date_update > new Date(lastRemote.getTime() + 3000); // 3s
-  if (!localNewer) {
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "Skipped",
-        entityId: c.id,
-        companyId,
-        details: jsonSafe({
-          reason: "Local not newer than last QBO mirror (cooling-off)",
-          date_update: c.date_update,
-          lastRemote,
-        }),
-      },
-    });
-    return { created: undefined, updated: false };
-  }
+    if (qbUpdatedAt && c.quickbooksUpdatedAt && qbUpdatedAt > c.quickbooksUpdatedAt) {
+      await prisma.syncLog.create({
+        data: {
+          entity: "customers",
+          action: "Conflict",
+          entityId: c.id,
+          companyId,
+          details: jsonSafe({
+            reason: "Remote changed since last mirror, skipping push",
+            qbUpdatedAt,
+            quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
+          }),
+        },
+      });
+      return { created: undefined, updated: false };
+    }
 
-  const current: any = await limiter.schedule(
-    () =>
-      new Promise((resolve, reject) => {
-        qb.getCustomer(c.idQuickbooks!, (err: any, data: any) =>
-          err ? reject(err) : resolve(data)
-        );
-      })
-  );
-
-  const qbCustomer = current?.Customer;
-  if (!qbCustomer) {
-    await prisma.quickBooksCustomerRaw.create({
-      data: {
-        companyId,
-        quickbooksId: c.idQuickbooks,
-        reason: "NotFoundInQBO",
-        payload: jsonSafe({ clientId: c.id, email: c.email, name: c.name }),
-        status: "IGNORED",
-      },
-    });
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "OrphanDetected",
-        entityId: c.id,
-        companyId,
-        details: jsonSafe({
-          reason: "QBO customer not found for idQuickbooks — moved to QuickBooksCustomerRaw",
-          idQuickbooks: c.idQuickbooks,
-        }),
-      },
-    });
-    return { created: undefined, updated: false };
-  }
-
-  const qbUpdatedAt = qbCustomer.MetaData?.LastUpdatedTime
-    ? new Date(qbCustomer.MetaData.LastUpdatedTime)
-    : null;
-
-  if (qbUpdatedAt && c.quickbooksUpdatedAt && qbUpdatedAt > c.quickbooksUpdatedAt) {
-    await prisma.syncLog.create({
-      data: {
-        entity: "customers",
-        action: "Conflict",
-        entityId: c.id,
-        companyId,
-        details: jsonSafe({
-          reason: "Remote changed since last mirror, skipping push",
-          qbUpdatedAt,
-          quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
-        }),
-      },
-    });
-    return { created: undefined, updated: false };
-  }
-
-  const email = sanitizeEmail(c.email);
-  const updatePayload = {
-    Id: qbCustomer.Id,
-    SyncToken: qbCustomer.SyncToken,
-    DisplayName: c.name, // mantém como está; se quiser, pode usar baseDisplayName(c)
-    PrimaryEmailAddr: email ? { Address: email } : undefined,
-    PrimaryPhone: c.phone ? { FreeFormNumber: c.phone } : undefined,
-    BillAddr: c.location
-      ? {
+    const email = sanitizeEmail(c.email);
+    const updatePayload = {
+      Id: qbCustomer.Id,
+      SyncToken: qbCustomer.SyncToken,
+      DisplayName: c.name, // mantém como está; se quiser, pode usar baseDisplayName(c)
+      PrimaryEmailAddr: email ? { Address: email } : undefined,
+      PrimaryPhone: c.phone ? { FreeFormNumber: c.phone } : undefined,
+      BillAddr: c.location
+        ? {
           Line1: c.location,
           City: c.city_and_state?.split(",")[0]?.trim() || undefined,
           CountrySubDivisionCode: c.city_and_state?.split(",")[1]?.trim() || undefined,
         }
-      : undefined,
-  };
+        : undefined,
+    };
 
-  const normalizedLocal = {
-    DisplayName: updatePayload.DisplayName ?? null,
-    Email: updatePayload.PrimaryEmailAddr?.Address ?? null,
-    Phone: updatePayload.PrimaryPhone?.FreeFormNumber ?? null,
-    Line1: updatePayload.BillAddr?.Line1 ?? null,
-    City: updatePayload.BillAddr?.City ?? null,
-    CountrySubDivisionCode: updatePayload.BillAddr?.CountrySubDivisionCode ?? null,
-  };
-  const normalizedQbo = {
-    DisplayName: qbCustomer.DisplayName ?? null,
-    Email: qbCustomer.PrimaryEmailAddr?.Address ?? null,
-    Phone: qbCustomer.PrimaryPhone?.FreeFormNumber ?? null,
-    Line1: qbCustomer.BillAddr?.Line1 ?? null,
-    City: qbCustomer.BillAddr?.City ?? null,
-    CountrySubDivisionCode: qbCustomer.BillAddr?.CountrySubDivisionCode ?? null,
-  };
+    const normalizedLocal = {
+      DisplayName: updatePayload.DisplayName ?? null,
+      Email: updatePayload.PrimaryEmailAddr?.Address ?? null,
+      Phone: updatePayload.PrimaryPhone?.FreeFormNumber ?? null,
+      Line1: updatePayload.BillAddr?.Line1 ?? null,
+      City: updatePayload.BillAddr?.City ?? null,
+      CountrySubDivisionCode: updatePayload.BillAddr?.CountrySubDivisionCode ?? null,
+    };
+    const normalizedQbo = {
+      DisplayName: qbCustomer.DisplayName ?? null,
+      Email: qbCustomer.PrimaryEmailAddr?.Address ?? null,
+      Phone: qbCustomer.PrimaryPhone?.FreeFormNumber ?? null,
+      Line1: qbCustomer.BillAddr?.Line1 ?? null,
+      City: qbCustomer.BillAddr?.City ?? null,
+      CountrySubDivisionCode: qbCustomer.BillAddr?.CountrySubDivisionCode ?? null,
+    };
 
-  if (deepEqual(normalizedLocal, normalizedQbo)) {
+    if (deepEqual(normalizedLocal, normalizedQbo)) {
+      await prisma.syncLog.create({
+        data: {
+          entity: "customers",
+          action: "Skipped",
+          entityId: c.id,
+          companyId,
+          details: jsonSafe({ reason: "No-op (same content)", normalizedLocal, normalizedQbo }),
+        },
+      });
+      return { created: undefined, updated: false };
+    }
+
+    const updated: any = await limiter.schedule(
+      () =>
+        new Promise((resolve, reject) => {
+          qb.updateCustomer(updatePayload, (err: any, data: any) =>
+            err ? reject(err) : resolve(data)
+          );
+        })
+    );
+
+    const updatedLast = updated?.Customer?.MetaData?.LastUpdatedTime
+      ? new Date(updated.Customer.MetaData.LastUpdatedTime)
+      : new Date();
+
+    await prisma.client.update({
+      where: { id: c.id },
+      data: { quickbooksUpdatedAt: updatedLast },
+    });
+
     await prisma.syncLog.create({
       data: {
         entity: "customers",
-        action: "Skipped",
+        action: "UpdatedInQBO",
         entityId: c.id,
         companyId,
-        details: jsonSafe({ reason: "No-op (same content)", normalizedLocal, normalizedQbo }),
+        details: jsonSafe({
+          before: normalizedQbo,
+          pushed: normalizedLocal,
+          result: { Id: updated?.Customer?.Id, SyncToken: updated?.Customer?.SyncToken, lastUpdated: updatedLast },
+        }),
       },
     });
-    return { created: undefined, updated: false };
+
+    return { created: undefined, updated: true };
   }
-
-  const updated: any = await limiter.schedule(
-    () =>
-      new Promise((resolve, reject) => {
-        qb.updateCustomer(updatePayload, (err: any, data: any) =>
-          err ? reject(err) : resolve(data)
-        );
-      })
-  );
-
-  const updatedLast = updated?.Customer?.MetaData?.LastUpdatedTime
-    ? new Date(updated.Customer.MetaData.LastUpdatedTime)
-    : new Date();
-
-  await prisma.client.update({
-    where: { id: c.id },
-    data: { quickbooksUpdatedAt: updatedLast },
-  });
-
-  await prisma.syncLog.create({
-    data: {
-      entity: "customers",
-      action: "UpdatedInQBO",
-      entityId: c.id,
-      companyId,
-      details: jsonSafe({
-        before: normalizedQbo,
-        pushed: normalizedLocal,
-        result: { Id: updated?.Customer?.Id, SyncToken: updated?.Customer?.SyncToken, lastUpdated: updatedLast },
-      }),
-    },
-  });
-
-  return { created: undefined, updated: true };
-}
 
 }

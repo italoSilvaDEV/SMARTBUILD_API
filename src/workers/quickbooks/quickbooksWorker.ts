@@ -20,7 +20,6 @@ const worker = new Worker(
 
     await job.updateProgress({ stage: "starting" });
 
-    // Aqui usamos seu método atual que já atualiza syncStatus/syncLog
     await orchestrator.executeSync(prefs, companyId, userId);
 
     await job.updateProgress({ stage: "finished" });

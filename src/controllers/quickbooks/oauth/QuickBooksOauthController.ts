@@ -33,13 +33,14 @@ export class QuickBooksController {
         client_id: clientId,
         response_type: 'code',
         scope: [
-          'com.intuit.quickbooks.accounting',
-          'com.intuit.quickbooks.payment',
-          'openid',
-          'profile',
-          'email',
-          'phone',
-          'address'
+          'com.intuit.quickbooks.accounting', // FORÇAR accounting como obrigatório
+          // Removendo payment para evitar confusão com Payments-only accounts
+          // 'com.intuit.quickbooks.payment',
+          // 'openid',
+          // 'profile',
+          // 'email',
+          // 'phone',
+          // 'address'
         ],
         redirect_uri: redirectUri,
         state: `${userId}|${companyId}` // Usar | em vez de - para evitar conflito com UUIDs
@@ -150,6 +151,54 @@ export class QuickBooksController {
       console.log("##### refresh_token", refresh_token)
       console.log("##### expires_in", expires_in)
       console.log("##### scope", scope)
+      
+      // ✅ VALIDAÇÃO IMEDIATA: Verificar se o realmId é válido para QuickBooks Online Accounting
+      try {
+        console.log("🔍 Validando realmId para QuickBooks Online Accounting...");
+        
+        // Criar instância temporária do QuickBooks SDK para validação
+        const tempQb = new (require('node-quickbooks'))(
+          clientId,
+          clientSecret,
+          access_token,
+          false,
+          realmId as string,
+          process.env.QUICKBOOKS_ENVIRONMENT !== 'production', // true = sandbox, false = production
+          true,
+          null,
+          "2.0",
+          refresh_token
+        );
+
+        // Tentar buscar informações da empresa - se falhar, não é Accounting válido
+        const companyInfo: any = await new Promise((resolve, reject) => {
+          tempQb.getCompanyInfo(realmId, (err: any, data: any) => {
+            if (err) {
+              console.error(" Erro ao buscar Company Info:", JSON.stringify(err, null, 2));
+              reject(err);
+            } else {
+              console.log(" Company Info obtido com sucesso:", data?.QueryResponse?.CompanyInfo?.[0]?.CompanyName);
+              resolve(data);
+            }
+          });
+        });
+
+        console.log(" RealmId validado com sucesso para QuickBooks Online Accounting");
+      } catch (companyError: any) {
+        console.error(" Falha na validação do realmId:", companyError);
+        
+        // Se falhar, marcar como precisando reautorização
+        const errorMessage = companyError?.Fault?.Error?.[0]?.Detail || 
+                           companyError?.message || 
+                           "Realm ID não é válido para QuickBooks Online Accounting";
+        
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=invalid_realm&details=${encodeURIComponent(
+            "Por favor, selecione uma empresa do QuickBooks Online (Accounting), não a conta de pagamentos. " + errorMessage
+          )}`
+        );
+      }
+      
       // Calcular data de expiração
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
@@ -160,7 +209,7 @@ export class QuickBooksController {
       });
 
       // Definir escopos padrão se vier undefined
-      const savedScope = scope || 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment';
+      const savedScope = scope || 'com.intuit.quickbooks.accounting';
 
       if (existingAccount) {
         // Atualizar a conta existente
@@ -225,6 +274,55 @@ export class QuickBooksController {
           isConnected: false,
           needsReauthorization: false,
           accountInfo: null
+        });
+      }
+
+      // ✅ VALIDAÇÃO ADICIONAL: Testar se é realmente QuickBooks Online Accounting
+      try {
+        const QuickBooks = require('node-quickbooks');
+        const tempQb = new QuickBooks(
+          process.env.QUICKBOOKS_CLIENT_ID!,
+          process.env.QUICKBOOKS_CLIENT_SECRET!,
+          quickBooksAccount.accessToken,
+          false,
+          quickBooksAccount.realmId,
+          process.env.QUICKBOOKS_ENVIRONMENT !== 'production',
+          true,
+          null,
+          "2.0",
+          quickBooksAccount.refreshToken
+        );
+
+        // Tentar buscar Company Info para validar se é Accounting
+        const companyInfo: any = await new Promise((resolve, reject) => {
+          tempQb.getCompanyInfo(quickBooksAccount.realmId, (err: any, data: any) => {
+            if (err) {
+              console.error(" Company Info error:", err);
+              reject(err);
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        const companyName = companyInfo?.QueryResponse?.CompanyInfo?.[0]?.CompanyName;
+        console.log(" Company Info validado:", companyName);
+
+      } catch (validationError: any) {
+        console.error(" Falha na validação do Company Info:", validationError);
+        
+        // Se falhar, marcar como necessitando reautorização
+        await prisma.quickBooksAccount.update({
+          where: { id: quickBooksAccount.id },
+          data: { needsReauthorization: true }
+        });
+
+        return res.status(200).json({
+          isConnected: true,
+          needsReauthorization: true,
+          reason: "invalid_accounting_access",
+          message: "Por favor, reconecte selecionando uma empresa do QuickBooks Online (Accounting), não a conta de pagamentos.",
+          authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${quickBooksAccount.company_id}`
         });
       }
 
