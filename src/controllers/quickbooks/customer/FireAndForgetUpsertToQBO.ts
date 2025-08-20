@@ -9,9 +9,12 @@ const outbound = new QuickBooksCustomerOutboundController();
 export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clientId: string) {
   setImmediate(async () => {
     try {
-      await outbound.upsertOneLocalClientToQBOInternal(companyId, userId, clientId);
+      const { created } = await outbound.upsertOneLocalClientToQBOInternal(companyId, userId, clientId);
+      return created;
     } catch (e) {
       console.error("[fireAndForgetUpsertToQBO] failed:", (e as any)?.message || e);
     }
+
+    return null;
   });
 }
