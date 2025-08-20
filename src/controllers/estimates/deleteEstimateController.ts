@@ -32,6 +32,12 @@ export class DeleteEstimateController {
                 }
             })
 
+            await prisma.project.delete({
+                where: {
+                    id: estimate.projectId
+                }
+            })
+
             return res.status(200).json({
                 message: "Estimate deleted successfully"
             })
