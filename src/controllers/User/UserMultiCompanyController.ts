@@ -49,17 +49,35 @@ export class UserMultiCompanyController {
       });
 
       // Gerar URL assinada para o avatar, se existir
-      const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+      // const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+      let avatarUrl: string | null = "";
+
+
+      try{
+        avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null;
+      }catch(err){
+        avatarUrl = null;
+      }
 
       // Gerar URLs assinadas para os avatares das empresas
       const companiesWithAvatarUrls = await Promise.all(
-        user.companies.map(async (userCompany) => ({
-          ...userCompany,
-          company: {
-            ...userCompany.company,
-            avatar: userCompany.company.avatar ? await getPresignedUrl(userCompany.company.avatar) : null
+        user.companies.map(async (userCompany) => {
+          let companyAvatarUrl = null;
+          
+          try {
+            companyAvatarUrl = userCompany.company.avatar ? await getPresignedUrl(userCompany.company.avatar) : null;
+          } catch(err) {
+            companyAvatarUrl = null;
           }
-        }))
+          
+          return {
+            ...userCompany,
+            company: {
+              ...userCompany.company,
+              avatar: companyAvatarUrl
+            }
+          };
+        })
       );
 
 
@@ -378,4 +396,4 @@ export class UserMultiCompanyController {
       return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
-} 
+}
