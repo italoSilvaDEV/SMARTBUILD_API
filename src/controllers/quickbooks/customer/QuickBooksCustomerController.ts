@@ -83,7 +83,7 @@ export class QuickBooksClientController {
         account.accessToken,
         false, // Não é tokenSecret (usar OAuth2)
         account.realmId,
-        true, // Use sandbox? Troque para false em produção!
+        process.env.QUICKBOOKS_ENVIRONMENT !== 'production', // true usa sandbox, false produção
         true, // Use the new API
         null,
         "2.0",

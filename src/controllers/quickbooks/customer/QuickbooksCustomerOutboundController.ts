@@ -53,7 +53,7 @@ export class QuickBooksCustomerOutboundController {
       account.accessToken,
       false,
       account.realmId,
-      true,  // sandbox? troque p/ false em prod
+      process.env.QUICKBOOKS_ENVIRONMENT !== 'production',  // Use sandbox apenas se não for produção
       true,  // new api
       null,
       "2.0",

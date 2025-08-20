@@ -126,7 +126,7 @@ export class QuickBooksWebhookWorker {
       acc.accessToken,
       false,
       acc.realmId,
-      true,   // sandbox (ajuste para prod)
+      process.env.QUICKBOOKS_ENVIRONMENT !== 'production',   // Use sandbox apenas se não for produção
       true,   // new api
       null,
       "2.0",
