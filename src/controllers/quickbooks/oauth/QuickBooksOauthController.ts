@@ -10,8 +10,9 @@ export class QuickBooksController {
   // faz o oauth para o quickbooks
   async authorize(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
       console.log("valor do userId", userId)
+      console.log("valor do companyId", companyId)
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -41,7 +42,7 @@ export class QuickBooksController {
           'address'
         ],
         redirect_uri: redirectUri,
-        state: userId // Passamos o userId como state para recuperar no callback
+        state: `${userId}|${companyId}` // Usar | em vez de - para evitar conflito com UUIDs
       };
 
       // Construir URL de autorização
@@ -66,11 +67,47 @@ export class QuickBooksController {
   async callback(req: Request, res: Response) {
     console.log("inicio de callback")
     try {
-      const { code, state, realmId } = req.query;
-      const userId = state as string;
+      const { error, code, state, realmId } = req.query;
+      console.log("valor do state", state)
+      console.log("tipo do state", typeof state)
+      console.log("state é string?", typeof state === 'string')
+      console.log("state existe?", !!state)
+      
+      // Corrigir: state pode vir como string ou array do Express
+      let stateString: string;
+      if (Array.isArray(state)) {
+        stateString = state[0] as string;
+      } else if (typeof state === 'string') {
+        stateString = state;
+      } else {
+        console.log("err state callback - tipo inválido")
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=invalid_state`
+        );
+      }
+      
+      if (!stateString) {
+        console.log("err state callback - string vazia")
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=invalid_state`
+        );
+      }
+      
+      const [userId, companyId] = stateString.split('|'); // Separador | usado para evitar conflito com UUIDs
+      console.log("userId extraído:", userId);
+      console.log("companyId extraído:", companyId);
 
-      if (!code || !realmId || !userId) {
-        return res.status(400).json({ error: "Missing required parameters" });
+      if (error) {
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(String(error))}`
+        );
+      }
+
+      if (!code || !realmId || !userId || !companyId) {
+        // return res.status(400).json({ error: "Missing required parameters" });
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=missing_params`
+        );
       }
 
       // Verificar se o usuário existe
@@ -83,7 +120,7 @@ export class QuickBooksController {
       }
 
       // Pegue o company_id do usuário
-      const userCompanyId = user.company_id;
+      const userCompanyId = companyId;
 
       const clientId = process.env.QUICKBOOKS_CLIENT_ID;
       console.log("valor do clientId", clientId)

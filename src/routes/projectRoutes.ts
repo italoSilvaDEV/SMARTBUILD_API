@@ -63,6 +63,8 @@ projectRoutes.post(
   projectController.upLoadPhotoServiceProject
 );
 
+projectRoutes.patch("/service-project/update-fields", checkToken, projectController.updateFieldsServiceProject);
+
 projectRoutes.post(
   "/img-url-service-project",
   checkToken,

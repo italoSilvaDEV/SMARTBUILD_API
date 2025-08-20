@@ -16,7 +16,7 @@ const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
 
 // Rotas de autorização
-quickbooksRoutes.get("/quickbooks/authorize/:userId", quickbooksController.authorize);
+quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize);
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);
@@ -32,6 +32,7 @@ quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quic
 quickbooksRoutes.get("/quickbooks/sync-preferences/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
 quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSyncPreferenceController.create);
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
+quickbooksRoutes.patch("/quickbooks/sync-preferences/:id/disable", checkToken, quickbooksSyncPreferenceController.updateIsDisable);
 quickbooksRoutes.delete("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.delete);
 
 // rotas de sincronizar customers
@@ -41,6 +42,7 @@ quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksC
 quickbooksRoutes.post("/quickbooks/orchestrate-sync/:companyId/:userId", checkToken, syncOrchestratorController.orchestrateSync);
 quickbooksRoutes.post("/quickbooks/execute-sync/:companyId/:userId", checkToken, syncOrchestratorController.executeExistingSync);
 quickbooksRoutes.get("/quickbooks/sync-status/:companyId/:userId", checkToken, syncOrchestratorController.getSyncStatus);
+quickbooksRoutes.get("/quickbooks/sync-history/:companyId/:userId/:entity/:syncType", checkToken, syncOrchestratorController.getSyncExecutionHistory);
 
 // Exportação inicial (Local -> QBO) — cria Customer no QBO p/ quem não tem idQuickbooks
 quickbooksRoutes.post("/quickbooks/export-clients/:companyId/:userId", checkToken, qbOutbound.exportMissingToQBO);

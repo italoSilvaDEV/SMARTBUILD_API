@@ -1063,7 +1063,7 @@ export class StripeController {
                 mode: 'subscription',
                 success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
                 cancel_url: `${process.env.URL_FRONT}/login`,
-                client_reference_id: clientReferenceId, // ✅ APENAS referralId (para Rewardful)
+                // client_reference_id: clientReferenceId, // ✅ APENAS referralId (para Rewardful)
                 metadata: {
                     // ✅ Sistema interno usa metadata (sem limites de tamanho)
                     planId,
@@ -1079,7 +1079,8 @@ export class StripeController {
                             null,
                     // ✅ Referral ID também no metadata para backup/debugging
                     ...(referralId && { referralId })
-                }
+                },
+                ...(referralId && referralId.trim() !== '' && { client_reference_id: referralId }), // Incluir client_reference_id 
             };
 
             // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação

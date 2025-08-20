@@ -4,6 +4,7 @@ import { SyncPreferencesController } from "../syncPreference/syncPreferenceContr
 import { QuickBooksClientController } from "../customer/QuickBooksCustomerController";
 import { SyncStatus, SyncPreferences } from "@prisma/client";
 import { QuickBooksCustomerOutboundController } from "../customer/QuickbooksCustomerOutboundController";
+import { quickbooksQueue } from "../../../queue/quickbooksQueue";
 
 
 export class SyncOrchestratorController {
@@ -37,47 +38,73 @@ export class SyncOrchestratorController {
      */
     async orchestrateSync(req: Request, res: Response) {
         const { companyId, userId } = req.params;
-        const { syncPreferences } = req.body;
+        const { syncPreferences } = req.body; 
 
         if (!userId || !companyId) {
-            return res.status(400).json({
-                error: "User ID e Company ID são obrigatórios"
-            });
+            return res.status(400).json({ error: "User ID e Company ID são obrigatórios" });
         }
-
-        if (!syncPreferences || !Array.isArray(syncPreferences)) {
-            return res.status(400).json({
-                error: "Preferências de sincronização são obrigatórias"
-            });
+        if (!Array.isArray(syncPreferences) || syncPreferences.length === 0) {
+            return res.status(400).json({ error: "Preferências de sincronização são obrigatórias" });
         }
 
         try {
-            // 1. Criar/atualizar preferências de sincronização
-            const createdPreferences = await this.createOrUpdatePreferences(
-                syncPreferences,
-                userId,
-                companyId
-            );
+            // 1) Cria/atualiza preferências (rápido)
+            const createdPreferences = await this.createOrUpdatePreferences(syncPreferences, userId, companyId);
 
-            // 2. Executar sincronizações baseadas nas preferências
-            const syncResults = await this.executeSync(createdPreferences, companyId, userId);
+            // 2) Evita duplicar job para o mesmo par company/user
+            const jobId = `sync:${companyId}:${userId}`;
+            const existing = await quickbooksQueue.getJob(jobId);
 
-            return res.status(200).json({
-                message: "Orquestração de sincronização concluída",
-                preferences: createdPreferences,
-                syncResults: syncResults
-            });
+            if (existing) {
+                const state = await existing.getState();
+                const emAndamento = ["waiting", "active", "delayed", "paused", "waiting-children"] as const;
 
+                if (emAndamento.includes(state as any)) {
+                    return res.status(202).json({
+                        message: "There is already a synchronization in progress, please wait",
+                        jobId: existing.id,
+                        state,
+                    });
+                }
 
+                // Estado terminal (completed/failed) → remove e recria
+                await existing.remove();
+            }
 
+            // 3) Cria novo job (com proteção contra corrida)
+            try {
+                const job = await quickbooksQueue.add(
+                    "orchestrate",
+                    { companyId, userId, prefs: createdPreferences },
+                    { jobId }
+                );
+
+                return res.status(202).json({
+                    message: "We are synchronizing your clients",
+                    jobId: job.id,
+                    preferences: createdPreferences,
+                    // statusUrl: `/quickbooks/jobs/${job.id}`,
+                });
+            } catch (e: any) {
+                // Se outra requisição criou o job no mesmo instante
+                if (typeof e?.message === "string" && e.message.toLowerCase().includes("already exists")) {
+                    const concurrent = await quickbooksQueue.getJob(jobId);
+                    const state = concurrent ? await concurrent.getState() : "unknown";
+                    return res.status(202).json({
+                        message: "A synchronization has just started.",
+                        jobId,
+                        state,
+                        // statusUrl: concurrent ? `/quickbooks/jobs/${concurrent.id}` : undefined,
+                    });
+                }
+                throw e;
+            }
         } catch (error: any) {
             console.error("Erro na orquestração de sincronização:", error);
-            return res.status(500).json({
-                error: "Erro interno na orquestração",
-                details: error.message
-            });
+            return res.status(500).json({ error: "Internal error in orchestration", details: error.message });
         }
     }
+
 
     /**
      * Executa apenas a sincronização baseada nas preferências existentes
@@ -128,6 +155,7 @@ export class SyncOrchestratorController {
      */
     async getSyncStatus(req: Request, res: Response) {
         const { companyId, userId } = req.params;
+        const { includeExecutions = 'true', limit = '10' } = req.query;
 
         if (!userId || !companyId) {
             return res.status(400).json({
@@ -136,6 +164,7 @@ export class SyncOrchestratorController {
         }
 
         try {
+            // Buscar os status principais
             const syncStatuses = await (prisma as any).syncStatus.findMany({
                 where: {
                     companyId,
@@ -143,7 +172,19 @@ export class SyncOrchestratorController {
                 },
                 include: {
                     company: { select: { id: true, name: true } },
-                    user: { select: { id: true, name: true, email: true } }
+                    user: { select: { id: true, name: true, email: true } },
+                    ...(includeExecutions === 'true' && {
+                        executions: {
+                            orderBy: { startedAt: 'desc' },
+                            take: parseInt(limit as string),
+                            include: {
+                                logs: {
+                                    orderBy: { timestamp: 'desc' },
+                                    take: 5 // últimos 5 logs por execução
+                                }
+                            }
+                        }
+                    })
                 },
                 orderBy: { updatedAt: 'desc' }
             });
@@ -155,6 +196,23 @@ export class SyncOrchestratorController {
                 }
             });
 
+            // Estatísticas das execuções
+            const executionStats = await (prisma as any).syncExecution.groupBy({
+                by: ['status'],
+                where: {
+                    companyId,
+                    userId
+                },
+                _count: {
+                    status: true
+                }
+            });
+
+            const stats = executionStats.reduce((acc: any, stat: any) => {
+                acc[stat.status.toLowerCase()] = stat._count.status;
+                return acc;
+            }, {});
+
             return res.status(200).json({
                 syncStatuses,
                 preferences,
@@ -164,6 +222,10 @@ export class SyncOrchestratorController {
                     inProgress: syncStatuses.filter((s: any) => s.status === 'IN_PROGRESS').length,
                     completed: syncStatuses.filter((s: any) => s.status === 'COMPLETED').length,
                     failed: syncStatuses.filter((s: any) => s.status === 'FAILED').length
+                },
+                executionStats: {
+                    total: Object.values(stats).reduce((a: any, b: any) => a + b, 0),
+                    ...stats
                 }
             });
 
@@ -171,6 +233,87 @@ export class SyncOrchestratorController {
             console.error("Erro ao buscar status de sincronização:", error);
             return res.status(500).json({
                 error: "Erro interno ao buscar status",
+                details: error.message
+            });
+        }
+    }
+
+    /**
+     * Retorna o histórico de execuções de uma sincronização específica
+     */
+    async getSyncExecutionHistory(req: Request, res: Response) {
+        const { companyId, userId, entity, syncType } = req.params;
+        const { page = '1', limit = '20' } = req.query;
+
+        if (!userId || !companyId || !entity || !syncType) {
+            return res.status(400).json({
+                error: "User ID, Company ID, Entity e SyncType são obrigatórios"
+            });
+        }
+
+        try {
+            const pageNumber = parseInt(page as string);
+            const limitNumber = parseInt(limit as string);
+            const skip = (pageNumber - 1) * limitNumber;
+
+            // Buscar o SyncStatus primeiro
+            const syncStatus = await (prisma as any).syncStatus.findFirst({
+                where: {
+                    companyId,
+                    userId,
+                    entity,
+                    syncType
+                },
+                include: {
+                    company: { select: { id: true, name: true } },
+                    user: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            if (!syncStatus) {
+                return res.status(404).json({
+                    error: "Sincronização não encontrada"
+                });
+            }
+
+            // Buscar as execuções paginadas
+            const executions = await (prisma as any).syncExecution.findMany({
+                where: {
+                    syncStatusId: syncStatus.id
+                },
+                include: {
+                    logs: {
+                        orderBy: { timestamp: 'desc' },
+                        take: 10 // limitar logs por execução
+                    }
+                },
+                orderBy: { startedAt: 'desc' },
+                skip,
+                take: limitNumber
+            });
+
+            // Contar total para paginação
+            const totalExecutions = await (prisma as any).syncExecution.count({
+                where: {
+                    syncStatusId: syncStatus.id
+                }
+            });
+
+            return res.status(200).json({
+                syncStatus,
+                executions,
+                pagination: {
+                    page: pageNumber,
+                    limit: limitNumber,
+                    total: totalExecutions,
+                    totalPages: Math.ceil(totalExecutions / limitNumber)
+                }
+            });
+
+        } catch (error: any) {
+            console.error("Erro ao buscar histórico de execuções:", error);
+            return res.status(500).json({
+                error: "Erro interno ao buscar histórico",
                 details: error.message
             });
         }
@@ -187,7 +330,7 @@ export class SyncOrchestratorController {
         const createdPreferences: SyncPreferences[] = [];
 
         for (const preference of syncPreferences) {
-            const { typesEntity, typeSync } = preference;
+            const { typesEntity, typeSync, isDisable = false } = preference;
 
             // Verificar se já existe uma preferência para esta entidade
             const existing = await prisma.syncPreferences.findFirst({
@@ -202,7 +345,7 @@ export class SyncOrchestratorController {
                 // Atualizar existente
                 const updated = await prisma.syncPreferences.update({
                     where: { id: existing.id },
-                    data: { typeSync }
+                    data: { typeSync, isDisable }
                 });
                 createdPreferences.push(updated);
             } else {
@@ -211,6 +354,7 @@ export class SyncOrchestratorController {
                     data: {
                         typesEntity,
                         typeSync,
+                        isDisable,
                         userId,
                         companyId
                     }
@@ -225,7 +369,7 @@ export class SyncOrchestratorController {
     /**
      * Executa as sincronizações baseadas nas preferências
      */
-    private async executeSync(
+    async executeSync(
         preferences: SyncPreferences[],
         companyId: string,
         userId: string
@@ -233,9 +377,21 @@ export class SyncOrchestratorController {
         const syncResults = [];
 
         for (const preference of preferences) {
-            const { typesEntity, typeSync } = preference;
+            const { typesEntity, typeSync, isDisable } = preference;
 
-            // Verificar se já existe um status de sincronização
+            // Verificar se a sincronização está desabilitada
+            if (isDisable) {
+                syncResults.push({
+                    entity: typesEntity,
+                    syncType: typeSync,
+                    status: 'DISABLED',
+                    reason: 'Sincronização desabilitada nas preferências',
+                    lastSyncAt: null
+                });
+                continue;
+            }
+
+            // Buscar ou criar SyncStatus (registro principal)
             let syncStatus = await (prisma as any).syncStatus.findFirst({
                 where: {
                     companyId,
@@ -244,6 +400,18 @@ export class SyncOrchestratorController {
                     syncType: typeSync
                 }
             });
+
+            if (!syncStatus) {
+                syncStatus = await (prisma as any).syncStatus.create({
+                    data: {
+                        companyId,
+                        userId,
+                        entity: typesEntity,
+                        syncType: typeSync,
+                        status: 'PENDING'
+                    }
+                });
+            }
 
             // Verificar se pode executar a sincronização
             const canSync = await this.canExecuteSync(syncStatus);
@@ -259,20 +427,21 @@ export class SyncOrchestratorController {
                 continue;
             }
 
-            // Criar ou atualizar status de sincronização
-            if (!syncStatus) {
-                syncStatus = await (prisma as any).syncStatus.create({
-                    data: {
-                        companyId,
-                        userId,
-                        entity: typesEntity,
-                        syncType: typeSync,
-                        status: 'PENDING'
-                    }
-                });
-            }
+            // Criar nova SyncExecution para esta execução específica
+            const syncExecution = await (prisma as any).syncExecution.create({
+                data: {
+                    companyId,
+                    userId,
+                    entity: typesEntity,
+                    syncType: typeSync,
+                    status: 'IN_PROGRESS',
+                    syncStatusId: syncStatus.id,
+                    triggerType: 'manual', // ou baseado no contexto
+                    startedAt: new Date()
+                }
+            });
 
-            // Atualizar status para IN_PROGRESS
+            // Atualizar SyncStatus para refletir que está em progresso
             await (prisma as any).syncStatus.update({
                 where: { id: syncStatus.id },
                 data: {
@@ -281,33 +450,26 @@ export class SyncOrchestratorController {
                 }
             });
 
+            const startTime = Date.now();
+
             try {
-             
                 // Executar sincronização baseada no tipo
                 let syncResult: any = { steps: [] };
 
                 if (typesEntity === 'customers') {
                     if (typeSync === 'QuickBooksToSmartBuild') {
                         // INBOUND somente
-                        const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
+                        const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId, syncExecution.id);
                         syncResult = { direction: 'QBO->Local', inbound };
                     } else if (typeSync === 'SmartBuildToQuickBooks') {
                         // OUTBOUND somente (export + updates)
-                        const exported = await this.executeCustomerExportToQuickBooks(companyId, userId);
-                        // const pushed = await this.executeCustomerPushUpdatesToQuickBooks(companyId, userId);
-                        // syncResult = { direction: 'Local->QBO', exported, pushed };
-                        syncResult = { direction: 'Local->QBO', exported};
-                        
-                    }
-                     else if (typeSync === 'bidirectional') {
+                        const exported = await this.executeCustomerExportToQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Local->QBO', exported };
+                    } else if (typeSync === 'bidirectional') {
                         // OUTBOUND (export + updates) -> INBOUND
-                        const exported = await this.executeCustomerExportToQuickBooks(companyId, userId);
-                        const pushed = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
-                        // const pushed = await this.executeCustomerPushUpdatesToQuickBooks(companyId, userId);
-                        // const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId);
-                        // syncResult = { direction: 'Both', exported, pushed, inbound };
-                        syncResult = { direction: 'Both', exported, pushed };
-
+                        const exported = await this.executeCustomerExportToQuickBooks(companyId, userId, syncExecution.id);
+                        const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Both', exported, inbound };
                     } else {
                         throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
                     }
@@ -315,19 +477,32 @@ export class SyncOrchestratorController {
                     throw new Error(`Entidade não implementada: ${typesEntity}`);
                 }
 
-                // Atualizar status para COMPLETED
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+
+                // Atualizar SyncExecution como COMPLETED
+                await (prisma as any).syncExecution.update({
+                    where: { id: syncExecution.id },
+                    data: {
+                        status: 'COMPLETED',
+                        completedAt: new Date(),
+                        duration,
+                        successRecords:
+                            (syncResult?.inbound?.synced || 0) +
+                            (syncResult?.exported?.created || 0),
+                        errorRecords: 0,
+                        details: syncResult
+                    }
+                });
+
+                // Atualizar SyncStatus (registro principal)
                 await (prisma as any).syncStatus.update({
                     where: { id: syncStatus.id },
                     data: {
                         status: 'COMPLETED',
                         lastSyncAt: new Date(),
-                        // tenta somar alguma métrica de sucesso, se vier
-                        successRecords:
-                            (syncResult?.inbound?.synced || 0) +
-                            (syncResult?.exported?.created || 0) +
-                            (syncResult?.pushed?.updated || 0),
-                        errorCount: 0,
-                        lastError: null
+                        lastError: null,
+                        errorCount: 0
                     }
                 });
 
@@ -336,13 +511,29 @@ export class SyncOrchestratorController {
                     syncType: typeSync,
                     status: 'COMPLETED',
                     details: syncResult,
+                    executionId: syncExecution.id,
+                    duration,
                     lastSyncAt: new Date()
                 });
 
             } catch (error: any) {
                 console.error(`Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
 
-                // Atualizar status para FAILED
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+
+                // Atualizar SyncExecution como FAILED
+                await (prisma as any).syncExecution.update({
+                    where: { id: syncExecution.id },
+                    data: {
+                        status: 'FAILED',
+                        completedAt: new Date(),
+                        duration,
+                        lastError: error.message
+                    }
+                });
+
+                // Atualizar SyncStatus
                 await (prisma as any).syncStatus.update({
                     where: { id: syncStatus.id },
                     data: {
@@ -357,6 +548,8 @@ export class SyncOrchestratorController {
                     syncType: typeSync,
                     status: 'FAILED',
                     error: error.message,
+                    executionId: syncExecution.id,
+                    duration,
                     lastAttemptAt: new Date()
                 });
             }
@@ -415,10 +608,11 @@ export class SyncOrchestratorController {
     /**
      * Executa sincronização de clientes do QuickBooks para SmartBuild
      */
-    private async executeCustomerSyncFromQuickBooks(companyId: string, userId: string) {
+    private async executeCustomerSyncFromQuickBooks(companyId: string, userId: string, syncExecutionId: string) {
         // Simular requisição para o controller existente
         const mockRequest = {
-            params: { companyId, userId }
+            params: { companyId, userId },
+            syncExecutionId // adicionar o ID da execução no request
         } as unknown as Request;
 
         let syncResult: any = {};
@@ -439,10 +633,13 @@ export class SyncOrchestratorController {
     }
 
     /**
- * Executa exportação inicial (Local -> QBO) para clientes sem idQuickbooks
- */
-    private async executeCustomerExportToQuickBooks(companyId: string, userId: string) {
-        const mockRequest = { params: { companyId, userId } } as unknown as Request;
+     * Executa exportação inicial (Local -> QBO) para clientes sem idQuickbooks
+     */
+    private async executeCustomerExportToQuickBooks(companyId: string, userId: string, syncExecutionId: string) {
+        const mockRequest = { 
+            params: { companyId, userId },
+            syncExecutionId // adicionar o ID da execução no request
+        } as unknown as Request;
 
         let result: any = {};
         const mockResponse = {

@@ -211,22 +211,23 @@ model SubCategory {
 }
 
 model Service {
-  id              String           @id @default(uuid())
-  service_name    String
-  type_variable   String
-  price_type      String
-  price_fixe      Decimal?
-  price_minimum   Decimal?
-  price_maximum   Decimal?
-  autorId         String?
-  date_creation   DateTime         @default(now())
-  date_update     DateTime         @updatedAt
-  service         SubCategory      @relation(fields: [sub_category_id], references: [id])
-  sub_category_id String
-  ServiceProject  ServiceProject[]
-  company         Company?         @relation(fields: [company_id], references: [id])
-  company_id      String?
-  description     String?          @db.Text
+  id                     String                   @id @default(uuid())
+  service_name           String
+  type_variable          String
+  price_type             String
+  price_fixe             Decimal?
+  price_minimum          Decimal?
+  price_maximum          Decimal?
+  autorId                String?
+  date_creation          DateTime                 @default(now())
+  date_update            DateTime                 @updatedAt
+  service                SubCategory              @relation(fields: [sub_category_id], references: [id])
+  sub_category_id        String
+  ServiceProject         ServiceProject[]
+  company                Company?                 @relation(fields: [company_id], references: [id])
+  company_id             String?
+  description            String?                  @db.Text
+  EstimateServiceProject EstimateServiceProject[]
 
   @@index([sub_category_id], map: "variable_service_sub_category_id_fkey")
   @@map("variable_service")
@@ -757,6 +758,14 @@ model EstimateServiceProject {
   lineTotal   Decimal
   notes       String? @db.Text
 
+  id_service String?
+  service    Service? @relation(fields: [id_service], references: [id])
+
+  hours      Decimal?
+  price      Decimal?
+  start_date String?
+  deadline   String?
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
@@ -900,6 +909,7 @@ model SyncPreferences {
 
   typesEntity TypesEntity
   typeSync    SyncType    @default(bidirectional) // Novo campo enum
+  isDisable   Boolean     @default(false) // Campo para desabilitar sync
 
   userCreate User   @relation(name: "SyncPreferences", fields: [userId], references: [id])
   userId     String
@@ -933,6 +943,10 @@ model SyncLog {
   company   Company @relation(name: "synclog", fields: [companyId], references: [id])
   companyId String // ID da empresa associada
 
+  // Relacionamento com execução (opcional para logs avulsos)
+  syncExecution   SyncExecution? @relation(fields: [syncExecutionId], references: [id])
+  syncExecutionId String?
+
   @@map("sync_log") // Renomeia a tabela no banco
 }
 
@@ -945,19 +959,13 @@ model SyncStatus {
   entity    TypesEntity // customers, invoices, payments
   syncType  SyncType // QuickBooksToSmartBuild, SmartBuildToQuickBooks, bidirectional
 
-  // Status da sincronização
+  // Status da sincronização ATUAL
   status        SyncStatusType @default(PENDING)
   lastSyncAt    DateTime? // Última sincronização bem-sucedida
   lastAttemptAt DateTime? // Última tentativa (sucesso ou falha)
   nextSyncAt    DateTime? // Próxima sincronização programada
 
-  // Controle de progresso
-  totalRecords     Int @default(0)
-  processedRecords Int @default(0)
-  successRecords   Int @default(0)
-  errorRecords     Int @default(0)
-
-  // Informações de erro
+  // Informações da última execução
   lastError  String? @db.Text
   errorCount Int     @default(0)
 
@@ -969,8 +977,50 @@ model SyncStatus {
   company Company @relation(name: "SyncStatus", fields: [companyId], references: [id])
   user    User    @relation(name: "SyncStatus", fields: [userId], references: [id])
 
+  // Relacionamento com histórico de execuções
+  executions SyncExecution[]
+
   @@unique([companyId, userId, entity, syncType])
   @@map("sync_status")
+}
+
+model SyncExecution {
+  id String @id @default(uuid())
+
+  // Identificação da execução
+  companyId String
+  userId    String
+  entity    TypesEntity
+  syncType  SyncType
+
+  // Status desta execução específica
+  status      SyncStatusType @default(PENDING)
+  startedAt   DateTime       @default(now())
+  completedAt DateTime?
+  duration    Int? // duração em milissegundos
+
+  // Controle de progresso desta execução
+  totalRecords     Int @default(0)
+  processedRecords Int @default(0)
+  successRecords   Int @default(0)
+  errorRecords     Int @default(0)
+
+  // Informações de erro desta execução
+  lastError String? @db.Text
+
+  // Metadados adicionais
+  triggerType String? // "manual", "scheduled", "webhook", "api"
+  jobId       String? // ID do job no Bull/Redis
+  details     Json? // dados extras sobre a execução
+
+  // Relações
+  syncStatus   SyncStatus @relation(fields: [syncStatusId], references: [id], onDelete: Cascade)
+  syncStatusId String
+
+  // Logs relacionados a esta execução
+  logs SyncLog[]
+
+  @@map("sync_execution")
 }
 
 enum SyncStatusType {

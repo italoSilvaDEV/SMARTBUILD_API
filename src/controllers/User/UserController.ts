@@ -27,69 +27,63 @@ export class UserController {
     deleteFile(`./public/tmp/user/${file}`);
     deleteFile(`./public/tmp/user/${requestFile}`);
   }
-
+// criar
   async create(req: Request, res: Response) {
+    const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Verificar o limite de funcionários
     const { company_id } = req.body;
-    const isMultiCompany = await isMultiCompanyEnabled()
+    const isMultiCompany = await isMultiCompanyEnabled();
     if (company_id) {
       try {
-        // Buscar a empresa e seus valores de allowedEmployees e extraEmployees
+
         const company = await prisma.company.findUnique({
           where: { id: company_id },
           select: { allowedEmployees: true, extraEmployees: true }
         });
-
         if (company) {
-          // Calcular o número máximo de funcionários permitidos
           const allowedEmployees = company.allowedEmployees || 0;
           const extraEmployees = company.extraEmployees || 0;
           const maxEmployees = allowedEmployees + extraEmployees;
 
-          // Contar quantos funcionários a empresa já tem
-          const currentEmployeesCount = await prisma.user.count({
-            where: isMultiCompany ? { companies: { some: { companyId: company_id } } } : { company_id }
-          });
+          const whereCount = isMultiCompany
+            ? { companies: { some: { companyId: company_id } } }
+            : { company_id };
 
-          // Verificar se já atingiu o limite
+          const currentEmployeesCount = await prisma.user.count({ where: whereCount });
           if (currentEmployeesCount >= maxEmployees) {
             return res.status(400).json({
               error: `Unable to create new user. Company has reached the maximum number of employees allowed (${maxEmployees}).`
             });
           }
         }
+        console.timeEnd(`[create][${reqId}] employee-limit-check`);
       } catch (error) {
-        console.error("Error verifying employee limit:", error);
-        // Em caso de erro na verificação, continuamos com a criação do usuário
+        console.error(`[create][${reqId}] Error verifying employee limit:`, error);
+        // continua
       }
     }
 
     function validateNewUser(data: INewUser): string | null {
       if (!data.name) return "Name is required";
       if (!data.email) return "Email is required";
-      if (!data.document) return "Document is required";
       if (!data.office_id) return "Office ID is required";
       return null;
     }
 
-    const filePath = req.file?.filename?.split(".")[0] + ".webp"; // Caminho do arquivo
+    const filePath = req.file?.filename?.split(".")[0] + ".webp";
     const s3Bucket = process.env.AMAZON_S3_BUCKET!;
     let fileName: string | null = null;
 
     try {
-      // const fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
+      // Upload opcional
       if (req.file) {
         fileName = await uploadImageWebpToS3(`./public/tmp/user/${filePath}`, s3Bucket);
       }
-      // console.log('Upload concluído:', fileName);
-      const errors = validationResult(req);
 
+      const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        this.deleteFiles(
-          req.file?.filename?.split(".")[0] + ".webp",
-          req.file?.filename
-        );
+        this.deleteFiles(req.file?.filename?.split(".")[0] + ".webp", req.file?.filename);
         return res.status(400).json({ errors: errors.array() });
       }
 
@@ -97,56 +91,33 @@ export class UserController {
 
       const validationError = validateNewUser(data);
       if (validationError) {
-        this.deleteFiles(
-          req.file?.filename?.split(".")[0] + ".webp",
-          req.file?.filename
-        );
+        this.deleteFiles(req.file?.filename?.split(".")[0] + ".webp", req.file?.filename);
         return res.status(400).json({ error: validationError });
       }
 
-      // Verificar se o office existe
-      const office = await prisma.user.findMany({
-        where: { office_id: data.office_id },
-      });
+
+      const office = await prisma.user.findMany({ where: { office_id: data.office_id } });
 
       if (!office) {
-        this.deleteFiles(
-          req.file?.filename?.split(".")[0] + ".webp",
-          req.file?.filename
-        );
+        this.deleteFiles(req.file?.filename?.split(".")[0] + ".webp", req.file?.filename);
         return res.status(400).json({ error: "office invalid" });
       }
 
       // Verifica se o email existe
-      const userExists = await prisma.user.findUnique({
-        where: { email: data.email },
-      });
+      const userExists = await prisma.user.findUnique({ where: { email: data.email } });
 
       if (userExists) {
         const userCompany = await prisma.userCompany.findFirst({
-          where: {
-            userId: userExists.id,
-            companyId: company_id
-          }
-        })
-
+          where: { userId: userExists.id, companyId: company_id }
+        });
         if (userCompany) {
-          this.deleteFiles(
-            req.file?.filename?.split(".")[0] + ".webp",
-            req.file?.filename
-          );
-          return res
-            .status(400)
-            .json({ error: "Email has already been registered in the system" });
+          this.deleteFiles(req.file?.filename?.split(".")[0] + ".webp", req.file?.filename);
+          return res.status(400).json({ error: "Email has already been registered in the system" });
         }
 
-        await prisma.userCompany.create({
-          data: {
-            userId: userExists.id,
-            companyId: company_id,
-            office_id: data.office_id
-          }
-        })
+        const uc = await prisma.userCompany.create({
+          data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
+        });
         return res.status(201).json({ message: "User created successfully" });
       }
 
@@ -154,20 +125,22 @@ export class UserController {
       const pass = crypto.randomBytes(3).toString("hex").toUpperCase();
       const hashedPassword = bcrypt.hashSync(pass, 10);
 
-      // Email
+      // SMTP
+
       const SMTP_CONFIG = require("../../config/smtp");
       const transporter = nodemailer.createTransport({
         host: SMTP_CONFIG.host,
         port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
+        secure: SMTP_CONFIG.port === 465,
+        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
         tls: { rejectUnauthorized: false },
       });
+      transporter.verify((error, success) => {
+        if (error) console.error(`[create][${reqId}] transporter.verify ERROR:`, error);
+        else console.log(`[create][${reqId}] transporter.verify OK:`, success);
+      });
 
-
+      // Criação do usuário
       const user = await prisma.user.create({
         data: {
           avatar: String(fileName),
@@ -185,25 +158,20 @@ export class UserController {
         },
       });
 
+
       if (isMultiCompany) {
-        await prisma.userCompany.create({
-          data: {
-            companyId: data.company_id,
-            userId: user.id,
-            office_id: data.office_id,
-          },
+        const ucNew = await prisma.userCompany.create({
+          data: { companyId: data.company_id, userId: user.id, office_id: data.office_id },
         });
       }
 
+      // Buscar logo da company
       const company = await prisma.company.findUnique({
-        where: {
-          id: data.company_id
-        },
-        select: {
-          avatar: true
-        }
+        where: { id: data.company_id },
+        select: { avatar: true }
       });
       const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
+      // Monta e envia e-mail
       const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
       const mailOptions = {
         from: SMTP_CONFIG.user,
@@ -211,18 +179,26 @@ export class UserController {
         subject: "Smart Build",
         html: templateEmail,
       };
-      deleteFile(`./public/tmp/user/${req.file?.filename}`);
-      await transporter.sendMail(mailOptions);
+      
+      // apagar tmp
+      if (req.file?.filename) {
+        deleteFile(`./public/tmp/user/${req.file.filename}`);
+      }
 
+      try {
+        const result = await transporter.sendMail(mailOptions);
+      } catch (mailErr) {
+        console.error(`[create][${reqId}] email SEND ERROR:`, mailErr);
+        // segue retorno 201 mesmo assim? (mantive sua lógica atual de sucesso antes do send)
+      }
+      
       return res.status(201).json({ message: "User created successfully" });
     } catch (error: any) {
-      console.error(error);
+      console.error(`[create][${reqId}] CATCH ERROR:`, error);
       return res.status(500).json({ error: error.message || "Internal error" });
     }
-    // })
   }
 
-  // atual mais agora mudei para a abaixo dessa enquanto nao ver se tem algum erro vou guardar essa de backup
   async authenticateAtualSemPermissoes(req: Request, res: Response) {
     try {
       const errors = validationResult(req);
@@ -618,7 +594,7 @@ export class UserController {
             },
           });
         }
-        
+
       }
 
 
