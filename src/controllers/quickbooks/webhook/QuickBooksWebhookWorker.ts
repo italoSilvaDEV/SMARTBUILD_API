@@ -90,7 +90,7 @@ export class QuickBooksWebhookWorker {
             );
             continue;
           }
-
+ 
           await this.upsertCustomerFromQBO(companyId, qbCustomer);
         } catch (e: any) {
           console.error("[QBO Webhook] erro entity:", id, e?.message || e);
@@ -117,8 +117,8 @@ export class QuickBooksWebhookWorker {
       if (!acc) throw new Error("Conta QuickBooks não encontrada após refresh");
     }
 
-    const QB_CLIENT_ID = process.env.QB_CLIENT_ID || process.env.QUICKBOOKS_CLIENT_ID;
-    const QB_CLIENT_SECRET = process.env.QB_CLIENT_SECRET || process.env.QUICKBOOKS_CLIENT_SECRET;
+    const QB_CLIENT_ID = process.env.QUICKBOOKS_CLIENT_ID;
+    const QB_CLIENT_SECRET = process.env.QUICKBOOKS_CLIENT_SECRET;
 
     return new QuickBooks(
       QB_CLIENT_ID!,

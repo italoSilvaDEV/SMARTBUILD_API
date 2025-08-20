@@ -63,7 +63,7 @@ export class SyncOrchestratorController {
                     return res.status(202).json({
                         message: "There is already a synchronization in progress, please wait",
                         jobId: existing.id,
-                        state,
+                        state, 
                     });
                 }
 
@@ -462,7 +462,7 @@ export class SyncOrchestratorController {
                         const inbound = await this.executeCustomerSyncFromQuickBooks(companyId, userId, syncExecution.id);
                         syncResult = { direction: 'QBO->Local', inbound };
                     } else if (typeSync === 'SmartBuildToQuickBooks') {
-                        // OUTBOUND somente (export + updates)
+                        // OUTBOUND somente (export + updates) 
                         const exported = await this.executeCustomerExportToQuickBooks(companyId, userId, syncExecution.id);
                         syncResult = { direction: 'Local->QBO', exported };
                     } else if (typeSync === 'bidirectional') {
@@ -517,10 +517,28 @@ export class SyncOrchestratorController {
                 });
 
             } catch (error: any) {
-                console.error(`Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
+                console.error(`❌ Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
+                console.error(`❌ Detalhes do erro:`, {
+                    message: error?.message,
+                    details: error?.details,
+                    debugInfo: error?.debugInfo,
+                    statusCode: error?.statusCode,
+                    fault: error?.Fault,
+                    stack: error?.stack?.split('\n').slice(0, 5) // Primeiras 5 linhas do stack
+                });
 
                 const endTime = Date.now();
                 const duration = endTime - startTime;
+
+                // Preparar erro detalhado para salvar
+                const errorDetails = {
+                    message: error?.message || "Erro desconhecido",
+                    details: error?.details,
+                    debugInfo: error?.debugInfo,
+                    statusCode: error?.statusCode,
+                    fault: error?.Fault,
+                    originalError: error?.originalError || error
+                };
 
                 // Atualizar SyncExecution como FAILED
                 await (prisma as any).syncExecution.update({
@@ -529,7 +547,9 @@ export class SyncOrchestratorController {
                         status: 'FAILED',
                         completedAt: new Date(),
                         duration,
-                        lastError: error.message
+                        lastError: error?.details || error?.message || "Erro na sincronização",
+                        // Salvar detalhes completos no campo details se existir
+                        details: errorDetails
                     }
                 });
 
@@ -538,7 +558,7 @@ export class SyncOrchestratorController {
                     where: { id: syncStatus.id },
                     data: {
                         status: 'FAILED',
-                        lastError: error.message,
+                        lastError: error?.details || error?.message || "Erro na sincronização",
                         errorCount: (syncStatus.errorCount || 0) + 1
                     }
                 });
@@ -547,7 +567,8 @@ export class SyncOrchestratorController {
                     entity: typesEntity,
                     syncType: typeSync,
                     status: 'FAILED',
-                    error: error.message,
+                    error: error?.details || error?.message || "Erro na sincronização",
+                    errorDetails,
                     executionId: syncExecution.id,
                     duration,
                     lastAttemptAt: new Date()
@@ -617,15 +638,20 @@ export class SyncOrchestratorController {
 
         let syncResult: any = {};
         const mockResponse = {
-            status: (code: number) => ({
-                json: (data: any) => {
-                    if (code === 200) {
-                        syncResult = data;
-                    } else {
-                        throw new Error(data.error || 'Erro na sincronização');
-                    }
-                }
-            })
+          status: (code: number) => ({
+            json: (data: any) => {
+              if (code === 200) {
+                syncResult = data;
+              } else {
+                //  Melhorar propagação de erro com mais detalhes
+                const error = new Error(data.error || 'Erro na sincronização');
+                (error as any).details = data.details;
+                (error as any).debugInfo = data.debugInfo;
+                (error as any).statusCode = code;
+                throw error;
+              }
+            }
+          })
         } as unknown as Response;
 
         await this.quickBooksClientController.syncClients(mockRequest, mockResponse);
@@ -643,15 +669,20 @@ export class SyncOrchestratorController {
 
         let result: any = {};
         const mockResponse = {
-            status: (code: number) => ({
-                json: (data: any) => {
-                    if (code === 200) {
-                        result = data;
-                    } else {
-                        throw new Error(data.error || "Erro na exportação para QBO");
-                    }
-                }
-            })
+          status: (code: number) => ({
+            json: (data: any) => {
+              if (code === 200) { 
+                result = data;
+              } else {
+                //  Melhorar propagação de erro com mais detalhes
+                const error = new Error(data.error || "Erro na exportação para QBO");
+                (error as any).details = data.details;
+                (error as any).debugInfo = data.debugInfo;
+                (error as any).statusCode = code;
+                throw error;
+              }
+            }
+          })
         } as unknown as Response;
 
         await this.quickBooksCustomerOutboundController.exportMissingToQBO(mockRequest, mockResponse);

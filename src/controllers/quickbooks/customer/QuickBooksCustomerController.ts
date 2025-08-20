@@ -78,8 +78,8 @@ export class QuickBooksClientController {
 
       // 4. Instanciar QuickBooks SDK corretamente
       const qb = new QuickBooks(
-        process.env.QB_CLIENT_ID!,
-        process.env.QB_CLIENT_SECRET!,
+        process.env.QUICKBOOKS_CLIENT_ID!,
+        process.env.QUICKBOOKS_CLIENT_SECRET!,
         account.accessToken,
         false, // Não é tokenSecret (usar OAuth2)
         account.realmId,
@@ -100,10 +100,14 @@ export class QuickBooksClientController {
         new Promise((resolve, reject) => {
           qb.findCustomers({ fetchAll: true }, (err: any, data: any) => {
             if (err) {
-              console.error("DEBUG: Erro na busca de clientes:", err);
+              console.error("QBO ERROR DETALHADO:", JSON.stringify(err, null, 2));
+              console.error("QBO ERROR Fault:", err?.Fault);
+              console.error("QBO ERROR Message:", err?.message);
+              console.error("QBO ERROR Code:", err?.code);
+              console.error("QBO ERROR Status:", err?.status);
               reject(err);
             } else {
-              console.log("DEBUG: Clientes encontrados:", data?.QueryResponse?.Customer?.length || 0);
+              console.log(" Clientes encontrados:", data?.QueryResponse?.Customer?.length || 0);
               resolve(data);
             }
           });
@@ -143,8 +147,8 @@ export class QuickBooksClientController {
           birth_date: qbClient.BirthDate || null,
           location: qbClient.BillAddr?.Line1 || null,
       
-          // ❌ NÃO setar date_update (ele é @updatedAt)
-          // ✅ Setar o espelho do QBO
+          //  NÃO setar date_update (ele é @updatedAt)
+          //  Setar o espelho do QBO
           quickbooksUpdatedAt: qbUpdatedAt,
       
           idQuickbooks: qbClient.Id,
@@ -253,8 +257,22 @@ export class QuickBooksClientController {
 
 
     } catch (error: any) {
-      console.error("Erro na sincronização de clientes:", error);
-      res.status(500).json({ error: "Erro interno na sincronização", details: error.message });
+      console.error(" Erro na sincronização de clientes:", error);
+      console.error(" Erro detalhado:", {
+        message: error?.message,
+        fault: error?.Fault,
+        code: error?.code,
+        status: error?.status,
+        stack: error?.stack
+      });
+      
+      res.status(500).json({ 
+        error: "Erro interno na sincronização", 
+        details: error?.Fault || error?.message || "Erro desconhecido",
+        debugInfo: {
+          environment: process.env.QUICKBOOKS_ENVIRONMENT || 'sandbox'
+        }
+      });
     }
   }
 }
