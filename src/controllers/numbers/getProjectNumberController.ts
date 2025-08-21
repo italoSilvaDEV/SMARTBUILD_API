@@ -23,7 +23,7 @@ export class GetEstimateNumberController {
             })
 
             return res.status(200).json({
-                number2: Number(number[0].number) + 1
+                number: Number(number[0].number) + 1
             })
         } catch (error) {
             return res.status(500).json({
