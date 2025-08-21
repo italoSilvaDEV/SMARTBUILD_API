@@ -127,6 +127,9 @@ export class GetAllEstimatesByCompanyController {
                             uri: true
                         }
                     }
+                },
+                orderBy: {
+                    date_creation: "desc"
                 }
             })
 
