@@ -12,6 +12,7 @@ import { UpdateServiceEstimateController } from "../controllers/estimates/update
 import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
 import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
+import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -24,6 +25,7 @@ const updateServiceEstimateController = new UpdateServiceEstimateController();
 const createServiceEstimateController = new CreateServiceEstimateController();
 const createNewEstimateController = new CreateNewEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
+const dashboardEstimatesController = new DashboardEstimatesController();
 
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
@@ -39,6 +41,7 @@ estimateRoutes.post("/new-service", checkToken, createServiceEstimateController.
 estimateRoutes.post("/new-estimate", checkToken, createNewEstimateController.handle);
 estimateRoutes.get("/number/:companyId", checkToken, getNumberNewEstimateController.handle);
 estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateController.verifyNumber);
+estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);
