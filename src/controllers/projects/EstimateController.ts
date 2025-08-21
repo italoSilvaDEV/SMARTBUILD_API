@@ -1079,7 +1079,7 @@ export class EstimateController {
       attachmentFiles = req.files as Express.Multer.File[];
 
       // Extrair dados diretamente do body (FormData)
-      const { from, to, cc, bcc, subject, body, sendMeCopy } = req.body;
+      const { from, to, cc, bcc, subject, body, sendMeCopy, numberPerson } = req.body;
 
       // Validar se há dados básicos do email
       if (!to) {
@@ -1254,17 +1254,6 @@ export class EstimateController {
       // Garantir que allRecipients seja uma lista plana de strings únicas
       const uniqueRecipients = [...new Set(allRecipients.filter(email => email && typeof email === 'string'))];
 
-      // Log para debug - verificar se não há emails indesejados
-      console.log('📧 Recipients list:', {
-        to: dataEmail.to,
-        cc: dataEmail.cc,
-        bcc: dataEmail.bcc,
-        sendMeCopy: dataEmail.sendMeCopy,
-        from: dataEmail.from,
-        allRecipients: allRecipients,
-        uniqueRecipients: uniqueRecipients
-      });
-
       try {
         // Preparar anexos
         const attachments = [
@@ -1304,7 +1293,7 @@ export class EstimateController {
             estimate.project?.client?.name || '',
             companyAvatar,
             estimate.project?.company?.name || '',
-            estimate.number,
+            numberPerson || estimate.number,
             Number(estimate.totalAmount),
             estimate.id,
             estimate.project?.client?.email || '',
@@ -1316,7 +1305,7 @@ export class EstimateController {
           text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
 Dear ${estimate.project?.client?.name || 'Client'},
 
-Your Estimate ${estimate.number} is ready!
+Your Estimate ${numberPerson || estimate.number} is ready!
 Total: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(estimate.totalAmount))}
 
 Please access the link to view details and approve the budget:
