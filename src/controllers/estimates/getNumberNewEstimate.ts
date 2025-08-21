@@ -41,8 +41,8 @@ export class GetNumberNewEstimateController {
             })
 
             if (!number) {
-                return res.status(404).json({
-                    error: "Estimate number not found"
+                return res.status(200).json({
+                    number: 1
                 })
             }
 
@@ -95,17 +95,11 @@ export class GetNumberNewEstimateController {
                 }
             })
 
-            console.log("Ultimo numero: ", lastEstimateNumber)
-            console.log("Numero atual: ", number)
-
-            if (Number(lastEstimateNumber?.number) >= Number(number)) {
-                console.log("Entrou aqui")
+            if (lastEstimateNumber && Number(lastEstimateNumber?.number) >= Number(number)) {
                 return res.status(200).json({
                     number: Number(lastEstimateNumber?.number) + 1
                 })
             }
-
-            console.log("Não entrou aqui")
 
             return res.status(200).json({
                 number: Number(number)
