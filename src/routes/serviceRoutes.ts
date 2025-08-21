@@ -89,12 +89,12 @@ serviceRoutes.get('/service/company/:companyId', checkToken, findServiceControll
 const userServiceProjectController = new UserServiceProjectController()
 serviceRoutes.post('/user_service_project', checkToken, userServiceProjectController.create);
 serviceRoutes.get('/user_service_project/:id/:id_company', checkToken, userServiceProjectController.getById);
-serviceRoutes.post("/user_service_project/search/:id", checkToken,userServiceProjectController.getByUserWithSearch);
+serviceRoutes.post("/user_service_project/search/:id", userServiceProjectController.getByUserWithSearch);
 serviceRoutes.post('/services_with_details/:id', checkToken, userServiceProjectController.getServicesWithDetails);
 serviceRoutes.get('/services/details-geral/:id', checkToken, userServiceProjectController.getServiceProjectDetailsGeral);
 
 // custos do serviço app
-serviceRoutes.get( "/costs/:serviceProjectId",  userServiceProjectController.getCostsByServiceProject);
+serviceRoutes.get("/costs/:serviceProjectId", userServiceProjectController.getCostsByServiceProject);
 
 
 export { serviceRoutes }
