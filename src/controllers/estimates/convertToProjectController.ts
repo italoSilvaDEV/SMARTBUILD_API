@@ -1,5 +1,6 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 
 export class ConvertToProjectController {
     async handle(req: Request, res: Response) {
@@ -17,7 +18,8 @@ export class ConvertToProjectController {
             where: {
                 id: estimateId
             },
-            include: {
+            select: {
+                projectId: true,
                 serviceProjects: true,
                 project: {
                     select: {
@@ -34,27 +36,37 @@ export class ConvertToProjectController {
             })
         }
 
-        try {
-            await prisma.project.update({
-                where: {
-                    id: estimate.projectId
-                },
-                data: {
-                    status_project: "Pre-Start"
-                }
+        if (!estimate.projectId || !estimate.project || !estimate.project.company_id) {
+            return res.status(400).json({
+                error: "Estimate has no project or company"
             })
+        }
 
-            await prisma.serviceProject.createMany({
-                data: estimate.serviceProjects.map((service) => ({
-                    name: service.name,
-                    description: service.description || "",
-                    lineTotal: service.unitPrice.mul(service.quantity),
-                    hours: service.hours || 0,
-                    price: service.price || 0,
-                    id_service: service.id_service || null,
-                    projectId: estimate.projectId,
-                    company_id: estimate.project.company_id
-                }))
+        try {
+            await prisma.$transaction(async (tx) => {
+                await tx.project.update({
+                    where: {
+                        id: estimate.projectId
+                    },
+                    data: {
+                        status_project: "Pre-Start"
+                    }
+                })
+
+                if (estimate.serviceProjects.length > 0) {
+                    await tx.serviceProject.createMany({
+                        data: estimate.serviceProjects.map((service) => ({
+                            name: service.name,
+                            description: service.description || "",
+                            lineTotal: service.unitPrice.mul(service.quantity),
+                            hours: service.hours || 0,
+                            price: service.price || 0,
+                            id_service: service.id_service || null,
+                            projectId: estimate.projectId,
+                            company_id: estimate.project.company_id
+                        }))
+                    })
+                }
             })
 
             return res.status(200).json({
