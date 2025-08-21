@@ -42,7 +42,7 @@ export class GetNumberNewEstimateController {
 
             if (number.length === 0) {
                 return res.status(200).json({
-                    number: 1
+                    number: 1001
                 })
             }
 
