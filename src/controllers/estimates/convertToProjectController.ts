@@ -21,6 +21,7 @@ export class ConvertToProjectController {
             select: {
                 projectId: true,
                 serviceProjects: true,
+                status: true,
                 project: {
                     select: {
                         company_id: true,
@@ -64,6 +65,17 @@ export class ConvertToProjectController {
                             projectId: estimate.projectId,
                             company_id: estimate.project.company_id
                         }))
+                    })
+                }
+
+                if (estimate.status !== "approved") {
+                    await smartbuild.estimate.update({
+                        where: {
+                            id: estimateId
+                        },
+                        data: {
+                            status: "approved"
+                        }
                     })
                 }
             })
