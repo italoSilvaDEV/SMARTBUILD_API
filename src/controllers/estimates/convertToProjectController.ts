@@ -43,8 +43,8 @@ export class ConvertToProjectController {
         }
 
         try {
-            await prisma.$transaction(async (tx) => {
-                await tx.project.update({
+            await prisma.$transaction(async (smartbuild) => {
+                await smartbuild.project.update({
                     where: {
                         id: estimate.projectId
                     },
@@ -54,7 +54,7 @@ export class ConvertToProjectController {
                 })
 
                 if (estimate.serviceProjects.length > 0) {
-                    await tx.serviceProject.createMany({
+                    await smartbuild.serviceProject.createMany({
                         data: estimate.serviceProjects.map((service) => ({
                             name: service.name,
                             description: service.description || "",
