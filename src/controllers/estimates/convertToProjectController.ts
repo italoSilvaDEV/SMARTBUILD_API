@@ -58,7 +58,6 @@ export class ConvertToProjectController {
                         data: estimate.serviceProjects.map((service) => ({
                             name: service.name,
                             description: service.description || "",
-                            lineTotal: service.unitPrice.mul(service.quantity),
                             hours: service.hours || 0,
                             price: service.price || 0,
                             id_service: service.id_service || null,
