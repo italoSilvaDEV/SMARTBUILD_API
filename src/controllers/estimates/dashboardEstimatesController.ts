@@ -3,11 +3,23 @@ import { Request, Response } from "express";
 
 export class DashboardEstimatesController {
     async handle(req: Request, res: Response) {
-        const { company_id } = req.query;
+        const { companyId } = req.params;
 
-        if (!company_id || typeof company_id !== 'string') {
+        if (!companyId) {
             return res.status(400).json({
                 error: "Company ID is required"
+            });
+        }
+
+        const company = await prisma.company.findUnique({
+            where: {
+                id: companyId
+            }
+        });
+
+        if (!company) {
+            return res.status(404).json({
+                error: "Company not found"
             });
         }
 
@@ -15,7 +27,7 @@ export class DashboardEstimatesController {
             const totalSalesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
-                        company_id: company_id
+                        company_id: companyId
                     },
                     status: "approved"
                 },
@@ -29,7 +41,7 @@ export class DashboardEstimatesController {
             const averageValueResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
-                        company_id: company_id
+                        company_id: companyId
                     }
                 },
                 _avg: {
@@ -42,7 +54,7 @@ export class DashboardEstimatesController {
             const totalEstimates = await prisma.estimate.count({
                 where: {
                     project: {
-                        company_id: company_id
+                        company_id: companyId
                     }
                 }
             });
@@ -50,7 +62,7 @@ export class DashboardEstimatesController {
             const approvedEstimates = await prisma.estimate.count({
                 where: {
                     project: {
-                        company_id: company_id
+                        company_id: companyId
                     },
                     status: "approved"
                 }
@@ -67,7 +79,7 @@ export class DashboardEstimatesController {
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
-                        company_id: company_id
+                        company_id: companyId
                     },
                     status: {
                         in: ["approved"]
@@ -93,7 +105,6 @@ export class DashboardEstimatesController {
                 monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
             });
 
-            // Gerar array de dados mensais dos últimos 12 meses
             const monthlySales = [];
             const currentDate = new Date();
 
