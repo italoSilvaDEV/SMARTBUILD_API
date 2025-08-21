@@ -16,6 +16,15 @@ export class DeleteEstimateController {
         const estimate = await prisma.estimate.findUnique({
             where: {
                 id: estimateId
+            },
+            select: {
+                status: true,
+                projectId: true,
+                project: {
+                    select: {
+                        status_project: true,
+                    }
+                }
             }
         })
 
@@ -25,9 +34,9 @@ export class DeleteEstimateController {
             })
         }
 
-        if (estimate.status !== "approved") {
+        if (estimate.status === "approved") {
             return res.status(400).json({
-                error: "Estimate must be approved to be deleted"
+                error: "It is not possible to delete an approved estimate."
             })
         }
 
