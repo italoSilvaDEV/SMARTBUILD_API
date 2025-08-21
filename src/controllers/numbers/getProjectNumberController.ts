@@ -8,14 +8,23 @@ export class GetEstimateNumberController {
         } = req.params
 
         try {
-            const number = await prisma.project.findMany({
+            const number = await prisma.estimate.findMany({
                 where: {
-                    company_id: companyId
+                    project: {
+                        company_id: companyId
+                    }
                 },
+                select: {
+                    number: true
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
             })
 
             return res.status(200).json({
-                number: number.length + 1000
+                number: number.length + 1000,
+                number2: number[0].number
             })
         } catch (error) {
             return res.status(500).json({
