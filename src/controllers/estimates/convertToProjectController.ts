@@ -5,7 +5,6 @@ export class ConvertToProjectController {
     async handle(req: Request, res: Response) {
         const {
             estimateId,
-            status
         } = req.body
 
         if (!estimateId) {
@@ -22,7 +21,8 @@ export class ConvertToProjectController {
                 serviceProjects: true,
                 project: {
                     select: {
-                        company_id: true
+                        company_id: true,
+                        status_project: true
                     }
                 }
             }
@@ -34,13 +34,19 @@ export class ConvertToProjectController {
             })
         }
 
+        if (estimate.status !== "approved" || estimate.project.status_project !== "Accepted") {
+            return res.status(400).json({
+                error: "Estimate must be approved to be converted to project"
+            })
+        }
+
         try {
             await prisma.project.update({
                 where: {
                     id: estimate.projectId
                 },
                 data: {
-                    status_project: status
+                    status_project: "Pre-Start"
                 }
             })
 
@@ -48,9 +54,10 @@ export class ConvertToProjectController {
                 data: estimate.serviceProjects.map((service) => ({
                     name: service.name,
                     description: service.description || "",
+                    lineTotal: service.unitPrice.mul(service.quantity),
                     hours: service.hours || 0,
                     price: service.price || 0,
-                    id_service: service.id_service,
+                    id_service: service.id_service || null,
                     projectId: estimate.projectId,
                     company_id: estimate.project.company_id
                 }))
