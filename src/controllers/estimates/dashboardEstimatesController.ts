@@ -4,10 +4,27 @@ import { Request, Response } from "express";
 export class DashboardEstimatesController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params;
+        const { period = "thisYear" } = req.query;
 
         if (!companyId) {
             return res.status(400).json({
                 error: "Company ID is required"
+            });
+        }
+
+        const validPeriods = [
+            "thisYear",
+            "thisQuarter",
+            "last3Months",
+            "lastMonth",
+            "thisMonth",
+            "last30Days",
+            "allPeriod"
+        ];
+
+        if (!validPeriods.includes(period as string)) {
+            return res.status(400).json({
+                error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
             });
         }
 
@@ -24,12 +41,73 @@ export class DashboardEstimatesController {
         }
 
         try {
+            const getDateRange = (periodType: string) => {
+                const now = new Date();
+                let startDate: Date;
+                let monthsToShow = 12;
+
+                switch (periodType) {
+                    case "thisYear":
+                        startDate = new Date(now.getFullYear(), 0, 1);
+                        monthsToShow = now.getMonth() + 1;
+                        break;
+
+                    case "thisQuarter":
+                        const currentQuarter = Math.floor(now.getMonth() / 3);
+                        startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+                        monthsToShow = 3;
+                        break;
+
+                    case "last3Months":
+                        startDate = new Date();
+                        startDate.setMonth(now.getMonth() - 3);
+                        monthsToShow = 3;
+                        break;
+
+                    case "lastMonth":
+                        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                        const endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+                        monthsToShow = 1;
+                        return { startDate, endDate, monthsToShow };
+
+                    case "thisMonth":
+                        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                        monthsToShow = 1;
+                        break;
+
+                    case "last30Days":
+                        startDate = new Date();
+                        startDate.setDate(now.getDate() - 30);
+                        monthsToShow = 2;
+                        break;
+
+                    case "allPeriod":
+                        startDate = new Date(2020, 0, 1);
+                        monthsToShow = 12;
+                        break;
+
+                    default:
+                        startDate = new Date(now.getFullYear(), 0, 1);
+                        monthsToShow = 12;
+                }
+
+                return { startDate, endDate: undefined, monthsToShow };
+            };
+
+            const { startDate, endDate, monthsToShow } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
+
             const totalSalesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
                         company_id: companyId
                     },
-                    status: "approved"
+                    status: "approved",
+                    date_creation: dateFilter
                 },
                 _sum: {
                     totalAmount: true
@@ -42,7 +120,8 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId
-                    }
+                    },
+                    date_creation: dateFilter
                 },
                 _avg: {
                     totalAmount: true
@@ -55,7 +134,8 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId
-                    }
+                    },
+                    date_creation: dateFilter
                 }
             });
 
@@ -64,17 +144,14 @@ export class DashboardEstimatesController {
                     project: {
                         company_id: companyId
                     },
-                    status: "approved"
+                    status: "approved",
+                    date_creation: dateFilter
                 }
             });
 
             const conversionRate = totalEstimates > 0
                 ? ((approvedEstimates / totalEstimates) * 100)
                 : 0;
-
-            const now = new Date();
-            const twelveMonthsAgo = new Date();
-            twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
 
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
@@ -84,9 +161,7 @@ export class DashboardEstimatesController {
                     status: {
                         in: ["approved"]
                     },
-                    date_creation: {
-                        gte: twelveMonthsAgo
-                    }
+                    date_creation: dateFilter
                 },
                 select: {
                     totalAmount: true,
@@ -108,22 +183,42 @@ export class DashboardEstimatesController {
             const monthlySales = [];
             const currentDate = new Date();
 
-            for (let i = 11; i >= 0; i--) {
-                const date = new Date();
-                date.setMonth(currentDate.getMonth() - i);
-                const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
+            if (period === "last30Days") {
+                for (let i = 1; i >= 0; i--) {
+                    const date = new Date();
+                    date.setMonth(currentDate.getMonth() - i);
+                    const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
 
-                monthlySales.push({
-                    month: monthKey,
-                    value: monthlyData[monthKey] || 0
-                });
+                    monthlySales.push({
+                        month: monthKey,
+                        value: monthlyData[monthKey] || 0
+                    });
+                }
+            } else {
+                const startMonth = period === "allPeriod" ? 11 : monthsToShow - 1;
+
+                for (let i = startMonth; i >= 0; i--) {
+                    const date = new Date();
+                    date.setMonth(currentDate.getMonth() - i);
+                    const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
+
+                    monthlySales.push({
+                        month: monthKey,
+                        value: monthlyData[monthKey] || 0
+                    });
+                }
             }
 
             return res.status(200).json({
                 totalSales: Number(totalSales),
                 averageValue: Number(averageValue),
                 conversionRate: Number(conversionRate.toFixed(2)),
-                monthlySales: monthlySales
+                monthlySales: monthlySales,
+                period: period,
+                dateRange: {
+                    startDate: startDate.toISOString(),
+                    endDate: endDate?.toISOString() || new Date().toISOString()
+                }
             });
 
         } catch (error) {
