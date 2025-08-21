@@ -95,11 +95,17 @@ export class GetNumberNewEstimateController {
                 }
             })
 
+            console.log("Ultimo numero: ", lastEstimateNumber)
+            console.log("Numero atual: ", number)
+
             if (Number(lastEstimateNumber?.number) >= Number(number)) {
+                console.log("Entrou aqui")
                 return res.status(200).json({
                     number: Number(lastEstimateNumber?.number) + 1
                 })
             }
+
+            console.log("Não entrou aqui")
 
             return res.status(200).json({
                 number: Number(number)
