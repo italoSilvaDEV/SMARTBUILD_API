@@ -34,12 +34,6 @@ export class ConvertToProjectController {
             })
         }
 
-        if (estimate.status !== "approved" && estimate.project.status_project !== "Accepted") {
-            return res.status(400).json({
-                error: "Estimate must be approved to be converted to project"
-            })
-        }
-
         try {
             await prisma.project.update({
                 where: {
