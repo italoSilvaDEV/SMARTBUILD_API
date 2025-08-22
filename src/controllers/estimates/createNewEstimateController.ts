@@ -60,7 +60,7 @@ export class CreateNewEstimateController {
                         data: {
                             number: `${project.contract_number}-0${number}`,
                             approvedAt: payloadCreateEstimate.approvedAt,
-                            totalAmount: Number(payloadCreateEstimate.totalAmount),
+                            totalAmount: Number(payloadCreateEstimate.totalAmount) || 0,
                             description: payloadCreateEstimate.description,
                             terms: payloadCreateEstimate.terms,
                             status: payloadCreateEstimate.status,
@@ -77,7 +77,7 @@ export class CreateNewEstimateController {
                         data: {
                             number: payloadCreateEstimate.preGeneratedNumber || "",
                             approvedAt: payloadCreateEstimate.approvedAt,
-                            totalAmount: Number(payloadCreateEstimate.totalAmount),
+                            totalAmount: Number(payloadCreateEstimate.totalAmount) || 0,
                             description: payloadCreateEstimate.description,
                             terms: payloadCreateEstimate.terms,
                             status: payloadCreateEstimate.status,
