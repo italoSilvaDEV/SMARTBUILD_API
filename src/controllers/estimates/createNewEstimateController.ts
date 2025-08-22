@@ -33,63 +33,78 @@ export class CreateNewEstimateController {
             })
         }
 
+        console.log("type_estimate", type_estimate)
+
         try {
-            const estimate = await prisma.estimate.create({
-                data: {
-                    number: preGeneratedNumber,
-                    approvedAt,
-                    totalAmount: Number(totalAmount),
-                    description,
-                    terms,
-                    status,
-                    project: {
-                        connect: {
-                            id: projectId
-                        }
+            await prisma.$transaction(async (smartbuild) => {
+                const createEstimate = await smartbuild.estimate.create({
+                    data: {
+                        number: preGeneratedNumber,
+                        approvedAt,
+                        totalAmount: Number(totalAmount),
+                        description,
+                        terms,
+                        status,
+                        project: {
+                            connect: {
+                                id: projectId
+                            }
+                        },
+                        type_estimate
+                    }
+                })
+
+                console.log("criou estimate", createEstimate)
+
+                await smartbuild.estimateServiceProject.findMany({
+                    where: {
+                        estimateId: createEstimate.id
+                    }
+                })
+
+                console.log("criou estimateServiceProject")
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: createEstimate.id
                     },
-                    type_estimate: type_estimate
-                }
-            })
+                    data: {
+                        totalAmount: Number(totalAmount)
+                    }
+                })
 
-            await prisma.estimateServiceProject.findMany({
-                where: {
-                    estimateId: estimate.id
-                }
-            })
+                console.log("criou totalAmount")
 
-            await prisma.estimate.update({
-                where: {
-                    id: estimate.id
-                },
-                data: {
-                    totalAmount: Number(totalAmount)
-                }
-            })
 
-            await prisma.pdfProject.update({
-                where: {
-                    id: idPdfProject
-                },
-                data: {
-                    project_id: projectId
-                }
-            })
+                await smartbuild.pdfProject.update({
+                    where: {
+                        id: idPdfProject
+                    },
+                    data: {
+                        project_id: projectId
+                    }
+                })
 
-            await prisma.pdfProject.update({
-                where: {
-                    id: idPdfProject
-                },
-                data: {
-                    estimate_id: estimate.id
-                }
-            })
+                console.log("criou pdfProject")
 
-            return res.status(201).json({
-                message: "Estimate created successfully",
-                data: {
-                    ...estimate,
-                    totalAmount: Number(totalAmount)
-                }
+                await smartbuild.pdfProject.update({
+                    where: {
+                        id: idPdfProject
+                    },
+                    data: {
+                        estimate_id: createEstimate.id
+                    }
+                })
+
+                console.log("criou estimate_id")
+
+                return res.status(201).json({
+                    message: "Estimate created successfully",
+                    data: {
+                        ...createEstimate,
+                        totalAmount: Number(totalAmount)
+                    }
+                })
             })
         } catch (error) {
             return res.status(500).json({
