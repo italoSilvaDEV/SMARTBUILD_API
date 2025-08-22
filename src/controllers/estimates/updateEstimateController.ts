@@ -2,8 +2,8 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
 type Fields = {
-    description?: string
-    terms?: string
+    description?: string | null
+    terms?: string | null
 }
 
 export class UpdateEstimateFieldsController {
@@ -43,9 +43,13 @@ export class UpdateEstimateFieldsController {
 
             if (description) {
                 campos.description = description
+            } else if (description === "") {
+                campos.description = null
             }
             if (terms) {
                 campos.terms = terms
+            } else if (terms === "") {
+                campos.terms = null
             }
 
             const updatedEstimate = await prisma.estimate.update({
