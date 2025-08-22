@@ -40,16 +40,15 @@ export class GetNumberNewEstimateController {
                 }
             })
 
-            console.log(number)
+            const lastNumber = number.map(e => (e.number ?? "").toString().split("/")[0].trim()).map(n => {
+                const v = parseInt(n, 10)
+                return Number.isFinite(v) ? v : null
+            }).filter((v): v is number => v !== null)
 
-            if (number.length === 0) {
-                return res.status(200).json({
-                    number: 1001
-                })
-            }
+            const nextNumber = (lastNumber.length ? Math.max(...lastNumber) : 1000) + 1
 
             return res.status(200).json({
-                number: Number(number[0].number) + 1
+                number: nextNumber
             })
         } catch (error) {
             return res.status(500).json({
