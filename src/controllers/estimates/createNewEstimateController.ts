@@ -51,12 +51,20 @@ export class CreateNewEstimateController {
                         description: payloadCreateEstimate.description,
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
-                        type_estimate: payloadCreateEstimate.type_estimate,
                         project: {
                             connect: {
                                 id: payloadCreateEstimate.projectId
                             }
                         },
+                    }
+                })
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: createEstimate.id
+                    },
+                    data: {
+                        type_estimate: payloadCreateEstimate.type_estimate
                     }
                 })
 
