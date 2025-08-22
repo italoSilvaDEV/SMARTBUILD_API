@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `Estimate` ADD COLUMN `type_estimate` ENUM('Estimate', 'estimateProject') NULL DEFAULT 'estimateProject';
+ALTER TABLE `Estimate` ADD COLUMN `type_estimate` ENUM('estimate', 'estimateProject') NULL DEFAULT 'estimateProject';
