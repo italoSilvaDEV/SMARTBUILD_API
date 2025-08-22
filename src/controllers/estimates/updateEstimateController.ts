@@ -43,12 +43,12 @@ export class UpdateEstimateFieldsController {
 
             if (description) {
                 campos.description = description
-            } else if (description === "") {
+            } else if (description === "" || description === null) {
                 campos.description = null
             }
             if (terms) {
                 campos.terms = terms
-            } else if (terms === "") {
+            } else if (terms === "" || terms === null) {
                 campos.terms = null
             }
 
