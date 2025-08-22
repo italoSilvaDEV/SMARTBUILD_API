@@ -12,11 +12,12 @@ export class CreateNewEstimateController {
             preGeneratedNumber,
             projectId,
             idPdfProject,
+            type_estimate
         } = req.body
 
-        if (!projectId || !idPdfProject || !preGeneratedNumber || !totalAmount) {
+        if (!projectId || !idPdfProject || !preGeneratedNumber || !totalAmount || !type_estimate) {
             return res.status(400).json({
-                error: "Project ID, PDF Project ID and preGeneratedNumber are required"
+                error: "Project ID, PDF Project ID, preGeneratedNumber and type_estimate are required"
             })
         }
 
@@ -45,7 +46,8 @@ export class CreateNewEstimateController {
                         connect: {
                             id: projectId
                         }
-                    }
+                    },
+                    type_estimate: type_estimate
                 }
             })
 
