@@ -70,6 +70,21 @@ export class CreateServiceEstimateController {
                         error: "Service not found"
                     })
                 }
+
+                const existingService = await prisma.estimateServiceProject.findUnique({
+                    where: {
+                        estimateId_name: {
+                            estimateId: estimate.id,
+                            name
+                        }
+                    }
+                })
+
+                if (existingService) {
+                    return res.status(400).json({
+                        error: "Service already exists"
+                    })
+                }
             }
 
             const newService = await prisma.estimateServiceProject.create({
