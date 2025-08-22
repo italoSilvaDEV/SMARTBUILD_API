@@ -32,7 +32,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        if (!description && !terms) {
+        if (description === null && terms === null) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -41,14 +41,14 @@ export class UpdateEstimateFieldsController {
         try {
             const campos: Fields = {}
 
-            if (description) {
+            if (description !== undefined) {
                 campos.description = description
-            } else if (description === "" || description === null) {
+            } else if (description === "") {
                 campos.description = null
             }
-            if (terms) {
+            if (terms !== undefined) {
                 campos.terms = terms
-            } else if (terms === "" || terms === null) {
+            } else if (terms === "") {
                 campos.terms = null
             }
 
