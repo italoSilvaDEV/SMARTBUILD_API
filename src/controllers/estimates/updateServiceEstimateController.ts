@@ -54,7 +54,7 @@ export class UpdateServiceEstimateController {
             })
         }
 
-        if (!name && !description && !quantity && !unitPrice && !lineTotal && !notes && !hours && !price && !start_date && !deadline) {
+        if (!name && description === null && !quantity && !unitPrice && !lineTotal && notes === null && !hours && !price && !start_date && !deadline) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -66,7 +66,7 @@ export class UpdateServiceEstimateController {
             if (name) {
                 campos.name = name
             }
-            if (description) {
+            if (description !== undefined) {
                 campos.description = description
             }
             if (quantity) {
@@ -78,7 +78,7 @@ export class UpdateServiceEstimateController {
             if (lineTotal && serviceEstimate) {
                 campos.lineTotal = lineTotal
             }
-            if (notes) {
+            if (notes !== undefined) {
                 campos.notes = notes
             }
             if (hours) {
