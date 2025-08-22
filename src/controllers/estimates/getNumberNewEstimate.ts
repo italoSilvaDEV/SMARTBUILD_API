@@ -42,7 +42,6 @@ export class GetNumberNewEstimateController {
             })
 
             if (number.length === 0) {
-                console.log("Não tinha nenhum exemplar de type estimate, primeiro baseado no type estimateProject")
                 const number = await prisma.estimate.findMany({
                     where: {
                         type_estimate: "estimateProject",
