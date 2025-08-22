@@ -40,6 +40,8 @@ export class GetNumberNewEstimateController {
                 }
             })
 
+            console.log(number)
+
             if (number.length === 0) {
                 return res.status(200).json({
                     number: 1001
