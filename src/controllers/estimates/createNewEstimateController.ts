@@ -33,8 +33,6 @@ export class CreateNewEstimateController {
             })
         }
 
-        console.log("type_estimate", type_estimate)
-
         try {
             await prisma.$transaction(async (smartbuild) => {
                 const createEstimate = await smartbuild.estimate.create({
@@ -45,24 +43,20 @@ export class CreateNewEstimateController {
                         description,
                         terms,
                         status,
+                        type_estimate,
                         project: {
                             connect: {
                                 id: projectId
                             }
                         },
-                        type_estimate
                     }
                 })
-
-                console.log("criou estimate", createEstimate)
 
                 await smartbuild.estimateServiceProject.findMany({
                     where: {
                         estimateId: createEstimate.id
                     }
                 })
-
-                console.log("criou estimateServiceProject")
 
                 await smartbuild.estimate.update({
                     where: {
@@ -72,8 +66,6 @@ export class CreateNewEstimateController {
                         totalAmount: Number(totalAmount)
                     }
                 })
-
-                console.log("criou totalAmount")
 
 
                 await smartbuild.pdfProject.update({
@@ -85,8 +77,6 @@ export class CreateNewEstimateController {
                     }
                 })
 
-                console.log("criou pdfProject")
-
                 await smartbuild.pdfProject.update({
                     where: {
                         id: idPdfProject
@@ -95,8 +85,6 @@ export class CreateNewEstimateController {
                         estimate_id: createEstimate.id
                     }
                 })
-
-                console.log("criou estimate_id")
 
                 return res.status(201).json({
                     message: "Estimate created successfully",
