@@ -150,7 +150,6 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
-                    totalAmount: Number(estimate.totalAmount),
                     PdfProject: presignedUrls,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
@@ -160,6 +159,7 @@ export class GetAllEstimatesByCompanyController {
                             quantity: Number(service.quantity)
                         }
                     }),
+                    totalAmount: estimate.serviceProjects.reduce((total, service) => total + Number(service.lineTotal), 0)
                 }
             }))
 
