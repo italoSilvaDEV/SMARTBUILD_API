@@ -661,12 +661,14 @@ model QuickBooksAccount {
   refreshToken         String   @db.Text
   realmId              String   @unique
   expiresAt            DateTime
+   refreshExpiresAt     DateTime?   // <- novo (opcional)
   needsReauthorization Boolean  @default(false)
   scopes               String?  @db.Text
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   user                 User?    @relation(fields: [user_id], references: [id])
   user_id              String?  @unique
+  companyName          String?
 
   company    Company? @relation(fields: [company_id], references: [id])
   company_id String?  @unique
@@ -1044,4 +1046,18 @@ model QuickBooksCustomerRaw {
 
   @@index([companyId])
   @@index([quickbooksId])
+}
+
+
+model QuickBooksOAuthState {
+  id         String   @id @default(uuid())
+  nonce      String   @unique
+  userId     String
+  companyId  String
+  redirectTo String?
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("quickbooks_oauth_state")
 }
