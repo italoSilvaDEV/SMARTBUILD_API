@@ -4,11 +4,11 @@ import { Request, Response } from "express";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
-    totalAmount?: number;
+    totalAmount: number;
     description: string;
     terms: string;
     status: string;
-    preGeneratedNumber?: string;
+    preGeneratedNumber: string;
     projectId: string;
     idPdfProject: string;
     type_estimate: TypeEstimate;
@@ -20,6 +20,8 @@ export class CreateNewEstimateController {
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
+            !payloadCreateEstimate.preGeneratedNumber ||
+            !payloadCreateEstimate.totalAmount ||
             !payloadCreateEstimate.type_estimate) {
 
             return res.status(400).json({
@@ -41,68 +43,20 @@ export class CreateNewEstimateController {
 
         try {
             await prisma.$transaction(async (smartbuild) => {
-
-                let createEstimate = null
-
-                if (payloadCreateEstimate.type_estimate === "estimateProject") {
-                    const numberEstimate = await smartbuild.estimate.findMany({
-                        where: {
-                            type_estimate: "estimateProject",
-                            project: {
+                const createEstimate = await smartbuild.estimate.create({
+                    data: {
+                        number: payloadCreateEstimate.preGeneratedNumber,
+                        approvedAt: payloadCreateEstimate.approvedAt,
+                        totalAmount: Number(payloadCreateEstimate.totalAmount),
+                        description: payloadCreateEstimate.description,
+                        terms: payloadCreateEstimate.terms,
+                        status: payloadCreateEstimate.status,
+                        type_estimate: payloadCreateEstimate.type_estimate,
+                        project: {
+                            connect: {
                                 id: payloadCreateEstimate.projectId
                             }
                         },
-                    })
-
-                    const number = numberEstimate.length + 1
-
-                    createEstimate = await smartbuild.estimate.create({
-                        data: {
-                            number: `${project.contract_number}-0${number}`,
-                            approvedAt: payloadCreateEstimate.approvedAt,
-                            totalAmount: Number(payloadCreateEstimate.totalAmount) || 0,
-                            description: payloadCreateEstimate.description,
-                            terms: payloadCreateEstimate.terms,
-                            status: payloadCreateEstimate.status,
-                            type_estimate: payloadCreateEstimate.type_estimate,
-                            project: {
-                                connect: {
-                                    id: payloadCreateEstimate.projectId
-                                }
-                            },
-                        }
-                    })
-                } else {
-                    createEstimate = await smartbuild.estimate.create({
-                        data: {
-                            number: payloadCreateEstimate.preGeneratedNumber || "",
-                            approvedAt: payloadCreateEstimate.approvedAt,
-                            totalAmount: Number(payloadCreateEstimate.totalAmount) || 0,
-                            description: payloadCreateEstimate.description,
-                            terms: payloadCreateEstimate.terms,
-                            status: payloadCreateEstimate.status,
-                            type_estimate: payloadCreateEstimate.type_estimate,
-                            project: {
-                                connect: {
-                                    id: payloadCreateEstimate.projectId
-                                }
-                            },
-                        }
-                    })
-                }
-
-                await smartbuild.estimateServiceProject.findMany({
-                    where: {
-                        estimateId: createEstimate.id
-                    }
-                })
-
-                await smartbuild.estimate.update({
-                    where: {
-                        id: createEstimate.id
-                    },
-                    data: {
-                        totalAmount: Number(payloadCreateEstimate.totalAmount)
                     }
                 })
 
