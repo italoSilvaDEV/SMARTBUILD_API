@@ -1,21 +1,29 @@
+import { TypeEstimate } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
+type payloadCreateEstimate = {
+    approvedAt: Date;
+    totalAmount: number;
+    description: string;
+    terms: string;
+    status: string;
+    preGeneratedNumber: string;
+    projectId: string;
+    idPdfProject: string;
+    type_estimate: TypeEstimate;
+}
+
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
-        const {
-            approvedAt,
-            totalAmount,
-            description,
-            terms,
-            status,
-            preGeneratedNumber,
-            projectId,
-            idPdfProject,
-            type_estimate
-        } = req.body
+        const payloadCreateEstimate = req.body as payloadCreateEstimate
 
-        if (!projectId || !idPdfProject || !preGeneratedNumber || !totalAmount || !type_estimate) {
+        if (!payloadCreateEstimate.projectId ||
+            !payloadCreateEstimate.idPdfProject ||
+            !payloadCreateEstimate.preGeneratedNumber ||
+            !payloadCreateEstimate.totalAmount ||
+            !payloadCreateEstimate.type_estimate) {
+
             return res.status(400).json({
                 error: "Project ID, PDF Project ID, preGeneratedNumber and type_estimate are required"
             })
@@ -23,7 +31,7 @@ export class CreateNewEstimateController {
 
         const project = await prisma.project.findUnique({
             where: {
-                id: projectId
+                id: payloadCreateEstimate.projectId
             }
         })
 
@@ -37,16 +45,16 @@ export class CreateNewEstimateController {
             await prisma.$transaction(async (smartbuild) => {
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
-                        number: preGeneratedNumber,
-                        approvedAt,
-                        totalAmount: Number(totalAmount),
-                        description,
-                        terms,
-                        status,
-                        type_estimate,
+                        number: payloadCreateEstimate.preGeneratedNumber,
+                        approvedAt: payloadCreateEstimate.approvedAt,
+                        totalAmount: Number(payloadCreateEstimate.totalAmount),
+                        description: payloadCreateEstimate.description,
+                        terms: payloadCreateEstimate.terms,
+                        status: payloadCreateEstimate.status,
+                        type_estimate: payloadCreateEstimate.type_estimate,
                         project: {
                             connect: {
-                                id: projectId
+                                id: payloadCreateEstimate.projectId
                             }
                         },
                     }
@@ -63,23 +71,23 @@ export class CreateNewEstimateController {
                         id: createEstimate.id
                     },
                     data: {
-                        totalAmount: Number(totalAmount)
+                        totalAmount: Number(payloadCreateEstimate.totalAmount)
                     }
                 })
 
 
                 await smartbuild.pdfProject.update({
                     where: {
-                        id: idPdfProject
+                        id: payloadCreateEstimate.idPdfProject
                     },
                     data: {
-                        project_id: projectId
+                        project_id: payloadCreateEstimate.projectId
                     }
                 })
 
                 await smartbuild.pdfProject.update({
                     where: {
-                        id: idPdfProject
+                        id: payloadCreateEstimate.idPdfProject
                     },
                     data: {
                         estimate_id: createEstimate.id
@@ -90,7 +98,7 @@ export class CreateNewEstimateController {
                     message: "Estimate created successfully",
                     data: {
                         ...createEstimate,
-                        totalAmount: Number(totalAmount)
+                        totalAmount: Number(payloadCreateEstimate.totalAmount)
                     }
                 })
             })
