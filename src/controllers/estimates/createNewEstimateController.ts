@@ -4,11 +4,11 @@ import { Request, Response } from "express";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
-    totalAmount: number;
+    totalAmount?: number;
     description: string;
     terms: string;
     status: string;
-    preGeneratedNumber: string;
+    preGeneratedNumber?: string;
     projectId: string;
     idPdfProject: string;
     type_estimate: TypeEstimate;
@@ -20,7 +20,6 @@ export class CreateNewEstimateController {
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
-            !payloadCreateEstimate.totalAmount ||
             !payloadCreateEstimate.type_estimate) {
 
             return res.status(400).json({
@@ -76,7 +75,7 @@ export class CreateNewEstimateController {
                 } else {
                     createEstimate = await smartbuild.estimate.create({
                         data: {
-                            number: payloadCreateEstimate.preGeneratedNumber,
+                            number: payloadCreateEstimate.preGeneratedNumber || "",
                             approvedAt: payloadCreateEstimate.approvedAt,
                             totalAmount: Number(payloadCreateEstimate.totalAmount),
                             description: payloadCreateEstimate.description,
