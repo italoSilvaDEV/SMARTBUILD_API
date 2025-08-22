@@ -28,6 +28,7 @@ export class GetNumberNewEstimateController {
         try {
             const number = await prisma.estimate.findMany({
                 where: {
+                    type_estimate: "estimate",
                     project: {
                         company_id: companyId
                     }
@@ -39,6 +40,35 @@ export class GetNumberNewEstimateController {
                     date_creation: 'desc'
                 }
             })
+
+            if (number.length === 0) {
+                console.log("Não tinha nenhum exemplar de type estimate, primeiro baseado no type estimateProject")
+                const number = await prisma.estimate.findMany({
+                    where: {
+                        type_estimate: "estimateProject",
+                        project: {
+                            company_id: companyId
+                        }
+                    },
+                    select: {
+                        number: true
+                    },
+                    orderBy: {
+                        date_creation: 'desc'
+                    }
+                })
+
+                const lastNumber = number.map(e => (e.number ?? "").toString().split("/")[0].trim()).map(n => {
+                    const v = parseInt(n, 10)
+                    return Number.isFinite(v) ? v : null
+                }).filter((v): v is number => v !== null)
+
+                const nextNumber = (lastNumber.length ? Math.max(...lastNumber) : 1000) + 1
+
+                return res.status(200).json({
+                    number: nextNumber
+                })
+            }
 
             const lastNumber = number.map(e => (e.number ?? "").toString().split("/")[0].trim()).map(n => {
                 const v = parseInt(n, 10)
