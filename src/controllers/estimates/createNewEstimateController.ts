@@ -1,28 +1,37 @@
+import { TypeEstimate } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
+type payloadCreateEstimate = {
+    approvedAt: Date;
+    totalAmount: number;
+    description: string;
+    terms: string;
+    status: string;
+    preGeneratedNumber: string;
+    projectId: string;
+    idPdfProject: string;
+    type_estimate: TypeEstimate;
+}
+
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
-        const {
-            approvedAt,
-            totalAmount,
-            description,
-            terms,
-            status,
-            preGeneratedNumber,
-            projectId,
-            idPdfProject,
-        } = req.body
+        const payloadCreateEstimate = req.body as payloadCreateEstimate
 
-        if (!projectId || !idPdfProject || !preGeneratedNumber || !totalAmount) {
+        if (!payloadCreateEstimate.projectId ||
+            !payloadCreateEstimate.idPdfProject ||
+            !payloadCreateEstimate.preGeneratedNumber ||
+            !payloadCreateEstimate.totalAmount ||
+            !payloadCreateEstimate.type_estimate) {
+
             return res.status(400).json({
-                error: "Project ID, PDF Project ID and preGeneratedNumber are required"
+                error: "Project ID, PDF Project ID, preGeneratedNumber and type_estimate are required"
             })
         }
 
         const project = await prisma.project.findUnique({
             where: {
-                id: projectId
+                id: payloadCreateEstimate.projectId
             }
         })
 
@@ -33,61 +42,49 @@ export class CreateNewEstimateController {
         }
 
         try {
-            const estimate = await prisma.estimate.create({
-                data: {
-                    number: preGeneratedNumber,
-                    approvedAt,
-                    totalAmount: Number(totalAmount),
-                    description,
-                    terms,
-                    status,
-                    project: {
-                        connect: {
-                            id: projectId
-                        }
+            await prisma.$transaction(async (smartbuild) => {
+                const createEstimate = await smartbuild.estimate.create({
+                    data: {
+                        number: payloadCreateEstimate.preGeneratedNumber,
+                        approvedAt: payloadCreateEstimate.approvedAt,
+                        totalAmount: Number(payloadCreateEstimate.totalAmount),
+                        description: payloadCreateEstimate.description,
+                        terms: payloadCreateEstimate.terms,
+                        status: payloadCreateEstimate.status,
+                        type_estimate: payloadCreateEstimate.type_estimate,
+                        project: {
+                            connect: {
+                                id: payloadCreateEstimate.projectId
+                            }
+                        },
                     }
-                }
-            })
+                })
 
-            await prisma.estimateServiceProject.findMany({
-                where: {
-                    estimateId: estimate.id
-                }
-            })
+                await smartbuild.pdfProject.update({
+                    where: {
+                        id: payloadCreateEstimate.idPdfProject
+                    },
+                    data: {
+                        project_id: payloadCreateEstimate.projectId
+                    }
+                })
 
-            await prisma.estimate.update({
-                where: {
-                    id: estimate.id
-                },
-                data: {
-                    totalAmount: Number(totalAmount)
-                }
-            })
+                await smartbuild.pdfProject.update({
+                    where: {
+                        id: payloadCreateEstimate.idPdfProject
+                    },
+                    data: {
+                        estimate_id: createEstimate.id
+                    }
+                })
 
-            await prisma.pdfProject.update({
-                where: {
-                    id: idPdfProject
-                },
-                data: {
-                    project_id: projectId
-                }
-            })
-
-            await prisma.pdfProject.update({
-                where: {
-                    id: idPdfProject
-                },
-                data: {
-                    estimate_id: estimate.id
-                }
-            })
-
-            return res.status(201).json({
-                message: "Estimate created successfully",
-                data: {
-                    ...estimate,
-                    totalAmount: Number(totalAmount)
-                }
+                return res.status(201).json({
+                    message: "Estimate created successfully",
+                    data: {
+                        ...createEstimate,
+                        totalAmount: Number(payloadCreateEstimate.totalAmount)
+                    }
+                })
             })
         } catch (error) {
             return res.status(500).json({

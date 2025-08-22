@@ -1,6 +1,5 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-import { Prisma } from "@prisma/client";
 
 export class ConvertToProjectController {
     async handle(req: Request, res: Response) {
@@ -25,7 +24,7 @@ export class ConvertToProjectController {
                 project: {
                     select: {
                         company_id: true,
-                        status_project: true
+                        status_project: true,
                     }
                 }
             }
@@ -45,12 +44,25 @@ export class ConvertToProjectController {
 
         try {
             await prisma.$transaction(async (smartbuild) => {
-                await smartbuild.project.update({
+                const project = await smartbuild.project.update({
                     where: {
                         id: estimate.projectId
                     },
                     data: {
                         status_project: "Pre-Start"
+                    },
+                    select: {
+                        contract_number: true
+                    }
+                })
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: estimateId
+                    },
+                    data: {
+                        number: `${project.contract_number}-01`,
+                        type_estimate: "estimateProject"
                     }
                 })
 

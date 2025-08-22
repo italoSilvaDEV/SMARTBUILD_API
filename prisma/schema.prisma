@@ -705,6 +705,11 @@ model InvoicePayment {
   invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
 }
 
+enum TypeEstimate {
+  estimate
+  estimateProject
+}
+
 model Estimate {
   id              String   @id @default(uuid())
   number          String
@@ -714,6 +719,8 @@ model Estimate {
   description     String?  @db.Text
   terms           String?  @db.Text
   status          String   @default("pending")
+
+  type_estimate TypeEstimate? @default(estimateProject)
 
   canceledAt         DateTime?
   canceledById       String?
