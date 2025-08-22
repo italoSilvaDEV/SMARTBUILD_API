@@ -20,7 +20,6 @@ export class CreateNewEstimateController {
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
-            !payloadCreateEstimate.preGeneratedNumber ||
             !payloadCreateEstimate.totalAmount ||
             !payloadCreateEstimate.type_estimate) {
 
