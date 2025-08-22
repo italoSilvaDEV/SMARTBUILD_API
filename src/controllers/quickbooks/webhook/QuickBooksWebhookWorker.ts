@@ -10,7 +10,7 @@ import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 
 // helper no topo do arquivo (ou antes do uso)
-function extractCustomer(data: any) {
+export function extractCustomer(data: any) {
   // 1) Resposta clássica do node-quickbooks para getCustomer
   if (data?.Customer) return data.Customer;
   // 2) Resposta de consulta (query)

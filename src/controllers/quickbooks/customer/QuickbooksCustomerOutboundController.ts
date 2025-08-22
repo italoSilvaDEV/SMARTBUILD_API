@@ -7,6 +7,7 @@ import { jsonSafe, deepEqual } from "./quickbooksHelpers";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { baseDisplayName, isDuplicateNameError, withSuffix } from "../util/uniqueDisplayName";
 import { createSyncLog } from "./FireAndForgetUpsertToQBO";
+import { extractCustomer } from "../webhook/QuickBooksWebhookWorker";
 
 
 const limiter = new Bottleneck({
@@ -267,7 +268,7 @@ export class QuickBooksCustomerOutboundController {
               })
           );
 
-          const qbCustomer = current?.Customer;
+          const qbCustomer = extractCustomer(current);
           if (!qbCustomer) {
             await prisma.quickBooksCustomerRaw.create({
               data: {
@@ -302,20 +303,42 @@ export class QuickBooksCustomerOutboundController {
 
           // 2) Conflito: remoto mudou desde o seu espelho local
           if (qbUpdatedAt && c.quickbooksUpdatedAt && qbUpdatedAt > c.quickbooksUpdatedAt) {
-            await prisma.syncLog.create({
-              data: {
-                entity: "customers",
-                action: "Conflict",
-                entityId: c.id,
-                companyId,
-                details: jsonSafe({
-                  reason: "Remote changed since last mirror, skipping push",
-                  qbUpdatedAt,
-                  quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
-                }),
-              },
-            });
-            continue;
+            // Verifica se a atualização local é mais nova que a do QBO
+            if (c.date_update > qbUpdatedAt) {
+              // Local é mais novo - deve atualizar o QBO mesmo com divergência no espelho
+              await prisma.syncLog.create({
+                data: {
+                  entity: "customers",
+                  action: "Info",
+                  entityId: c.id,
+                  companyId,
+                  details: jsonSafe({
+                    reason: "Local newer than QBO despite mirror divergence, proceeding with update",
+                    qbUpdatedAt,
+                    quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
+                    date_update: c.date_update,
+                  }),
+                },
+              });
+              // Continua para fazer o update
+            } else {
+              // QBO é mais novo que o local - conflito real
+              await prisma.syncLog.create({
+                data: {
+                  entity: "customers",
+                  action: "Conflict",
+                  entityId: c.id,
+                  companyId,
+                  details: jsonSafe({
+                    reason: "QBO is newer than local changes, skipping push",
+                    qbUpdatedAt,
+                    quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
+                    date_update: c.date_update,
+                  }),
+                },
+              });
+              continue;
+            }
           }
 
           // 3) Payload controlado por você
@@ -585,7 +608,7 @@ export class QuickBooksCustomerOutboundController {
         })
     );
 
-    const qbCustomer = current?.Customer;
+    const qbCustomer = extractCustomer(current);
     if (!qbCustomer) {
       await prisma.quickBooksCustomerRaw.create({
         data: {
@@ -616,20 +639,42 @@ export class QuickBooksCustomerOutboundController {
       : null;
 
     if (qbUpdatedAt && c.quickbooksUpdatedAt && qbUpdatedAt > c.quickbooksUpdatedAt) {
-      await prisma.syncLog.create({
-        data: {
-          entity: "customers",
-          action: "Conflict",
-          entityId: c.id,
-          companyId,
-          details: jsonSafe({
-            reason: "Remote changed since last mirror, skipping push",
-            qbUpdatedAt,
-            quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
-          }),
-        },
-      });
-      return { created: undefined, updated: false };
+      // Verifica se a atualização local é mais nova que a do QBO
+      if (c.date_update > qbUpdatedAt) {
+        // Local é mais novo - deve atualizar o QBO mesmo com divergência no espelho
+        await prisma.syncLog.create({
+          data: {
+            entity: "customers",
+            action: "Info",
+            entityId: c.id,
+            companyId,
+            details: jsonSafe({
+              reason: "Local newer than QBO despite mirror divergence, proceeding with update",
+              qbUpdatedAt,
+              quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
+              date_update: c.date_update,
+            }),
+          },
+        });
+        // Continua para fazer o update
+      } else {
+        // QBO é mais novo que o local - conflito real
+        await prisma.syncLog.create({
+          data: {
+            entity: "customers",
+            action: "Conflict",
+            entityId: c.id,
+            companyId,
+            details: jsonSafe({
+              reason: "QBO is newer than local changes, skipping push",
+              qbUpdatedAt,
+              quickbooksUpdatedAt_localMirror: c.quickbooksUpdatedAt,
+              date_update: c.date_update,
+            }),
+          },
+        });
+        return { created: undefined, updated: false };
+      }
     }
 
     const email = sanitizeEmail(c.email);
