@@ -13,28 +13,48 @@ export class DeleteServiceEstimateController {
             })
         }
 
-        const service = await prisma.estimateServiceProject.findUnique({
+        const serviceEstimate = await prisma.estimateServiceProject.findUnique({
             where: {
                 id: serviceId
             }
         })
 
-        if (!service) {
+        const serviceProject = await prisma.serviceProject.findUnique({
+            where: {
+                id: serviceId
+            }
+        })
+
+        if (!serviceEstimate && !serviceProject) {
             return res.status(404).json({
                 error: "Service not found"
             })
         }
 
         try {
-            await prisma.estimateServiceProject.delete({
-                where: {
-                    id: serviceId
-                }
-            })
+            if (serviceEstimate) {
+                await prisma.estimateServiceProject.delete({
+                    where: {
+                        id: serviceId
+                    }
+                })
 
-            return res.status(200).json({
-                message: "Service deleted successfully"
-            })
+                return res.status(200).json({
+                    message: "Service estimate deleted successfully"
+                })
+            }
+
+            if (serviceProject) {
+                await prisma.serviceProject.delete({
+                    where: {
+                        id: serviceId
+                    }
+                })
+
+                return res.status(200).json({
+                    message: "Service project deleted successfully"
+                })
+            }
         } catch (error) {
             return res.status(500).json({
                 error: "Internal server error while deleting service estimate"

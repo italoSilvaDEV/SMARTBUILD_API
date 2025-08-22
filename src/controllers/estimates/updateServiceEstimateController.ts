@@ -17,7 +17,6 @@ type Fields = {
 export class UpdateServiceEstimateController {
     async handle(req: Request, res: Response) {
         const {
-            estimateId,
             serviceId,
             name,
             description,
@@ -31,31 +30,25 @@ export class UpdateServiceEstimateController {
             deadline,
         } = req.body
 
-        if (!estimateId || !serviceId) {
+        if (!serviceId) {
             return res.status(400).json({
-                error: "Estimate ID and service ID are required"
+                error: "Service ID is required"
             })
         }
 
-        const estimate = await prisma.estimate.findUnique({
-            where: {
-                id: estimateId
-            }
-        })
-
-        const service = await prisma.estimateServiceProject.findUnique({
+        const serviceEstimate = await prisma.estimateServiceProject.findUnique({
             where: {
                 id: serviceId
             }
         })
 
-        if (!estimate) {
-            return res.status(404).json({
-                error: "Estimate not found"
-            })
-        }
+        const serviceProject = await prisma.serviceProject.findUnique({
+            where: {
+                id: serviceId
+            }
+        })
 
-        if (!service) {
+        if (!serviceEstimate && !serviceProject) {
             return res.status(404).json({
                 error: "Service not found"
             })
@@ -82,7 +75,7 @@ export class UpdateServiceEstimateController {
             if (unitPrice) {
                 campos.unitPrice = unitPrice
             }
-            if (lineTotal) {
+            if (lineTotal && serviceEstimate) {
                 campos.lineTotal = lineTotal
             }
             if (notes) {
@@ -101,18 +94,32 @@ export class UpdateServiceEstimateController {
                 campos.deadline = deadline
             }
 
-            const updatedService = await prisma.estimateServiceProject.update({
-                where: {
-                    id: serviceId
-                },
-                data: campos
-            })
+            if (serviceEstimate) {
+                const updatedServiceEstimate = await prisma.estimateServiceProject.update({
+                    where: {
+                        id: serviceId
+                    },
+                    data: campos
+                })
 
-            return res.status(200).json({
-                message: "Service estimate updated successfully",
-                data: updatedService
-            })
+                return res.status(200).json({
+                    message: "Service estimate updated successfully",
+                    data: updatedServiceEstimate
+                })
+            }
 
+            if (serviceProject) {
+                const updatedServiceProject = await prisma.serviceProject.update({
+                    where: {
+                        id: serviceId
+                    },
+                    data: campos
+                })
+                return res.status(200).json({
+                    message: "Service project updated successfully",
+                    data: updatedServiceProject
+                })
+            }
         } catch (error) {
             return res.status(500).json({
                 error: "Internal server error while updating service estimate"
