@@ -10,7 +10,6 @@ interface ServicePayload {
     lineTotal: number
     notes?: string
     id_service?: string
-
     hours?: number
     price?: number
     start_date?: string
@@ -59,6 +58,20 @@ export class CreateServiceEstimateController {
         }
 
         try {
+            if (id_service) {
+                const service = await prisma.service.findUnique({
+                    where: {
+                        id: id_service
+                    }
+                })
+
+                if (!service) {
+                    return res.status(404).json({
+                        error: "Service not found"
+                    })
+                }
+            }
+
             const newService = await prisma.estimateServiceProject.create({
                 data: {
                     estimateId: estimate.id,
