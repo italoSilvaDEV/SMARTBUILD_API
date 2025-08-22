@@ -43,22 +43,55 @@ export class CreateNewEstimateController {
 
         try {
             await prisma.$transaction(async (smartbuild) => {
-                const createEstimate = await smartbuild.estimate.create({
-                    data: {
-                        number: payloadCreateEstimate.preGeneratedNumber,
-                        approvedAt: payloadCreateEstimate.approvedAt,
-                        totalAmount: Number(payloadCreateEstimate.totalAmount),
-                        description: payloadCreateEstimate.description,
-                        terms: payloadCreateEstimate.terms,
-                        status: payloadCreateEstimate.status,
-                        type_estimate: payloadCreateEstimate.type_estimate,
-                        project: {
-                            connect: {
+
+                let createEstimate = null
+
+                if (payloadCreateEstimate.type_estimate === "estimateProject") {
+                    const numberEstimate = await smartbuild.estimate.findMany({
+                        where: {
+                            type_estimate: "estimateProject",
+                            project: {
                                 id: payloadCreateEstimate.projectId
                             }
                         },
-                    }
-                })
+                    })
+
+                    const number = numberEstimate.length + 1
+
+                    createEstimate = await smartbuild.estimate.create({
+                        data: {
+                            number: `${project.contract_number}-0${number}`,
+                            approvedAt: payloadCreateEstimate.approvedAt,
+                            totalAmount: Number(payloadCreateEstimate.totalAmount),
+                            description: payloadCreateEstimate.description,
+                            terms: payloadCreateEstimate.terms,
+                            status: payloadCreateEstimate.status,
+                            type_estimate: payloadCreateEstimate.type_estimate,
+                            project: {
+                                connect: {
+                                    id: payloadCreateEstimate.projectId
+                                }
+                            },
+                        }
+                    })
+                } else {
+                    createEstimate = await smartbuild.estimate.create({
+                        data: {
+                            number: payloadCreateEstimate.preGeneratedNumber,
+                            approvedAt: payloadCreateEstimate.approvedAt,
+                            totalAmount: Number(payloadCreateEstimate.totalAmount),
+                            description: payloadCreateEstimate.description,
+                            terms: payloadCreateEstimate.terms,
+                            status: payloadCreateEstimate.status,
+                            type_estimate: payloadCreateEstimate.type_estimate,
+                            project: {
+                                connect: {
+                                    id: payloadCreateEstimate.projectId
+                                }
+                            },
+                        }
+                    })
+                }
 
                 await smartbuild.estimateServiceProject.findMany({
                     where: {
@@ -74,7 +107,6 @@ export class CreateNewEstimateController {
                         totalAmount: Number(payloadCreateEstimate.totalAmount)
                     }
                 })
-
 
                 await smartbuild.pdfProject.update({
                     where: {
