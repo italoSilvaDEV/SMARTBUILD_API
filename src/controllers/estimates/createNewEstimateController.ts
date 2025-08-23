@@ -69,22 +69,6 @@ export class CreateNewEstimateController {
                     }
                 })
 
-                if (createEstimate.type_estimate === "estimateProject") {
-                    const servicesExist = await smartbuild.serviceProject.findMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        }
-                    })
-
-                    if (servicesExist.length > 0) {
-                        await smartbuild.serviceProject.deleteMany({
-                            where: {
-                                projectId: payloadCreateEstimate.projectId
-                            }
-                        })
-                    }
-                }
-
                 await smartbuild.pdfProject.update({
                     where: {
                         id: payloadCreateEstimate.idPdfProject
