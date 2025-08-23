@@ -60,14 +60,35 @@ export class CreateNewEstimateController {
                     }
                 })
 
-                await smartbuild.project.update({
-                    where: {
-                        id: payloadCreateEstimate.projectId
-                    },
-                    data: {
-                        price: Number(payloadCreateEstimate.totalAmount)
-                    }
-                })
+                if (createEstimate.type_estimate === "estimateProject") {
+                    const servicesExist = await smartbuild.serviceProject.findMany({
+                        where: {
+                            projectId: payloadCreateEstimate.projectId
+                        }
+                    })
+
+                    const totalPrice = servicesExist.reduce((total, service) => {
+                        return total + Number(service.price) * Number(service.hours)
+                    }, 0)
+
+                    await smartbuild.project.update({
+                        where: {
+                            id: payloadCreateEstimate.projectId
+                        },
+                        data: {
+                            price: totalPrice
+                        }
+                    })
+                } else {
+                    await smartbuild.project.update({
+                        where: {
+                            id: payloadCreateEstimate.projectId
+                        },
+                        data: {
+                            price: Number(payloadCreateEstimate.totalAmount)
+                        }
+                    })
+                }
 
                 await smartbuild.pdfProject.update({
                     where: {
