@@ -42,6 +42,13 @@ export class CreateServiceEstimateController {
         const estimate = await prisma.estimate.findUnique({
             where: {
                 id: estimateId
+            },
+            include: {
+                project: {
+                    select: {
+                        company_id: true
+                    }
+                }
             }
         })
 
@@ -103,6 +110,22 @@ export class CreateServiceEstimateController {
                     deadline
                 }
             })
+
+            if (estimate.type_estimate === "estimateProject") {
+                await prisma.serviceProject.create({
+                    data: {
+                        projectId: estimate.projectId,
+                        company_id: estimate.project.company_id,
+                        name,
+                        description: description || "",
+                        id_service: id_service || null,
+                        hours: hours || 0,
+                        price: price || 0,
+                        start_date,
+                        deadline
+                    }
+                })
+            }
 
             return res.status(201).json({
                 message: "Service created successfully",

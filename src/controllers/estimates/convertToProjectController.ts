@@ -58,7 +58,7 @@ export class ConvertToProjectController {
                     }
                 })
 
-                const estimateUpdate = await smartbuild.estimate.update({
+                await smartbuild.estimate.update({
                     where: {
                         id: estimateId
                     },
