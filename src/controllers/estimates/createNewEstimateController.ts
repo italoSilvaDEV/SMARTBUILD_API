@@ -60,6 +60,15 @@ export class CreateNewEstimateController {
                     }
                 })
 
+                await smartbuild.project.update({
+                    where: {
+                        id: payloadCreateEstimate.projectId
+                    },
+                    data: {
+                        price: Number(payloadCreateEstimate.totalAmount)
+                    }
+                })
+
                 await smartbuild.pdfProject.update({
                     where: {
                         id: payloadCreateEstimate.idPdfProject
