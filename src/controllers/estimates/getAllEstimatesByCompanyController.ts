@@ -42,6 +42,7 @@ export class GetAllEstimatesByCompanyController {
                     canceledAt: true,
                     canceledById: true,
                     terms: true,
+                    type_estimate: true,
                     project: {
                         select: {
                             id: true,
