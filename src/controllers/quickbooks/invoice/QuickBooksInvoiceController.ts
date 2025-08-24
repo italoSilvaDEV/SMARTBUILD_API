@@ -69,7 +69,7 @@ export class QuickBooksInvoiceController {
   async createInvoice(req: Request, res: Response) {
 
     const { projectId } = req.params;
-    const { description, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
 
     try {
       // Buscar o projeto
@@ -344,6 +344,7 @@ export class QuickBooksInvoiceController {
             user_id: userId,
             percentageCoefficient: coefficientPerfentage || 1,
             type_value: type_value,
+            type_invoicebase: type_invoicebase,
 
             // (opcional) guarde os status de envio/impressão se quiser
             // emailStatusQbo: emailStatus,

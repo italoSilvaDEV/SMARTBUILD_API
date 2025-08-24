@@ -9,15 +9,9 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value, totalAmount } = req.body;
+    const { userId, type_invoicebase, coefficientPerfentage, description, dueDate, services, type_value, totalAmount } = req.body;
 
     try {
-      // Validar se idPdfProject foi fornecido
-      // if (!idPdfProject) {
-      //   return res.status(400).json({ error: "PDF Project ID is required" });
-      // }
-
-      // Buscar o projeto
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         include: {
@@ -147,6 +141,7 @@ export class CustomInvoiceController {
           user_id: userId,
           type_value: type_value,
           percentageCoefficient: coefficientPerfentage,
+          type_invoicebase: type_invoicebase,
           // Criar os itens da fatura
           InvoiceItems: {
             create: lineItems.map((item) => ({
