@@ -593,6 +593,11 @@ model TimeLine {
   userServiceProjectId String
 }
 
+enum TypeInvoiceBase {
+  project
+  estimate
+}
+
 model Invoice {
   id                String  @id @default(uuid())
   stripeInvoiceId   String? @unique
@@ -605,6 +610,8 @@ model Invoice {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   invoiceUrl  String?
+
+  type_invoicebase TypeInvoiceBase? @default(project)
 
   type_value          String? // "percentage" ou "value"
   cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
@@ -656,18 +663,18 @@ model InvoiceSendHistory {
 }
 
 model QuickBooksAccount {
-  id                   String   @id @default(uuid())
-  accessToken          String   @db.Text
-  refreshToken         String   @db.Text
-  realmId              String   @unique
+  id                   String    @id @default(uuid())
+  accessToken          String    @db.Text
+  refreshToken         String    @db.Text
+  realmId              String    @unique
   expiresAt            DateTime
-   refreshExpiresAt     DateTime?   // <- novo (opcional)
-  needsReauthorization Boolean  @default(false)
-  scopes               String?  @db.Text
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  user                 User?    @relation(fields: [user_id], references: [id])
-  user_id              String?  @unique
+  refreshExpiresAt     DateTime? // <- novo (opcional)
+  needsReauthorization Boolean   @default(false)
+  scopes               String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User?     @relation(fields: [user_id], references: [id])
+  user_id              String?   @unique
   companyName          String?
 
   company    Company? @relation(fields: [company_id], references: [id])
@@ -1054,7 +1061,6 @@ model QuickBooksCustomerRaw {
   @@index([companyId])
   @@index([quickbooksId])
 }
-
 
 model QuickBooksOAuthState {
   id         String   @id @default(uuid())
