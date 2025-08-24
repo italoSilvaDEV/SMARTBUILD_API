@@ -5,157 +5,315 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 export class GetEstimateByIdController {
     async handle(req: Request, res: Response) {
         const {
-            estimateId
+            estimateId,
+            projectId
         } = req.params
 
-        if (!estimateId) {
+        if (!estimateId && !projectId) {
             return res.status(400).json({
-                error: "Estimate ID is required"
+                error: "Estimate ID or project ID is required"
             })
         }
 
         try {
-            const estimate = await prisma.estimate.findUnique({
-                where: {
-                    id: estimateId
-                },
-                select: {
-                    id: true,
-                    number: true,
-                    totalAmount: true,
-                    status: true,
-                    description: true,
-                    canceledAt: true,
-                    canceledById: true,
-                    terms: true,
-                    type_estimate: true,
-                    project: {
-                        select: {
-                            id: true,
-                            status_project: true,
-                            autorId: true,
-                            location: true,
-                            client: {
-                                select: {
-                                    id: true,
-                                    avatar: true,
-                                    name: true,
-                                    email: true,
-                                    city_and_state: true,
-                                    date_creation: true,
-                                    date_update: true,
-                                }
-                            },
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    email: true,
-                                    avatar: true
-                                }
-                            },
-                            serviceProject: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    description: true,
-                                    hours: true,
-                                    price: true,
-                                    status: true
-                                }
-                            },
-                            company: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    email: true,
-                                    phone: true,
-                                    address: true,
-                                    district: true,
-                                    numberHouse: true,
-                                    avatar: true,
-                                    complement: true,
-                                    webSiteUrl: true,
-                                    NotesContrac: {
-                                        select: {
-                                            id: true,
-                                            notes: true,
-                                            updatedAt: true,
-                                            createdAt: true
+            if (projectId) {
+                const project = await prisma.project.findUnique({
+                    where: {
+                        id: projectId
+                    }
+                })
+
+                if (!project) {
+                    return res.status(404).json({
+                        error: "Project not found"
+                    })
+                }
+
+                const estimate = await prisma.estimate.findFirst({
+                    where: {
+                        projectId: projectId,
+                        type_estimate: "estimate"
+                    },
+                    select: {
+                        id: true,
+                        number: true,
+                        totalAmount: true,
+                        status: true,
+                        description: true,
+                        canceledAt: true,
+                        canceledById: true,
+                        terms: true,
+                        type_estimate: true,
+                        project: {
+                            select: {
+                                id: true,
+                                status_project: true,
+                                autorId: true,
+                                location: true,
+                                client: {
+                                    select: {
+                                        id: true,
+                                        avatar: true,
+                                        name: true,
+                                        email: true,
+                                        city_and_state: true,
+                                        date_creation: true,
+                                        date_update: true,
+                                    }
+                                },
+                                user: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        email: true,
+                                        avatar: true
+                                    }
+                                },
+                                serviceProject: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        description: true,
+                                        hours: true,
+                                        price: true,
+                                        status: true
+                                    }
+                                },
+                                company: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        email: true,
+                                        phone: true,
+                                        address: true,
+                                        district: true,
+                                        numberHouse: true,
+                                        avatar: true,
+                                        complement: true,
+                                        webSiteUrl: true,
+                                        NotesContrac: {
+                                            select: {
+                                                id: true,
+                                                notes: true,
+                                                updatedAt: true,
+                                                createdAt: true
+                                            }
                                         }
                                     }
                                 }
+                            },
+                        },
+                        serviceProjects: {
+                            select: {
+                                id: true,
+                                name: true,
+                                description: true,
+                                quantity: true,
+                                unitPrice: true,
+                                lineTotal: true,
+                                notes: true,
+                                date_creation: true,
+                                date_update: true,
                             }
                         },
-                    },
-                    serviceProjects: {
-                        select: {
-                            id: true,
-                            name: true,
-                            description: true,
-                            quantity: true,
-                            unitPrice: true,
-                            lineTotal: true,
-                            notes: true,
-                            date_creation: true,
-                            date_update: true,
+                        timelineEvents: {
+                            select: {
+                                id: true,
+                                description: true,
+                                date_creation: true,
+                                date_update: true,
+                            }
+                        },
+                        PdfProject: {
+                            select: {
+                                id: true,
+                                uri: true
+                            }
                         }
                     },
-                    timelineEvents: {
-                        select: {
-                            id: true,
-                            description: true,
-                            date_creation: true,
-                            date_update: true,
-                        }
-                    },
-                    PdfProject: {
-                        select: {
-                            id: true,
-                            uri: true
+                })
+
+                if (!estimate) {
+                    return res.status(404).json({
+                        error: "Estimate not found"
+                    })
+                }
+
+                const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
+                    if (pdf.uri) {
+                        return await getPresignedUrl(pdf.uri)
+                    }
+                    return null
+                }).filter(Boolean))
+
+                const urlUserAvatar = estimate.project.user?.avatar ? await getPresignedUrl(estimate.project.user.avatar) : null
+                const urlClientAvatar = estimate.project.client?.avatar ? await getPresignedUrl(estimate.project.client.avatar) : null
+                const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
+
+                return res.status(200).json({
+                    data: {
+                        ...estimate,
+                        PdfProject: presignedUrls,
+                        project: {
+                            ...estimate.project,
+                            user: {
+                                ...estimate.project.user,
+                                avatar: urlUserAvatar
+                            },
+                            client: {
+                                ...estimate.project.client,
+                                avatar: urlClientAvatar
+                            },
+                            company: {
+                                ...estimate.project.company,
+                                avatar: urlCompanyAvatar
+                            }
                         }
                     }
-                },
-            })
+                })
+            } else {
+                const estimate = await prisma.estimate.findUnique({
+                    where: {
+                        id: estimateId
+                    },
+                    select: {
+                        id: true,
+                        number: true,
+                        totalAmount: true,
+                        status: true,
+                        description: true,
+                        canceledAt: true,
+                        canceledById: true,
+                        terms: true,
+                        type_estimate: true,
+                        project: {
+                            select: {
+                                id: true,
+                                status_project: true,
+                                autorId: true,
+                                location: true,
+                                client: {
+                                    select: {
+                                        id: true,
+                                        avatar: true,
+                                        name: true,
+                                        email: true,
+                                        city_and_state: true,
+                                        date_creation: true,
+                                        date_update: true,
+                                    }
+                                },
+                                user: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        email: true,
+                                        avatar: true
+                                    }
+                                },
+                                serviceProject: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        description: true,
+                                        hours: true,
+                                        price: true,
+                                        status: true
+                                    }
+                                },
+                                company: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        email: true,
+                                        phone: true,
+                                        address: true,
+                                        district: true,
+                                        numberHouse: true,
+                                        avatar: true,
+                                        complement: true,
+                                        webSiteUrl: true,
+                                        NotesContrac: {
+                                            select: {
+                                                id: true,
+                                                notes: true,
+                                                updatedAt: true,
+                                                createdAt: true
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        },
+                        serviceProjects: {
+                            select: {
+                                id: true,
+                                name: true,
+                                description: true,
+                                quantity: true,
+                                unitPrice: true,
+                                lineTotal: true,
+                                notes: true,
+                                date_creation: true,
+                                date_update: true,
+                            }
+                        },
+                        timelineEvents: {
+                            select: {
+                                id: true,
+                                description: true,
+                                date_creation: true,
+                                date_update: true,
+                            }
+                        },
+                        PdfProject: {
+                            select: {
+                                id: true,
+                                uri: true
+                            }
+                        }
+                    },
+                })
 
-            if (!estimate) {
-                return res.status(404).json({
-                    error: "Estimate not found"
+                if (!estimate) {
+                    return res.status(404).json({
+                        error: "Estimate not found"
+                    })
+                }
+
+                const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
+                    if (pdf.uri) {
+                        return await getPresignedUrl(pdf.uri)
+                    }
+                    return null
+                }).filter(Boolean))
+
+                const urlUserAvatar = estimate.project.user?.avatar ? await getPresignedUrl(estimate.project.user.avatar) : null
+                const urlClientAvatar = estimate.project.client?.avatar ? await getPresignedUrl(estimate.project.client.avatar) : null
+                const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
+
+                return res.status(200).json({
+                    data: {
+                        ...estimate,
+                        PdfProject: presignedUrls,
+                        project: {
+                            ...estimate.project,
+                            user: {
+                                ...estimate.project.user,
+                                avatar: urlUserAvatar
+                            },
+                            client: {
+                                ...estimate.project.client,
+                                avatar: urlClientAvatar
+                            },
+                            company: {
+                                ...estimate.project.company,
+                                avatar: urlCompanyAvatar
+                            }
+                        }
+                    }
                 })
             }
-
-            const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
-                if (pdf.uri) {
-                    return await getPresignedUrl(pdf.uri)
-                }
-                return null
-            }).filter(Boolean))
-
-            const urlUserAvatar = estimate.project.user?.avatar ? await getPresignedUrl(estimate.project.user.avatar) : null
-            const urlClientAvatar = estimate.project.client?.avatar ? await getPresignedUrl(estimate.project.client.avatar) : null
-            const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
-
-            return res.status(200).json({
-                data: {
-                    ...estimate,
-                    PdfProject: presignedUrls,
-                    project: {
-                        ...estimate.project,
-                        user: {
-                            ...estimate.project.user,
-                            avatar: urlUserAvatar
-                        },
-                        client: {
-                            ...estimate.project.client,
-                            avatar: urlClientAvatar
-                        },
-                        company: {
-                            ...estimate.project.company,
-                            avatar: urlCompanyAvatar
-                        }
-                    }
-                }
-            })
         } catch (error) {
             return res.status(500).json({
                 error: "Internal server error while fetching estimates"
