@@ -14,7 +14,7 @@ import { CreateNewEstimateController } from "../controllers/estimates/createNewE
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
 import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
-import { GetEstimateByIdController } from "../controllers/estimates/getEstimateById";
+import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -29,7 +29,7 @@ const createNewEstimateController = new CreateNewEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
 const dashboardEstimatesController = new DashboardEstimatesController();
 const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
-const getEstimateByIdController = new GetEstimateByIdController();
+const getEstimateByProjectIdController = new GetEstimateByProjectIdController();
 
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
@@ -48,7 +48,7 @@ estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateControlle
 estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesController.handle);
 estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, getNumberEstimateProjectController.handle);
 estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProjectController.verifyNumber);
-estimateRoutes.get("/new/:estimateId", checkToken, getEstimateByIdController.handle);
+estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);
