@@ -1,15 +1,14 @@
 import { Request, Response } from "express";
-import QuickBooks from "node-quickbooks";
 import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
-import { refreshAccessToken } from "../util/QuickBooksTokenService";
+import { getQbClientOrThrow } from "../util/QuickBooksClientUtil";
 import { jsonSafe } from "./quickbooksHelpers";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 
 // Rate limiter para evitar erro 429 da API QuickBooks
 const limiter = new Bottleneck({
   maxConcurrent: 1,
-  minTime: 1100, // 1,1s para respeitar o limite real da Intuit (máx. 500 req/hora)
+  minTime: 1100, // 1,1s para respeitar o limite real da Intuit (máx. 500 req/hora) 
 });
 
 export class QuickBooksClientController {
@@ -39,61 +38,17 @@ export class QuickBooksClientController {
       if (!syncPref) {
         return res.status(403).json({
           error:
-            "Sincronização não permitida: verifique se está configurada para buscar clientes do QuickBooks para SmartBuild.",
+            "Sync not allowed: Make sure it is configured to fetch customers from QuickBooks to SmartBuild.",
         });
       }
 
-      // 2. Buscar credenciais do QuickBooksAccount pelo userId E companyId (garante que está no contexto certo)
-      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: {
-          user_id: userId,
-          company_id: companyId,
-        },
-      });
-
-      if (!quickBooksAccount) {
-        return res
-          .status(404)
-          .json({ error: "Conta QuickBooks não encontrada para o usuário/empresa" });
-      }
-
-      // 3. Verificar se o accessToken expirou e refresh se necessário
-      let account = quickBooksAccount;
-      if (account.expiresAt && new Date() > account.expiresAt) {
-        const refreshResult = await refreshAccessToken(account.refreshToken, account.id);
-        if (!refreshResult.success) {
-          return res.status(401).json({ error: "Falha ao renovar token: " + refreshResult.error });
-        }
-        // Buscar o account atualizado pós-refresh
-        const refreshed = await prisma.quickBooksAccount.findUnique({
-          where: { id: account.id },
-        });
-        if (!refreshed) {
-          return res
-            .status(404)
-            .json({ error: "Conta QuickBooks não encontrada após refresh" });
-        }
-        account = refreshed; // aqui garantimos que 'account' nunca será null
-      }
-
-      // 4. Instanciar QuickBooks SDK corretamente
-      const qb = new QuickBooks(
-        process.env.QUICKBOOKS_CLIENT_ID!,
-        process.env.QUICKBOOKS_CLIENT_SECRET!,
-        account.accessToken,
-        false, // Não é tokenSecret (usar OAuth2)
-        account.realmId,
-        process.env.QUICKBOOKS_ENVIRONMENT !== 'production', // true usa sandbox, false produção
-        true, // Use the new API
-        null,
-        "2.0",
-        account.refreshToken
-      );
+      // 2. Buscar credenciais e instanciar QuickBooks SDK
+      const qb = await getQbClientOrThrow(userId, companyId);
 
       console.log("DEBUG: qb object created:", typeof qb);
       console.log("DEBUG: qb.findCustomers exists:", typeof qb.findCustomers);
 
-      // 5. Buscar todos os clientes usando o método correto da biblioteca
+      // 3. Buscar todos os clientes usando o método correto da biblioteca
       console.log("DEBUG: Buscando clientes com findCustomers...");
 
       const result: any = await limiter.schedule(() =>
