@@ -141,7 +141,7 @@ export class BusinessDashboardController {
                 inProgressProjects,
                 pendingEstimates,
                 completedProjects,
-                jobSchedule
+                jobsSchedule 
             ] = await Promise.all([
                 // Total Estimates
                 prisma.estimate.count({
@@ -248,7 +248,7 @@ export class BusinessDashboardController {
                 inProgressProjects,
                 pendingEstimates,
                 completedProjects,
-                jobSchedule
+                jobsSchedule 
             });
         } catch (error) {
             console.error("Error in dashboardCards:", error);
