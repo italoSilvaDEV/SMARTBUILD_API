@@ -51,14 +51,48 @@ async function validCompany(request: Request) {
     };
 }
 
-interface DateFilter {
-    startDate?: Date;
-    endDate?: Date;
-}
+function getDateRange(periodType: string) {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date | undefined;
 
-function getDateFilter(req: Request): DateFilter {
-    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    switch (periodType) {
+        case "thisYear":
+            startDate = new Date(now.getFullYear(), 0, 1);
+            break;
+
+        case "thisQuarter":
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            break;
+
+        case "last3Months":
+            startDate = new Date();
+            startDate.setMonth(now.getMonth() - 3);
+            break;
+
+        case "lastMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+
+        case "thisMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+
+        case "last30Days":
+            startDate = new Date();
+            startDate.setDate(now.getDate() - 30);
+            break;
+
+        case "allPeriod":
+            startDate = new Date(2020, 0, 1);
+            break;
+
+        default:
+            startDate = new Date(now.getFullYear(), 0, 1);
+    }
+
     return { startDate, endDate };
 }
 
@@ -71,11 +105,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const [
                 estimates,
@@ -87,11 +140,13 @@ export class BusinessDashboardController {
                 completedProjects
             ] = await Promise.all([
                 // Total Estimates
-                prisma.project.count({
+                prisma.estimate.count({
                     where: {
-                        company_id: valid.response?.id,
-                        status_project: {
-                            in: ["Pending", "Accepted", "Denied", "Waiting for Decision"]
+                        project: {
+                            company_id: valid.response?.id
+                        },
+                        status: {
+                            in: ["approved", "pending", "canceled"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
@@ -103,14 +158,14 @@ export class BusinessDashboardController {
                     where: {
                         company_id: valid.response?.id,
                         status_project: {
-                            notIn: ["Pending", "Accepted", "Denied", "Waiting for Decision"]
+                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
                     }
                 }),
-                // Total Customers
+
                 prisma.client.findMany({
                     where: {
                         ...(Object.keys(dateFilter).length > 0 && {
@@ -201,11 +256,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const projects = await prisma.project.findMany({
                 where: {
@@ -250,11 +324,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const expenses = await prisma.costProject.findMany({
                 where: {
@@ -293,17 +386,35 @@ export class BusinessDashboardController {
         }
     }
     async expenses(req: Request, res: Response) {
-
         const valid = await validCompany(req);
         if (valid.status === 'error') {
             return res.status(404).json({ error: valid.message });
         }
 
-        const { startDate, endDate } = getDateFilter(req);
-        const dateFilter = {
-            ...(startDate && { gte: startDate }),
-            ...(endDate && { lte: endDate })
-        };
+        const { period = "thisYear" } = req.query;
+
+        const validPeriods = [
+            "thisYear",
+            "thisQuarter",
+            "last3Months",
+            "lastMonth",
+            "thisMonth",
+            "last30Days",
+            "allPeriod"
+        ];
+
+        if (!validPeriods.includes(period as string)) {
+            return res.status(400).json({
+                error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+            });
+        }
+
+        const { startDate, endDate } = getDateRange(period as string);
+
+        const dateFilter: any = { gte: startDate };
+        if (endDate) {
+            dateFilter.lte = endDate;
+        }
         try {
             const costProject = await prisma.costProject.findMany({
                 select: {
@@ -484,11 +595,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const [invoices, expenses] = await Promise.all([
                 prisma.invoice.findMany({
@@ -567,11 +697,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const now = new Date();
             const invoices = await prisma.invoice.findMany({
@@ -633,11 +782,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const projects = await prisma.project.groupBy({
                 by: ['status_project'],
@@ -674,11 +842,30 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { startDate, endDate } = getDateFilter(req);
-            const dateFilter = {
-                ...(startDate && { gte: startDate }),
-                ...(endDate && { lte: endDate })
-            };
+            const { period = "thisYear" } = req.query;
+
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
 
             const [pendingEstimates, acceptedEstimates, deniedEstimates] = await Promise.all([
 
