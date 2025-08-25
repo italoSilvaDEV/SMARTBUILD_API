@@ -15,7 +15,6 @@ import { GetNumberNewEstimateController } from "../controllers/estimates/getNumb
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
 import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
 import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
-import { DashboardProjectController } from "../controllers/estimates/dashboardProjectController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -28,7 +27,6 @@ const updateServiceEstimateController = new UpdateServiceEstimateController();
 const createServiceEstimateController = new CreateServiceEstimateController();
 const createNewEstimateController = new CreateNewEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
-const dashboardProjectController = new DashboardProjectController();
 const dashboardEstimatesController = new DashboardEstimatesController();
 const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
 const getEstimateByProjectIdController = new GetEstimateByProjectIdController();
@@ -51,7 +49,6 @@ estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesContro
 estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, getNumberEstimateProjectController.handle);
 estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProjectController.verifyNumber);
 estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
-estimateRoutes.get("/dashboard/project/:companyId", checkToken, dashboardProjectController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);
