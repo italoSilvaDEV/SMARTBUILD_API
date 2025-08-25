@@ -101,7 +101,6 @@ export class DashboardEstimatesController {
                 dateFilter.lte = endDate;
             }
 
-            // Buscar estimates aprovados
             const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
@@ -115,7 +114,6 @@ export class DashboardEstimatesController {
                 }
             });
 
-            // Buscar valor dos projetos
             const totalSalesProjectsResult = await prisma.project.aggregate({
                 where: {
                     company_id: companyId,
@@ -165,7 +163,6 @@ export class DashboardEstimatesController {
                 ? ((approvedEstimates / totalEstimates) * 100)
                 : 0;
 
-            // Buscar estimates aprovados para o gráfico
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
