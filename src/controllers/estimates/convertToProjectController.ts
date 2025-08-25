@@ -21,6 +21,7 @@ export class ConvertToProjectController {
                 projectId: true,
                 serviceProjects: true,
                 status: true,
+                totalAmount: true,
                 project: {
                     select: {
                         company_id: true,
@@ -49,7 +50,8 @@ export class ConvertToProjectController {
                         id: estimate.projectId
                     },
                     data: {
-                        status_project: "Pre-Start"
+                        status_project: "Pre-Start",
+                        price: Number(estimate.totalAmount)
                     },
                     select: {
                         contract_number: true
