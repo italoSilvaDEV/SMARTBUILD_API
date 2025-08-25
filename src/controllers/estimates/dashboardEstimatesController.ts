@@ -165,6 +165,7 @@ export class DashboardEstimatesController {
                 ? ((approvedEstimates / totalEstimates) * 100)
                 : 0;
 
+            // Buscar estimates aprovados para o gráfico
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
@@ -181,6 +182,17 @@ export class DashboardEstimatesController {
                 }
             });
 
+            const projectsForChart = await prisma.project.findMany({
+                where: {
+                    company_id: companyId,
+                    date_creation: dateFilter
+                },
+                select: {
+                    price: true,
+                    date_creation: true
+                }
+            });
+
             const monthlyData: { [key: string]: number } = {};
             const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -188,6 +200,14 @@ export class DashboardEstimatesController {
                 const date = new Date(estimate.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
                 const amount = Number(estimate.totalAmount) || 0;
+
+                monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
+            });
+
+            projectsForChart.forEach(project => {
+                const date = new Date(project.date_creation);
+                const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
+                const amount = Number(project.price) || 0;
 
                 monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
             });
