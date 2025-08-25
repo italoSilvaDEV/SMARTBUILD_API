@@ -101,7 +101,8 @@ export class DashboardEstimatesController {
                 dateFilter.lte = endDate;
             }
 
-            const totalSalesResult = await prisma.estimate.aggregate({
+            // Buscar estimates aprovados
+            const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
                         company_id: companyId
@@ -114,21 +115,32 @@ export class DashboardEstimatesController {
                 }
             });
 
-            const totalSales = totalSalesResult._sum.totalAmount || 0;
-
-            const averageValueResult = await prisma.estimate.aggregate({
+            // Buscar valor dos projetos
+            const totalSalesProjectsResult = await prisma.project.aggregate({
                 where: {
-                    project: {
-                        company_id: companyId
-                    },
+                    company_id: companyId,
                     date_creation: dateFilter
                 },
-                _avg: {
-                    totalAmount: true
+                _sum: {
+                    price: true
                 }
             });
 
-            const averageValue = averageValueResult._avg.totalAmount || 0;
+            const totalSalesEstimates = totalSalesEstimatesResult._sum.totalAmount || 0;
+            const totalSalesProjects = totalSalesProjectsResult._sum.price || 0;
+            const totalSales = Number(totalSalesEstimates) + Number(totalSalesProjects);
+
+            const averageValueResult = await prisma.project.aggregate({
+                where: {
+                    company_id: companyId,
+                    date_creation: dateFilter
+                },
+                _avg: {
+                    price: true
+                }
+            });
+
+            const averageValue = averageValueResult._avg.price || 0;
 
             const totalEstimates = await prisma.estimate.count({
                 where: {
