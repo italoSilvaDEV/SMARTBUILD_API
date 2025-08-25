@@ -82,7 +82,7 @@ export class DashboardEstimatesController {
                         break;
 
                     case "allPeriod":
-                        startDate = new Date(2020, 0, 1);
+                        startDate = new Date(2020, 0, 1); // Não será usado, mas mantendo para compatibilidade
                         monthsToShow = 12;
                         break;
 
@@ -96,9 +96,12 @@ export class DashboardEstimatesController {
 
             const { startDate, endDate, monthsToShow } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const totalSalesResult = await prisma.estimate.aggregate({

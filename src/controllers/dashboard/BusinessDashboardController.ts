@@ -86,7 +86,7 @@ function getDateRange(periodType: string) {
             break;
 
         case "allPeriod":
-            startDate = new Date(2020, 0, 1);
+            startDate = new Date(2020, 0, 1); // Não será usado, mas mantendo para compatibilidade
             break;
 
         default:
@@ -125,9 +125,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const [
@@ -276,9 +279,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const projects = await prisma.project.findMany({
@@ -344,9 +350,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const expenses = await prisma.costProject.findMany({
@@ -411,9 +420,12 @@ export class BusinessDashboardController {
 
         const { startDate, endDate } = getDateRange(period as string);
 
-        const dateFilter: any = { gte: startDate };
-        if (endDate) {
-            dateFilter.lte = endDate;
+        const dateFilter: any = {};
+        if (period !== "allPeriod") {
+            dateFilter.gte = startDate;
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
         }
         try {
             const costProject = await prisma.costProject.findMany({
@@ -615,9 +627,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const [invoices, expenses] = await Promise.all([
@@ -717,9 +732,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const now = new Date();
@@ -802,9 +820,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const projects = await prisma.project.groupBy({
@@ -862,9 +883,12 @@ export class BusinessDashboardController {
 
             const { startDate, endDate } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
 
             const [pendingEstimates, acceptedEstimates, deniedEstimates] = await Promise.all([
