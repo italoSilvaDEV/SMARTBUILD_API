@@ -140,7 +140,8 @@ export class BusinessDashboardController {
                 employees,
                 inProgressProjects,
                 pendingEstimates,
-                completedProjects
+                completedProjects,
+                jobSchedule
             ] = await Promise.all([
                 // Total Estimates
                 prisma.estimate.count({
@@ -198,10 +199,12 @@ export class BusinessDashboardController {
                     }
                 }),
                 // Pending Estimates
-                prisma.project.count({
+                prisma.estimate.count({
                     where: {
-                        company_id: valid.response?.id,
-                        status_project: "Waiting for Decision",
+                        project: {
+                            company_id: valid.response?.id
+                        },
+                        status: "pending",
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
@@ -216,6 +219,24 @@ export class BusinessDashboardController {
                             date_creation: dateFilter
                         })
                     }
+                }),
+
+                prisma.project.count({
+                    where: {
+                        company_id: valid.response?.id,
+                        start_date: {
+                            not: null
+                        },
+                        deadline: {
+                            not: null
+                        },
+                        status_project: {
+                            not: "Finished"
+                        },
+                        ...(Object.keys(dateFilter).length > 0 && {
+                            date_creation: dateFilter
+                        })
+                    }
                 })
             ]);
 
@@ -226,7 +247,8 @@ export class BusinessDashboardController {
                 employees,
                 inProgressProjects,
                 pendingEstimates,
-                completedProjects
+                completedProjects,
+                jobSchedule
             });
         } catch (error) {
             console.error("Error in dashboardCards:", error);
