@@ -169,29 +169,11 @@ export class BusinessDashboardController {
                     }
                 }),
 
-                prisma.client.findMany({
+                prisma.client.count({
                     where: {
-                        ...(Object.keys(dateFilter).length > 0 && {
-                            date_creation: dateFilter
-                        }),
-                        OR: [
-                            { company_id: valid.response?.id },
-
-                            {
-                                projects: {
-                                    some: {
-                                        company_id: valid.response?.id,
-
-                                    }
-                                }
-                            },
-
-                        ]
-                    },
-                    select: {
-                        email: true
+                        company_id: valid.response?.id
                     }
-                }).then(clients => new Set(clients.map(c => c.email.toLowerCase())).size),
+                }),
                 // Total Employees
                 prisma.user.count({
                     where: {
