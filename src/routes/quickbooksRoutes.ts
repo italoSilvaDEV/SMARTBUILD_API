@@ -21,11 +21,15 @@ quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);
 
+//  NOVAS: Rotas de desconexão
+quickbooksRoutes.delete("/quickbooks/disconnect/:userId", checkToken, quickbooksController.disconnect);
+quickbooksRoutes.post("/quickbooks/force-reauth/:userId", checkToken, quickbooksController.forceReauthorization);
+
 // Rotas de invoice
-quickbooksRoutes.post("/quickbooks/invoice/:projectId", checkToken, quickbooksInvoiceController.createInvoice);
-quickbooksRoutes.get("/quickbooks/invoices/:projectId", checkToken, quickbooksInvoiceController.getInvoicesByProject);
-quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/send", checkToken, quickbooksInvoiceController.sendInvoice);
-quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/cancel", checkToken, quickbooksInvoiceController.cancelInvoice);
+quickbooksRoutes.post("/quickbooks/invoice/:projectId", checkToken, quickbooksInvoiceController.createInvoice.bind(quickbooksInvoiceController));
+quickbooksRoutes.get("/quickbooks/invoices/:projectId", checkToken, quickbooksInvoiceController.getInvoicesByProject.bind(quickbooksInvoiceController));
+quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/send", checkToken, quickbooksInvoiceController.sendInvoice.bind(quickbooksInvoiceController));
+quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/cancel", checkToken, quickbooksInvoiceController.cancelInvoice.bind(quickbooksInvoiceController));
 
 // Rotas de syncPreference
 quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quickbooksSyncPreferenceController.listByCompany);
@@ -55,4 +59,4 @@ quickbooksRoutes.post("/quickbooks/push-clients/:companyId/:userId", checkToken,
 
 
 
-export { quickbooksRoutes }; 
+export { quickbooksRoutes };

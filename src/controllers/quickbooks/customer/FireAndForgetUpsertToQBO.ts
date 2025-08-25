@@ -72,7 +72,8 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
         return;
       }
       
-      await outbound.upsertOneLocalClientToQBOInternal(companyId, userId, clientId);
+      const { created } = await outbound.upsertOneLocalClientToQBOInternal(companyId, userId, clientId);
+      return created;
     } catch (e) {
       console.error("[fireAndForgetUpsertToQBO] failed:", (e as any)?.message || e);
       
@@ -85,5 +86,7 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
         details: { error: (e as any)?.message || e, userId }
       });
     }
+
+    return null;
   });
 }

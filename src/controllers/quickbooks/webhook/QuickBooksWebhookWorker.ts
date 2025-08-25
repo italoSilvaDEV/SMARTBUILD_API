@@ -10,7 +10,7 @@ import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 
 // helper no topo do arquivo (ou antes do uso)
-function extractCustomer(data: any) {
+export function extractCustomer(data: any) {
   // 1) Resposta clássica do node-quickbooks para getCustomer
   if (data?.Customer) return data.Customer;
   // 2) Resposta de consulta (query)
@@ -90,7 +90,7 @@ export class QuickBooksWebhookWorker {
             );
             continue;
           }
-
+ 
           await this.upsertCustomerFromQBO(companyId, qbCustomer);
         } catch (e: any) {
           console.error("[QBO Webhook] erro entity:", id, e?.message || e);
@@ -117,8 +117,8 @@ export class QuickBooksWebhookWorker {
       if (!acc) throw new Error("Conta QuickBooks não encontrada após refresh");
     }
 
-    const QB_CLIENT_ID = process.env.QB_CLIENT_ID || process.env.QUICKBOOKS_CLIENT_ID;
-    const QB_CLIENT_SECRET = process.env.QB_CLIENT_SECRET || process.env.QUICKBOOKS_CLIENT_SECRET;
+    const QB_CLIENT_ID = process.env.QUICKBOOKS_CLIENT_ID;
+    const QB_CLIENT_SECRET = process.env.QUICKBOOKS_CLIENT_SECRET;
 
     return new QuickBooks(
       QB_CLIENT_ID!,
@@ -126,7 +126,7 @@ export class QuickBooksWebhookWorker {
       acc.accessToken,
       false,
       acc.realmId,
-      true,   // sandbox (ajuste para prod)
+      process.env.QUICKBOOKS_ENVIRONMENT !== 'production',   // Use sandbox apenas se não for produção
       true,   // new api
       null,
       "2.0",

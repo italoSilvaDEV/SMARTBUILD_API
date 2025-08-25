@@ -9,6 +9,12 @@ import { DeleteEstimateController } from "../controllers/estimates/deleteEstimat
 import { DeleteServiceEstimateController } from "../controllers/estimates/deleteServiceEstimateController";
 import { UpdateEstimateFieldsController } from "../controllers/estimates/updateEstimateController";
 import { UpdateServiceEstimateController } from "../controllers/estimates/updateServiceEstimateController";
+import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
+import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
+import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
+import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
+import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
+import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -18,6 +24,12 @@ const deleteEstimateController = new DeleteEstimateController();
 const deleteServiceEstimateController = new DeleteServiceEstimateController();
 const updateEstimateFieldsController = new UpdateEstimateFieldsController();
 const updateServiceEstimateController = new UpdateServiceEstimateController();
+const createServiceEstimateController = new CreateServiceEstimateController();
+const createNewEstimateController = new CreateNewEstimateController();
+const getNumberNewEstimateController = new GetNumberNewEstimateController();
+const dashboardEstimatesController = new DashboardEstimatesController();
+const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
+const getEstimateByProjectIdController = new GetEstimateByProjectIdController();
 
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
@@ -29,6 +41,14 @@ estimateRoutes.delete("/:estimateId", checkToken, deleteEstimateController.handl
 estimateRoutes.delete("/service/:serviceId", checkToken, deleteServiceEstimateController.handle);
 estimateRoutes.patch("/update/fields", checkToken, updateEstimateFieldsController.handle);
 estimateRoutes.patch("/update/service-fields", checkToken, updateServiceEstimateController.handle);
+estimateRoutes.post("/new-service", checkToken, createServiceEstimateController.handle);
+estimateRoutes.post("/new-estimate", checkToken, createNewEstimateController.handle);
+estimateRoutes.get("/number/:companyId", checkToken, getNumberNewEstimateController.handle);
+estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateController.verifyNumber);
+estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesController.handle);
+estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, getNumberEstimateProjectController.handle);
+estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProjectController.verifyNumber);
+estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);

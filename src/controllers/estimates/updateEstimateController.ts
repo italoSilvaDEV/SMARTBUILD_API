@@ -2,8 +2,9 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
 type Fields = {
-    description?: string
-    terms?: string
+    description?: string | null
+    terms?: string | null
+    totalAmount?: number
 }
 
 export class UpdateEstimateFieldsController {
@@ -12,6 +13,7 @@ export class UpdateEstimateFieldsController {
             estimateId,
             description,
             terms,
+            totalAmount,
         } = req.body
 
         if (!estimateId) {
@@ -32,7 +34,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        if (!description && !terms) {
+        if (description === null && terms === null) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -41,11 +43,18 @@ export class UpdateEstimateFieldsController {
         try {
             const campos: Fields = {}
 
-            if (description) {
+            if (description !== undefined) {
                 campos.description = description
+            } else if (description === "") {
+                campos.description = null
             }
-            if (terms) {
+            if (terms !== undefined) {
                 campos.terms = terms
+            } else if (terms === "") {
+                campos.terms = null
+            }
+            if (totalAmount !== undefined) {
+                campos.totalAmount = totalAmount
             }
 
             const updatedEstimate = await prisma.estimate.update({

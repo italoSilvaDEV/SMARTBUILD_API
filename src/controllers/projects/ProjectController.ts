@@ -17,7 +17,6 @@ export interface INewProject {
   seller_user_id: string;
   price: number;
   status_project: string;
-  type_category: string;
   company_id: string;
   client: IClientData;
   location?: string;

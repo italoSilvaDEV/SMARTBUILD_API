@@ -2,36 +2,35 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
-export class GetAllEstimatesByCompanyController {
+export class GetEstimateByProjectIdController {
     async handle(req: Request, res: Response) {
         const {
-            companyId
+            projectId
         } = req.params
 
-        if (!companyId) {
+        if (!projectId) {
             return res.status(400).json({
-                error: "Company ID is required"
-            })
-        }
-
-        const company = await prisma.company.findUnique({
-            where: {
-                id: companyId
-            }
-        })
-
-        if (!company) {
-            return res.status(404).json({
-                error: "Company not found"
+                error: "Project ID is required"
             })
         }
 
         try {
-            const estimates = await prisma.estimate.findMany({
+            const project = await prisma.project.findUnique({
                 where: {
-                    project: {
-                        company_id: companyId
-                    },
+                    id: projectId
+                }
+            })
+
+            if (!project) {
+                return res.status(404).json({
+                    error: "Project not found"
+                })
+            }
+
+            const estimate = await prisma.estimate.findFirst({
+                where: {
+                    projectId: projectId,
+                    type_estimate: "estimate"
                 },
                 select: {
                     id: true,
@@ -130,41 +129,45 @@ export class GetAllEstimatesByCompanyController {
                         }
                     }
                 },
-                orderBy: {
-                    date_creation: "desc"
-                }
             })
 
-            const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
-                const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
-                    if (pdf.uri) {
-                        return await getPresignedUrl(pdf.uri)
-                    }
-                    if (estimate.project.client?.avatar) {
-                        return await getPresignedUrl(estimate.project.client.avatar)
-                    }
-                    if (estimate.project.user?.avatar) {
-                        return await getPresignedUrl(estimate.project.user.avatar)
-                    }
-                    return null
-                }).filter(Boolean))
+            if (!estimate) {
+                return res.status(404).json({
+                    error: "Estimate not found"
+                })
+            }
 
-                return {
-                    ...estimate,
-                    PdfProject: presignedUrls,
-                    serviceProjects: estimate.serviceProjects.map((service) => {
-                        return {
-                            ...service,
-                            lineTotal: Number(service.lineTotal),
-                            unitPrice: Number(service.unitPrice),
-                            quantity: Number(service.quantity)
-                        }
-                    }),
+            const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
+                if (pdf.uri) {
+                    return await getPresignedUrl(pdf.uri)
                 }
-            }))
+                return null
+            }).filter(Boolean))
+
+            const urlUserAvatar = estimate.project.user?.avatar ? await getPresignedUrl(estimate.project.user.avatar) : null
+            const urlClientAvatar = estimate.project.client?.avatar ? await getPresignedUrl(estimate.project.client.avatar) : null
+            const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
 
             return res.status(200).json({
-                data: estimatesWithPresignedUrls
+                data: {
+                    ...estimate,
+                    PdfProject: presignedUrls,
+                    project: {
+                        ...estimate.project,
+                        user: {
+                            ...estimate.project.user,
+                            avatar: urlUserAvatar
+                        },
+                        client: {
+                            ...estimate.project.client,
+                            avatar: urlClientAvatar
+                        },
+                        company: {
+                            ...estimate.project.company,
+                            avatar: urlCompanyAvatar
+                        }
+                    }
+                }
             })
         } catch (error) {
             return res.status(500).json({

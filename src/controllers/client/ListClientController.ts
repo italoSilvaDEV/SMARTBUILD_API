@@ -173,7 +173,7 @@ export class ListClientController {
                     company_id: String(company_id),
                     ...searchFilter,
                 },
-                orderBy: [{ date_creation: "desc" }, { name: "asc" }],
+                orderBy: [{ name: "asc" }],
                 include: {
                     _count: {
                         select: { projects: true },

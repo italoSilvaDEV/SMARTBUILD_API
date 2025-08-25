@@ -5,7 +5,6 @@ export class ConvertToProjectController {
     async handle(req: Request, res: Response) {
         const {
             estimateId,
-            status
         } = req.body
 
         if (!estimateId) {
@@ -18,11 +17,15 @@ export class ConvertToProjectController {
             where: {
                 id: estimateId
             },
-            include: {
+            select: {
+                projectId: true,
                 serviceProjects: true,
+                status: true,
+                totalAmount: true,
                 project: {
                     select: {
-                        company_id: true
+                        company_id: true,
+                        status_project: true,
                     }
                 }
             }
@@ -34,26 +37,61 @@ export class ConvertToProjectController {
             })
         }
 
-        try {
-            await prisma.project.update({
-                where: {
-                    id: estimate.projectId
-                },
-                data: {
-                    status_project: status
-                }
+        if (!estimate.projectId || !estimate.project || !estimate.project.company_id) {
+            return res.status(400).json({
+                error: "Estimate has no project or company"
             })
+        }
 
-            await prisma.serviceProject.createMany({
-                data: estimate.serviceProjects.map((service) => ({
-                    name: service.name,
-                    description: service.description || "",
-                    hours: service.hours || 0,
-                    price: service.price || 0,
-                    id_service: service.id_service,
-                    projectId: estimate.projectId,
-                    company_id: estimate.project.company_id
-                }))
+        try {
+            await prisma.$transaction(async (smartbuild) => {
+                const project = await smartbuild.project.update({
+                    where: {
+                        id: estimate.projectId
+                    },
+                    data: {
+                        status_project: "Pre-Start",
+                        price: Number(estimate.totalAmount)
+                    },
+                    select: {
+                        contract_number: true
+                    }
+                })
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: estimateId
+                    },
+                    data: {
+                        number: `${project.contract_number}-01`,
+                        type_estimate: "estimateProject"
+                    }
+                })
+
+                if (estimate.serviceProjects.length > 0) {
+                    await smartbuild.serviceProject.createMany({
+                        data: estimate.serviceProjects.map((service) => ({
+                            name: service.name,
+                            description: service.description || "",
+                            hours: service.hours || 0,
+                            price: service.price || 0,
+                            id_service: service.id_service || null,
+                            projectId: estimate.projectId,
+                            company_id: estimate.project.company_id
+                        }))
+                    })
+                }
+
+                if (estimate.status !== "approved") {
+                    await smartbuild.estimate.update({
+                        where: {
+                            id: estimateId
+                        },
+                        data: {
+                            status: "approved"
+                        }
+                    })
+                }
             })
 
             return res.status(200).json({
