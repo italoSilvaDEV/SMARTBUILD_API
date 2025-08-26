@@ -139,7 +139,7 @@ export class BusinessDashboardController {
                 customers,
                 employees,
                 inProgressProjects,
-                pendingEstimates,
+                preStartProjects,
                 completedProjects,
                 jobsSchedule 
             ] = await Promise.all([
@@ -198,13 +198,11 @@ export class BusinessDashboardController {
                         })
                     }
                 }),
-                // Pending Estimates
-                prisma.estimate.count({
+                // Pre-Start Projects
+                prisma.project.count({
                     where: {
-                        project: {
-                            company_id: valid.response?.id
-                        },
-                        status: "pending",
+                        company_id: valid.response?.id,
+                        status_project: "Pre-Start",
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
@@ -246,7 +244,7 @@ export class BusinessDashboardController {
                 customers: Number(customers),
                 employees,
                 inProgressProjects,
-                pendingEstimates,
+                preStartProjects,
                 completedProjects,
                 jobsSchedule 
             });
