@@ -35,6 +35,12 @@ export class QuickBooksWebhookWorker {
         continue;
       }
 
+      // Verificar se a conta está desabilitada
+      if (account.isDisabled) {
+        console.log(`[QBO Webhook] Conta QuickBooks desabilitada para realmId=${realmId}, ignorando webhook`);
+        continue;
+      }
+
       // Garanta token válido
       const qb = await this.getQBForAccount(account);
 

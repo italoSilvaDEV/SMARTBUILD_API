@@ -14,13 +14,17 @@ import { refreshAccessToken } from "./QuickBooksTokenService";
  * @throws Error se conta não encontrada ou erro no refresh do token
  */
 export async function getQbClientOrThrow(userId: string, companyId: string): Promise<any> {
-  // Busca account
-  const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-    where: { user_id: userId, company_id: companyId },
+  // Busca account apenas por company_id (regra: uma empresa = uma conta QuickBooks)
+  const quickBooksAccount = await prisma.quickBooksAccount.findUnique({
+    where: { company_id: companyId },
   });
   
   if (!quickBooksAccount) {
-    throw new Error("Conta QuickBooks não encontrada para o usuário/empresa");
+    throw new Error("QuickBooks account not found for user/company");
+  }
+
+  if (quickBooksAccount.isDisabled) {
+    throw new Error("Your QuickBooks account is disabled. Please reconnect to QuickBooks to reactivate it.");
   }
 
   // Refresh token se preciso
@@ -36,7 +40,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
     });
     
     if (!refreshed) {
-      throw new Error("Conta QuickBooks não encontrada após refresh");
+      throw new Error("QuickBooks account not found after refresh");
     }
     
     account = refreshed;

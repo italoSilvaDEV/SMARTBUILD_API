@@ -25,6 +25,22 @@ async function isSyncEnabled(companyId: string, userId: string): Promise<boolean
   }
 }
 
+// Função helper para verificar se a conta QuickBooks está ativa
+async function isQuickBooksAccountActive(companyId: string, userId: string): Promise<boolean> {
+  try {
+    const qbAccount = await prisma.quickBooksAccount.findUnique({
+      where: {
+        company_id: companyId
+      }
+    });
+    
+    return !!(qbAccount && !qbAccount.isDisabled);
+  } catch (error) {
+    console.error("[isQuickBooksAccountActive] Erro ao verificar conta QuickBooks:", error);
+    return false;
+  }
+}
+
 // Função helper para criar log de sincronização (pode ser vinculado a uma execução ou avulso)
 export async function createSyncLog(data: {
   entity: string;
@@ -67,6 +83,24 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
           entityId: clientId,
           companyId,
           details: { reason: "Sync disabled in preferences", userId }
+        });
+        
+        return;
+      }
+
+      // Verificar se a conta QuickBooks está ativa
+      const qbAccountActive = await isQuickBooksAccountActive(companyId, userId);
+      
+      if (!qbAccountActive) {
+        console.log(`[fireAndForgetUpsertToQBO] Conta QuickBooks desabilitada para company=${companyId} user=${userId}`);
+        
+        // Log avulso (sem vinculação com execução)
+        await createSyncLog({
+          entity: "customers",
+          action: "SkippedFireAndForget",
+          entityId: clientId,
+          companyId,
+          details: { reason: "QuickBooks account is disabled", userId }
         });
         
         return;

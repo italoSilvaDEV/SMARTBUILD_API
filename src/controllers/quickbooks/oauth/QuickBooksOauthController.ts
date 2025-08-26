@@ -119,12 +119,36 @@ export class QuickBooksController {
         ? new Date(Date.now() + Number(x_refresh_token_expires_in) * 1000)
         : undefined;
 
-      // upsert por (userId, companyId)
-      let account = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId, company_id: companyId },
+       // Verificar se já existe uma conta QuickBooks para esta empresa
+      let account = await prisma.quickBooksAccount.findUnique({
+        where: { company_id: companyId },
       });
 
+      // Verificar se há conflito de realmId com outra empresa
+      const existingRealmAccount = await prisma.quickBooksAccount.findUnique({
+        where: { realmId: String(realmId) },
+      });
+
+      if (existingRealmAccount && existingRealmAccount.company_id !== companyId) {
+        console.log("Quickbooks já conectado a outra empresa")
+        return res.redirect(
+          `${process.env.URL_FRONT}/stripe-config?error=realm_already_used&msg=${encodeURIComponent(
+            `This QuickBooks company is already connected to another company in the system.`
+          )}`
+        );
+      }
+
       if (account) {
+        // Verificar se está tentando conectar uma empresa QuickBooks diferente
+        if (account.realmId !== String(realmId)) {
+          console.log("Empresa ja conectada a outra empresa: ", account.companyName)
+          return res.redirect(
+            `${process.env.URL_FRONT}/stripe-config?error=different_company&msg=${encodeURIComponent(
+              `Esta empresa já está conectada à empresa QuickBooks: ${account.companyName || account.realmId}. Conecte-se com a mesma empresa.`
+            )}`
+          );
+        }
+
         account = await prisma.quickBooksAccount.update({
           where: { id: account.id },
           data: {
@@ -134,6 +158,7 @@ export class QuickBooksController {
             expiresAt,
             scopes: scope ?? "com.intuit.quickbooks.accounting",
             needsReauthorization: false,
+            isDisabled: false, // Reativar a conta
             ...(refreshExpiresAt ? { refreshExpiresAt } : {}),
             updatedAt: new Date(),
           },
@@ -149,6 +174,7 @@ export class QuickBooksController {
             expiresAt,
             scopes: scope ?? "com.intuit.quickbooks.accounting",
             needsReauthorization: false,
+            isDisabled: false,
             ...(refreshExpiresAt ? { refreshExpiresAt } : {}),
           },
         });
@@ -158,15 +184,73 @@ export class QuickBooksController {
       try {
         const api = qboClientForAccount(account.id);
         const { data } = await api.get(`/companyinfo/${account.realmId}`);
-        const companyName =
-          data?.QueryResponse?.CompanyInfo?.[0]?.CompanyName ??
-          data?.QueryResponse?.CompanyInfo?.CompanyName;
+        console.log("valor do data: ", JSON.stringify(data, null, 2))
+        
+        // Corrigido: dados vêm direto na resposta, não em QueryResponse
+        const companyInfo = data?.CompanyInfo;
 
-        if (companyName) {
-          await prisma.quickBooksAccount.update({
-            where: { id: account.id },
-            data: { companyName },
-          });
+        if (companyInfo) {
+          const updateData: any = {};
+          
+          // Nome da empresa
+          if (companyInfo.CompanyName) {
+            updateData.companyName = companyInfo.CompanyName;
+          }
+          
+          // Endereço da empresa  
+          if (companyInfo.CompanyAddr) {
+            const addr = companyInfo.CompanyAddr;
+            const addressParts = [
+              addr.Line1,
+              addr.Line2,
+              addr.City,
+              addr.CountrySubDivisionCode,
+              addr.PostalCode,
+              addr.Country
+            ].filter(Boolean);
+            updateData.companyAddress = addressParts.join(', ');
+          }
+
+          // Telefone da empresa
+          if (companyInfo.PrimaryPhone?.FreeFormNumber) {
+            updateData.companyPhone = companyInfo.PrimaryPhone.FreeFormNumber;
+          }
+
+          // Email da empresa (pode ser Email.Address ou CustomerCommunicationEmailAddr.Address)
+          if (companyInfo.Email?.Address) {
+            updateData.companyEmail = companyInfo.Email.Address;
+          } else if (companyInfo.CustomerCommunicationEmailAddr?.Address) {
+            updateData.companyEmail = companyInfo.CustomerCommunicationEmailAddr.Address;
+          }
+
+          // Tipo de negócio e dados fiscais
+          if (companyInfo.FiscalYearStartMonth) {
+            updateData.businessType = companyInfo.FiscalYearStartMonth;
+          }
+
+          // Capturar informações adicionais do NameValue array
+          if (companyInfo.NameValue && Array.isArray(companyInfo.NameValue)) {
+            const nameValues = companyInfo.NameValue;
+            
+            // Buscar tipo de empresa
+            const companyType = nameValues.find((nv: any) => nv.Name === 'CompanyType');
+            if (companyType?.Value && !updateData.businessType) {
+              updateData.businessType = companyType.Value;
+            }
+            
+            // Buscar tipo de indústria
+            const industryType = nameValues.find((nv: any) => nv.Name === 'QBOIndustryType');
+            if (industryType?.Value) {
+              updateData.taxIdentifier = industryType.Value; // Usando como identificador de setor
+            }
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await prisma.quickBooksAccount.update({
+              where: { id: account.id },
+              data: updateData,
+            });
+          }
         }
       } catch (e: any) {
         const status = e?.response?.status;
@@ -196,7 +280,7 @@ export class QuickBooksController {
   //utlizada pelo frontend para checar se o usuario esta conectado ao quickbooks
   async checkStatus(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
 
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
@@ -207,9 +291,25 @@ export class QuickBooksController {
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Verificar se o usuário tem uma conta do QuickBooks
-      const account = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId }
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Verificar se o usuário tem acesso à empresa
+      const userCompany = await prisma.userCompany.findFirst({
+        where: { 
+          userId: userId, 
+          companyId: companyId 
+        }
+      });
+
+      if (!userCompany) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
+      // Buscar a conta QuickBooks da empresa
+      const account = await prisma.quickBooksAccount.findUnique({
+        where: { company_id: companyId }
       });
 
       // Se não tem conta, retorna que não está conectado
@@ -228,7 +328,7 @@ export class QuickBooksController {
           needsReauthorization: true,
           reason: "needs_reauthorization",
           message: "Reconecte selecionando uma empresa do QuickBooks Online (Accounting).",
-          authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${account.company_id}`
+          authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${companyId}`
         });
       }
 
@@ -252,7 +352,7 @@ export class QuickBooksController {
             needsReauthorization: true,
             reason: "token_refresh_failed",
             message: "Não foi possível renovar o acesso. Por favor, reconecte sua conta do QuickBooks.",
-            authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${account.company_id}`
+            authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${companyId}`
           });
         }
         // recarrega a conta atualizada do DB
@@ -349,11 +449,27 @@ export class QuickBooksController {
   //refresh token ainda nao utlizada pelo frontend
   async refreshToken(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
 
-      // Buscar a conta QuickBooks do usuário
-      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId }
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Verificar se o usuário tem acesso à empresa
+      const userCompany = await prisma.userCompany.findFirst({
+        where: { 
+          userId: userId, 
+          companyId: companyId 
+        }
+      });
+
+      if (!userCompany) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
+      // Buscar a conta QuickBooks da empresa
+      const quickBooksAccount = await prisma.quickBooksAccount.findUnique({
+        where: { company_id: companyId }
       });
 
       if (!quickBooksAccount) {
@@ -386,7 +502,7 @@ export class QuickBooksController {
   //  NOVO: Desconectar QuickBooks
   async disconnect(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
       const { revokeOnQuickBooks = false } = req.body; // Opção para revogar no QuickBooks também
 
       // Verificar se o usuário existe
@@ -398,9 +514,25 @@ export class QuickBooksController {
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Buscar a conta QuickBooks do usuário
-      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId }
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Verificar se o usuário tem acesso à empresa
+      const userCompany = await prisma.userCompany.findFirst({
+        where: { 
+          userId: userId, 
+          companyId: companyId 
+        }
+      });
+
+      if (!userCompany) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
+      // Buscar a conta QuickBooks da empresa
+      const quickBooksAccount = await prisma.quickBooksAccount.findUnique({
+        where: { company_id: companyId }
       });
 
       if (!quickBooksAccount) {
@@ -438,12 +570,16 @@ export class QuickBooksController {
         }
       }
 
-      // Remover a conta QuickBooks da nossa base de dados
-      await prisma.quickBooksAccount.delete({
-        where: { id: quickBooksAccount.id }
+      // Marcar a conta QuickBooks como desabilitada ao invés de deletar
+      await prisma.quickBooksAccount.update({
+        where: { id: quickBooksAccount.id },
+        data: { 
+          isDisabled: true,
+          updatedAt: new Date()
+        }
       });
 
-      console.log(` Conta QuickBooks desconectada para usuário ${userId}`);
+      console.log(` Conta QuickBooks desabilitada para usuário ${userId}`);
 
       return res.status(200).json({
         message: "QuickBooks desconectado com sucesso",
@@ -451,6 +587,7 @@ export class QuickBooksController {
         revokedOnQuickBooks: revokeOnQuickBooks,
         accountInfo: {
           realmId: quickBooksAccount.realmId,
+          companyName: quickBooksAccount.companyName,
           connectedSince: quickBooksAccount.createdAt
         }
       });
@@ -506,6 +643,80 @@ export class QuickBooksController {
 
     } catch (error: any) {
       console.error(" Erro ao forçar reautorização:", error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        details: error.message
+      });
+    }
+  }
+
+  //  NOVO: Reativar conta QuickBooks desabilitada
+  async reactivate(req: Request, res: Response) {
+    try {
+      const { userId, companyId } = req.params;
+
+      // Verificar se o usuário existe
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Verificar se o usuário tem acesso à empresa
+      const userCompany = await prisma.userCompany.findFirst({
+        where: { 
+          userId: userId, 
+          companyId: companyId 
+        }
+      });
+
+      if (!userCompany) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
+      // Buscar a conta QuickBooks desabilitada da empresa
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { 
+          company_id: companyId,
+          isDisabled: true
+        }
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(404).json({
+          error: "No disabled QuickBooks account found",
+          message: "Não há conta QuickBooks desabilitada para reativar"
+        });
+      }
+
+      // Reativar a conta
+      await prisma.quickBooksAccount.update({
+        where: { id: quickBooksAccount.id },
+        data: {
+          isDisabled: false,
+          needsReauthorization: false,
+          updatedAt: new Date()
+        }
+      });
+
+      return res.status(200).json({
+        message: "Conta QuickBooks reativada com sucesso",
+        reactivatedAt: new Date(),
+        accountInfo: {
+          realmId: quickBooksAccount.realmId,
+          companyName: quickBooksAccount.companyName,
+          expiresAt: quickBooksAccount.expiresAt
+        }
+      });
+
+    } catch (error: any) {
+      console.error(" Erro ao reativar conta QuickBooks:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message
