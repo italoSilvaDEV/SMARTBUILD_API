@@ -174,7 +174,6 @@ export class ProjectController {
               name: true,
             },
           },
-          // Usar aggregações do Prisma para cálculos pesados
           serviceProject: {
             select: {
               id: true,
@@ -183,6 +182,11 @@ export class ProjectController {
               hours: true,
               price: true,
               stages: true,
+              costProject: {
+                select: {
+                  price: true,
+                }
+              }
             }
           },
           _count: {
