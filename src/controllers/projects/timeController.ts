@@ -410,30 +410,24 @@ export class TimeController {
                         weekOvertimeHours = totalWeekHours - 40;
                     }
 
-                    // Calculate price only once for the week
                     const weeklyPrice = weekAttendances[0]?.user?.hourly_price
                         ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                         : 0;
 
-                    // Distribute price proportionally among daily records
                     const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                     attendancesWithHours.forEach(attendance => {
-                        // Calculate proportional price for this daily record
                         const proportionalPrice = totalDailyHours > 0 
                             ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                             : 0;
 
-                        // Calculate individual daily regular/overtime hours
                         let dailyRegularHours = 0;
                         let dailyOvertimeHours = 0;
 
                         if (totalWeekHours <= 40) {
-                            // All hours are regular
                             dailyRegularHours = attendance.dailyHours;
                             dailyOvertimeHours = 0;
                         } else {
-                            // Distribute regular hours proportionally
                             const regularProportion = weekRegularHours / totalWeekHours;
                             const overtimeProportion = weekOvertimeHours / totalWeekHours;
                             
@@ -503,7 +497,6 @@ export class TimeController {
                     clientCityAndState: i.client?.city_and_state,
                     serviceCount: i.serviceProject.length,
                     workerData: (() => {
-                        // Coletar todas as attendances do projeto
                         const projectAttendances = i.serviceProject
                             .filter(s => s.UserServiceProject.length > 0)
                             .flatMap(s => s.UserServiceProject
@@ -514,7 +507,6 @@ export class TimeController {
                                 )
                             );
 
-                        // Agrupar por usuário e depois por semana
                         const attendancesByUser = projectAttendances.reduce((users, attendance) => {
                             const userId = attendance.user.id;
                             if (!users[userId]) {
@@ -527,7 +519,6 @@ export class TimeController {
                         const result: any[] = [];
 
                         Object.values(attendancesByUser).forEach(userAttendances => {
-                            // Agrupar attendances do usuário por semana
                             const attendancesByWeek = userAttendances.reduce((weeks, attendance) => {
                                 const weekKey = getWeekKey(attendance.date);
                                 if (!weeks[weekKey]) {
@@ -537,9 +528,7 @@ export class TimeController {
                                 return weeks;
                             }, {} as Record<string, typeof userAttendances>);
 
-                            // Processar cada semana do usuário
                             Object.values(attendancesByWeek).forEach(weekAttendances => {
-                                // Calcular total de horas da semana
                                 let totalWeekHours = 0;
                                 const attendancesWithHours = weekAttendances.map(attendance => {
                                     const hours = calcularHorasTrabalhadas(
@@ -553,7 +542,6 @@ export class TimeController {
                                     return { ...attendance, dailyHours };
                                 });
 
-                                // Aplicar regra de 40h semanais (domingo a sábado)
                                 let weekRegularHours = 0;
                                 let weekOvertimeHours = 0;
 
@@ -565,33 +553,26 @@ export class TimeController {
                                     weekOvertimeHours = totalWeekHours - 40;
                                 }
 
-                                // Calculate price only once for the week
                                 const weeklyPrice = weekAttendances[0]?.user?.hourly_price
                                     ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                                     : 0;
 
-                                // Distribute price proportionally among daily records
                                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                                 attendancesWithHours.forEach(attendance => {
-                                    // Calculate proportional price for this daily record
                                     const proportionalPrice = totalDailyHours > 0 
                                         ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                                         : 0;
 
-                                    // Calculate individual daily regular/overtime hours
                                     let dailyRegularHours = 0;
                                     let dailyOvertimeHours = 0;
 
                                     if (totalWeekHours <= 40) {
-                                        // All hours are regular
                                         dailyRegularHours = attendance.dailyHours;
                                         dailyOvertimeHours = 0;
                                     } else {
-                                        // Distribute regular hours proportionally
                                         const regularProportion = weekRegularHours / totalWeekHours;
                                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
-                                        
                                         dailyRegularHours = attendance.dailyHours * regularProportion;
                                         dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                                     }
@@ -1206,30 +1187,24 @@ export class TimeController {
                     weekOvertimeHours = totalWeekHours - 40;
                 }
 
-                // Calculate price only once for the week
                 const weeklyPrice = existWorker?.hourly_price
                     ? (weekRegularHours * existWorker.hourly_price) + (weekOvertimeHours * existWorker.hourly_price * 1.5)
                     : 0;
 
-                // Distribute price proportionally among daily records
                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                 attendancesWithHours.forEach(attendance => {
-                    // Calculate proportional price for this daily record
                     const proportionalPrice = totalDailyHours > 0 
                         ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                         : 0;
 
-                    // Calculate individual daily regular/overtime hours
                     let dailyRegularHours = 0;
                     let dailyOvertimeHours = 0;
 
                     if (totalWeekHours <= 40) {
-                        // All hours are regular
                         dailyRegularHours = attendance.dailyHours;
                         dailyOvertimeHours = 0;
                     } else {
-                        // Distribute regular hours proportionally
                         const regularProportion = weekRegularHours / totalWeekHours;
                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
                         
