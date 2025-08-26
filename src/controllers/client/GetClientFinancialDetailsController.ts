@@ -30,6 +30,7 @@ export class GetClientFinancialDetailsController {
                     id: true,
                     name: true,
                     email: true,
+                    location: true,
                     projects: {
                         where: {
                             company_id: String(company_id)
