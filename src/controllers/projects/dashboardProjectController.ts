@@ -38,10 +38,18 @@ export class DashboardProjectController {
             });
         }
 
-        if (status_project && !validStatusProjects.includes(status_project as string)) {
-            return res.status(400).json({
-                error: `Invalid status_project. Valid values are: ${validStatusProjects.join(", ")}`
-            });
+        let statusFilters: string[] = [];
+        if (status_project) {
+            const statusArray = (status_project as string).split(',').map(s => s.trim());
+            
+            for (const status of statusArray) {
+                if (!validStatusProjects.includes(status)) {
+                    return res.status(400).json({
+                        error: `Invalid status_project '${status}'. Valid values are: ${validStatusProjects.join(", ")}`
+                    });
+                }
+            }
+            statusFilters = statusArray;
         }
 
         const company = await prisma.company.findUnique({
@@ -120,7 +128,7 @@ export class DashboardProjectController {
                 }
             }
 
-            const shouldFilterByStatus = !!status_project;
+            const shouldFilterByStatus = statusFilters.length > 0;
 
             const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
@@ -144,7 +152,9 @@ export class DashboardProjectController {
                         date_creation: dateFilter
                     }),
                     ...(shouldFilterByStatus && {
-                        status_project: status_project as string
+                        status_project: {
+                            in: statusFilters
+                        }
                     })
                 },
                 _sum: {
@@ -163,7 +173,9 @@ export class DashboardProjectController {
                         date_creation: dateFilter
                     }),
                     ...(shouldFilterByStatus && {
-                        status_project: status_project as string
+                        status_project: {
+                            in: statusFilters
+                        }
                     })
                 },
                 _avg: {
@@ -225,7 +237,9 @@ export class DashboardProjectController {
                         date_creation: dateFilter
                     }),
                     ...(shouldFilterByStatus && {
-                        status_project: status_project as string
+                        status_project: {
+                            in: statusFilters
+                        }
                     })
                 },
                 select: {
