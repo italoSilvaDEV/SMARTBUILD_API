@@ -11,7 +11,7 @@ userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControllle
 userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser);
 
 // Nova rota para registrar clock in/out em um único endpoint
-userAttendanceRoutes.post('/clock-in-out', checkToken, userAttendanceControlller.clockInOut);
+userAttendanceRoutes.post('/user-attendance/clock-in-out', checkToken, userAttendanceControlller.clockInOut);
 
 // Rota para buscar registros ativos (check-in feito, sem check-out)
 userAttendanceRoutes.get(
