@@ -96,7 +96,8 @@ export class GetClientFinancialDetailsController {
                     id: primaryClient.id,
                     name: primaryClient.name,
                     email: primaryClient.email,
-                    total_records: clients.length
+                    total_records: clients.length,
+                    location: primaryClient.location
                 },
                 financial_summary: {
                     total_revenue: totalRevenue,
