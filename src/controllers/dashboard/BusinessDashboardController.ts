@@ -641,7 +641,7 @@ export class BusinessDashboardController {
                 prisma.invoice.findMany({
                     where: {
                         companyId: valid.response?.id,
-                        status: 'PAID',
+                        status: 'paid',
                         ...(Object.keys(dateFilter).length > 0 && {
                             createdAt: dateFilter
                         })
