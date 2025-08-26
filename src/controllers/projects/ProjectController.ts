@@ -128,7 +128,8 @@ export class ProjectController {
       ];
     }
 
-    const take = 30;
+    const per_page = Number(req.query.per_page) || 30;
+    const take = Math.min(per_page, 1000);
     const pageNumber = Number(page);
     const skip = pageNumber * take;
 
@@ -140,9 +141,13 @@ export class ProjectController {
     }
 
     try {
-      // Consulta otimizada com includes seletivos
       const projects = await prisma.project.findMany({
-        where: query,
+        where: {
+          status_project: {
+            notIn: ["Pending"]
+          },
+          ...query
+        },
         select: {
           id: true,
           contract_number: true,
@@ -336,7 +341,12 @@ export class ProjectController {
 
       // Consulta do total apenas uma vez
       const total = await prisma.project.count({
-        where: query,
+        where: {
+          status_project: {
+            notIn: ["Pending"]
+          },
+          ...query
+        }
       });
 
       let amount = pageNumber * take + projectsWithCalculations.length;
