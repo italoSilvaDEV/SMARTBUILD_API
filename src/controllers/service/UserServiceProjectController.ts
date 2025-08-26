@@ -251,19 +251,13 @@ export class UserServiceProjectController {
         },
         include: {
           service_project: {
-            select: {
-              id: true,
-              name: true,
+            include: {
               Project: {
-                select: {
-                  id: true,
-                  location: true,
-                  lat: true,
-                  log: true,
-                  radius: true
-                }
-              }
-            }
+                include: {
+                  client: true,
+                },
+              },
+            },
           },
         },
         // Ordenar para garantir consistência
@@ -274,15 +268,16 @@ export class UserServiceProjectController {
 
       // Remover duplicações baseado no service_project.id e garantir que o usuário é responsável
       const uniqueServices = new Map();
-
+      
       for (const usp of userServiceProjects) {
         const serviceId = usp.service_project.id;
         const serviceName = usp.service_project.name;
-
+        
         // Verificar se já existe um serviço com o mesmo nome e endereço
-        const key = `${serviceName}_${usp.service_project.Project?.location || 'no-address'}`;
-
+        const key = `${serviceName}_${usp.service_project.Project?.client?.location || 'no-address'}`;
+        
         if (!uniqueServices.has(key)) {
+          // Verificar se o usuário realmente tem permissão para bater ponto neste serviço
           const hasActiveUserService = await prisma.userServiceProject.findFirst({
             where: {
               id: usp.id,
@@ -301,18 +296,20 @@ export class UserServiceProjectController {
               }
             }
           });
-
+          
           if (hasActiveUserService) {
             uniqueServices.set(key, usp);
           }
         }
       }
 
+      // Formatação do resultado no formato solicitado
       const formattedResult = Array.from(uniqueServices.values()).map((usp) => ({
         id_userServiceProject: usp.id,
         name_service: usp.service_project.name,
-        address_client: usp.service_project.Project?.location || "Endereço não informado",
+        address_client: usp.service_project.Project?.client?.location || "Endereço não informado",
         selected: false,
+        // Adicionar informações para debug se necessário
         project_status: usp.service_project.Project?.status_project,
         service_status: usp.service_project.status
       }));
