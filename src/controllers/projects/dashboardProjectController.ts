@@ -116,17 +116,12 @@ export class DashboardProjectController {
                 }
             }
 
-            const statusFilter = status_project 
-                ? [status_project as string] 
-                : validStatusProjects;
+            const shouldFilterByStatus = !!status_project;
 
             const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: {
-                            in: statusFilter
-                        }
                     },
                     status: "approved",
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -144,9 +139,9 @@ export class DashboardProjectController {
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
-                    status_project: {
-                        in: statusFilter
-                    }
+                    ...(shouldFilterByStatus && {
+                        status_project: status_project as string
+                    })
                 },
                 _sum: {
                     price: true
@@ -163,9 +158,9 @@ export class DashboardProjectController {
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
-                    status_project: {
-                        in: statusFilter
-                    }
+                    ...(shouldFilterByStatus && {
+                        status_project: status_project as string
+                    })
                 },
                 _avg: {
                     price: true
@@ -178,9 +173,6 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: {
-                            in: statusFilter
-                        }
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
@@ -192,9 +184,6 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: {
-                            in: statusFilter
-                        }
                     },
                     status: "approved",
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -211,9 +200,6 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: {
-                            in: statusFilter
-                        }
                     },
                     status: {
                         in: ["approved"]
@@ -234,9 +220,9 @@ export class DashboardProjectController {
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
-                    status_project: {
-                        in: statusFilter
-                    }
+                    ...(shouldFilterByStatus && {
+                        status_project: status_project as string
+                    })
                 },
                 select: {
                     price: true,
