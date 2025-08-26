@@ -182,11 +182,6 @@ export class ProjectController {
               hours: true,
               price: true,
               stages: true,
-              costProject: {
-                select: {
-                  price: true,
-                }
-              }
             }
           },
           _count: {
