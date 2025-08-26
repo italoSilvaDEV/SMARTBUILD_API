@@ -410,18 +410,43 @@ export class TimeController {
                         weekOvertimeHours = totalWeekHours - 40;
                     }
 
+                    // Calculate price only once for the week
+                    const weeklyPrice = weekAttendances[0]?.user?.hourly_price
+                        ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
+                        : 0;
+
+                    // Distribute price proportionally among daily records
+                    const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
+
                     attendancesWithHours.forEach(attendance => {
-                        const totalHours = attendance.dailyHours;
-                        const calculatedPrice = attendance.user.hourly_price
-                            ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
+                        // Calculate proportional price for this daily record
+                        const proportionalPrice = totalDailyHours > 0 
+                            ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                             : 0;
+
+                        // Calculate individual daily regular/overtime hours
+                        let dailyRegularHours = 0;
+                        let dailyOvertimeHours = 0;
+
+                        if (totalWeekHours <= 40) {
+                            // All hours are regular
+                            dailyRegularHours = attendance.dailyHours;
+                            dailyOvertimeHours = 0;
+                        } else {
+                            // Distribute regular hours proportionally
+                            const regularProportion = weekRegularHours / totalWeekHours;
+                            const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                            
+                            dailyRegularHours = attendance.dailyHours * regularProportion;
+                            dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
+                        }
 
                         allFormattedAttendances.push({
                             user: attendance.user,
-                            hours_worked: totalHours,
-                            regular_hours: weekRegularHours,
-                            overtime_hours: weekOvertimeHours,
-                            price: calculatedPrice
+                            hours_worked: attendance.dailyHours,
+                            regular_hours: parseFloat(dailyRegularHours.toFixed(2)),
+                            overtime_hours: parseFloat(dailyOvertimeHours.toFixed(2)),
+                            price: parseFloat(proportionalPrice.toFixed(2))
                         });
                     });
                 });
@@ -540,20 +565,46 @@ export class TimeController {
                                     weekOvertimeHours = totalWeekHours - 40;
                                 }
 
+                                // Calculate price only once for the week
+                                const weeklyPrice = weekAttendances[0]?.user?.hourly_price
+                                    ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
+                                    : 0;
+
+                                // Distribute price proportionally among daily records
+                                const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
+
                                 attendancesWithHours.forEach(attendance => {
-                                    const calculatedPrice = attendance.user.hourly_price
-                                        ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
+                                    // Calculate proportional price for this daily record
+                                    const proportionalPrice = totalDailyHours > 0 
+                                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                                         : 0;
+
+                                    // Calculate individual daily regular/overtime hours
+                                    let dailyRegularHours = 0;
+                                    let dailyOvertimeHours = 0;
+
+                                    if (totalWeekHours <= 40) {
+                                        // All hours are regular
+                                        dailyRegularHours = attendance.dailyHours;
+                                        dailyOvertimeHours = 0;
+                                    } else {
+                                        // Distribute regular hours proportionally
+                                        const regularProportion = weekRegularHours / totalWeekHours;
+                                        const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                                        
+                                        dailyRegularHours = attendance.dailyHours * regularProportion;
+                                        dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
+                                    }
 
                                     result.push({
                                         nameWorker: attendance.user.name,
                                         date: attendance.date,
                                         in: attendance.check_in_time,
                                         out: attendance.check_out_time,
-                                        regular_hours: weekRegularHours,
-                                        overtime_hours: weekOvertimeHours,
+                                        regular_hours: parseFloat(dailyRegularHours.toFixed(2)),
+                                        overtime_hours: parseFloat(dailyOvertimeHours.toFixed(2)),
                                         total_hours: attendance.dailyHours,
-                                        price: calculatedPrice
+                                        price: parseFloat(proportionalPrice.toFixed(2))
                                     });
                                 });
                             });
@@ -1155,17 +1206,43 @@ export class TimeController {
                     weekOvertimeHours = totalWeekHours - 40;
                 }
 
+                // Calculate price only once for the week
+                const weeklyPrice = existWorker?.hourly_price
+                    ? (weekRegularHours * existWorker.hourly_price) + (weekOvertimeHours * existWorker.hourly_price * 1.5)
+                    : 0;
+
+                // Distribute price proportionally among daily records
+                const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
+
                 attendancesWithHours.forEach(attendance => {
-                    const calculatedPrice = attendance.user.hourly_price
-                        ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
+                    // Calculate proportional price for this daily record
+                    const proportionalPrice = totalDailyHours > 0 
+                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
                         : 0;
+
+                    // Calculate individual daily regular/overtime hours
+                    let dailyRegularHours = 0;
+                    let dailyOvertimeHours = 0;
+
+                    if (totalWeekHours <= 40) {
+                        // All hours are regular
+                        dailyRegularHours = attendance.dailyHours;
+                        dailyOvertimeHours = 0;
+                    } else {
+                        // Distribute regular hours proportionally
+                        const regularProportion = weekRegularHours / totalWeekHours;
+                        const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                        
+                        dailyRegularHours = attendance.dailyHours * regularProportion;
+                        dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
+                    }
 
                     formattedResult.push({
                         ...attendance,
                         hours_worked: attendance.dailyHours,
-                        regular_hours: weekRegularHours,
-                        overtime_hours: weekOvertimeHours,
-                        price: calculatedPrice
+                        regular_hours: parseFloat(dailyRegularHours.toFixed(2)),
+                        overtime_hours: parseFloat(dailyOvertimeHours.toFixed(2)),
+                        price: parseFloat(proportionalPrice.toFixed(2))
                     });
                 });
             });
