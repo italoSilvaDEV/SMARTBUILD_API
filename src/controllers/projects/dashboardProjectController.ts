@@ -4,7 +4,7 @@ import { Request, Response } from "express";
 export class DashboardProjectController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params;
-        const { period = "thisYear" } = req.query;
+        const { period = "thisYear", status_project } = req.query;
 
         if (!companyId) {
             return res.status(400).json({
@@ -20,6 +20,12 @@ export class DashboardProjectController {
             "thisMonth",
             "last30Days",
             "allPeriod"
+        ];
+
+        const validStatusProjects = [
+            "Pre-Start",
+            "Finished",
+            "In Progress"
         ];
 
         if (!validPeriods.includes(period as string)) {
@@ -117,7 +123,10 @@ export class DashboardProjectController {
             const totalSalesProjectsResult = await prisma.project.aggregate({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter
+                    date_creation: dateFilter,
+                    status_project: {
+                        in: validStatusProjects
+                    }
                 },
                 _sum: {
                     price: true
@@ -131,7 +140,10 @@ export class DashboardProjectController {
             const averageValueResult = await prisma.project.aggregate({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter
+                    date_creation: dateFilter,
+                    status_project: {
+                        in: validStatusProjects
+                    }
                 },
                 _avg: {
                     price: true
@@ -182,7 +194,10 @@ export class DashboardProjectController {
             const projectsForChart = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter
+                    date_creation: dateFilter,
+                    status_project: {
+                        in: validStatusProjects
+                    }
                 },
                 select: {
                     price: true,
