@@ -34,6 +34,12 @@ export class DashboardProjectController {
             });
         }
 
+        if (status_project && !validStatusProjects.includes(status_project as string)) {
+            return res.status(400).json({
+                error: `Invalid status_project. Valid values are: ${validStatusProjects.join(", ")}`
+            });
+        }
+
         const company = await prisma.company.findUnique({
             where: {
                 id: companyId
@@ -102,18 +108,30 @@ export class DashboardProjectController {
 
             const { startDate, endDate, monthsToShow } = getDateRange(period as string);
 
-            const dateFilter: any = { gte: startDate };
-            if (endDate) {
-                dateFilter.lte = endDate;
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
             }
+
+            const statusFilter = status_project 
+                ? [status_project as string] 
+                : validStatusProjects;
 
             const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: {
+                            in: statusFilter
+                        }
                     },
                     status: "approved",
-                    date_creation: dateFilter
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    })
                 },
                 _sum: {
                     totalAmount: true
@@ -123,9 +141,11 @@ export class DashboardProjectController {
             const totalSalesProjectsResult = await prisma.project.aggregate({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter,
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    }),
                     status_project: {
-                        in: validStatusProjects
+                        in: statusFilter
                     }
                 },
                 _sum: {
@@ -140,9 +160,11 @@ export class DashboardProjectController {
             const averageValueResult = await prisma.project.aggregate({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter,
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    }),
                     status_project: {
-                        in: validStatusProjects
+                        in: statusFilter
                     }
                 },
                 _avg: {
@@ -155,19 +177,29 @@ export class DashboardProjectController {
             const totalEstimates = await prisma.estimate.count({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: {
+                            in: statusFilter
+                        }
                     },
-                    date_creation: dateFilter
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    })
                 }
             });
 
             const approvedEstimates = await prisma.estimate.count({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: {
+                            in: statusFilter
+                        }
                     },
                     status: "approved",
-                    date_creation: dateFilter
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    })
                 }
             });
 
@@ -178,12 +210,17 @@ export class DashboardProjectController {
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: {
+                            in: statusFilter
+                        }
                     },
                     status: {
                         in: ["approved"]
                     },
-                    date_creation: dateFilter
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    })
                 },
                 select: {
                     totalAmount: true,
@@ -194,9 +231,11 @@ export class DashboardProjectController {
             const projectsForChart = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
-                    date_creation: dateFilter,
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    }),
                     status_project: {
-                        in: validStatusProjects
+                        in: statusFilter
                     }
                 },
                 select: {
