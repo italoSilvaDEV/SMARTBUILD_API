@@ -766,7 +766,7 @@ export class BusinessDashboardController {
                     }
 
                     const amount = Number(invoice.totalAmount || 0);
-                    if (invoice.status === 'PAID') {
+                    if (invoice.status === 'paid') {
                         acc[monthYear].paid += amount;
                     } else if (invoice.dueDate && new Date(invoice.dueDate) < now) {
                         acc[monthYear].overdue += amount;
