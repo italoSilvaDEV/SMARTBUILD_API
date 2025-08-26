@@ -25,6 +25,12 @@ interface WorkerGroup {
     price: number;
 }
 
+function getWeekKey(date: Date): string {
+    const dateTime = DateTime.fromJSDate(date);
+    const startOfWeek = dateTime.weekday === 7 ? dateTime.startOf('day') : dateTime.minus({ days: dateTime.weekday }).startOf('day');
+    return startOfWeek.toFormat('yyyy-MM-dd');
+}
+
 // Helper function to calculate regular and overtime hours
 function calculateHours(checkIn: Date, checkOut: Date, workStartTime?: string | null, workEndTime?: string | null, isOverTime?: boolean) {
     const checkInTime = DateTime.fromJSDate(checkIn);
@@ -356,44 +362,71 @@ export class TimeController {
                 newDeadline
             );
 
-            // Processar todos os registros
-            const allFormattedAttendances = allAttendances.map(x => {
-                let regularHours = 0;
-                let overtimeHours = 0;
-
-                if (x.check_out_time && x.check_in_time) {
-                    // const hours = calculateHours(
-                    //     x.check_in_time,
-                    //     x.check_out_time,
-                    //     String(x.workStartTime),
-                    //     String(x.workEndTime),
-                    //     x.user.isOverTime || false
-                    // );
-                    const hours = calcularHorasTrabalhadas(
-                        x.check_in_time.toISOString(),
-                        x.check_out_time.toISOString(),
-                        x.workStartTime,
-                        x.workEndTime,
-                    );
-                    regularHours = convertHHMMToDecimal(hours.normais);
-                    overtimeHours = convertHHMMToDecimal(hours.extras);
+            const attendancesByUser = allAttendances.reduce((users, attendance) => {
+                const userId = attendance.user.id;
+                if (!users[userId]) {
+                    users[userId] = [];
                 }
+                users[userId].push(attendance);
+                return users;
+            }, {} as Record<string, typeof allAttendances>);
 
-                const totalHours = regularHours + overtimeHours;
-                const calculatedPrice = x.user.hourly_price
-                    ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
-                    : 0;
+            const allFormattedAttendances: any[] = [];
 
-                return {
-                    user: x.user,
-                    hours_worked: totalHours,
-                    regular_hours: regularHours,
-                    overtime_hours: overtimeHours,
-                    price: calculatedPrice
-                };
+            Object.values(attendancesByUser).forEach(userAttendances => {
+                const attendancesByWeek = userAttendances.reduce((weeks, attendance) => {
+                    if (attendance.check_out_time && attendance.check_in_time) {
+                        const weekKey = getWeekKey(attendance.date);
+                        if (!weeks[weekKey]) {
+                            weeks[weekKey] = [];
+                        }
+                        weeks[weekKey].push(attendance);
+                    }
+                    return weeks;
+                }, {} as Record<string, typeof userAttendances>);
+
+                Object.values(attendancesByWeek).forEach(weekAttendances => {
+                    let totalWeekHours = 0;
+                    const attendancesWithHours = weekAttendances.map(attendance => {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time!.toISOString(),
+                            attendance.check_out_time!.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+                        const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        totalWeekHours += dailyHours;
+                        return { ...attendance, dailyHours };
+                    });
+
+                    let weekRegularHours = 0;
+                    let weekOvertimeHours = 0;
+
+                    if (totalWeekHours <= 40) {
+                        weekRegularHours = totalWeekHours;
+                        weekOvertimeHours = 0;
+                    } else {
+                        weekRegularHours = 40;
+                        weekOvertimeHours = totalWeekHours - 40;
+                    }
+
+                    attendancesWithHours.forEach(attendance => {
+                        const totalHours = attendance.dailyHours;
+                        const calculatedPrice = attendance.user.hourly_price
+                            ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
+                            : 0;
+
+                        allFormattedAttendances.push({
+                            user: attendance.user,
+                            hours_worked: totalHours,
+                            regular_hours: weekRegularHours,
+                            overtime_hours: weekOvertimeHours,
+                            price: calculatedPrice
+                        });
+                    });
+                });
             });
 
-            // Agrupar por usuário
             const workersGroupedByUser = allFormattedAttendances.reduce((acc: Record<string, WorkerGroup>, current) => {
                 const userId = current.user.id;
 
@@ -423,9 +456,8 @@ export class TimeController {
                 price: parseFloat((worker as WorkerGroup).price.toFixed(2))
             }));
 
-            // Ajustar a paginação dos workers
             const pageSize = 10;
-            const skip = page * pageSize; // Remover o -1 pois agora usamos a página como está
+            const skip = page * pageSize;
             const consolidatedWorkersPage = consolidatedWorkers
                 .sort((a, b) => a.user.name.localeCompare(b.user.name))
                 .slice(skip, skip + pageSize);
@@ -445,53 +477,90 @@ export class TimeController {
                     clientAddress: i.client?.location,
                     clientCityAndState: i.client?.city_and_state,
                     serviceCount: i.serviceProject.length,
-                    workerData: i.serviceProject
-                        .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
-                        .flatMap(s => s.UserServiceProject
-                            .filter(user => user.user_attendances.length > 0) // Filtra para garantir que há dados em user_attendances
-                            .flatMap(user => user.user_attendances
-                                .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
-                                .map(x => {
-                                    let regularHours = 0;
-                                    let overtimeHours = 0;
+                    workerData: (() => {
+                        // Coletar todas as attendances do projeto
+                        const projectAttendances = i.serviceProject
+                            .filter(s => s.UserServiceProject.length > 0)
+                            .flatMap(s => s.UserServiceProject
+                                .filter(user => user.user_attendances.length > 0)
+                                .flatMap(user => user.user_attendances
+                                    .filter(x => x.check_out_time && x.check_in_time)
+                                    .map(x => ({ ...x, serviceName: s.name }))
+                                )
+                            );
 
-                                    if (x.check_out_time && x.check_in_time) {
-                                        // const hours = calculateHours(
-                                        //     x.check_in_time,
-                                        //     x.check_out_time,
-                                        //     String(x.workStartTime),
-                                        //     String(x.workEndTime),
-                                        //     x.user.isOverTime || false
-                                        // );
-                                        const hours = calcularHorasTrabalhadas(
-                                            x.check_in_time.toISOString(),
-                                            x.check_out_time.toISOString(),
-                                            x.workStartTime,
-                                            x.workEndTime,
-                                        );
-                                        regularHours = convertHHMMToDecimal(hours.normais);
-                                        overtimeHours = convertHHMMToDecimal(hours.extras);
-                                        // regularHours = hours.regularHours;
-                                        // overtimeHours = hours.overtimeHours;
-                                    }
+                        // Agrupar por usuário e depois por semana
+                        const attendancesByUser = projectAttendances.reduce((users, attendance) => {
+                            const userId = attendance.user.id;
+                            if (!users[userId]) {
+                                users[userId] = [];
+                            }
+                            users[userId].push(attendance);
+                            return users;
+                        }, {} as Record<string, typeof projectAttendances>);
 
-                                    const totalHours = regularHours + overtimeHours;
-                                    const calculatedPrice = x.user.hourly_price
-                                        ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
+                        const result: any[] = [];
+
+                        Object.values(attendancesByUser).forEach(userAttendances => {
+                            // Agrupar attendances do usuário por semana
+                            const attendancesByWeek = userAttendances.reduce((weeks, attendance) => {
+                                const weekKey = getWeekKey(attendance.date);
+                                if (!weeks[weekKey]) {
+                                    weeks[weekKey] = [];
+                                }
+                                weeks[weekKey].push(attendance);
+                                return weeks;
+                            }, {} as Record<string, typeof userAttendances>);
+
+                            // Processar cada semana do usuário
+                            Object.values(attendancesByWeek).forEach(weekAttendances => {
+                                // Calcular total de horas da semana
+                                let totalWeekHours = 0;
+                                const attendancesWithHours = weekAttendances.map(attendance => {
+                                    const hours = calcularHorasTrabalhadas(
+                                        attendance.check_in_time!.toISOString(),
+                                        attendance.check_out_time!.toISOString(),
+                                        attendance.workStartTime,
+                                        attendance.workEndTime,
+                                    );
+                                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                                    totalWeekHours += dailyHours;
+                                    return { ...attendance, dailyHours };
+                                });
+
+                                // Aplicar regra de 40h semanais (domingo a sábado)
+                                let weekRegularHours = 0;
+                                let weekOvertimeHours = 0;
+
+                                if (totalWeekHours <= 40) {
+                                    weekRegularHours = totalWeekHours;
+                                    weekOvertimeHours = 0;
+                                } else {
+                                    weekRegularHours = 40;
+                                    weekOvertimeHours = totalWeekHours - 40;
+                                }
+
+                                attendancesWithHours.forEach(attendance => {
+                                    const calculatedPrice = attendance.user.hourly_price
+                                        ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
                                         : 0;
-                                    return ({
-                                        nameWorker: x.user.name,
-                                        date: x.date,
-                                        in: x.check_in_time,
-                                        out: x.check_out_time,
-                                        regular_hours: regularHours,
-                                        overtime_hours: overtimeHours,
-                                        total_hours: totalHours,
+
+                                    result.push({
+                                        nameWorker: attendance.user.name,
+                                        date: attendance.date,
+                                        in: attendance.check_in_time,
+                                        out: attendance.check_out_time,
+                                        regular_hours: weekRegularHours,
+                                        overtime_hours: weekOvertimeHours,
+                                        total_hours: attendance.dailyHours,
                                         price: calculatedPrice
-                                    })
-                                })
-                            )
-                        )
+                                    });
+                                });
+                            });
+                        });
+
+                        return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    })()
                 })),
                 workers: consolidatedWorkersPage,
                 totalPages: Math.ceil(consolidatedWorkers.length / pageSize)
@@ -1029,46 +1098,78 @@ export class TimeController {
                 }
             });
 
-            // Calcular horas trabalhadas apenas para o worker específico
-            const formattedResult = projects.flatMap(i => i.serviceProject
+            const allAttendances = projects.flatMap(i => i.serviceProject
                 .filter(s => s.UserServiceProject.length > 0)
                 .flatMap(s => s.UserServiceProject
                     .filter(user => user.user_attendances.length > 0)
                     .flatMap(user => user.user_attendances
-                        .map(x => {
-                            let regularHours = 0;
-                            let overtimeHours = 0;
-
-                            if (x.check_out_time && x.check_in_time) {
-                                const hours = calcularHorasTrabalhadas(
-                                    x.check_in_time.toISOString(),
-                                    x.check_out_time.toISOString(),
-                                    x.workStartTime,
-                                    x.workEndTime,
-                                );
-                                regularHours = convertHHMMToDecimal(hours.normais);
-                                overtimeHours = convertHHMMToDecimal(hours.extras);
-                            }
-
-                            const totalHours = regularHours + overtimeHours;
-                            const calculatedPrice = x.user.hourly_price
-                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
-                                : 0;
-                            return ({
-                                ...x,
-                                userId: x.user_id,
-                                hours_worked: totalHours,
-                                regular_hours: regularHours,
-                                overtime_hours: overtimeHours,
-                                price: calculatedPrice,
-                                serviceName: s.name
-                            })
-                        })
+                        .map(x => ({
+                            ...x,
+                            userId: x.user_id,
+                            serviceName: s.name
+                        }))
                     )
                 )
             );
 
-            // ✅ ADICIONADO: Aplicar paginação no resultado
+            const attendancesByWeek = allAttendances.reduce((weeks, attendance) => {
+                const weekKey = getWeekKey(attendance.check_in_time);
+
+                if (!weeks[weekKey]) {
+                    weeks[weekKey] = [];
+                }
+
+                weeks[weekKey].push(attendance);
+                return weeks;
+            }, {} as Record<string, any[]>);
+
+            const formattedResult: any[] = [];
+
+            Object.values(attendancesByWeek).forEach(weekAttendances => {
+                let totalWeekHours = 0;
+                const attendancesWithHours = weekAttendances.map(attendance => {
+                    let dailyHours = 0;
+
+                    if (attendance.check_out_time && attendance.check_in_time) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    }
+
+                    totalWeekHours += dailyHours;
+                    return { ...attendance, dailyHours };
+                });
+
+                let weekRegularHours = 0;
+                let weekOvertimeHours = 0;
+
+                if (totalWeekHours <= 40) {
+                    weekRegularHours = totalWeekHours;
+                    weekOvertimeHours = 0;
+                } else {
+                    weekRegularHours = 40;
+                    weekOvertimeHours = totalWeekHours - 40;
+                }
+
+                attendancesWithHours.forEach(attendance => {
+                    const calculatedPrice = attendance.user.hourly_price
+                        ? (weekRegularHours * attendance.user.hourly_price) + (weekOvertimeHours * attendance.user.hourly_price * 1.5)
+                        : 0;
+
+                    formattedResult.push({
+                        ...attendance,
+                        hours_worked: attendance.dailyHours,
+                        regular_hours: weekRegularHours,
+                        overtime_hours: weekOvertimeHours,
+                        price: calculatedPrice
+                    });
+                });
+            });
+
             const sortedResult = formattedResult.sort((a, b) =>
                 new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
             );
