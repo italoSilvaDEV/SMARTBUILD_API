@@ -13,8 +13,8 @@ export class QuickBooksController {
   async authorize(req: Request, res: Response) {
     try {
       const { userId, companyId } = req.params;
-      console.log("valor do userId", userId)
-      console.log("valor do companyId", companyId)
+      // console.log("valor do userId", userId)
+      // console.log("valor do companyId", companyId)
       if (!userId || !companyId) {
         return res.status(400).json({ error: "Missing userId/companyId" });
       }
@@ -31,7 +31,7 @@ export class QuickBooksController {
 
       // Construir o redirectUri combinando URL_API e a rota de callback
       const redirectUri = `${process.env.URL_API}${process.env.QUICKBOOKS_CALLBACK_PATH}`;
-      console.log("valor do redirectUri", redirectUri)
+      // console.log("valor do redirectUri", redirectUri)
 
       // emite nonce seguro e salva contexto
       const nonce = await issueState(userId, companyId);
@@ -49,7 +49,7 @@ export class QuickBooksController {
 
       // Construir URL de autorização
       const authorizationUri = oauthClient.authorizeUri(authParams);
-      console.log("valor do authorizationUri", authorizationUri)
+      // console.log("valor do authorizationUri", authorizationUri)
 
       return res.status(200).json({ url: authorizationUri });
     } catch (error) {
@@ -112,14 +112,14 @@ export class QuickBooksController {
         x_refresh_token_expires_in, // pode vir
       } = tokenResp.data;
 
-    
+
       // calcula expiração do access token
       const expiresAt = new Date(Date.now() + Number(expires_in) * 1000);
       const refreshExpiresAt = x_refresh_token_expires_in
         ? new Date(Date.now() + Number(x_refresh_token_expires_in) * 1000)
         : undefined;
 
-       // Verificar se já existe uma conta QuickBooks para esta empresa
+      // Verificar se já existe uma conta QuickBooks para esta empresa
       let account = await prisma.quickBooksAccount.findUnique({
         where: { company_id: companyId },
       });
@@ -144,7 +144,7 @@ export class QuickBooksController {
           console.log("Empresa ja conectada a outra empresa: ", account.companyName)
           return res.redirect(
             `${process.env.URL_FRONT}/stripe-config?error=different_company&msg=${encodeURIComponent(
-              `Esta empresa já está conectada à empresa QuickBooks: ${account.companyName || account.realmId}. Conecte-se com a mesma empresa.`
+              `This company is already connected to the QuickBooks company: ${account.companyName || account.realmId}. Please connect to the same company.`
             )}`
           );
         }
@@ -185,18 +185,18 @@ export class QuickBooksController {
         const api = qboClientForAccount(account.id);
         const { data } = await api.get(`/companyinfo/${account.realmId}`);
         console.log("valor do data: ", JSON.stringify(data, null, 2))
-        
+
         // Corrigido: dados vêm direto na resposta, não em QueryResponse
         const companyInfo = data?.CompanyInfo;
 
         if (companyInfo) {
           const updateData: any = {};
-          
+
           // Nome da empresa
           if (companyInfo.CompanyName) {
             updateData.companyName = companyInfo.CompanyName;
           }
-          
+
           // Endereço da empresa  
           if (companyInfo.CompanyAddr) {
             const addr = companyInfo.CompanyAddr;
@@ -231,13 +231,13 @@ export class QuickBooksController {
           // Capturar informações adicionais do NameValue array
           if (companyInfo.NameValue && Array.isArray(companyInfo.NameValue)) {
             const nameValues = companyInfo.NameValue;
-            
+
             // Buscar tipo de empresa
             const companyType = nameValues.find((nv: any) => nv.Name === 'CompanyType');
             if (companyType?.Value && !updateData.businessType) {
               updateData.businessType = companyType.Value;
             }
-            
+
             // Buscar tipo de indústria
             const industryType = nameValues.find((nv: any) => nv.Name === 'QBOIndustryType');
             if (industryType?.Value) {
@@ -297,9 +297,9 @@ export class QuickBooksController {
 
       // Verificar se o usuário tem acesso à empresa
       const userCompany = await prisma.userCompany.findFirst({
-        where: { 
-          userId: userId, 
-          companyId: companyId 
+        where: {
+          userId: userId,
+          companyId: companyId
         }
       });
 
@@ -457,9 +457,9 @@ export class QuickBooksController {
 
       // Verificar se o usuário tem acesso à empresa
       const userCompany = await prisma.userCompany.findFirst({
-        where: { 
-          userId: userId, 
-          companyId: companyId 
+        where: {
+          userId: userId,
+          companyId: companyId
         }
       });
 
@@ -520,9 +520,9 @@ export class QuickBooksController {
 
       // Verificar se o usuário tem acesso à empresa
       const userCompany = await prisma.userCompany.findFirst({
-        where: { 
-          userId: userId, 
-          companyId: companyId 
+        where: {
+          userId: userId,
+          companyId: companyId
         }
       });
 
@@ -573,7 +573,7 @@ export class QuickBooksController {
       // Marcar a conta QuickBooks como desabilitada ao invés de deletar
       await prisma.quickBooksAccount.update({
         where: { id: quickBooksAccount.id },
-        data: { 
+        data: {
           isDisabled: true,
           updatedAt: new Date()
         }
@@ -670,9 +670,9 @@ export class QuickBooksController {
 
       // Verificar se o usuário tem acesso à empresa
       const userCompany = await prisma.userCompany.findFirst({
-        where: { 
-          userId: userId, 
-          companyId: companyId 
+        where: {
+          userId: userId,
+          companyId: companyId
         }
       });
 
@@ -682,7 +682,7 @@ export class QuickBooksController {
 
       // Buscar a conta QuickBooks desabilitada da empresa
       const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: { 
+        where: {
           company_id: companyId,
           isDisabled: true
         }
