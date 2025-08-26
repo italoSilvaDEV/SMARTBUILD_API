@@ -24,8 +24,12 @@ export class DashboardProjectController {
 
         const validStatusProjects = [
             "Pre-Start",
+            "In Progress",
+            "Final walkthrough",
             "Finished",
-            "In Progress"
+            "Waiting for Decision",
+            "Denied",
+            "Canceled",
         ];
 
         if (!validPeriods.includes(period as string)) {
