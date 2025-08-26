@@ -139,7 +139,7 @@ export class BusinessDashboardController {
                 customers,
                 employees,
                 inProgressProjects,
-                pendingEstimates,
+                preStartProjects,
                 completedProjects,
                 jobsSchedule 
             ] = await Promise.all([
@@ -198,13 +198,11 @@ export class BusinessDashboardController {
                         })
                     }
                 }),
-                // Pending Estimates
-                prisma.estimate.count({
+                // Pre-Start Projects
+                prisma.project.count({
                     where: {
-                        project: {
-                            company_id: valid.response?.id
-                        },
-                        status: "pending",
+                        company_id: valid.response?.id,
+                        status_project: "Pre-Start",
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
@@ -246,7 +244,7 @@ export class BusinessDashboardController {
                 customers: Number(customers),
                 employees,
                 inProgressProjects,
-                pendingEstimates,
+                preStartProjects,
                 completedProjects,
                 jobsSchedule 
             });
@@ -643,7 +641,7 @@ export class BusinessDashboardController {
                 prisma.invoice.findMany({
                     where: {
                         companyId: valid.response?.id,
-                        status: 'PAID',
+                        status: 'paid',
                         ...(Object.keys(dateFilter).length > 0 && {
                             createdAt: dateFilter
                         })
@@ -768,7 +766,7 @@ export class BusinessDashboardController {
                     }
 
                     const amount = Number(invoice.totalAmount || 0);
-                    if (invoice.status === 'PAID') {
+                    if (invoice.status === 'paid') {
                         acc[monthYear].paid += amount;
                     } else if (invoice.dueDate && new Date(invoice.dueDate) < now) {
                         acc[monthYear].overdue += amount;

@@ -38,18 +38,18 @@ export class UserAttendanceController {
                     }
                 }
             });
-            
+
             if (!serviceProjectExists) {
                 res.status(400).json({ error: 'UserServiceProject not found.' });
                 return;
             }
 
             // VALIDAÇÕES CRÍTICAS PARA EVITAR BUG DO "LIMBO"
-            
+
             // 1. Verificar se o projeto não está cancelado
             const project = serviceProjectExists.service_project.Project;
             if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
-                res.status(400).json({ 
+                res.status(400).json({
                     error: 'Cannot check in to a canceled or rejected project.',
                     project_status: project.status_project
                 });
@@ -59,7 +59,7 @@ export class UserAttendanceController {
             // 2. Verificar se o serviço não está cancelado
             const service = serviceProjectExists.service_project;
             if (service.status === 'Canceled') {
-                res.status(400).json({ 
+                res.status(400).json({
                     error: 'Cannot check in to a canceled service.',
                     service_status: service.status
                 });
@@ -86,7 +86,7 @@ export class UserAttendanceController {
             });
 
             if (!validUserService) {
-                res.status(400).json({ 
+                res.status(400).json({
                     error: 'User is not authorized to check in to this service or the service/project is not active.'
                 });
                 return;
@@ -107,7 +107,7 @@ export class UserAttendanceController {
                 });
                 return;
             }
-         
+
             await prisma.serviceProject.update({
                 where: { id: serviceProjectExists.service_project_id },
                 data: {
@@ -124,7 +124,7 @@ export class UserAttendanceController {
                     check_in_address: address,
                     check_in_latitude: latitude,
                     check_in_longitude: longitude,
-                    workStartTime:  userExists.isOverTime ? userExists.company?.workStartTime : null,
+                    workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
                     workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
                 },
             });
@@ -214,11 +214,11 @@ export class UserAttendanceController {
             // Formata o resultado para incluir o nome do ServiceProject diretamente na resposta
             const formattedAttendances = activeAttendances.map((attendance) => ({
                 ...attendance,
-                idServiceProject: attendance.UserServiceProject?.service_project?.id || null,         
+                idServiceProject: attendance.UserServiceProject?.service_project?.id || null,
                 service_project_name:
                     attendance.UserServiceProject?.service_project?.name || null,
             }));
-            console.log('formattedAttendances',formattedAttendances)
+            console.log('formattedAttendances', formattedAttendances)
             res.status(200).json(formattedAttendances);
         } catch (error) {
             console.error(error);
@@ -228,61 +228,61 @@ export class UserAttendanceController {
 
     async getAttendanceByUserAndService(req: Request, res: Response) {
         const { userId, serviceProjectId } = req.query;
-      
+
         if (!userId || !serviceProjectId) {
-          return res.status(400).json({ error: "UserId and ServiceProjectId are required." });
+            return res.status(400).json({ error: "UserId and ServiceProjectId are required." });
         }
-      
+
         try {
-          // Busca registros de frequência vinculados ao usuário e ao serviço
-          const attendanceRecords = await prisma.userAttendance.findMany({
-            where: {
-              UserServiceProject: {
-                user_id: userId as string,
-                service_project_id: serviceProjectId as string,
-              },
-            },
-          });
-      
-          // Formata os registros para o formato necessário
-          const formattedRecords = attendanceRecords.map((record) => {
-            const checkInTime = new Date(record.check_in_time).toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
+            // Busca registros de frequência vinculados ao usuário e ao serviço
+            const attendanceRecords = await prisma.userAttendance.findMany({
+                where: {
+                    UserServiceProject: {
+                        user_id: userId as string,
+                        service_project_id: serviceProjectId as string,
+                    },
+                },
             });
-      
-            const checkOutTime = record.check_out_time
-              ? new Date(record.check_out_time).toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "N/A";
-      
-            const hoursWorked = record.check_out_time
-              ? Math.abs(
-                  new Date(record.check_out_time).getTime() -
-                  new Date(record.check_in_time).getTime()
-                ) / 36e5 // Converte milissegundos para horas
-              : 0;
-      
-            return {
-              id: record.id,
-              day: new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(
-                new Date(record.date)
-              ),
-              date: new Intl.DateTimeFormat("pt-BR").format(new Date(record.date)),
-              enter: checkInTime,
-              exit: checkOutTime,
-              hours: `${hoursWorked.toFixed(1)} hrs`,
-            };
-          });
-      
-          return res.status(200).json(formattedRecords);
+
+            // Formata os registros para o formato necessário
+            const formattedRecords = attendanceRecords.map((record) => {
+                const checkInTime = new Date(record.check_in_time).toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                });
+
+                const checkOutTime = record.check_out_time
+                    ? new Date(record.check_out_time).toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })
+                    : "N/A";
+
+                const hoursWorked = record.check_out_time
+                    ? Math.abs(
+                        new Date(record.check_out_time).getTime() -
+                        new Date(record.check_in_time).getTime()
+                    ) / 36e5 // Converte milissegundos para horas
+                    : 0;
+
+                return {
+                    id: record.id,
+                    day: new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(
+                        new Date(record.date)
+                    ),
+                    date: new Intl.DateTimeFormat("pt-BR").format(new Date(record.date)),
+                    enter: checkInTime,
+                    exit: checkOutTime,
+                    hours: `${hoursWorked.toFixed(1)} hrs`,
+                };
+            });
+
+            return res.status(200).json(formattedRecords);
         } catch (error) {
-          console.error("Error fetching attendance records:", error);
-          return res.status(500).json({ error: "Internal server error." });
+            console.error("Error fetching attendance records:", error);
+            return res.status(500).json({ error: "Internal server error." });
         }
-      }
+    }
 
     async updateAttendanceTimes(req: Request, res: Response): Promise<void> {
         try {
@@ -295,7 +295,7 @@ export class UserAttendanceController {
                 res.status(404).json({ error: 'Attendance record not found.' });
                 return;
             }
-            
+
             // Valida se as datas são válidas
             const checkInDate = new Date(check_in_time);
             const checkOutDate = check_out_time ? new Date(check_out_time) : null;
@@ -321,34 +321,34 @@ export class UserAttendanceController {
         }
     }
 
-    async changeProject(req: Request, res: Response) { 
+    async changeProject(req: Request, res: Response) {
         try {
             const { attendanceId } = req.params;
             const { newServiceProjectId } = req.body;
-            
+
             if (!attendanceId || !newServiceProjectId) {
                 return res.status(400).json({ error: 'Attendance record ID and new project ID are required' });
             }
-            
+
             // Buscar o registro de presença no banco de dados
-            const attendance = await prisma.userAttendance.findUnique({ 
+            const attendance = await prisma.userAttendance.findUnique({
                 where: { id: attendanceId },
                 include: { user: true }
             });
-            
+
             if (!attendance) {
                 return res.status(404).json({ error: 'Attendance record not found' });
             }
-            
+
             // Verificar se o novo projeto existe
             const serviceProject = await prisma.serviceProject.findUnique({
                 where: { id: newServiceProjectId }
             });
-            
+
             if (!serviceProject) {
                 return res.status(404).json({ error: 'Project not found. Please verify if the project ID is valid.' });
             }
-            
+
             // Buscar ou criar uma relação UserServiceProject
             let userServiceProject = await prisma.userServiceProject.findFirst({
                 where: {
@@ -356,7 +356,7 @@ export class UserAttendanceController {
                     service_project_id: newServiceProjectId
                 }
             });
-            
+
             // Se não existir, criar a relação
             if (!userServiceProject) {
                 userServiceProject = await prisma.userServiceProject.create({
@@ -366,7 +366,7 @@ export class UserAttendanceController {
                     }
                 });
             }
-            
+
             // Atualizar o projeto usando o ID do UserServiceProject
             const updatedAttendance = await prisma.userAttendance.update({
                 where: { id: attendanceId },
@@ -386,7 +386,7 @@ export class UserAttendanceController {
                     }
                 }
             });
-            
+
             return res.status(200).json({
                 message: 'Project changed successfully',
                 attendance: updatedAttendance
@@ -399,15 +399,21 @@ export class UserAttendanceController {
 
     async clockInOut(req: Request, res: Response) {
         try {
-            const { 
-                userId, 
-                serviceProjectId, 
-                checkInTime, 
-                checkOutTime, 
+            const {
+                userId,
+                serviceProjectId,
+                checkInTime,
+                checkOutTime,
                 date
             } = req.body;
 
-            // Verifica se o usuário existe
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "User ID is required"
+                })
+            }
+
             const userExists = await prisma.user.findUnique({
                 where: { id: userId },
                 include: {
@@ -420,19 +426,34 @@ export class UserAttendanceController {
                     }
                 }
             });
+
             if (!userExists) {
-                res.status(400).json({ error: 'User not found.' });
-                return;
-            }
-            // Validar dados obrigatórios
-            if (!userId || !serviceProjectId || !date) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: "Required data not provided" 
+                return res.status(400).json({
+                    success: false,
+                    message: 'User not found.'
                 });
             }
 
-            // Validar se pelo menos um dos horários foi fornecido
+            if (!serviceProjectId || !date) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Required data not provided"
+                });
+            }
+
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: {
+                    id: serviceProjectId
+                }
+            });
+
+            if (!serviceProject) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Service project not found"
+                });
+            }
+
             if (!checkInTime && !checkOutTime) {
                 return res.status(400).json({
                     success: false,
@@ -440,7 +461,6 @@ export class UserAttendanceController {
                 });
             }
 
-            // Criar um novo registro de atendimento ou buscar existente para o mesmo dia
             let attendance;
             const project = await prisma.project.findFirst({
                 where: {
@@ -454,6 +474,7 @@ export class UserAttendanceController {
                     client: true
                 }
             });
+
             if (!project) {
                 return res.status(404).json({
                     success: false,
@@ -461,7 +482,6 @@ export class UserAttendanceController {
                 });
             }
 
-            // Verificar se existe um UserServiceProject válido ou criar um novo
             let userServiceProject = await prisma.userServiceProject.findFirst({
                 where: {
                     user_id: userId,
@@ -477,9 +497,6 @@ export class UserAttendanceController {
             });
 
             if (!userServiceProject) {
-                // VALIDAÇÕES ANTES DE CRIAR NOVO UserServiceProject
-                
-                // Verificar se o serviço existe e está ativo
                 const serviceProject = await prisma.serviceProject.findUnique({
                     where: { id: serviceProjectId },
                     include: {
@@ -494,7 +511,6 @@ export class UserAttendanceController {
                     });
                 }
 
-                // Verificar se o projeto não está cancelado
                 if (serviceProject.Project && ['Canceled', 'Declined', 'Rejected'].includes(serviceProject.Project.status_project)) {
                     return res.status(400).json({
                         success: false,
@@ -528,7 +544,7 @@ export class UserAttendanceController {
                 });
             } else {
                 // VALIDAÇÕES PARA UserServiceProject EXISTENTE
-                
+
                 // Verificar se o projeto não está cancelado
                 const project = userServiceProject.service_project.Project;
                 if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {

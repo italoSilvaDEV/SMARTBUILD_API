@@ -30,6 +30,7 @@ export class GetClientFinancialDetailsController {
                     id: true,
                     name: true,
                     email: true,
+                    location: true,
                     projects: {
                         where: {
                             company_id: String(company_id)
@@ -95,7 +96,8 @@ export class GetClientFinancialDetailsController {
                     id: primaryClient.id,
                     name: primaryClient.name,
                     email: primaryClient.email,
-                    total_records: clients.length
+                    total_records: clients.length,
+                    location: primaryClient.location
                 },
                 financial_summary: {
                     total_revenue: totalRevenue,
