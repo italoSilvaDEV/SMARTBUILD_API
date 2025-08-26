@@ -140,9 +140,13 @@ export class ProjectController {
     }
 
     try {
-      // Consulta otimizada com includes seletivos
       const projects = await prisma.project.findMany({
-        where: query,
+        where: {
+          status_project: {
+            notIn: ["Pending"]
+          },
+          ...query
+        },
         select: {
           id: true,
           contract_number: true,
