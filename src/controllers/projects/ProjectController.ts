@@ -174,7 +174,6 @@ export class ProjectController {
               name: true,
             },
           },
-          // Usar aggregações do Prisma para cálculos pesados
           serviceProject: {
             select: {
               id: true,
@@ -2620,7 +2619,8 @@ export class ProjectController {
       id,
       name,
       description,
-      price
+      price,
+      hours
     } = req.body
 
     if (!id) {
@@ -2641,7 +2641,7 @@ export class ProjectController {
       })
     }
 
-    if (!name && !description && !price) {
+    if (!name && !description && !price && !hours) {
       return res.status(400).json({
         error: "at least one field is required"
       })
@@ -2651,7 +2651,8 @@ export class ProjectController {
       const updateData: {
         name?: string,
         description?: string,
-        price?: number
+        price?: number,
+        hours?: number
       } = {}
 
       if (name !== undefined && name !== service.name && name.trim().length > 0) {
@@ -2663,6 +2664,10 @@ export class ProjectController {
 
       if (price !== undefined && price !== service.price) {
         updateData.price = price
+      }
+
+      if (hours !== undefined && hours !== service.hours) {
+        updateData.hours = hours
       }
 
       const updatedService = await prisma.serviceProject.update({
