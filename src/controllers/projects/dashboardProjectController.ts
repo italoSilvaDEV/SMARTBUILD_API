@@ -1,7 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 
-export class DashboardEstimatesController {
+export class DashboardProjectController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params;
         const { period = "thisYear" } = req.query;
@@ -82,7 +82,7 @@ export class DashboardEstimatesController {
                         break;
 
                     case "allPeriod":
-                        startDate = new Date(2020, 0, 1); // Não será usado, mas mantendo para compatibilidade
+                        startDate = new Date(2020, 0, 1);
                         monthsToShow = 12;
                         break;
 
@@ -96,15 +96,12 @@ export class DashboardEstimatesController {
 
             const { startDate, endDate, monthsToShow } = getDateRange(period as string);
 
-            const dateFilter: any = {};
-            if (period !== "allPeriod") {
-                dateFilter.gte = startDate;
-                if (endDate) {
-                    dateFilter.lte = endDate;
-                }
+            const dateFilter: any = { gte: startDate };
+            if (endDate) {
+                dateFilter.lte = endDate;
             }
 
-            const totalSalesResult = await prisma.estimate.aggregate({
+            const totalSalesEstimatesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
                         company_id: companyId
@@ -117,21 +114,31 @@ export class DashboardEstimatesController {
                 }
             });
 
-            const totalSales = totalSalesResult._sum.totalAmount || 0;
-
-            const averageValueResult = await prisma.estimate.aggregate({
+            const totalSalesProjectsResult = await prisma.project.aggregate({
                 where: {
-                    project: {
-                        company_id: companyId
-                    },
+                    company_id: companyId,
                     date_creation: dateFilter
                 },
-                _avg: {
-                    totalAmount: true
+                _sum: {
+                    price: true
                 }
             });
 
-            const averageValue = averageValueResult._avg.totalAmount || 0;
+            const totalSalesEstimates = totalSalesEstimatesResult._sum.totalAmount || 0;
+            const totalSalesProjects = totalSalesProjectsResult._sum.price || 0;
+            const totalSales = Number(totalSalesEstimates) + Number(totalSalesProjects);
+
+            const averageValueResult = await prisma.project.aggregate({
+                where: {
+                    company_id: companyId,
+                    date_creation: dateFilter
+                },
+                _avg: {
+                    price: true
+                }
+            });
+
+            const averageValue = averageValueResult._avg.price || 0;
 
             const totalEstimates = await prisma.estimate.count({
                 where: {
@@ -172,6 +179,17 @@ export class DashboardEstimatesController {
                 }
             });
 
+            const projectsForChart = await prisma.project.findMany({
+                where: {
+                    company_id: companyId,
+                    date_creation: dateFilter
+                },
+                select: {
+                    price: true,
+                    date_creation: true
+                }
+            });
+
             const monthlyData: { [key: string]: number } = {};
             const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -179,6 +197,14 @@ export class DashboardEstimatesController {
                 const date = new Date(estimate.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
                 const amount = Number(estimate.totalAmount) || 0;
+
+                monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
+            });
+
+            projectsForChart.forEach(project => {
+                const date = new Date(project.date_creation);
+                const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
+                const amount = Number(project.price) || 0;
 
                 monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
             });

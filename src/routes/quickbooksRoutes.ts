@@ -16,14 +16,14 @@ const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
 
 // Rotas de autorização
-quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize);
+quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
-quickbooksRoutes.get("/quickbooks/status/:userId", checkToken, quickbooksController.checkStatus);
-quickbooksRoutes.post("/quickbooks/refresh-token/:userId", checkToken, quickbooksController.refreshToken);
+quickbooksRoutes.get("/quickbooks/status/:userId/:companyId", checkToken, quickbooksController.checkStatus);
+quickbooksRoutes.post("/quickbooks/refresh-token/:userId/:companyId", checkToken, quickbooksController.refreshToken);
 
 //  NOVAS: Rotas de desconexão
-quickbooksRoutes.delete("/quickbooks/disconnect/:userId", checkToken, quickbooksController.disconnect);
-quickbooksRoutes.post("/quickbooks/force-reauth/:userId", checkToken, quickbooksController.forceReauthorization);
+quickbooksRoutes.delete("/quickbooks/disconnect/:userId/:companyId", checkToken, quickbooksController.disconnect);
+quickbooksRoutes.post("/quickbooks/force-reauth/:userId/:companyId", checkToken, quickbooksController.forceReauthorization);
 
 // Rotas de invoice
 quickbooksRoutes.post("/quickbooks/invoice/:projectId", checkToken, quickbooksInvoiceController.createInvoice.bind(quickbooksInvoiceController));

@@ -5,6 +5,7 @@ import Jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { RecoverPassword } from "../../templateEmail/recoverPassword";
+import { CompanyInvitation } from "../../templateEmail/companyInvitation";
 import { INewUser } from "../../DTOs/IUser";
 import { deleteFile } from "../../config/file";
 import { validationResult } from "express-validator";
@@ -118,6 +119,43 @@ export class UserController {
         const uc = await prisma.userCompany.create({
           data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
         });
+
+        // Buscar informações da empresa para o email
+        const company = await prisma.company.findUnique({
+          where: { id: company_id },
+          select: { name: true, avatar: true }
+        });
+
+        if (company) {
+          // SMTP
+          const SMTP_CONFIG = require("../../config/smtp");
+          const transporter = nodemailer.createTransport({
+            host: SMTP_CONFIG.host,
+            port: SMTP_CONFIG.port,
+            secure: SMTP_CONFIG.port === 465,
+            auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
+            tls: { rejectUnauthorized: false },
+          });
+
+          const urlLogo = company.avatar ? await getPresignedUrl(company.avatar) : '';
+          
+          const templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
+          const mailOptions = {
+            from: SMTP_CONFIG.user,
+            to: userExists.email,
+            subject: "Smart Build - Access to New Company",
+            html: templateEmail,
+          };
+
+          try {
+            await transporter.sendMail(mailOptions);
+            console.log(`[create][${reqId}] Email de convite enviado para ${userExists.email}`);
+          } catch (mailErr) {
+            console.error(`[create][${reqId}] Erro ao enviar email de convite:`, mailErr);
+            // Não retorna erro, pois o usuário foi criado com sucesso
+          }
+        }
+
         return res.status(201).json({ message: "User created successfully" });
       }
 

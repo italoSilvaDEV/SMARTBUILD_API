@@ -12,9 +12,9 @@ import { UpdateServiceEstimateController } from "../controllers/estimates/update
 import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
 import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
-import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
 import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
+import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();

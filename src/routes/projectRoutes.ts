@@ -20,8 +20,10 @@ import { CreatePdContractfProjectController } from "../controllers/projects/Crea
 import { FindPdfContractProjectAllController } from "../controllers/projects/FindPdfContractProjectAllController";
 import { CreatePdfProjectEstimateInvoiceController } from "../controllers/projects/CreatePdfProjectEstimateInvoiceController";
 import { FindPdfProjectEstimateInvoiceController } from "../controllers/projects/FindPdfProjectEstimateInvoiceController";
+import { DashboardProjectController } from "../controllers/projects/dashboardProjectController";
 
 const projectRoutes = Router();
+const dashboardProjectController = new DashboardProjectController();
 
 const projectController = new ProjectController();
 const uploadServiceProject = multer(
@@ -43,6 +45,8 @@ projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectB
 projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller);
 
 projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject);
+
+projectRoutes.get("/project/dashboard/:companyId", checkToken, dashboardProjectController.handle);
 
 projectRoutes.post(
   "/service-project",

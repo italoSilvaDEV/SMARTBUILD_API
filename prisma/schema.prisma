@@ -670,12 +670,18 @@ model QuickBooksAccount {
   expiresAt            DateTime
   refreshExpiresAt     DateTime? // <- novo (opcional)
   needsReauthorization Boolean   @default(false)
+  isDisabled           Boolean   @default(false)
   scopes               String?   @db.Text
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   user                 User?     @relation(fields: [user_id], references: [id])
   user_id              String?   @unique
   companyName          String?
+  companyAddress       String?   @db.Text
+  companyPhone         String?
+  companyEmail         String?
+  taxIdentifier        String?
+  businessType         String?
 
   company    Company? @relation(fields: [company_id], references: [id])
   company_id String?  @unique
