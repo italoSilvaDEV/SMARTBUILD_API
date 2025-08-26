@@ -182,6 +182,25 @@ export class ProjectController {
               hours: true,
               price: true,
               stages: true,
+              UserServiceProject: {
+                select: {
+                  id: true,
+                  user_attendances: {
+                    select: {
+                      id: true,
+                      check_in_time: true,
+                      check_out_time: true,
+                      workStartTime: true,
+                      workEndTime: true,
+                      user: {
+                        select: {
+                          hourly_price: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           },
           _count: {
@@ -268,17 +287,14 @@ export class ProjectController {
           }
         }),
 
-        // Batch query para horas trabalhadas agregadas
-        prisma.workedhours.groupBy({
-          by: ['project_id'],
+        prisma.workedhours.findMany({
           where: {
             project_id: { in: projectIds }
           },
-          _sum: {
+          select: {
+            project_id: true,
             amount_of_hours: true,
             hourly_price: true,
-          },
-          _count: {
             name_user: true,
           }
         })
@@ -305,7 +321,24 @@ export class ProjectController {
 
       const workedHoursMap = new Map<string, any>();
       workedHoursAgg.forEach((wh: any) => {
-        workedHoursMap.set(wh.project_id, wh);
+        const projectId = wh.project_id;
+        if (!workedHoursMap.has(projectId)) {
+          workedHoursMap.set(projectId, {
+            totalCostOfServiceHours: 0,
+            totalNumberOfHoursWorked: 0,
+            uniqueUsers: new Set(),
+          });
+        }
+        
+        const projectData = workedHoursMap.get(projectId);
+        
+        if (wh.amount_of_hours !== null) {
+          projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price);
+          projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
+        } else {
+          projectData.totalCostOfServiceHours += Number(wh.hourly_price);
+        }
+        projectData.uniqueUsers.add(wh.name_user);
       });
 
       // Montar resultado otimizado
@@ -314,9 +347,46 @@ export class ProjectController {
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
 
-        const totalCostOfServiceHours = workedHoursData?._sum?.hourly_price || 0;
-        const totalNumberOfHoursWorked = workedHoursData?._sum?.amount_of_hours || 0;
-        const workersOnThisProject = workedHoursData?._count?.name_user || 0;
+        const totalCostOfServiceHours = workedHoursData?.totalCostOfServiceHours || 0;
+        const totalNumberOfHoursWorked = workedHoursData?.totalNumberOfHoursWorked || 0;
+        const workersOnThisProject = workedHoursData?.uniqueUsers?.size || 0;
+
+        const userAttendance = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let regularHours = 0;
+              let overtimeHours = 0;
+
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                );
+                regularHours = convertHHMMToDecimal(hours.normais);
+                overtimeHours = convertHHMMToDecimal(hours.extras);
+              }
+              return sub + ((regularHours * (attendance.user.hourly_price || 0)) + (overtimeHours * (attendance.user.hourly_price || 0) * 1.5))
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0);
+
+        const userAttendanceHours = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let hoursWorked = 0;
+              if (attendance.check_out_time) {
+                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              }
+              return sub + parseFloat(hoursWorked.toFixed(2))
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0);
 
         // Cálculo do preço do projeto (mais eficiente)
         const priceProject = project.serviceProject.reduce((total, service) => {
@@ -327,11 +397,11 @@ export class ProjectController {
           ...project,
           client: {
             ...project.client,
-            location: project.location, // Substitui client.location por project.location
+            location: project.location,
           },
           costofwork: costOfWork,
-          cost_of_service_hours: totalCostOfServiceHours,
-          total_number_of_hours_worked: totalNumberOfHoursWorked,
+          cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject,
           estimates: projectEstimates
@@ -472,6 +542,7 @@ export class ProjectController {
           },
           0
         );
+
         const userAttendance = project.serviceProject.reduce((total, service) => {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
@@ -496,6 +567,7 @@ export class ProjectController {
           }, 0);
           return total + costTotal
         }, 0)
+        
         const userAttendanceHours = project.serviceProject.reduce((total, service) => {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
