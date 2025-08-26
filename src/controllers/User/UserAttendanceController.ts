@@ -433,7 +433,6 @@ export class UserAttendanceController {
                     message: 'User not found.'
                 });
             }
-            console.log('Usuario existe:', userExists)
 
             if (!serviceProjectId || !date) {
                 return res.status(400).json({
@@ -454,7 +453,6 @@ export class UserAttendanceController {
                     message: "Service project not found"
                 });
             }
-            console.log('Service project existe:', serviceProject)
 
             if (!checkInTime && !checkOutTime) {
                 return res.status(400).json({
@@ -462,8 +460,6 @@ export class UserAttendanceController {
                     message: "At least one time (check-in or check-out) must be provided"
                 });
             }
-            console.log('Check in time:', checkInTime)
-            console.log('Check out time:', checkOutTime)
 
             let attendance;
             const project = await prisma.project.findFirst({
@@ -485,7 +481,6 @@ export class UserAttendanceController {
                     message: "Project not found"
                 });
             }
-            console.log('Project existe:', project)
 
             let userServiceProject = await prisma.userServiceProject.findFirst({
                 where: {
@@ -515,7 +510,6 @@ export class UserAttendanceController {
                         message: "Service project not found"
                     });
                 }
-                console.log('Service project:', serviceProject)
 
                 if (serviceProject.Project && ['Canceled', 'Declined', 'Rejected'].includes(serviceProject.Project.status_project)) {
                     return res.status(400).json({
@@ -593,7 +587,6 @@ export class UserAttendanceController {
                         message: "No active record found to perform check-out"
                     });
                 }
-                console.log('Active attendance:', activeAttendance)
 
                 // Atualizar o registro existente com o horário de saída
                 attendance = await prisma.userAttendance.update({
