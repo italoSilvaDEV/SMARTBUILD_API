@@ -265,12 +265,10 @@ export class TimeController {
         const page = Number(req.query.page);
         const { id, search, start_date, deadline } = req.query;
         try {
-            // Verificar se os parâmetros obrigatórios estão presentes
             if (!id || !start_date || !deadline) {
                 return res.status(400).json({ error: "Params invalid" });
             }
 
-            // Verificar se a empresa existe
             const existCompany = await prisma.company.findUnique({
                 where: { id: String(id) },
             });
@@ -279,27 +277,20 @@ export class TimeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
+            const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
+            const newDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
 
-
-            const startDate = DateTime.fromISO(String(start_date))
-                .startOf('day')
-                .toJSDate();
-
-            const newDeadline = DateTime.fromISO(String(deadline))
-                .endOf('day')
-                .toJSDate();
             const resultCount = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
                         search ? {
                             user: {
                                 name: {
-                                    contains: String(search), // Se search for fornecido, filtra pelos nomes dos usuários
+                                    contains: String(search),
                                 }
                             },
                         } : {},
                         {
-
                             AND: [
                                 {
                                     check_in_time: {
@@ -316,7 +307,6 @@ export class TimeController {
                                     ],
                                 }
                             ]
-
                         },
                         {
                             UserServiceProject: {
@@ -342,19 +332,14 @@ export class TimeController {
                 select: { user_id: true }
             }).then(results => results.length);
 
-
-
-
-            // Ajustar a paginação dos projetos
             const { projects, projectsCount } = await findProject({
                 company_id: String(id),
                 search: String(search),
                 deadline: String(deadline),
                 start_date: String(start_date),
-                pag: page // Usar o valor da página diretamente
+                pag: page
             })
 
-            // Buscar todos os registros de attendance
             const allAttendances = await findAllAttendances(
                 String(id),
                 String(search),
@@ -402,7 +387,10 @@ export class TimeController {
                     let weekRegularHours = 0;
                     let weekOvertimeHours = 0;
 
-                    if (weekAttendances[0]?.user?.isOverTime && totalWeekHours > 40) {
+                    // Verificar se o usuário tem permissão para overtime
+                    const userHasOvertime = weekAttendances[0].user.isOverTime;
+
+                    if (userHasOvertime && totalWeekHours > 40) {
                         weekRegularHours = 40;
                         weekOvertimeHours = totalWeekHours - 40;
                     } else {
@@ -410,24 +398,25 @@ export class TimeController {
                         weekOvertimeHours = 0;
                     }
 
-                    const weeklyPrice = weekAttendances[0]?.user?.hourly_price
+                    const weeklyPrice = weekAttendances[0].user.hourly_price
                         ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                         : 0;
 
                     const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                     attendancesWithHours.forEach(attendance => {
-                        const proportionalPrice = totalDailyHours > 0 
-                            ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
+                        const proportionalPrice = totalDailyHours > 0
+                            ? (attendance.dailyHours / totalDailyHours) * weeklyPrice
                             : 0;
 
                         let dailyRegularHours = 0;
                         let dailyOvertimeHours = 0;
 
-                        if (attendance.user.isOverTime && totalWeekHours > 40) {
+                        // Usar a mesma verificação de overtime para consistência
+                        if (userHasOvertime && totalWeekHours > 40) {
                             const regularProportion = weekRegularHours / totalWeekHours;
                             const overtimeProportion = weekOvertimeHours / totalWeekHours;
-                            
+
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                         } else {
@@ -545,7 +534,10 @@ export class TimeController {
                                 let weekRegularHours = 0;
                                 let weekOvertimeHours = 0;
 
-                                if (weekAttendances[0]?.user?.isOverTime && totalWeekHours > 40) {
+                                // Verificar se o usuário tem permissão para overtime
+                                const userHasOvertime = weekAttendances[0]?.user?.isOverTime;
+
+                                if (userHasOvertime && totalWeekHours > 40) {
                                     weekRegularHours = 40;
                                     weekOvertimeHours = totalWeekHours - 40;
                                 } else {
@@ -560,14 +552,15 @@ export class TimeController {
                                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                                 attendancesWithHours.forEach(attendance => {
-                                    const proportionalPrice = totalDailyHours > 0 
-                                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
+                                    const proportionalPrice = totalDailyHours > 0
+                                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice
                                         : 0;
 
                                     let dailyRegularHours = 0;
                                     let dailyOvertimeHours = 0;
 
-                                    if (attendance.user.isOverTime && totalWeekHours > 40) {
+                                    // Usar a mesma verificação de overtime para consistência
+                                    if (userHasOvertime && totalWeekHours > 40) {
                                         const regularProportion = weekRegularHours / totalWeekHours;
                                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
                                         dailyRegularHours = attendance.dailyHours * regularProportion;
@@ -1184,7 +1177,10 @@ export class TimeController {
                 let weekRegularHours = 0;
                 let weekOvertimeHours = 0;
 
-                if (existWorker?.isOverTime && totalWeekHours > 40) {
+                // Verificar se o usuário tem permissão para overtime
+                const userHasOvertime = existWorker?.isOverTime;
+
+                if (userHasOvertime && totalWeekHours > 40) {
                     weekRegularHours = 40;
                     weekOvertimeHours = totalWeekHours - 40;
                 } else {
@@ -1199,17 +1195,18 @@ export class TimeController {
                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
                 attendancesWithHours.forEach(attendance => {
-                    const proportionalPrice = totalDailyHours > 0 
-                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice 
+                    const proportionalPrice = totalDailyHours > 0
+                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice
                         : 0;
 
                     let dailyRegularHours = 0;
                     let dailyOvertimeHours = 0;
 
-                    if (existWorker?.isOverTime && totalWeekHours > 40) {
+                    // Usar a mesma verificação de overtime para consistência
+                    if (userHasOvertime && totalWeekHours > 40) {
                         const regularProportion = weekRegularHours / totalWeekHours;
                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
-                        
+
                         dailyRegularHours = attendance.dailyHours * regularProportion;
                         dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                     } else {
