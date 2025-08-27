@@ -1174,8 +1174,8 @@ export class TimeController {
                 let weekRegularHours = 0;
                 let weekOvertimeHours = 0;
 
-                // Verificar se o usuário tem permissão para overtime
-                const userHasOvertime = existWorker?.isOverTime;
+                // ✅ CORRIGIDO: Usar os dados do attendance individual, não do existWorker
+                const userHasOvertime = weekAttendances[0]?.user?.isOverTime;
 
                 if (userHasOvertime && totalWeekHours > 40) {
                     weekRegularHours = 40;
@@ -1185,8 +1185,9 @@ export class TimeController {
                     weekOvertimeHours = 0;
                 }
 
-                const weeklyPrice = existWorker?.hourly_price
-                    ? (weekRegularHours * existWorker.hourly_price) + (weekOvertimeHours * existWorker.hourly_price * 1.5)
+                // ✅ CORRIGIDO: Usar hourly_price do attendance individual
+                const weeklyPrice = weekAttendances[0]?.user?.hourly_price
+                    ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                     : 0;
 
                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
@@ -1199,7 +1200,7 @@ export class TimeController {
                     let dailyRegularHours = 0;
                     let dailyOvertimeHours = 0;
 
-                    // Usar a mesma verificação de overtime para consistência
+                    // ✅ CORRIGIDO: Usar a mesma verificação consistente
                     if (userHasOvertime && totalWeekHours > 40) {
                         const regularProportion = weekRegularHours / totalWeekHours;
                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
