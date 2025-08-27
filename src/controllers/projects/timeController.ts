@@ -1153,7 +1153,6 @@ export class TimeController {
             const formattedResult: any[] = [];
 
             Object.values(attendancesByWeek).forEach(weekAttendances => {
-                let totalWeekHours = 0;
                 const attendancesWithHours = weekAttendances.map(attendance => {
                     let dailyHours = 0;
 
@@ -1167,49 +1166,42 @@ export class TimeController {
                         dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                     }
 
-                    totalWeekHours += dailyHours;
                     return { ...attendance, dailyHours };
                 });
 
-                let weekRegularHours = 0;
-                let weekOvertimeHours = 0;
-
-                // ✅ CORRIGIDO: Usar os dados do attendance individual, não do existWorker
-                const userHasOvertime = weekAttendances[0]?.user?.isOverTime;
-
-                if (userHasOvertime && totalWeekHours > 40) {
-                    weekRegularHours = 40;
-                    weekOvertimeHours = totalWeekHours - 40;
-                } else {
-                    weekRegularHours = totalWeekHours;
-                    weekOvertimeHours = 0;
-                }
-
-                // ✅ CORRIGIDO: Usar hourly_price do attendance individual
-                const weeklyPrice = weekAttendances[0]?.user?.hourly_price
-                    ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                    : 0;
-
-                const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
-
                 attendancesWithHours.forEach(attendance => {
-                    const proportionalPrice = totalDailyHours > 0
-                        ? (attendance.dailyHours / totalDailyHours) * weeklyPrice
-                        : 0;
+                    // LÓGICA SIMPLIFICADA: Se isOverTime = false, NUNCA há overtime
+                    const userHasOvertime = attendance.user?.isOverTime === true;
+                    const hourlyRate = attendance.user?.hourly_price || 0;
 
                     let dailyRegularHours = 0;
                     let dailyOvertimeHours = 0;
+                    let dailyPrice = 0;
 
-                    // ✅ CORRIGIDO: Usar a mesma verificação consistente
-                    if (userHasOvertime && totalWeekHours > 40) {
-                        const regularProportion = weekRegularHours / totalWeekHours;
-                        const overtimeProportion = weekOvertimeHours / totalWeekHours;
-
-                        dailyRegularHours = attendance.dailyHours * regularProportion;
-                        dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
-                    } else {
+                    if (!userHasOvertime) {
+                        // Se NÃO tem permissão de overtime: TODAS as horas são regulares
                         dailyRegularHours = attendance.dailyHours;
                         dailyOvertimeHours = 0;
+                        dailyPrice = attendance.dailyHours * hourlyRate;
+                    } else {
+                        // Se TEM permissão de overtime: aplicar lógica semanal
+                        const totalWeekHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
+                        
+                        if (totalWeekHours <= 40) {
+                            dailyRegularHours = attendance.dailyHours;
+                            dailyOvertimeHours = 0;
+                            dailyPrice = attendance.dailyHours * hourlyRate;
+                        } else {
+                            const weekRegularHours = 40;
+                            const weekOvertimeHours = totalWeekHours - 40;
+                            
+                            const regularProportion = weekRegularHours / totalWeekHours;
+                            const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                            
+                            dailyRegularHours = attendance.dailyHours * regularProportion;
+                            dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
+                            dailyPrice = (dailyRegularHours * hourlyRate) + (dailyOvertimeHours * hourlyRate * 1.5);
+                        }
                     }
 
                     formattedResult.push({
@@ -1217,7 +1209,7 @@ export class TimeController {
                         hours_worked: attendance.dailyHours,
                         regular_hours: parseFloat(dailyRegularHours.toFixed(2)),
                         overtime_hours: parseFloat(dailyOvertimeHours.toFixed(2)),
-                        price: parseFloat(proportionalPrice.toFixed(2))
+                        price: parseFloat(dailyPrice.toFixed(2))
                     });
                 });
             });
