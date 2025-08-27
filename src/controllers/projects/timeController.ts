@@ -842,14 +842,30 @@ export class TimeController {
                                     x.workStartTime,
                                     x.workEndTime,
                                 );
-                                regularHours = convertHHMMToDecimal(hours.normais);
-                                overtimeHours = convertHHMMToDecimal(hours.extras);
+                                const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                                
+                                // LÓGICA CORRIGIDA: Verificar isOverTime antes de calcular overtime
+                                const userHasOvertime = x.user.isOverTime === true;
+                                const hourlyRate = x.user.hourly_price || 0;
+                                
+                                if (!userHasOvertime) {
+                                    // Se NÃO tem permissão de overtime: TODAS as horas são regulares
+                                    regularHours = dailyHours;
+                                    overtimeHours = 0;
+                                } else {
+                                    // Se TEM permissão de overtime: aplicar lógica normal
+                                    regularHours = convertHHMMToDecimal(hours.normais);
+                                    overtimeHours = convertHHMMToDecimal(hours.extras);
+                                }
                             }
 
                             const totalHours = regularHours + overtimeHours;
+                            
+                            // Calcular preço respeitando permissão de overtime
                             const calculatedPrice = x.user.hourly_price
                                 ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
+                                
                             return ({
                                 ...x,
                                 userId: x.user_id,
