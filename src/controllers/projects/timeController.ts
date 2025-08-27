@@ -950,8 +950,7 @@ export class TimeController {
                 }
             });
 
-            // Contagem de atendimentos do worker específico
-            const resultCount = await prisma.userAttendance.count({
+            await prisma.userAttendance.count({
                 where: {
                     AND: [
                         { user_id: String(worker_id) },
@@ -988,7 +987,6 @@ export class TimeController {
                 },
             });
 
-            // Contagem de serviços do worker específico
             const serviceCount = await prisma.serviceProject.count({
                 where: {
                     AND: [
@@ -1030,7 +1028,6 @@ export class TimeController {
                 }
             });
 
-            // Buscar projetos específicos do worker - CORRIGIDO PARA USAR O MESMO PADRÃO DE FILTRO DE DATA
             const projects = await prisma.project.findMany({
                 where: {
                     AND: [
@@ -1245,7 +1242,8 @@ export class TimeController {
                     id: existWorker?.id,
                     name: existWorker?.name,
                     avatar: urlAvatar,
-                    office: existWorker?.office.name
+                    office: existWorker?.office.name,
+                    isOverTime: existWorker?.isOverTime
                 },
                 workers: paginatedResult, // ✅ MUDANÇA: Usar resultado paginado
                 totalPages: Math.ceil(formattedResult.length / pageSize) // ✅ MUDANÇA: Calcular baseado no total de resultados
