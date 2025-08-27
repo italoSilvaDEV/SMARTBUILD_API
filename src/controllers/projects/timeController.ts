@@ -387,23 +387,20 @@ export class TimeController {
                     let weekRegularHours = 0;
                     let weekOvertimeHours = 0;
 
-                    // Verificar se o usuário tem permissão para overtime
                     const userHasOvertime = weekAttendances[0].user.isOverTime;
 
                     if (userHasOvertime && totalWeekHours > 40) {
                         weekRegularHours = 40;
                         weekOvertimeHours = totalWeekHours - 40;
                     } else {
-                        // Se NÃO tem overtime OU tem <= 40h: máximo 40h regulares
                         weekRegularHours = Math.min(totalWeekHours, 40);
                         weekOvertimeHours = 0;
                     }
 
-                    // CORRIGIDO: Só aplicar multiplicador 1.5x se user tem permissão de overtime
                     const weeklyPrice = weekAttendances[0].user.hourly_price
                         ? userHasOvertime 
                             ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                            : (weekRegularHours * weekAttendances[0].user.hourly_price) // Máximo 40h se não tem overtime
+                            : (weekRegularHours * weekAttendances[0].user.hourly_price)
                         : 0;
 
                     const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
@@ -416,7 +413,6 @@ export class TimeController {
                         let dailyRegularHours = 0;
                         let dailyOvertimeHours = 0;
 
-                        // Distribuir horas respeitando limite de 40h para não-overtime
                         if (userHasOvertime && totalWeekHours > 40) {
                             const regularProportion = weekRegularHours / totalWeekHours;
                             const overtimeProportion = weekOvertimeHours / totalWeekHours;
@@ -424,7 +420,6 @@ export class TimeController {
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                         } else {
-                            // Se não tem overtime: distribuir só as horas regulares (máximo 40h/semana)
                             const regularProportion = weekRegularHours / totalWeekHours;
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = 0;
@@ -540,23 +535,20 @@ export class TimeController {
                                 let weekRegularHours = 0;
                                 let weekOvertimeHours = 0;
 
-                                // Verificar se o usuário tem permissão para overtime
                                 const userHasOvertime = weekAttendances[0]?.user?.isOverTime;
 
                                 if (userHasOvertime && totalWeekHours > 40) {
                                     weekRegularHours = 40;
                                     weekOvertimeHours = totalWeekHours - 40;
                                 } else {
-                                    // Se NÃO tem overtime OU tem <= 40h: máximo 40h regulares
                                     weekRegularHours = Math.min(totalWeekHours, 40);
                                     weekOvertimeHours = 0;
                                 }
 
-                                // CORRIGIDO: Só aplicar multiplicador 1.5x se user tem permissão de overtime
                                 const weeklyPrice = weekAttendances[0]?.user?.hourly_price
                                     ? userHasOvertime 
                                         ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                                        : (weekRegularHours * weekAttendances[0].user.hourly_price) // Máximo 40h se não tem overtime
+                                        : (weekRegularHours * weekAttendances[0].user.hourly_price)
                                     : 0;
 
                                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
@@ -569,14 +561,12 @@ export class TimeController {
                                     let dailyRegularHours = 0;
                                     let dailyOvertimeHours = 0;
 
-                                    // Distribuir horas respeitando limite de 40h para não-overtime
                                     if (userHasOvertime && totalWeekHours > 40) {
                                         const regularProportion = weekRegularHours / totalWeekHours;
                                         const overtimeProportion = weekOvertimeHours / totalWeekHours;
                                         dailyRegularHours = attendance.dailyHours * regularProportion;
                                         dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                                     } else {
-                                        // Se não tem overtime: distribuir só as horas regulares (máximo 40h/semana)
                                         const regularProportion = weekRegularHours / totalWeekHours;
                                         dailyRegularHours = attendance.dailyHours * regularProportion;
                                         dailyOvertimeHours = 0;
@@ -856,29 +846,21 @@ export class TimeController {
                                 );
                                 const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                                 
-                                // LÓGICA CORRIGIDA: Verificar isOverTime antes de calcular overtime
                                 const userHasOvertime = x.user.isOverTime === true;
-                                const hourlyRate = x.user.hourly_price || 0;
                                 
                                 if (!userHasOvertime) {
-                                    // Se NÃO tem permissão de overtime: máximo 40h regulares por semana
-                                    // Para simplificar, vamos limitar no nível diário proporcional
-                                    regularHours = dailyHours; // Será limitado na consolidação semanal
+                                    regularHours = dailyHours;
                                     overtimeHours = 0;
                                 } else {
-                                    // Se TEM permissão de overtime: aplicar lógica normal
                                     regularHours = convertHHMMToDecimal(hours.normais);
                                     overtimeHours = convertHHMMToDecimal(hours.extras);
                                 }
                             }
 
                             const totalHours = regularHours + overtimeHours;
-                            
-                            // Calcular preço respeitando permissão de overtime
                             const calculatedPrice = x.user.hourly_price
                                 ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
                                 : 0;
-                                
                             return ({
                                 ...x,
                                 userId: x.user_id,
@@ -1199,7 +1181,6 @@ export class TimeController {
                 });
 
                 attendancesWithHours.forEach(attendance => {
-                    // LÓGICA SIMPLIFICADA: Se isOverTime = false, NUNCA há overtime
                     const userHasOvertime = attendance.user?.isOverTime === true;
                     const hourlyRate = attendance.user?.hourly_price || 0;
 
@@ -1208,7 +1189,6 @@ export class TimeController {
                     let dailyPrice = 0;
 
                     if (!userHasOvertime) {
-                        // Se NÃO tem permissão de overtime: máximo 40h regulares por semana
                         const totalWeekHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
                         
                         if (totalWeekHours <= 40) {
@@ -1216,14 +1196,12 @@ export class TimeController {
                             dailyOvertimeHours = 0;
                             dailyPrice = attendance.dailyHours * hourlyRate;
                         } else {
-                            // Limitar a 40h regulares por semana - distribuir proporcionalmente
                             const regularProportion = 40 / totalWeekHours;
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = 0;
                             dailyPrice = dailyRegularHours * hourlyRate;
                         }
                     } else {
-                        // Se TEM permissão de overtime: aplicar lógica semanal
                         const totalWeekHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
                         
                         if (totalWeekHours <= 40) {
@@ -1277,8 +1255,8 @@ export class TimeController {
                     office: existWorker?.office.name,
                     isOverTime: existWorker?.isOverTime
                 },
-                workers: paginatedResult, // ✅ MUDANÇA: Usar resultado paginado
-                totalPages: Math.ceil(formattedResult.length / pageSize) // ✅ MUDANÇA: Calcular baseado no total de resultados
+                workers: paginatedResult,
+                totalPages: Math.ceil(formattedResult.length / pageSize)
             });
 
         } catch (error) {
