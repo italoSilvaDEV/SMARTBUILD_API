@@ -138,7 +138,10 @@ export class getAllController {
                     isOvertime: true,
                     user: {
                         select: {
-                            hourly_price: true
+                            id: true,
+                            name: true,
+                            hourly_price: true,
+                            isOverTime: true
                         }
                     }
                 }
@@ -255,11 +258,76 @@ export class getAllController {
                 };
             });
 
+            const workersMap = new Map();
+
+            allAttendances.forEach(attendance => {
+                if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                    const userId = attendance.user.id;
+
+                    const hours = calcularHorasTrabalhadas(
+                        attendance.check_in_time.toISOString(),
+                        attendance.check_out_time.toISOString(),
+                        attendance.workStartTime,
+                        attendance.workEndTime,
+                    );
+
+                    const regularHours = convertHHMMToDecimal(hours.normais);
+                    const overtimeHours = convertHHMMToDecimal(hours.extras);
+                    const totalHours = regularHours + overtimeHours;
+
+                    const hadOvertimePermission = attendance.isOvertime === true;
+                    const hourlyRate = attendance.user.hourly_price || 0;
+
+                    let finalRegularHours = 0;
+                    let finalOvertimeHours = 0;
+                    let price = 0;
+
+                    if (hadOvertimePermission) {
+                        finalRegularHours = regularHours;
+                        finalOvertimeHours = overtimeHours;
+                        price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
+                    } else {
+                        finalRegularHours = totalHours;
+                        finalOvertimeHours = 0;
+                        price = totalHours * hourlyRate;
+                    }
+
+                    if (!workersMap.has(userId)) {
+                        workersMap.set(userId, {
+                            user: {
+                                id: attendance.user.id,
+                                name: attendance.user.name,
+                                hourly_price: attendance.user.hourly_price,
+                                isOverTime: attendance.user.isOverTime
+                            },
+                            hours_worked: 0,
+                            regular_hours: 0,
+                            overtime_hours: 0,
+                            price: 0
+                        });
+                    }
+
+                    const worker = workersMap.get(userId);
+                    worker.hours_worked += totalHours;
+                    worker.regular_hours += finalRegularHours;
+                    worker.overtime_hours += finalOvertimeHours;
+                    worker.price += price;
+                }
+            });
+
+            const formattedWorkers = Array.from(workersMap.values()).map(worker => ({
+                user: worker.user,
+                hours_worked: parseFloat(worker.hours_worked.toFixed(2)),
+                regular_hours: parseFloat(worker.regular_hours.toFixed(2)),
+                overtime_hours: parseFloat(worker.overtime_hours.toFixed(2)),
+                price: parseFloat(worker.price.toFixed(2))
+            }));
+
             return res.status(200).json({
                 data: {
                     indicators,
                     projects: formattedProjects,
-                    workers: [],
+                    workers: formattedWorkers,
                     payroll: []
                 }
             })
