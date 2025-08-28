@@ -153,7 +153,7 @@ export class getByWorkerIdController {
                 id: user.id,
                 name: user.name,
                 avatar: avatarUrl,
-                office: user.office,
+                office: user.office.name,
                 isOverTime: user.isOverTime
             };
 

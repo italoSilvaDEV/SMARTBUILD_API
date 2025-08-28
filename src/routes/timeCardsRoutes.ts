@@ -9,6 +9,6 @@ const getAllTimeCardsController = new getAllController();
 const getAllByWorkerIdController = new getByWorkerIdController();
 
 timeCardsRouts.get("/all/:companyId", checkToken, getAllTimeCardsController.handle);
-timeCardsRouts.get("/worker/:companyId/:workerId", getAllByWorkerIdController.handle);
+timeCardsRouts.get("/worker/:companyId/:workerId", checkToken, getAllByWorkerIdController.handle);
 
 export { timeCardsRouts }
