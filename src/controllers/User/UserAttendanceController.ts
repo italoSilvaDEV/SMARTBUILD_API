@@ -7,12 +7,18 @@ export class UserAttendanceController {
     // Check-in do usuário
     async checkIn(req: Request, res: Response): Promise<void> {
         try {
-            const { user_id, user_service_project_id, address, latitude, longitude } = req.body;
+            const {
+                user_id,
+                user_service_project_id,
+                address,
+                latitude,
+                longitude
+            } = req.body;
 
-            // Verifica se o usuário existe
             const userExists = await prisma.user.findUnique({
                 where: { id: user_id },
-                include: {
+                select: {
+                    isOverTime: true,
                     company: {
                         select: {
                             id: true,
@@ -22,12 +28,12 @@ export class UserAttendanceController {
                     }
                 }
             });
+
             if (!userExists) {
                 res.status(400).json({ error: 'User not found.' });
                 return;
             }
 
-            // Verifica se o UserServiceProject existe e inclui validações críticas
             const serviceProjectExists = await prisma.userServiceProject.findUnique({
                 where: { id: user_service_project_id },
                 include: {
@@ -44,9 +50,6 @@ export class UserAttendanceController {
                 return;
             }
 
-            // VALIDAÇÕES CRÍTICAS PARA EVITAR BUG DO "LIMBO"
-
-            // 1. Verificar se o projeto não está cancelado
             const project = serviceProjectExists.service_project.Project;
             if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
                 res.status(400).json({
@@ -56,7 +59,6 @@ export class UserAttendanceController {
                 return;
             }
 
-            // 2. Verificar se o serviço não está cancelado
             const service = serviceProjectExists.service_project;
             if (service.status === 'Canceled') {
                 res.status(400).json({
@@ -66,7 +68,6 @@ export class UserAttendanceController {
                 return;
             }
 
-            // 3. Verificar se o usuário realmente está vinculado a este serviço
             const validUserService = await prisma.userServiceProject.findFirst({
                 where: {
                     id: user_service_project_id,
@@ -92,7 +93,6 @@ export class UserAttendanceController {
                 return;
             }
 
-            // Verifica se já existe um registro de ponto aberto (sem check-out) para o mesmo UserServiceProject
             const openAttendance = await prisma.userAttendance.findFirst({
                 where: {
                     user_id,
@@ -115,7 +115,6 @@ export class UserAttendanceController {
                 }
             });
 
-            // Cria o registro de check-in
             const attendance = await prisma.userAttendance.create({
                 data: {
                     user_id,
@@ -124,6 +123,7 @@ export class UserAttendanceController {
                     check_in_address: address,
                     check_in_latitude: latitude,
                     check_in_longitude: longitude,
+                    isOvertime: userExists.isOverTime,
                     workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
                     workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
                 },
