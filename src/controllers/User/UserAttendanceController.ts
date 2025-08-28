@@ -416,7 +416,8 @@ export class UserAttendanceController {
 
             const userExists = await prisma.user.findUnique({
                 where: { id: userId },
-                include: {
+                select: {
+                    isOverTime: true,
                     company: {
                         select: {
                             id: true,
@@ -519,7 +520,6 @@ export class UserAttendanceController {
                     });
                 }
 
-                // Verificar se o serviço não está cancelado
                 if (serviceProject.status === 'Canceled') {
                     return res.status(400).json({
                         success: false,
@@ -528,7 +528,6 @@ export class UserAttendanceController {
                     });
                 }
 
-                // Se não existir, criar um novo UserServiceProject
                 userServiceProject = await prisma.userServiceProject.create({
                     data: {
                         user_id: userId,
@@ -543,9 +542,6 @@ export class UserAttendanceController {
                     }
                 });
             } else {
-                // VALIDAÇÕES PARA UserServiceProject EXISTENTE
-
-                // Verificar se o projeto não está cancelado
                 const project = userServiceProject.service_project.Project;
                 if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
                     return res.status(400).json({
@@ -555,7 +551,6 @@ export class UserAttendanceController {
                     });
                 }
 
-                // Verificar se o serviço não está cancelado
                 const service = userServiceProject.service_project;
                 if (service.status === 'Canceled') {
                     return res.status(400).json({
@@ -566,15 +561,12 @@ export class UserAttendanceController {
                 }
             }
 
-            // Caso apenas tenha o checkOutTime, precisamos encontrar um registro ativo para fazer checkout
             if (!checkInTime && checkOutTime) {
-                // Buscar registro ativo para fazer checkout
                 const activeAttendance = await prisma.userAttendance.findFirst({
                     where: {
                         user_id: userId,
-                        user_service_project_id: userServiceProject.id,  // Usar o ID do userServiceProject
+                        user_service_project_id: userServiceProject.id,
                         check_out_time: null,
-                        // Opcional: verificar se a data do checkin corresponde a data informada
                     },
                     orderBy: {
                         check_in_time: 'desc'
@@ -588,7 +580,6 @@ export class UserAttendanceController {
                     });
                 }
 
-                // Atualizar o registro existente com o horário de saída
                 attendance = await prisma.userAttendance.update({
                     where: {
                         id: activeAttendance.id
@@ -597,15 +588,14 @@ export class UserAttendanceController {
                         check_out_time: new Date(checkOutTime),
                         check_out_address: project?.location || null,
                         check_out_latitude: project?.lat ? parseFloat(project.lat) : null,
-                        check_out_longitude: project?.log ? parseFloat(project.log) : null
+                        check_out_longitude: project?.log ? parseFloat(project.log) : null,
                     }
                 });
             } else {
-                // Criar um novo registro com check-in
                 attendance = await prisma.userAttendance.create({
                     data: {
                         user_id: userId,
-                        user_service_project_id: userServiceProject.id,  // Usar o ID do userServiceProject
+                        user_service_project_id: userServiceProject.id,
                         check_in_time: new Date(checkInTime),
                         check_out_time: checkOutTime ? new Date(checkOutTime) : null,
                         date: new Date(date),
@@ -616,7 +606,8 @@ export class UserAttendanceController {
                         check_out_latitude: checkOutTime ? (project?.client?.lat ? parseFloat(project.client.lat) : null) : null,
                         check_out_longitude: checkOutTime ? (project?.client?.log ? parseFloat(project.client.log) : null) : null,
                         workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
-                        workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
+                        workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null,
+                        isOvertime: userExists.isOverTime,
                     }
                 });
             }
