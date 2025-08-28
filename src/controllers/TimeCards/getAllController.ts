@@ -63,15 +63,54 @@ export class getAllController {
                 },
                 select: {
                     id: true,
+                    location: true,
+                    client: {
+                        select: {
+                            name: true,
+                            location: true,
+                            city_and_state: true,
+                        }
+                    },
                     serviceProject: {
                         select: {
-                            id: true
+                            id: true,
+                            name: true,
+                            UserServiceProject: {
+                                select: {
+                                    user_attendances: {
+                                        where: {
+                                            check_in_time: {
+                                                gte: startDate,
+                                            },
+                                            check_out_time: {
+                                                lte: deadlineDate,
+                                            }
+                                        },
+                                        select: {
+                                            date: true,
+                                            check_in_time: true,
+                                            check_out_time: true,
+                                            workStartTime: true,
+                                            workEndTime: true,
+                                            isOvertime: true,
+                                            user: {
+                                                select: {
+                                                    name: true,
+                                                    hourly_price: true
+                                                }
+                                            }
+                                        },
+                                        orderBy: {
+                                            check_in_time: 'desc'
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             });
 
-            // 2. Buscar todas as attendances do período com dados necessários
             const allAttendances = await prisma.userAttendance.findMany({
                 where: {
                     check_in_time: {
@@ -96,7 +135,7 @@ export class getAllController {
                     check_out_time: true,
                     workStartTime: true,
                     workEndTime: true,
-                    isOvertime: true, // Campo histórico do momento do ponto
+                    isOvertime: true,
                     user: {
                         select: {
                             hourly_price: true
@@ -105,7 +144,6 @@ export class getAllController {
                 }
             });
 
-            // 3. Calcular métricas dos indicators
             let totalPrice = 0;
             let totalHours = 0;
             let totalRegularHours = 0;
@@ -113,7 +151,6 @@ export class getAllController {
 
             allAttendances.forEach(attendance => {
                 if (attendance.check_out_time && attendance.check_in_time) {
-                    // Calcular horas trabalhadas
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
                         attendance.check_out_time.toISOString(),
@@ -125,31 +162,25 @@ export class getAllController {
                     const overtimeHours = convertHHMMToDecimal(hours.extras);
                     const dailyHours = regularHours + overtimeHours;
 
-                    // Somar às métricas totais
                     totalHours += dailyHours;
 
-                    // Verificar isOvertime histórico do momento do ponto
                     const hadOvertimePermission = attendance.isOvertime === true;
                     const hourlyRate = attendance.user?.hourly_price || 0;
 
                     if (hadOvertimePermission) {
-                        // Tinha permissão de overtime: calcular regular + overtime
                         totalRegularHours += regularHours;
                         totalOvertimeHours += overtimeHours;
                         totalPrice += (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
                     } else {
-                        // NÃO tinha permissão: todas as horas como regulares
                         totalRegularHours += dailyHours;
                         totalPrice += dailyHours * hourlyRate;
                     }
                 }
             });
 
-            // 4. Contar projetos e serviços
             const totalProjects = projects.length;
             const totalServices = projects.reduce((acc, project) => acc + project.serviceProject.length, 0);
 
-            // 5. Montar objeto indicators
             const indicators = {
                 totalPrice: parseFloat(totalPrice.toFixed(2)),
                 totalHours: parseFloat(totalHours.toFixed(2)),
@@ -159,12 +190,77 @@ export class getAllController {
                 totalProjects
             };
 
+            const formattedProjects = projects.map(project => {
+                const clientName = project.client?.name || "";
+                const clientAddress = project.location || project.client?.location || "";
+                const clientData = `${clientName} - ${clientAddress}`;
+                const clientCityAndState = project.client?.city_and_state || "";
+                const serviceCount = project.serviceProject.length;
+
+                const workerData: any[] = [];
+
+                project.serviceProject.forEach(service => {
+                    service.UserServiceProject.forEach(userService => {
+                        userService.user_attendances.forEach(attendance => {
+                            if (attendance.check_out_time && attendance.check_in_time) {
+                                const hours = calcularHorasTrabalhadas(
+                                    attendance.check_in_time.toISOString(),
+                                    attendance.check_out_time.toISOString(),
+                                    attendance.workStartTime,
+                                    attendance.workEndTime,
+                                );
+
+                                const regularHours = convertHHMMToDecimal(hours.normais);
+                                const overtimeHours = convertHHMMToDecimal(hours.extras);
+                                const totalHours = regularHours + overtimeHours;
+                                const hadOvertimePermission = attendance.isOvertime === true;
+                                const hourlyRate = attendance.user?.hourly_price || 0;
+
+                                let finalRegularHours = 0;
+                                let finalOvertimeHours = 0;
+                                let price = 0;
+
+                                if (hadOvertimePermission) {
+                                    finalRegularHours = regularHours;
+                                    finalOvertimeHours = overtimeHours;
+                                    price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
+                                } else {
+                                    finalRegularHours = totalHours;
+                                    finalOvertimeHours = 0;
+                                    price = totalHours * hourlyRate;
+                                }
+
+                                workerData.push({
+                                    nameWorker: attendance.user?.name || "",
+                                    date: attendance.date,
+                                    in: attendance.check_in_time,
+                                    out: attendance.check_out_time,
+                                    regular_hours: parseFloat(finalRegularHours.toFixed(2)),
+                                    overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
+                                    total_hours: parseFloat(totalHours.toFixed(2)),
+                                    price: parseFloat(price.toFixed(2))
+                                });
+                            }
+                        });
+                    });
+                });
+
+                return {
+                    clientData,
+                    clientName,
+                    clientAddress,
+                    clientCityAndState,
+                    serviceCount,
+                    workerData: workerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
+                };
+            });
+
             return res.status(200).json({
                 data: {
                     indicators,
-                    projects: [], // TODO: implementar próximo
-                    workers: [], // TODO: implementar próximo  
-                    payroll: [] // TODO: implementar próximo
+                    projects: formattedProjects,
+                    workers: [],
+                    payroll: []
                 }
             })
         } catch (error) {
