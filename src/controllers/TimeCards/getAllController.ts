@@ -324,55 +324,47 @@ export class getAllController {
                 price: parseFloat(worker.price.toFixed(2))
             }));
 
-            // 8. Processar payroll (detalhado por usuário com attendances individuais)
             const payrollMap = new Map();
-            
-            // Mapear attendances com informações do projeto
+
             projects.forEach(project => {
                 const projectLocation = project.location || project.client?.location || "";
-                
+
                 project.serviceProject.forEach(service => {
                     service.UserServiceProject.forEach(userService => {
                         userService.user_attendances.forEach(attendance => {
                             if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
                                 const userId = attendance.user.id;
                                 const userName = attendance.user.name;
-                                
-                                // Calcular horas trabalhadas para este attendance específico
                                 const hours = calcularHorasTrabalhadas(
                                     attendance.check_in_time.toISOString(),
                                     attendance.check_out_time.toISOString(),
                                     attendance.workStartTime,
                                     attendance.workEndTime,
                                 );
-                                
+
                                 const regularHours = convertHHMMToDecimal(hours.normais);
                                 const overtimeHours = convertHHMMToDecimal(hours.extras);
                                 const totalHours = regularHours + overtimeHours;
-                                
-                                // Calcular preço para este attendance específico
                                 const hadOvertimePermission = attendance.isOvertime === true;
                                 const hourlyRate = attendance.user.hourly_price || 0;
-                                
+
                                 let attendancePrice = 0;
                                 if (hadOvertimePermission) {
                                     attendancePrice = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
                                 } else {
                                     attendancePrice = totalHours * hourlyRate;
                                 }
-                                
-                                // Inicializar usuário no payroll se não existe
                                 if (!payrollMap.has(userId)) {
                                     payrollMap.set(userId, {
                                         userName: userName,
-                                        servicesCount: new Set(), // Usar Set para contar serviços únicos
+                                        servicesCount: new Set(),
                                         total: 0,
                                         workers: []
                                     });
                                 }
-                                
+
                                 const payrollUser = payrollMap.get(userId);
-                                payrollUser.servicesCount.add(service.id); // Adicionar ID do serviço único
+                                payrollUser.servicesCount.add(service.id);
                                 payrollUser.total += attendancePrice;
                                 payrollUser.workers.push({
                                     project: projectLocation,
@@ -386,11 +378,10 @@ export class getAllController {
                     });
                 });
             });
-            
-            // Converter Map para Array e formatar
+
             const formattedPayroll = Array.from(payrollMap.values()).map(user => ({
                 userName: user.userName,
-                servicesCount: user.servicesCount.size, // Converter Set size para número
+                servicesCount: user.servicesCount.size,
                 total: parseFloat(user.total.toFixed(2)),
                 workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime()) // Ordenar por data
             }));
