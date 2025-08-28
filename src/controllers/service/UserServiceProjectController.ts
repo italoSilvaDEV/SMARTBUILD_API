@@ -260,56 +260,16 @@ export class UserServiceProjectController {
             },
           },
         },
-        // Ordenar para garantir consistência
         orderBy: {
           assigned_at: "desc"
         }
       });
 
-      // Remover duplicações baseado no service_project.id e garantir que o usuário é responsável
-      const uniqueServices = new Map();
-
-      for (const usp of userServiceProjects) {
-        const serviceId = usp.service_project.id;
-        const serviceName = usp.service_project.name;
-
-        // Verificar se já existe um serviço com o mesmo nome e endereço
-        const key = `${serviceName}_${usp.service_project.Project?.client?.location || 'no-address'}`;
-
-        if (!uniqueServices.has(key)) {
-          // Verificar se o usuário realmente tem permissão para bater ponto neste serviço
-          const hasActiveUserService = await prisma.userServiceProject.findFirst({
-            where: {
-              id: usp.id,
-              user_id: id,
-              service_project: {
-                id: serviceId,
-                OR: [
-                  { status: { not: "Canceled" } },
-                  { status: null }
-                ],
-                Project: {
-                  status_project: {
-                    notIn: ["Canceled", "Declined", "Rejected"]
-                  }
-                }
-              }
-            }
-          });
-
-          if (hasActiveUserService) {
-            uniqueServices.set(key, usp);
-          }
-        }
-      }
-
-      // Formatação do resultado no formato solicitado
-      const formattedResult = Array.from(uniqueServices.values()).map((usp) => ({
+      const formattedResult = userServiceProjects.map((usp) => ({
         id_userServiceProject: usp.id,
         name_service: usp.service_project.name,
         address_client: usp.service_project.Project?.location || usp.service_project.Project?.client?.location,
         selected: false,
-        // Adicionar informações para debug se necessário
         project_status: usp.service_project.Project?.status_project,
         service_status: usp.service_project.status
       }));
@@ -325,8 +285,8 @@ export class UserServiceProjectController {
 
   async getServicesWithDetails(req: Request, res: Response) {
     try {
-      const { id } = req.params; // ID do usuário
-      const { search } = req.body; // Termo de busca (opcional)
+      const { id } = req.params;
+      const { search } = req.body;
 
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
@@ -338,15 +298,15 @@ export class UserServiceProjectController {
         include: {
           service_project: {
             include: {
-              stages: true, // Para contar as etapas
+              stages: true,
               Project: {
                 include: {
-                  client: true, // Para buscar o endereço do cliente
+                  client: true,
                 },
               },
               UserServiceProject: {
                 include: {
-                  user_attendances: true, // Para calcular horas trabalhadas
+                  user_attendances: true,
                 },
               },
             },
