@@ -1432,12 +1432,10 @@ ${estimate.project?.company?.name || ''}
     try {
       const { projectId } = req.params;
 
-      // Validate projectId
       if (!projectId) {
         return res.status(400).json({ error: "Project ID is required" });
       }
 
-      // Buscar o projeto com contract_number
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -1462,13 +1460,9 @@ ${estimate.project?.company?.name || ''}
         return res.status(400).json({ error: "Project does not have a contract number" });
       }
 
-      // Gerar o próximo número sequencial do estimate para este projeto
       let nextEstimateNumber = 1;
 
-      console.log('🔍 [EstimateController] Estimates existentes:', project.estimates.map(e => e.number));
-
       if (project.estimates.length > 0) {
-        // Encontrar o maior número de estimate já existente
         const estimateNumbers = project.estimates
           .map(estimate => {
             const parts = estimate.number.split('/');
@@ -1476,22 +1470,12 @@ ${estimate.project?.company?.name || ''}
           })
           .filter(num => !isNaN(num) && num > 0);
 
-        console.log('🔍 [EstimateController] Números extraídos:', estimateNumbers);
-
         if (estimateNumbers.length > 0) {
           const maxEstimateNumber = Math.max(...estimateNumbers);
           nextEstimateNumber = maxEstimateNumber + 1;
-          console.log('🔍 [EstimateController] Maior número encontrado:', maxEstimateNumber);
         }
       }
-
-      // Formatar: project_number/estimate_number (ex: 1358/0001)
-      const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
-      const fullNumber = `${project.contract_number}/${formattedEstimateNumber}`;
-
-      console.log('🔢 [EstimateController] Gerando número para projeto:', project.contract_number);
-      console.log('🔢 [EstimateController] Próximo estimate:', formattedEstimateNumber);
-      console.log('🔢 [EstimateController] Número completo:', fullNumber);
+      const fullNumber = `${project.contract_number}-01`;
 
       return res.json({
         number: fullNumber,

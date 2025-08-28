@@ -398,7 +398,7 @@ export class TimeController {
                     }
 
                     const weeklyPrice = weekAttendances[0].user.hourly_price
-                        ? userHasOvertime 
+                        ? userHasOvertime
                             ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                             : (weekRegularHours * weekAttendances[0].user.hourly_price)
                         : 0;
@@ -545,7 +545,7 @@ export class TimeController {
                                 }
 
                                 const weeklyPrice = weekAttendances[0]?.user?.hourly_price
-                                    ? userHasOvertime 
+                                    ? userHasOvertime
                                         ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
                                         : (weekRegularHours * weekAttendances[0].user.hourly_price)
                                     : 0;
@@ -843,9 +843,9 @@ export class TimeController {
                                     x.workEndTime,
                                 );
                                 const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-                                
+
                                 const userHasOvertime = x.user.isOverTime === true;
-                                
+
                                 if (!userHasOvertime) {
                                     regularHours = dailyHours;
                                     overtimeHours = 0;
@@ -1192,7 +1192,7 @@ export class TimeController {
                         dailyPrice = attendance.dailyHours * hourlyRate;
                     } else {
                         const totalWeekHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
-                        
+
                         if (totalWeekHours <= 40) {
                             dailyRegularHours = attendance.dailyHours;
                             dailyOvertimeHours = 0;
@@ -1200,10 +1200,10 @@ export class TimeController {
                         } else {
                             const weekRegularHours = 40;
                             const weekOvertimeHours = totalWeekHours - 40;
-                            
+
                             const regularProportion = weekRegularHours / totalWeekHours;
                             const overtimeProportion = weekOvertimeHours / totalWeekHours;
-                            
+
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                             dailyPrice = (dailyRegularHours * hourlyRate) + (dailyOvertimeHours * hourlyRate * 1.5);
