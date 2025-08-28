@@ -32,6 +32,7 @@ import multer from 'multer'
 import uploadConfig from "../config/upload";
 import { UploadImageController } from '../controllers/projects/UploadImageController';
 import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
+import { timeCardsRouts } from './timeCardsRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -77,6 +78,7 @@ router.use(planRoutes)
 router.use(permissionRoutes)
 router.use(permissionGroupRoutes)
 router.use(subscriptionRoutes)
+router.use("/timecards", timeCardsRouts)
 
 export { router }
 
