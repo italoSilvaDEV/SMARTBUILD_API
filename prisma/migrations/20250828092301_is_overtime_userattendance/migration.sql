@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `User_Attendance` ADD COLUMN `isOvertime` BOOLEAN NULL DEFAULT false;
+ALTER TABLE `user_attendance` ADD COLUMN `isOvertime` BOOLEAN NULL DEFAULT false;
