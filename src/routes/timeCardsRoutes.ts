@@ -6,6 +6,6 @@ const timeCardsRouts = Router()
 
 const getAllTimeCardsController = new getAllController();
 
-timeCardsRouts.get("all/:companyId", getAllTimeCardsController.handle);
+timeCardsRouts.get("/all/:companyId", getAllTimeCardsController.handle);
 
 export { timeCardsRouts }
