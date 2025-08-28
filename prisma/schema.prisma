@@ -549,7 +549,6 @@ model UserServiceProject {
   @@map("user_service_project")
 }
 
-// Tabela para registrar o ponto dos usuários
 model UserAttendance {
   id                      String             @id @default(uuid())
   check_in_time           DateTime
@@ -570,6 +569,8 @@ model UserAttendance {
 
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String?
+
+  isOvertime Boolean? @default(false)
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
