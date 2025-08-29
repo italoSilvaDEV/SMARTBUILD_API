@@ -46,7 +46,10 @@ export class GetNumberNewEstimateController {
                     where: {
                         type_estimate: "estimateProject",
                         project: {
-                            company_id: companyId
+                            company_id: companyId,
+                            status_project: {
+                                in: ["Pending", "Accepted", "Canceled", "Denied", "Waiting for Decision"]
+                            }
                         }
                     },
                     select: {
@@ -61,6 +64,8 @@ export class GetNumberNewEstimateController {
                     const v = parseInt(n, 10)
                     return Number.isFinite(v) ? v : null
                 }).filter((v): v is number => v !== null)
+
+                console.log(lastNumber)
 
                 const nextNumber = (lastNumber.length ? Math.max(...lastNumber) : 1000) + 1
 
