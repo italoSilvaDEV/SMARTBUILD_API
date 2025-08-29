@@ -108,7 +108,9 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: "Pending"
+                        status_project: {
+                            in: ["Pending", "Accepted"]
+                        }
                     },
                     status: {
                         in: ["approved", "pending"]
@@ -126,7 +128,9 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId,
-                        status_project: "Pending"
+                        status_project: {
+                            in: ["Pending", "Accepted"]
+                        }
                     },
                     date_creation: dateFilter,
                     status: {
