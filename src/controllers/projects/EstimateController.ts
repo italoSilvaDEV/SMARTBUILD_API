@@ -986,8 +986,21 @@ export class EstimateController {
 
       // Resultados do envio para cada email
       const results = [];
-      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
-      // Processar todos os emails
+      const avatarKey = estimate.project?.company?.avatar;
+
+      let companyAvatar: string = '';
+      if (avatarKey && typeof avatarKey === 'string' && avatarKey.trim().length > 0) {
+        try {
+          companyAvatar = await getPresignedUrl(avatarKey);
+        } catch (e) {
+          console.error('getPresignedUrl avatar failed - falling back to empty', { avatarKey }, e);
+          companyAvatar = '';
+        }
+      } else {
+        console.warn('avatarKey is empty - skipping presign');
+        companyAvatar = '';
+      }
+
       for (const email of emails) {
         try {
           const mailOptions = {
