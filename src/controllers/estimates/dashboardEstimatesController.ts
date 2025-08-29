@@ -110,6 +110,7 @@ export class DashboardEstimatesController {
                         company_id: companyId
                     },
                     status: "approved",
+                    type_estimate: "estimate",
                     date_creation: dateFilter
                 },
                 _sum: {
@@ -124,7 +125,8 @@ export class DashboardEstimatesController {
                     project: {
                         company_id: companyId
                     },
-                    date_creation: dateFilter
+                    date_creation: dateFilter,
+                    type_estimate: "estimate"
                 },
                 _avg: {
                     totalAmount: true
@@ -164,7 +166,8 @@ export class DashboardEstimatesController {
                     status: {
                         in: ["approved"]
                     },
-                    date_creation: dateFilter
+                    date_creation: dateFilter,
+                    type_estimate: "estimate"
                 },
                 select: {
                     totalAmount: true,
