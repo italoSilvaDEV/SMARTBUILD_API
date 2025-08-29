@@ -109,7 +109,9 @@ export class DashboardEstimatesController {
                     project: {
                         company_id: companyId
                     },
-                    status: "approved",
+                    status: {
+                        in: ["approved", "pending"]
+                    },
                     type_estimate: "estimate",
                     date_creation: dateFilter
                 },
@@ -126,7 +128,10 @@ export class DashboardEstimatesController {
                         company_id: companyId
                     },
                     date_creation: dateFilter,
-                    type_estimate: "estimate"
+                    type_estimate: "estimate",
+                    status: {
+                        in: ["approved", "pending"]
+                    },
                 },
                 _avg: {
                     totalAmount: true
@@ -135,36 +140,13 @@ export class DashboardEstimatesController {
 
             const averageValue = averageValueResult._avg.totalAmount || 0;
 
-            const totalEstimates = await prisma.estimate.count({
-                where: {
-                    project: {
-                        company_id: companyId
-                    },
-                    date_creation: dateFilter
-                }
-            });
-
-            const approvedEstimates = await prisma.estimate.count({
-                where: {
-                    project: {
-                        company_id: companyId
-                    },
-                    status: "approved",
-                    date_creation: dateFilter
-                }
-            });
-
-            const conversionRate = totalEstimates > 0
-                ? ((approvedEstimates / totalEstimates) * 100)
-                : 0;
-
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
                         company_id: companyId
                     },
                     status: {
-                        in: ["approved"]
+                        in: ["approved", "pending"]
                     },
                     date_creation: dateFilter,
                     type_estimate: "estimate"
@@ -218,7 +200,6 @@ export class DashboardEstimatesController {
             return res.status(200).json({
                 totalSales: Number(totalSales),
                 averageValue: Number(averageValue),
-                conversionRate: Number(conversionRate.toFixed(2)),
                 monthlySales: monthlySales,
                 period: period,
                 dateRange: {
