@@ -107,22 +107,12 @@ export class DashboardEstimatesController {
             const totalSalesResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: "Pending"
                     },
                     status: {
                         in: ["approved", "pending"]
                     },
-                    OR: [
-                        {
-                            type_estimate: "estimate",
-                        },
-                        {
-                            type_estimate: "estimateProject",
-                            project: {
-                                status_project: "Pending"
-                            }
-                        }
-                    ],
                     date_creation: dateFilter
                 },
                 _sum: {
@@ -135,20 +125,10 @@ export class DashboardEstimatesController {
             const averageValueResult = await prisma.estimate.aggregate({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: "Pending"
                     },
                     date_creation: dateFilter,
-                    OR: [
-                        {
-                            type_estimate: "estimate",
-                        },
-                        {
-                            type_estimate: "estimateProject",
-                            project: {
-                                status_project: "Pending"
-                            }
-                        }
-                    ],
                     status: {
                         in: ["approved", "pending"]
                     },
