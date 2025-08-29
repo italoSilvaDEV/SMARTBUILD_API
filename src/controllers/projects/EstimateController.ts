@@ -1235,8 +1235,19 @@ export class EstimateController {
         },
       });
 
+      console.log("chegou até url avatar");
+
       const results = [];
-      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
+      const avatarKey = estimate.project?.company?.avatar;
+      console.log('[sendEmail] avatarKey before presign:', avatarKey);
+      console.log('[sendEmail] S3 config:', { bucket: process.env.AMAZON_S3_BUCKET, region: process.env.AMAZON_S3_REGION });
+      let companyAvatar: string = '';
+      try {
+        companyAvatar = await getPresignedUrl(avatarKey || '');
+      } catch (e) {
+        console.error('[sendEmail] getPresignedUrl avatar failed', { avatarKey }, e);
+        throw e;
+      }
 
       console.log(companyAvatar);
 
