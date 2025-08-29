@@ -132,6 +132,7 @@ export class getAllController {
                     }
                 },
                 select: {
+                    date: true,
                     check_in_time: true,
                     check_out_time: true,
                     workStartTime: true,
@@ -495,7 +496,7 @@ export class getAllController {
                 userName: user.userName,
                 servicesCount: user.servicesCount.size,
                 total: parseFloat(user.total.toFixed(2)),
-                workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime()) // Ordenar por data
+                workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime())
             }));
 
             return res.status(200).json({
