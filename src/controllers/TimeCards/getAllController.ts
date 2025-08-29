@@ -153,8 +153,35 @@ export class getAllController {
             let totalRegularHours = 0;
             let totalOvertimeHours = 0;
 
+            const weeklyAttendances = new Map();
+
             allAttendances.forEach(attendance => {
-                if (attendance.check_out_time && attendance.check_in_time) {
+                if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                    const userId = attendance.user.id;
+                    const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
+                    const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
+                    const weekKey = `${userId}-${weekStart.toISODate()}`;
+
+                    if (!weeklyAttendances.has(weekKey)) {
+                        weeklyAttendances.set(weekKey, {
+                            user: attendance.user,
+                            attendances: []
+                        });
+                    }
+
+                    weeklyAttendances.get(weekKey).attendances.push(attendance);
+                }
+            });
+
+            weeklyAttendances.forEach(weekData => {
+                let weeklyTotalHours = 0;
+                const weekAttendancesWithHours: Array<{
+                    attendance: any;
+                    dailyHours: number;
+                    hadOvertimePermission: boolean;
+                }> = [];
+
+                weekData.attendances.forEach((attendance: any) => {
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
                         attendance.check_out_time.toISOString(),
@@ -162,24 +189,38 @@ export class getAllController {
                         attendance.workEndTime,
                     );
 
-                    const regularHours = convertHHMMToDecimal(hours.normais);
-                    const overtimeHours = convertHHMMToDecimal(hours.extras);
-                    const dailyHours = regularHours + overtimeHours;
+                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    weeklyTotalHours += dailyHours;
 
-                    totalHours += dailyHours;
+                    weekAttendancesWithHours.push({
+                        attendance,
+                        dailyHours,
+                        hadOvertimePermission: attendance.isOvertime === true
+                    });
+                });
 
-                    const hadOvertimePermission = attendance.isOvertime === true;
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
+
+                weekAttendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
                     const hourlyRate = attendance.user?.hourly_price || 0;
 
-                    if (hadOvertimePermission) {
-                        totalRegularHours += regularHours;
-                        totalOvertimeHours += overtimeHours;
-                        totalPrice += (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
+
+                    totalRegularHours += regularHoursThisDay;
+                    weeklyRegularHoursUsed += regularHoursThisDay;
+
+                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
+                        totalOvertimeHours += overtimeHoursThisDay;
+                        totalPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
                     } else {
-                        totalRegularHours += dailyHours;
+                        totalRegularHours += overtimeHoursThisDay;
                         totalPrice += dailyHours * hourlyRate;
                     }
-                }
+                    totalHours += dailyHours;
+                });
             });
 
             const totalProjects = projects.length;
@@ -203,48 +244,89 @@ export class getAllController {
 
                 const workerData: any[] = [];
 
+                const projectWeeklyMap = new Map();
+
                 project.serviceProject.forEach(service => {
                     service.UserServiceProject.forEach(userService => {
                         userService.user_attendances.forEach(attendance => {
-                            if (attendance.check_out_time && attendance.check_in_time) {
-                                const hours = calcularHorasTrabalhadas(
-                                    attendance.check_in_time.toISOString(),
-                                    attendance.check_out_time.toISOString(),
-                                    attendance.workStartTime,
-                                    attendance.workEndTime,
-                                );
+                            if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                                const userId = attendance.user.id;
+                                const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
+                                const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
+                                const weekKey = `${userId}-${weekStart.toISODate()}`;
 
-                                const regularHours = convertHHMMToDecimal(hours.normais);
-                                const overtimeHours = convertHHMMToDecimal(hours.extras);
-                                const totalHours = regularHours + overtimeHours;
-                                const hadOvertimePermission = attendance.isOvertime === true;
-                                const hourlyRate = attendance.user?.hourly_price || 0;
-
-                                let finalRegularHours = 0;
-                                let finalOvertimeHours = 0;
-                                let price = 0;
-
-                                if (hadOvertimePermission) {
-                                    finalRegularHours = regularHours;
-                                    finalOvertimeHours = overtimeHours;
-                                    price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
-                                } else {
-                                    finalRegularHours = totalHours;
-                                    finalOvertimeHours = 0;
-                                    price = totalHours * hourlyRate;
+                                if (!projectWeeklyMap.has(weekKey)) {
+                                    projectWeeklyMap.set(weekKey, {
+                                        user: attendance.user,
+                                        attendances: []
+                                    });
                                 }
 
-                                workerData.push({
-                                    nameWorker: attendance.user?.name || "",
-                                    date: attendance.date,
-                                    in: attendance.check_in_time,
-                                    out: attendance.check_out_time,
-                                    regular_hours: parseFloat(finalRegularHours.toFixed(2)),
-                                    overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
-                                    total_hours: parseFloat(totalHours.toFixed(2)),
-                                    price: parseFloat(price.toFixed(2))
-                                });
+                                projectWeeklyMap.get(weekKey).attendances.push(attendance);
                             }
+                        });
+                    });
+                });
+
+                projectWeeklyMap.forEach(weekData => {
+                    let weeklyTotalHours = 0;
+                    const attendancesWithHours: Array<{
+                        attendance: any;
+                        dailyHours: number;
+                        hadOvertimePermission: boolean;
+                    }> = [];
+
+                    weekData.attendances.forEach((attendance: any) => {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+
+                        const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        weeklyTotalHours += dailyHours;
+
+                        attendancesWithHours.push({
+                            attendance,
+                            dailyHours,
+                            hadOvertimePermission: attendance.isOvertime === true
+                        });
+                    });
+
+                    let weeklyRegularHoursUsed = 0;
+                    const WEEKLY_REGULAR_LIMIT = 40;
+
+                    attendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
+                        const hourlyRate = attendance.user?.hourly_price || 0;
+                        let finalRegularHours = 0;
+                        let finalOvertimeHours = 0;
+                        let price = 0;
+
+                        const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                        finalRegularHours = Math.min(dailyHours, remainingRegularHours);
+                        const potentialOvertimeHours = Math.max(0, dailyHours - finalRegularHours);
+
+                        weeklyRegularHoursUsed += finalRegularHours;
+
+                        if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                            finalOvertimeHours = potentialOvertimeHours;
+                            price = (finalRegularHours * hourlyRate) + (finalOvertimeHours * hourlyRate * 1.5);
+                        } else {
+                            finalRegularHours += potentialOvertimeHours;
+                            finalOvertimeHours = 0;
+                            price = dailyHours * hourlyRate;
+                        }
+
+                        workerData.push({
+                            nameWorker: attendance.user?.name || "",
+                            date: attendance.date,
+                            in: attendance.check_in_time,
+                            out: attendance.check_out_time,
+                            regular_hours: parseFloat(finalRegularHours.toFixed(2)),
+                            overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
+                            total_hours: parseFloat(dailyHours.toFixed(2)),
+                            price: parseFloat(price.toFixed(2))
                         });
                     });
                 });
@@ -261,10 +343,16 @@ export class getAllController {
 
             const workersMap = new Map();
 
-            allAttendances.forEach(attendance => {
-                if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
-                    const userId = attendance.user.id;
+            weeklyAttendances.forEach(weekData => {
+                const userId = weekData.user.id;
+                let weeklyTotalHours = 0;
+                let weeklyRegularHours = 0;
+                let weeklyOvertimeHours = 0;
+                let weeklyPrice = 0;
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
 
+                weekData.attendances.forEach((attendance: any) => {
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
                         attendance.check_out_time.toISOString(),
@@ -272,48 +360,48 @@ export class getAllController {
                         attendance.workEndTime,
                     );
 
-                    const regularHours = convertHHMMToDecimal(hours.normais);
-                    const overtimeHours = convertHHMMToDecimal(hours.extras);
-                    const totalHours = regularHours + overtimeHours;
-
+                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                     const hadOvertimePermission = attendance.isOvertime === true;
-                    const hourlyRate = attendance.user.hourly_price || 0;
+                    const hourlyRate = attendance.user?.hourly_price || 0;
 
-                    let finalRegularHours = 0;
-                    let finalOvertimeHours = 0;
-                    let price = 0;
+                    weeklyTotalHours += dailyHours;
 
-                    if (hadOvertimePermission) {
-                        finalRegularHours = regularHours;
-                        finalOvertimeHours = overtimeHours;
-                        price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
+
+                    weeklyRegularHours += regularHoursThisDay;
+                    weeklyRegularHoursUsed += regularHoursThisDay;
+
+                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
+                        weeklyOvertimeHours += overtimeHoursThisDay;
+                        weeklyPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
                     } else {
-                        finalRegularHours = totalHours;
-                        finalOvertimeHours = 0;
-                        price = totalHours * hourlyRate;
+                        weeklyRegularHours += overtimeHoursThisDay;
+                        weeklyPrice += dailyHours * hourlyRate;
                     }
+                });
 
-                    if (!workersMap.has(userId)) {
-                        workersMap.set(userId, {
-                            user: {
-                                id: attendance.user.id,
-                                name: attendance.user.name,
-                                hourly_price: attendance.user.hourly_price,
-                                isOverTime: attendance.user.isOverTime
-                            },
-                            hours_worked: 0,
-                            regular_hours: 0,
-                            overtime_hours: 0,
-                            price: 0
-                        });
-                    }
-
-                    const worker = workersMap.get(userId);
-                    worker.hours_worked += totalHours;
-                    worker.regular_hours += finalRegularHours;
-                    worker.overtime_hours += finalOvertimeHours;
-                    worker.price += price;
+                if (!workersMap.has(userId)) {
+                    workersMap.set(userId, {
+                        user: {
+                            id: weekData.user.id,
+                            name: weekData.user.name,
+                            hourly_price: weekData.user.hourly_price,
+                            isOverTime: weekData.user.isOverTime
+                        },
+                        hours_worked: 0,
+                        regular_hours: 0,
+                        overtime_hours: 0,
+                        price: 0
+                    });
                 }
+
+                const worker = workersMap.get(userId);
+                worker.hours_worked += weeklyTotalHours;
+                worker.regular_hours += weeklyRegularHours;
+                worker.overtime_hours += weeklyOvertimeHours;
+                worker.price += weeklyPrice;
             });
 
             const formattedWorkers = Array.from(workersMap.values()).map(worker => ({
@@ -326,56 +414,77 @@ export class getAllController {
 
             const payrollMap = new Map();
 
-            projects.forEach(project => {
-                const projectLocation = project.location || project.client?.location || "";
+            weeklyAttendances.forEach(weekData => {
+                const userId = weekData.user.id;
+                const userName = weekData.user.name;
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
 
-                project.serviceProject.forEach(service => {
-                    service.UserServiceProject.forEach(userService => {
-                        userService.user_attendances.forEach(attendance => {
-                            if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
-                                const userId = attendance.user.id;
-                                const userName = attendance.user.name;
-                                const hours = calcularHorasTrabalhadas(
-                                    attendance.check_in_time.toISOString(),
-                                    attendance.check_out_time.toISOString(),
-                                    attendance.workStartTime,
-                                    attendance.workEndTime,
+                weekData.attendances.forEach((attendance: any) => {
+                    let projectLocation = "";
+                    let serviceId = "";
+
+                    projects.forEach(project => {
+                        project.serviceProject.forEach(service => {
+                            service.UserServiceProject.forEach(userService => {
+                                const foundAttendance = userService.user_attendances.find(ua =>
+                                    ua.check_in_time?.getTime() === attendance.check_in_time?.getTime() &&
+                                    ua.check_out_time?.getTime() === attendance.check_out_time?.getTime() &&
+                                    ua.user?.id === attendance.user?.id
                                 );
-
-                                const regularHours = convertHHMMToDecimal(hours.normais);
-                                const overtimeHours = convertHHMMToDecimal(hours.extras);
-                                const totalHours = regularHours + overtimeHours;
-                                const hadOvertimePermission = attendance.isOvertime === true;
-                                const hourlyRate = attendance.user.hourly_price || 0;
-
-                                let attendancePrice = 0;
-                                if (hadOvertimePermission) {
-                                    attendancePrice = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
-                                } else {
-                                    attendancePrice = totalHours * hourlyRate;
+                                if (foundAttendance) {
+                                    projectLocation = project.location || project.client?.location || "";
+                                    serviceId = service.id;
                                 }
-                                if (!payrollMap.has(userId)) {
-                                    payrollMap.set(userId, {
-                                        userName: userName,
-                                        servicesCount: new Set(),
-                                        total: 0,
-                                        workers: []
-                                    });
-                                }
-
-                                const payrollUser = payrollMap.get(userId);
-                                payrollUser.servicesCount.add(service.id);
-                                payrollUser.total += attendancePrice;
-                                payrollUser.workers.push({
-                                    project: projectLocation,
-                                    date: attendance.date,
-                                    in: attendance.check_in_time,
-                                    out: attendance.check_out_time,
-                                    total: parseFloat(attendancePrice.toFixed(2))
-                                });
-                            }
+                            });
                         });
                     });
+
+                    if (projectLocation) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+
+                        const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        const hadOvertimePermission = attendance.isOvertime === true;
+                        const hourlyRate = attendance.user.hourly_price || 0;
+
+                        let attendancePrice = 0;
+                        const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                        const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+                        const potentialOvertimeHours = Math.max(0, dailyHours - regularHoursThisDay);
+
+                        weeklyRegularHoursUsed += regularHoursThisDay;
+
+                        if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                            attendancePrice = (regularHoursThisDay * hourlyRate) + (potentialOvertimeHours * hourlyRate * 1.5);
+                        } else {
+                            attendancePrice = dailyHours * hourlyRate;
+                        }
+
+                        if (!payrollMap.has(userId)) {
+                            payrollMap.set(userId, {
+                                userName: userName,
+                                servicesCount: new Set(),
+                                total: 0,
+                                workers: []
+                            });
+                        }
+
+                        const payrollUser = payrollMap.get(userId);
+                        if (serviceId) payrollUser.servicesCount.add(serviceId);
+                        payrollUser.total += attendancePrice;
+                        payrollUser.workers.push({
+                            project: projectLocation,
+                            date: attendance.date,
+                            in: attendance.check_in_time,
+                            out: attendance.check_out_time,
+                            total: parseFloat(attendancePrice.toFixed(2))
+                        });
+                    }
                 });
             });
 
