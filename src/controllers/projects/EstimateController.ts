@@ -1239,7 +1239,19 @@ export class EstimateController {
       });
 
       const results = [];
-      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
+      const avatarKey = estimate.project?.company?.avatar;
+      let companyAvatar: string = '';
+      if (avatarKey && typeof avatarKey === 'string' && avatarKey.trim().length > 0) {
+        try {
+          companyAvatar = await getPresignedUrl(avatarKey);
+        } catch (e) {
+          console.error('getPresignedUrl avatar failed - falling back to empty', { avatarKey }, e);
+          companyAvatar = '';
+        }
+      } else {
+        console.warn('avatarKey is empty - skipping presign');
+        companyAvatar = '';
+      }
 
       const allRecipients = [
         ...dataEmail.to,
