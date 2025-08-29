@@ -1184,19 +1184,12 @@ export class EstimateController {
         }
       });
 
-      console.log(pdfProject);
-
       if (!pdfProject || !pdfProject.uri) {
         cleanupTempFiles(attachmentFiles);
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
 
-      console.log(pdfProject.uri);
-
       const pdfUrl = await getPresignedUrl(pdfProject.uri);
-
-      console.log(pdfUrl);
-
       const pdfResponse = await fetch(pdfUrl);
 
       if (!pdfResponse.ok) {
@@ -1207,9 +1200,6 @@ export class EstimateController {
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
       const fileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
       const SMTP_CONFIG = require("../../config/smtp");
-      console.log(pdfBuffer);
-      console.log(fileName);
-      console.log(SMTP_CONFIG);
 
       try {
         await EstimateController.verifySMTPConfig();
@@ -1235,21 +1225,8 @@ export class EstimateController {
         },
       });
 
-      console.log("chegou até url avatar");
-
       const results = [];
-      const avatarKey = estimate.project?.company?.avatar;
-      console.log('[sendEmail] avatarKey before presign:', avatarKey);
-      console.log('[sendEmail] S3 config:', { bucket: process.env.AMAZON_S3_BUCKET, region: process.env.AMAZON_S3_REGION });
-      let companyAvatar: string = '';
-      try {
-        companyAvatar = await getPresignedUrl(avatarKey || '');
-      } catch (e) {
-        console.error('[sendEmail] getPresignedUrl avatar failed', { avatarKey }, e);
-        throw e;
-      }
-
-      console.log(companyAvatar);
+      const companyAvatar = await getPresignedUrl(estimate.project?.company?.avatar || '');
 
       const allRecipients = [
         ...dataEmail.to,
@@ -1298,7 +1275,7 @@ export class EstimateController {
           subject: dataEmail.subject || `${estimate.project?.company?.name} - Estimate`,
           html: estimateEmail(
             estimate.project?.client?.name || '',
-            companyAvatar,
+            companyAvatar || '',
             estimate.project?.company?.name || '',
             numberPerson || estimate.number,
             Number(estimate.totalAmount),
