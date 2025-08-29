@@ -405,7 +405,10 @@ export class getAllController {
             });
 
             const formattedWorkers = Array.from(workersMap.values()).map(worker => ({
-                user: worker.user,
+                user: {
+                    ...worker.user,
+                    isOverTime: worker.overtime_hours > 0
+                },
                 hours_worked: parseFloat(worker.hours_worked.toFixed(2)),
                 regular_hours: parseFloat(worker.regular_hours.toFixed(2)),
                 overtime_hours: parseFloat(worker.overtime_hours.toFixed(2)),

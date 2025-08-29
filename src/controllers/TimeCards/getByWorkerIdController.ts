@@ -140,7 +140,7 @@ export class getByWorkerIdController {
 
                     const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                     weeklyTotalHours += dailyHours;
-                    
+
                     weekAttendancesWithHours.push({
                         attendance,
                         dailyHours,
@@ -156,10 +156,10 @@ export class getByWorkerIdController {
                     const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
                     const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
                     const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
-                    
+
                     totalRegularHours += regularHoursThisDay;
                     weeklyRegularHoursUsed += regularHoursThisDay;
-                    
+
                     if (hadOvertimePermission && overtimeHoursThisDay > 0) {
                         totalOvertimeHours += overtimeHoursThisDay;
                         totalPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
@@ -187,7 +187,7 @@ export class getByWorkerIdController {
                 name: user.name,
                 avatar: avatarUrl,
                 office: user.office.name,
-                isOverTime: user.isOverTime
+                isOverTime: totalOvertimeHours > 0
             };
 
             const workersWithCorrectOvertime: any[] = [];
@@ -196,7 +196,7 @@ export class getByWorkerIdController {
                 let weeklyRegularHoursUsed = 0;
                 const WEEKLY_REGULAR_LIMIT = 40;
 
-                const sortedWeekAttendances = weekData.attendances.sort((a: any, b: any) => 
+                const sortedWeekAttendances = weekData.attendances.sort((a: any, b: any) =>
                     new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
                 );
 
@@ -219,13 +219,13 @@ export class getByWorkerIdController {
                     const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
                     const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
                     const potentialOvertimeHours = Math.max(0, dailyHours - regularHoursThisDay);
-                    
+
                     weeklyRegularHoursUsed += regularHoursThisDay;
-                    
+
                     let finalRegularHours = 0;
                     let finalOvertimeHours = 0;
                     let attendancePrice = 0;
-                    
+
                     if (hadOvertimePermission && potentialOvertimeHours > 0) {
                         finalRegularHours = regularHoursThisDay;
                         finalOvertimeHours = potentialOvertimeHours;
@@ -257,7 +257,7 @@ export class getByWorkerIdController {
                         user: {
                             name: attendance.user.name,
                             hourly_price: attendance.user.hourly_price,
-                            isOverTime: attendance.user.isOverTime
+                            isOverTime: finalOvertimeHours > 0
                         },
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(finalRegularHours.toFixed(2)),
@@ -267,7 +267,7 @@ export class getByWorkerIdController {
                 });
             });
 
-            const workers = workersWithCorrectOvertime.sort((a, b) => 
+            const workers = workersWithCorrectOvertime.sort((a, b) =>
                 new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
             );
 
