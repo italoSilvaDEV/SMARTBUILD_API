@@ -112,7 +112,17 @@ export class DashboardEstimatesController {
                     status: {
                         in: ["approved", "pending"]
                     },
-                    type_estimate: "estimate",
+                    OR: [
+                        {
+                            type_estimate: "estimate",
+                        },
+                        {
+                            type_estimate: "estimateProject",
+                            project: {
+                                status_project: "Pending"
+                            }
+                        }
+                    ],
                     date_creation: dateFilter
                 },
                 _sum: {
