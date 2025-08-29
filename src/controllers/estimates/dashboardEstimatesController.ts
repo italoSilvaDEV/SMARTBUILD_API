@@ -147,13 +147,15 @@ export class DashboardEstimatesController {
             const estimatesForChart = await prisma.estimate.findMany({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
+                        status_project: {
+                            in: ["Pending", "Accepted"]
+                        }
                     },
                     status: {
                         in: ["approved", "pending"]
                     },
                     date_creation: dateFilter,
-                    type_estimate: "estimate"
                 },
                 select: {
                     totalAmount: true,
