@@ -138,7 +138,17 @@ export class DashboardEstimatesController {
                         company_id: companyId
                     },
                     date_creation: dateFilter,
-                    type_estimate: "estimate",
+                    OR: [
+                        {
+                            type_estimate: "estimate",
+                        },
+                        {
+                            type_estimate: "estimateProject",
+                            project: {
+                                status_project: "Pending"
+                            }
+                        }
+                    ],
                     status: {
                         in: ["approved", "pending"]
                     },
