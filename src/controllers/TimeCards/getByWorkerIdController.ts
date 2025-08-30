@@ -130,7 +130,9 @@ export class getByWorkerIdController {
                     hadOvertimePermission: boolean;
                 }> = [];
 
-                weekData.attendances.forEach((attendance: any) => {
+                weekData.attendances.sort((a: any, b: any) =>
+                    new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+                ).forEach((attendance: any) => {
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
                         attendance.check_out_time.toISOString(),

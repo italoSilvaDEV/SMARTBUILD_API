@@ -41,7 +41,7 @@ export class DashboardProjectController {
         let statusFilters: string[] = [];
         if (status_project) {
             const statusArray = (status_project as string).split(',').map(s => s.trim());
-            
+
             for (const status of statusArray) {
                 if (!validStatusProjects.includes(status)) {
                     return res.status(400).json({
@@ -136,6 +136,7 @@ export class DashboardProjectController {
                         company_id: companyId,
                     },
                     status: "approved",
+                    type_estimate: "estimate",
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     })
@@ -191,7 +192,7 @@ export class DashboardProjectController {
                         company_id: companyId,
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
-                        date_creation: dateFilter
+                        date_creation: dateFilter,
                     })
                 }
             });
