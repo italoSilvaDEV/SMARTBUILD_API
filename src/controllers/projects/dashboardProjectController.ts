@@ -193,7 +193,8 @@ export class DashboardProjectController {
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter,
-                    })
+                    }),
+                    type_estimate: "estimate",
                 }
             });
 
