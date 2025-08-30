@@ -41,6 +41,8 @@ export class GetNumberNewEstimateController {
                 }
             })
 
+            console.log("Numbers: ", number)
+
             if (number.length === 0) {
                 const number = await prisma.estimate.findMany({
                     where: {
@@ -79,7 +81,11 @@ export class GetNumberNewEstimateController {
                 return Number.isFinite(v) ? v : null
             }).filter((v): v is number => v !== null)
 
+            console.log(lastNumber)
+
             const nextNumber = (lastNumber.length ? Math.max(...lastNumber) : 1000) + 1
+
+            console.log(nextNumber)
 
             return res.status(200).json({
                 number: nextNumber
