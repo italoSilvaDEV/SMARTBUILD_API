@@ -146,14 +146,17 @@ export class GetAllEstimatesByCompanyController {
                     if (estimate.project.user?.avatar) {
                         return await getPresignedUrl(estimate.project.user.avatar)
                     }
-                    if (estimate.project.company?.avatar) {
-                        return await getPresignedUrl(estimate.project.company.avatar)
-                    }
                     return null
                 }).filter(Boolean))
 
+                const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
+
                 return {
                     ...estimate,
+                    company: {
+                        ...estimate.project.company,
+                        avatar: urlCompanyAvatar
+                    },
                     PdfProject: presignedUrls,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
