@@ -42,6 +42,9 @@ export class GetNumberEstimateProjectController {
                         company_id: companyId
                     },
                 },
+                orderBy: {
+                    date_creation: 'desc'
+                }
             })
 
             const nextNumber = number.length + 1
