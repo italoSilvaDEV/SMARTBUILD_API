@@ -153,9 +153,12 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
-                    company: {
-                        ...estimate.project.company,
-                        avatar: urlCompanyAvatar
+                    project: {
+                        ...estimate.project,
+                        company: {
+                            ...estimate.project.company,
+                            avatar: urlCompanyAvatar
+                        }
                     },
                     PdfProject: presignedUrls,
                     serviceProjects: estimate.serviceProjects.map((service) => {
