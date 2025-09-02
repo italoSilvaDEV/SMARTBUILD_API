@@ -128,7 +128,7 @@ export class GetAllEstimatesByCompanyController {
                             id: true,
                             uri: true
                         }
-                    }
+                    },
                 },
                 orderBy: {
                     date_creation: "desc"
@@ -145,6 +145,9 @@ export class GetAllEstimatesByCompanyController {
                     }
                     if (estimate.project.user?.avatar) {
                         return await getPresignedUrl(estimate.project.user.avatar)
+                    }
+                    if (estimate.project.company?.avatar) {
+                        return await getPresignedUrl(estimate.project.company.avatar)
                     }
                     return null
                 }).filter(Boolean))
