@@ -128,7 +128,7 @@ export class GetAllEstimatesByCompanyController {
                             id: true,
                             uri: true
                         }
-                    }
+                    },
                 },
                 orderBy: {
                     date_creation: "desc"
@@ -149,8 +149,17 @@ export class GetAllEstimatesByCompanyController {
                     return null
                 }).filter(Boolean))
 
+                const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
+
                 return {
                     ...estimate,
+                    project: {
+                        ...estimate.project,
+                        company: {
+                            ...estimate.project.company,
+                            avatar: urlCompanyAvatar
+                        }
+                    },
                     PdfProject: presignedUrls,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {

@@ -41,6 +41,40 @@ export class GetNumberNewEstimateController {
                 }
             })
 
+            if (number.length === 0) {
+                const number = await prisma.estimate.findMany({
+                    where: {
+                        type_estimate: "estimateProject",
+                        project: {
+                            company_id: companyId,
+                            status_project: {
+                                in: [
+                                    "Pending",
+                                    "Accepted",
+                                ]
+                            }
+                        }
+                    },
+                    select: {
+                        number: true
+                    },
+                    orderBy: {
+                        date_creation: 'desc'
+                    }
+                })
+
+                const lastNumber = number.map(e => (e.number ?? "").toString().split("/")[0].trim()).map(n => {
+                    const v = parseInt(n, 10)
+                    return Number.isFinite(v) ? v : null
+                }).filter((v): v is number => v !== null)
+
+                const nextNumber = (lastNumber.length ? Math.max(...lastNumber) : 1000) + 1
+
+                return res.status(200).json({
+                    number: nextNumber
+                })
+            }
+
             const lastNumber = number.map(e => (e.number ?? "").toString().split("/")[0].trim()).map(n => {
                 const v = parseInt(n, 10)
                 return Number.isFinite(v) ? v : null

@@ -282,6 +282,7 @@ export class ProjectController {
               select: {
                 price: true,
                 amout: true,
+                transaction_type: true,
               }
             }
           }
@@ -314,7 +315,12 @@ export class ProjectController {
         const projectId = invoice.project_id;
         const currentCost = costsMap.get(projectId) || 0;
         const invoiceCost = invoice.costProject.reduce((total: number, cost: any) => {
-          return total + Number(cost.price) * Number(cost.amout);
+          if (cost.transaction_type === "Cost") {
+            return total + Number(cost.price) * Number(cost.amout);
+          } else if (cost.transaction_type === "Credit") {
+            return total - Number(cost.price) * Number(cost.amout);
+          }
+          return total;
         }, 0);
         costsMap.set(projectId, currentCost + invoiceCost);
       });
@@ -329,9 +335,9 @@ export class ProjectController {
             uniqueUsers: new Set(),
           });
         }
-        
+
         const projectData = workedHoursMap.get(projectId);
-        
+
         if (wh.amount_of_hours !== null) {
           projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price);
           projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
@@ -567,7 +573,7 @@ export class ProjectController {
           }, 0);
           return total + costTotal
         }, 0)
-        
+
         const userAttendanceHours = project.serviceProject.reduce((total, service) => {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
