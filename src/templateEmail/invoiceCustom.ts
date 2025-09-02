@@ -1,8 +1,43 @@
-export const invoiceCustom = (name: string, logo: string, code: string, invoiceAmount: string, companyName: string, phone: string, customBody?: string) => {
+export const invoiceCustom = (
+    name: string, 
+    logo: string, 
+    code: string, 
+    invoiceAmount: string, 
+    companyName: string, 
+    phone: string, 
+    customBody?: string,
+    customSubject?: string,
+    invoiceType?: string,
+    invoiceUrl?: string
+) => {
     // Formatar o valor para mostrar em dólares
     const formattedValue = invoiceAmount.includes('$') 
         ? invoiceAmount 
         : `$${parseFloat(invoiceAmount.replace(/[^\d.-]/g, '') || '0').toFixed(2)}`;
+
+    // Função para processar formatação markdown básica
+    const processMarkdown = (text: string): string => {
+        if (!text) return '';
+        
+        return text
+            // Converter quebras de linha para <br>
+            .replace(/\n/g, '<br>')
+            // Converter **texto** para <strong>texto</strong>
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Converter *texto* para <em>texto</em>
+            .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+            // Converter --- para linha horizontal
+            .replace(/---/g, '<hr style="border: none; border-top: 1px solid #ddd; margin: 10px 0;">')
+            // Converter • para bullet points
+            .replace(/• /g, '&bull; ');
+    };
+
+    // Usar o corpo personalizado processado se fornecido
+    const emailContent = customBody ? processMarkdown(customBody) : `
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Hope you're doing well! I am here to inform you that a new invoice for <strong>${formattedValue}</strong> is available for you! 🎉</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">If you have any questions, we're here to help! 😉</p>
+        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>
+    `;
 
     return `
 <!DOCTYPE html>
@@ -69,8 +104,16 @@ export const invoiceCustom = (name: string, logo: string, code: string, invoiceA
                                 <table bgcolor="#ffffff" class="bb" align="center" width="600" style="border-collapse: collapse; margin: 0;">
                                     <tr>
                                         <td align="center" bgcolor="#cfebf6" style="padding:30px; margin: 0;">
-                                            <p style="font-size:16px;color:#333333;margin:0;text-align:center;"><strong>Your Invoice #${code} is ready!</strong></p>
+                                            <p style="font-size:16px;color:#333333;margin:0;text-align:center;"><strong>${customSubject || (invoiceType === 'stripe' ? `Your Invoice is ready!` : `Your Invoice #${code} is ready!`)}</strong></p>
                                             <p style="font-size:12px;color:#333333;margin:0;text-align:center;">Total ${formattedValue}</p>
+                                            <p style="font-size:12px;color:#333333;margin:15px 0;text-align:center;">
+                                              ${invoiceType === 'stripe' && invoiceUrl ? `
+                                              <a href="${invoiceUrl}" 
+                                                 style="background-color:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;margin-top:10px;font-size:14px;">
+                                                View and pay
+                                              </a>
+                                              ` : ''}
+                                            </p>
                                         </td>
                                     </tr>
                                 </table>
@@ -83,15 +126,11 @@ export const invoiceCustom = (name: string, logo: string, code: string, invoiceA
                                 <table bgcolor="#ffffff" class="bb" align="center" width="600" style="border-collapse: collapse; margin: 0;">
                                     <tr>
                                         <td align="center" style="padding:20px; margin: 0;">
-                                            <div style="font-size:14px;color:#333333;line-height:1.6;text-align:center;max-width:500px;margin:0 auto;">
+                                            <div style="font-size:14px;color:#333333;line-height:1.6;text-align:${customBody ? 'center' : 'center'};max-width:500px;margin:0 auto;">
                                                 <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
-                                                ${customBody ? 
-                                                  `<div style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;white-space:pre-wrap;">${customBody}</div>` 
-                                                  : 
-                                                  `<p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Hope you're doing well! I am here to inform you that a new invoice for <strong>${formattedValue}</strong> is available for you! 🎉</p>
-                                                  <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">If you have any questions, we're here to help! 😉</p>
-                                                  <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>`
-                                                }
+                                                <div style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">
+                                                    ${emailContent}
+                                                </div>
                                                 <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;"><strong>${companyName}</strong></p>
                                                 ${phone ? `<p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">${phone}</p>` : ''}
                                             </div>
