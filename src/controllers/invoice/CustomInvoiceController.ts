@@ -279,7 +279,7 @@ export class CustomInvoiceController {
         where: {
           externalInvoiceId: invoiceId,
           companyId: companyId,
-          invoiceType: "custom"
+          invoiceType: { in: ["custom", "stripe"] }
         },
         include: {
           project: {
@@ -301,7 +301,7 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (invoice.invoiceType !== "custom") {
+      if (invoice.invoiceType !== "custom" && invoice.invoiceType !== "stripe") {
         return res.status(400).json({ error: "Not a custom invoice" });
       }
 
@@ -366,12 +366,23 @@ export class CustomInvoiceController {
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '', customBody);
+      const emailTemplate = invoiceCustom(
+        clientName, 
+        urlLogo, 
+        invoiceCode, 
+        invoiceAmount, 
+        companyName, 
+        phone || '', 
+        customBody,
+        customSubject,
+        invoice.invoiceType,
+        invoice.invoiceUrl
+      );
 
       const fileName = pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`;
 
-      // Usar subject personalizado se fornecido, senão usar o padrão
-      const emailSubject = customSubject || `Invoice #${invoiceCode} - ${companyName}`;
+      // Usar subject personalizado se fornecido, senão usar o padrão baseado no tipo
+      const emailSubject = customSubject || (String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`);
 
       // Enviar o email com o PDF anexado
       await transporter.sendMail({
@@ -447,7 +458,7 @@ export class CustomInvoiceController {
         where: {
           externalInvoiceId: invoiceId,
           companyId: companyId, // Filtrar pelo companyId fornecido
-          invoiceType: "custom"
+          invoiceType: { in: ["custom", "stripe"] }
         },
         include: {
           project: {
@@ -470,7 +481,7 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (invoice.invoiceType !== "custom") {
+      if (invoice.invoiceType !== "custom" && invoice.invoiceType !== "stripe") {
         return res.status(400).json({ error: "Not a custom invoice" });
       }
 
@@ -525,7 +536,18 @@ export class CustomInvoiceController {
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(clientName, urlLogo, invoiceCode, invoiceAmount, companyName, phone || '');
+      const emailTemplate = invoiceCustom(
+        clientName, 
+        urlLogo, 
+        invoiceCode, 
+        invoiceAmount, 
+        companyName, 
+        phone || '', 
+        undefined, // customBody
+        undefined, // customSubject
+        invoice.invoiceType,
+        invoice.invoiceUrl
+      );
 
       // Resultados do envio para cada email
       const results = [];
@@ -537,7 +559,7 @@ export class CustomInvoiceController {
           const mailOptions: any = {
             from: SMTP_CONFIG.user,
             to: email,
-            subject: `Invoice #${invoiceCode} - ${companyName}`,
+            subject: String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`,
             html: emailTemplate
           };
 
