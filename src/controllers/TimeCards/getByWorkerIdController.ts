@@ -60,9 +60,11 @@ export class getByWorkerIdController {
             const attendances = await prisma.userAttendance.findMany({
                 where: {
                     user_id: workerId,
-                    date: {
+                    check_in_time: {
                         gte: startDate,
-                        lte: deadlineDate
+                    },
+                    check_out_time: {
+                        lte: deadlineDate,
                     }
                 },
                 include: {
