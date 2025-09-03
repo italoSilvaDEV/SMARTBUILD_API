@@ -65,6 +65,16 @@ export class getByWorkerIdController {
                     },
                     check_out_time: {
                         lte: deadlineDate,
+                    },
+                    UserServiceProject: {
+                        service_project: {
+                            Project: {
+                                company_id: companyId,
+                                status_project: {
+                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                }
+                            }
+                        }
                     }
                 },
                 include: {
