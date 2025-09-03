@@ -458,7 +458,7 @@ export class CustomInvoiceController {
         where: {
           externalInvoiceId: invoiceId,
           companyId: companyId, // Filtrar pelo companyId fornecido
-          invoiceType: "custom"
+          invoiceType: { in: ["custom", "stripe"] }
         },
         include: {
           project: {
@@ -481,7 +481,7 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (invoice.invoiceType !== "custom") {
+      if (invoice.invoiceType !== "custom" && invoice.invoiceType !== "stripe") {
         return res.status(400).json({ error: "Not a custom invoice" });
       }
 
