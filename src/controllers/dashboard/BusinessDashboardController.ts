@@ -141,7 +141,7 @@ export class BusinessDashboardController {
                 inProgressProjects,
                 preStartProjects,
                 completedProjects,
-                jobsSchedule 
+                jobsSchedule
             ] = await Promise.all([
                 // Total Estimates
                 prisma.estimate.count({
@@ -246,7 +246,7 @@ export class BusinessDashboardController {
                 inProgressProjects,
                 preStartProjects,
                 completedProjects,
-                jobsSchedule 
+                jobsSchedule
             });
         } catch (error) {
             console.error("Error in dashboardCards:", error);
@@ -548,20 +548,26 @@ export class BusinessDashboardController {
                 )
             );
 
-            // Formatar e calcular horas trabalhadas
-            const workerCost = projects.flatMap(i => i.workedHours.map(item => {
-                return ({
+            const employeeCost = projects.flatMap(i => i.workedHours
+                .filter(item => item.amount_of_hours !== null)
+                .map(item => ({
                     id: item.id,
-                    price: item.amount_of_hours !== null
-                        ? Number(item.amount_of_hours) * Number(item.hourly_price)
-                        : Number(item.hourly_price)
-                })
-            }));
-            // Dicionário para armazenar os totais por categoria
+                    price: Number(item.amount_of_hours) * Number(item.hourly_price)
+                }))
+            );
+
+            const subcontractorCost = projects.flatMap(i => i.workedHours
+                .filter(item => item.amount_of_hours === null)
+                .map(item => ({
+                    id: item.id,
+                    price: Number(item.hourly_price)
+                }))
+            );
+
             const costProjectTotal = parseFloat(
                 costProject
                     .reduce((sum, expense) => sum + Number(expense.price), 0)
-                    .toFixed(2) // Fixa em 2 casas decimais
+                    .toFixed(2)
             );
 
             const formattedResultTotal = parseFloat(
@@ -570,25 +576,35 @@ export class BusinessDashboardController {
                     .toFixed(2)
             );
 
-            const workerCostTotal = parseFloat(
-                workerCost
+            const employeeCostTotal = parseFloat(
+                employeeCost
                     .reduce((sum, expense) => sum + Number(expense.price), 0)
                     .toFixed(2)
             );
-            const costWorkerTotal = parseFloat(
-                (formattedResultTotal + workerCostTotal).toFixed(2)
+
+            const subcontractorCostTotal = parseFloat(
+                subcontractorCost
+                    .reduce((sum, expense) => sum + Number(expense.price), 0)
+                    .toFixed(2)
             );
-            // Converte o objeto para um array no formato desejado
+
+            const totalEmployeeCost = parseFloat(
+                (formattedResultTotal + employeeCostTotal).toFixed(2)
+            );
+
             const formattedExpenses = [{
                 label: 'Material cost',
                 value: costProjectTotal,
-                color: "#017E76",
+                color: "#DC2626",
             }, {
                 label: 'Employee cost',
-                value: costWorkerTotal,
-                color: "#00DBD5",
-            }
-            ];
+                value: totalEmployeeCost,
+                color: "#EA580C",
+            }, {
+                label: 'Subcontractor cost',
+                value: subcontractorCostTotal,
+                color: "#D97706",
+            }];
 
             return res.json(formattedExpenses);
         } catch (error) {

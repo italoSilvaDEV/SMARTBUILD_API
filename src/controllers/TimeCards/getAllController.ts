@@ -340,7 +340,7 @@ export class getAllController {
                     serviceCount,
                     workerData: workerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
                 };
-            });
+            }).sort((a, b) => a.clientName.localeCompare(b.clientName));
 
             const workersMap = new Map();
 
@@ -414,7 +414,7 @@ export class getAllController {
                 regular_hours: parseFloat(worker.regular_hours.toFixed(2)),
                 overtime_hours: parseFloat(worker.overtime_hours.toFixed(2)),
                 price: parseFloat(worker.price.toFixed(2))
-            }));
+            })).sort((a, b) => a.user.name.localeCompare(b.user.name));
 
             const payrollMap = new Map();
 
@@ -497,7 +497,7 @@ export class getAllController {
                 servicesCount: user.servicesCount.size,
                 total: parseFloat(user.total.toFixed(2)),
                 workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime())
-            }));
+            })).sort((a, b) => a.userName.localeCompare(b.userName));
 
             return res.status(200).json({
                 data: {
