@@ -604,11 +604,9 @@ export class TimeController {
     async findManyByIdWorker(req: Request, res: Response) {
         const { worker_id, start_date, deadline, page } = req.query;
         try {
-            // Verificar se os parâmetros obrigatórios estão presentes
             if (!worker_id || !start_date || !deadline || !page) {
                 return res.status(400).json({ error: "Params invalid" });
             }
-
 
             const startDate = DateTime.fromISO(String(start_date))
                 .startOf('day')
@@ -618,7 +616,6 @@ export class TimeController {
                 .endOf('day')
                 .toJSDate();
 
-            // Verificar se a empresa existe
             const existWorker = await prisma.user.findUnique({
                 where: { id: String(worker_id) },
                 include: {
@@ -632,14 +629,7 @@ export class TimeController {
                                         gte: startDate,
                                     },
                                 }, {
-                                    OR: [
-                                        {
-                                            check_out_time: { lte: newDeadline, },
-                                        },
-                                        {
-                                            check_out_time: null
-                                        }
-                                    ],
+                                    check_out_time: { lte: newDeadline }
                                 }
                             ]
                         }
@@ -647,45 +637,60 @@ export class TimeController {
                 }
             });
 
-            // Contagem de atendimentos do worker específico
-            const resultCount = await prisma.userAttendance.count({
+            const attendances = await prisma.userAttendance.findMany({
                 where: {
-                    AND: [
-                        { user_id: String(worker_id) },
-                        {
-                            AND: [
-                                {
-                                    check_in_time: {
-                                        gte: startDate,
-                                    },
-                                }, {
-                                    OR: [
-                                        {
-                                            check_out_time: { lte: newDeadline, },
-                                        },
-                                        {
-                                            check_out_time: null
-                                        }
-                                    ],
+                    user_id: String(worker_id),
+                    check_in_time: {
+                        gte: startDate,
+                    },
+                    check_out_time: {
+                        lte: newDeadline,
+                    },
+                    UserServiceProject: {
+                        service_project: {
+                            Project: {
+                                status_project: {
+                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                                 }
-                            ]
-                        },
-                        {
-                            UserServiceProject: {
-                                service_project: {
+                            }
+                        }
+                    }
+                },
+                include: {
+                    user: {
+                        select: {
+                            name: true,
+                            hourly_price: true,
+                            isOverTime: true
+                        }
+                    },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: {
                                     Project: {
-                                        status_project: {
-                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                        include: {
+                                            client: {
+                                                select: {
+                                                    location: true
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    ]
+                    }
                 },
-            });
+                orderBy: {
+                    check_in_time: 'desc'
+                }
+            }).then(results => results.filter(attendance =>
+                attendance.check_in_time && attendance.check_out_time
+            ));
 
-            // Contagem de serviços do worker específico
+            const resultCount = attendances.length;
+
             const serviceCount = await prisma.serviceProject.count({
                 where: {
                     AND: [
@@ -701,14 +706,7 @@ export class TimeController {
                                                         gte: startDate,
                                                     },
                                                 }, {
-                                                    OR: [
-                                                        {
-                                                            check_out_time: { lte: newDeadline, },
-                                                        },
-                                                        {
-                                                            check_out_time: null
-                                                        }
-                                                    ],
+                                                    check_out_time: { lte: newDeadline }
                                                 }
                                             ]
                                         }
@@ -727,7 +725,6 @@ export class TimeController {
                 }
             });
 
-            // Buscar projetos específicos do worker - CORRIGIDO PARA USAR O MESMO PADRÃO DE FILTRO DE DATA
             const projects = await prisma.project.findMany({
                 where: {
                     AND: [
@@ -750,14 +747,7 @@ export class TimeController {
                                                                 gte: startDate,
                                                             },
                                                         }, {
-                                                            OR: [
-                                                                {
-                                                                    check_out_time: { lte: newDeadline, },
-                                                                },
-                                                                {
-                                                                    check_out_time: null
-                                                                }
-                                                            ],
+                                                            check_out_time: { lte: newDeadline }
                                                         }
                                                     ]
                                                 }
@@ -768,119 +758,162 @@ export class TimeController {
                             }
                         }
                     ]
-                },
-                include: {
-                    client: {
-                        select: {
-                            name: true,
-                            location: true,
-                            city_and_state: true,
-                        }
-                    },
-                    serviceProject: {
-                        select: {
-                            id: true,
-                            name: true, // Adicionado o nome do serviço para exibição
-                            UserServiceProject: {
-                                where: {
-                                    user_id: String(worker_id)
-                                },
-                                include: {
-                                    user_attendances: {
-                                        where: { // Aplicar o mesmo filtro de data aqui também
-                                            AND: [
-                                                {
-                                                    check_in_time: {
-                                                        gte: startDate,
-                                                    },
-                                                }, {
-                                                    OR: [
-                                                        {
-                                                            check_out_time: { lte: newDeadline, },
-                                                        },
-                                                        {
-                                                            check_out_time: null
-                                                        }
-                                                    ],
-                                                }
-                                            ]
-                                        },
-                                        include: {
-                                            user: {
-                                                select: {
-                                                    name: true,
-                                                    hourly_price: true,
-                                                    isOverTime: true
-                                                }
-                                            }
-                                        },
-                                        orderBy: {
-                                            check_in_time: 'desc'
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                    }
                 }
             });
 
-            // Calcular horas trabalhadas apenas para o worker específico
-            const formattedResult = projects.flatMap(i => i.serviceProject
-                .filter(s => s.UserServiceProject.length > 0)
-                .flatMap(s => s.UserServiceProject
-                    .filter(user => user.user_attendances.length > 0)
-                    .flatMap(user => user.user_attendances
-                        .map(x => {
-                            let regularHours = 0;
-                            let overtimeHours = 0;
+            let totalPrice = 0;
+            let totalHours = 0;
+            let totalRegularHours = 0;
+            let totalOvertimeHours = 0;
 
-                            if (x.check_out_time && x.check_in_time) {
-                                const hours = calcularHorasTrabalhadas(
-                                    x.check_in_time.toISOString(),
-                                    x.check_out_time.toISOString(),
-                                    x.workStartTime,
-                                    x.workEndTime,
-                                );
-                                const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+            const weeklyAttendances = new Map();
 
-                                const userHasOvertime = x.user.isOverTime === true;
+            attendances.forEach(attendance => {
+                if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                    const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
+                    const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
+                    const weekKey = weekStart.toISODate();
 
-                                if (!userHasOvertime) {
-                                    regularHours = dailyHours;
-                                    overtimeHours = 0;
-                                } else {
-                                    regularHours = convertHHMMToDecimal(hours.normais);
-                                    overtimeHours = convertHHMMToDecimal(hours.extras);
-                                }
-                            }
+                    if (!weeklyAttendances.has(weekKey)) {
+                        weeklyAttendances.set(weekKey, {
+                            user: attendance.user,
+                            attendances: []
+                        });
+                    }
 
-                            const totalHours = regularHours + overtimeHours;
-                            const calculatedPrice = x.user.hourly_price
-                                ? (regularHours * x.user.hourly_price) + (overtimeHours * x.user.hourly_price * 1.5)
-                                : 0;
-                            return ({
-                                ...x,
-                                userId: x.user_id,
-                                hours_worked: totalHours,
-                                regular_hours: regularHours,
-                                overtime_hours: overtimeHours,
-                                price: calculatedPrice,
-                                serviceName: s.name // Incluir o nome do serviço para melhor identificação
-                            })
-                        })
-                    )
-                )
+                    weeklyAttendances.get(weekKey).attendances.push(attendance);
+                }
+            });
+
+            weeklyAttendances.forEach(weekData => {
+                let weeklyTotalHours = 0;
+                const weekAttendancesWithHours: Array<{
+                    attendance: any;
+                    dailyHours: number;
+                    hadOvertimePermission: boolean;
+                }> = [];
+
+                weekData.attendances.sort((a: any, b: any) =>
+                    new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+                ).forEach((attendance: any) => {
+                    const hours = calcularHorasTrabalhadas(
+                        attendance.check_in_time.toISOString(),
+                        attendance.check_out_time.toISOString(),
+                        attendance.workStartTime,
+                        attendance.workEndTime,
+                    );
+
+                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    weeklyTotalHours += dailyHours;
+
+                    weekAttendancesWithHours.push({
+                        attendance,
+                        dailyHours,
+                        hadOvertimePermission: attendance.isOvertime === true
+                    });
+                });
+
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
+
+                weekAttendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
+                    const hourlyRate = attendance.user?.hourly_price || 0;
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
+
+                    totalRegularHours += regularHoursThisDay;
+                    weeklyRegularHoursUsed += regularHoursThisDay;
+
+                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
+                        totalOvertimeHours += overtimeHoursThisDay;
+                        totalPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
+                    } else {
+                        totalRegularHours += overtimeHoursThisDay;
+                        totalPrice += dailyHours * hourlyRate;
+                    }
+
+                    totalHours += dailyHours;
+                });
+            });
+
+            const workersWithCorrectOvertime: any[] = [];
+
+            weeklyAttendances.forEach(weekData => {
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
+
+                const sortedWeekAttendances = weekData.attendances.sort((a: any, b: any) =>
+                    new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+                );
+
+                sortedWeekAttendances.forEach((attendance: any) => {
+                    if (!attendance.check_out_time || !attendance.check_in_time) {
+                        return;
+                    }
+
+                    const hours = calcularHorasTrabalhadas(
+                        attendance.check_in_time.toISOString(),
+                        attendance.check_out_time.toISOString(),
+                        attendance.workStartTime,
+                        attendance.workEndTime,
+                    );
+
+                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    const hadOvertimePermission = attendance.isOvertime === true;
+                    const hourlyRate = attendance.user.hourly_price || 0;
+
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+                    const potentialOvertimeHours = Math.max(0, dailyHours - regularHoursThisDay);
+
+                    weeklyRegularHoursUsed += regularHoursThisDay;
+
+                    let finalRegularHours = 0;
+                    let finalOvertimeHours = 0;
+                    let attendancePrice = 0;
+
+                    if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                        finalRegularHours = regularHoursThisDay;
+                        finalOvertimeHours = potentialOvertimeHours;
+                        attendancePrice = (finalRegularHours * hourlyRate) + (finalOvertimeHours * hourlyRate * 1.5);
+                    } else {
+                        finalRegularHours = dailyHours;
+                        finalOvertimeHours = 0;
+                        attendancePrice = dailyHours * hourlyRate;
+                    }
+
+                    const serviceName = attendance.UserServiceProject?.service_project?.name || '';
+
+                    workersWithCorrectOvertime.push({
+                        ...attendance,
+                        userId: attendance.user_id,
+                        hours_worked: parseFloat(dailyHours.toFixed(2)),
+                        regular_hours: parseFloat(finalRegularHours.toFixed(2)),
+                        overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
+                        price: parseFloat(attendancePrice.toFixed(2)),
+                        serviceName: serviceName,
+                        user: {
+                            name: attendance.user.name,
+                            hourly_price: attendance.user.hourly_price,
+                            isOverTime: finalOvertimeHours > 0
+                        }
+                    });
+                });
+            });
+
+            const formattedResult = workersWithCorrectOvertime.sort((a, b) =>
+                new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
             );
 
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
 
             return res.json({
                 indicators: {
-                    totalPrice: parseFloat(formattedResult.reduce((acc, i) => acc + (i.price || 0), 0).toFixed(2)),
-                    totalHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.hours_worked || 0), 0).toFixed(2)),
-                    totalRegularHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.regular_hours || 0), 0).toFixed(2)),
-                    totalOvertimeHours: parseFloat(formattedResult.reduce((acc, i) => acc + (i.overtime_hours || 0), 0).toFixed(2)),
+                    totalPrice: parseFloat(totalPrice.toFixed(2)),
+                    totalHours: parseFloat(totalHours.toFixed(2)),
+                    totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
+                    totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2)),
                     totalServices: serviceCount,
                     totalProjects: projects.length,
                 },
@@ -890,7 +923,7 @@ export class TimeController {
                     avatar: urlAvatar,
                     office: existWorker?.office.name
                 },
-                workers: formattedResult.sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()),
+                workers: formattedResult,
                 totalPages: Math.ceil(resultCount / 10)
             });
 

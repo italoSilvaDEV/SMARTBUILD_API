@@ -378,6 +378,8 @@ model ServiceStages {
 model GalleryBefore {
   id               String          @id @default(uuid())
   url              String
+  title            String?
+  description      String?
   date_creation    DateTime        @default(now())
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
@@ -386,6 +388,8 @@ model GalleryBefore {
 model GalleryAfter {
   id               String          @id @default(uuid())
   url              String
+  title            String?
+  description      String?
   date_creation    DateTime        @default(now())
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
