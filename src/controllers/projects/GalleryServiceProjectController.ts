@@ -208,9 +208,13 @@ export class GalleryProjectController {
                 sendMeCopy
             } = req.body;
 
+            console.log(req.body)
+
             if (!to) {
                 cleanupTempFiles(attachmentFiles);
-                return res.status(400).json({ error: "Recipient email is required" });
+                return res.status(400).json({
+                    error: "Recipient email is required"
+                });
             }
 
             const validateFileType = (file: Express.Multer.File): boolean => {
