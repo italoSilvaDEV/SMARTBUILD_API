@@ -14,19 +14,19 @@ export class GalleryProjectController {
                 return response.status(400).json({ error: 'Error uploading file' });
             }
             const {
-                serviceProjectId, type
+                serviceProjectId,
+                type
             } = request.body;
+
             const file = request.file;
-            console.log("Arquivo recebido:", file);
-            console.log("Campos adicionais:", request.body);
-            console.log("Headers recebidos:", request.headers);
-            console.log("Body recebido:", request.body);
-            console.log("Arquivo recebido:", request.file);
+
             if (!file) {
-                return response.status(400).json({ error: 'Arquivo é obrigatório' });
+                return response.status(400).json({
+                    error: 'Arquivo é obrigatório'
+                });
             }
             try {
-                const fileName = await uploadFileToS3(file, ''); // Usar a função reutilizável
+                const fileName = await uploadFileToS3(file, '');
 
                 const project = await prisma.serviceProject.findUnique({
                     where: {
@@ -40,7 +40,9 @@ export class GalleryProjectController {
                     await prisma.galleryBefore.create({
                         data: {
                             serviceProjectId,
-                            url: fileName
+                            url: fileName,
+                            title,
+                            description
                         }
                     });
                 }
@@ -48,7 +50,9 @@ export class GalleryProjectController {
                     await prisma.galleryAfter.create({
                         data: {
                             serviceProjectId,
-                            url: fileName
+                            url: fileName,
+                            title,
+                            description
                         }
                     });
                 }
@@ -61,30 +65,45 @@ export class GalleryProjectController {
         });
     }
     async find(request: Request, response: Response) {
-        const { id } = request.params;
+        const {
+            id
+        } = request.params;
 
         try {
             const project = await prisma.serviceProject.findUnique({
-                where: { id },
+                where: {
+                    id
+                }
             });
 
             if (!project) {
-                return response.status(404).json({ error: "Invalid id!" });
+                return response.status(404).json({
+                    error: "Invalid id!"
+                });
             }
 
-            // Buscar galerias antes e depois
             const [galleryBefore, galleryAfter] = await Promise.all([
-                prisma.galleryBefore.findMany({ where: { serviceProjectId: id } }),
-                prisma.galleryAfter.findMany({ where: { serviceProjectId: id } }),
+                prisma.galleryBefore.findMany({
+                    where: {
+                        serviceProjectId: id
+                    }
+                }),
+
+                prisma.galleryAfter.findMany({
+                    where: {
+                        serviceProjectId: id
+                    }
+                }),
             ]);
 
-            // Processar URLs com assincronismo
             const [responseBefore, responseAfter] = await Promise.all([
                 Promise.all(
                     galleryBefore.map(async (i) => ({
                         id: i.id,
                         url: await getPresignedUrl(i.url),
                         date_creation: i.date_creation,
+                        title: i.title,
+                        description: i.description,
                     }))
                 ),
                 Promise.all(
@@ -92,6 +111,8 @@ export class GalleryProjectController {
                         id: i.id,
                         url: await getPresignedUrl(i.url),
                         date_creation: i.date_creation,
+                        title: i.title,
+                        description: i.description,
                     }))
                 ),
             ]);
@@ -101,7 +122,10 @@ export class GalleryProjectController {
                 galleryAfter: responseAfter,
             });
         } catch (error) {
-            return response.status(500).json({ error: "Erro interno do servidor." });
+            return response.status(500).json({
+                error:
+                    "Erro interno do servidor."
+            });
         }
     }
 
