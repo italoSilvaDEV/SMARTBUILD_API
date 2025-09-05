@@ -6,6 +6,7 @@ import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
 import fs from "fs";
+import { galleryEmail } from "../../templateEmail/galery";
 
 const upload = multer({ dest: './public/tmp/gallery' }).single('file');
 
@@ -206,15 +207,46 @@ export class GalleryProjectController {
                 bcc,
                 subject,
                 body,
-                sendMeCopy
+                sendMeCopy,
+                projectId,
+                serviceName
             } = req.body;
-
-            console.log(req.body)
 
             if (!to) {
                 cleanupTempFiles(attachmentFiles);
                 return res.status(400).json({
                     error: "Recipient email is required"
+                });
+            }
+
+            if (!projectId) {
+                return res.status(400).json({
+                    error: "Project id is required"
+                });
+            }
+
+            const project = await prisma.project.findUnique({
+                where: {
+                    id: projectId
+                },
+                select: {
+                    client: {
+                        select: {
+                            name: true
+                        }
+                    },
+                    company: {
+                        select: {
+                            avatar: true,
+                            name: true
+                        }
+                    }
+                }
+            });
+
+            if (!project) {
+                return res.status(400).json({
+                    error: "Project not found"
                 });
             }
 
@@ -351,7 +383,14 @@ export class GalleryProjectController {
                     cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
                     bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
                     subject: dataEmail.subject || 'Gallery Shared',
-                    html: dataEmail.body,
+                    html: galleryEmail(
+                        project.client?.name || '',
+                        project.company?.avatar || '',
+                        project.company?.name || '',
+                        serviceName,
+                        attachmentFiles.length,
+                        dataEmail.body
+                    ),
                     text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : 'Gallery shared with you.',
                     attachments
                 };
@@ -367,8 +406,6 @@ export class GalleryProjectController {
                         mailOptions.bcc = [dataEmail.from];
                     }
                 }
-
-                const emailResponse = await transporter.sendMail(mailOptions);
 
                 for (const recipient of uniqueRecipients) {
                     results.push({ email: recipient, status: "success" });
