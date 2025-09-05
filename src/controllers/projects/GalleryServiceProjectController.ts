@@ -15,7 +15,9 @@ export class GalleryProjectController {
             }
             const {
                 serviceProjectId,
-                type
+                type,
+                title,
+                description
             } = request.body;
 
             const file = request.file;
