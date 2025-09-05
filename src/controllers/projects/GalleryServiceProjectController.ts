@@ -407,6 +407,8 @@ export class GalleryProjectController {
                     }
                 }
 
+                await transporter.sendMail(mailOptions);
+
                 for (const recipient of uniqueRecipients) {
                     results.push({ email: recipient, status: "success" });
                 }
