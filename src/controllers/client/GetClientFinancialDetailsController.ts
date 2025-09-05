@@ -20,7 +20,10 @@ export class GetClientFinancialDetailsController {
                         {
                             projects: {
                                 some: {
-                                    company_id: String(company_id)
+                                    company_id: String(company_id),
+                                    status_project: {
+                                        notIn: ["Pending", "Accepted"]
+                                    }
                                 }
                             }
                         }
@@ -33,7 +36,10 @@ export class GetClientFinancialDetailsController {
                     location: true,
                     projects: {
                         where: {
-                            company_id: String(company_id)
+                            company_id: String(company_id),
+                            status_project: {
+                                notIn: ["Pending", "Accepted"]
+                            }
                         },
                         select: {
                             id: true,
