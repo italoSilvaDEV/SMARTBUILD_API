@@ -21,6 +21,7 @@ import { FindPdfContractProjectAllController } from "../controllers/projects/Fin
 import { CreatePdfProjectEstimateInvoiceController } from "../controllers/projects/CreatePdfProjectEstimateInvoiceController";
 import { FindPdfProjectEstimateInvoiceController } from "../controllers/projects/FindPdfProjectEstimateInvoiceController";
 import { DashboardProjectController } from "../controllers/projects/dashboardProjectController";
+import uploadConfig2 from "../config/uploadUtf8";
 
 const projectRoutes = Router();
 const dashboardProjectController = new DashboardProjectController();
@@ -29,6 +30,8 @@ const projectController = new ProjectController();
 const uploadServiceProject = multer(
   uploadConfig.upload("./public/tmp/service-project")
 );
+
+const uploadAttachments = multer(uploadConfig2.uploadUtf8("./public/tmp/estimate-attachments"));
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
@@ -162,7 +165,7 @@ const galleryProject = new GalleryProjectController()
 projectRoutes.post('/project/gallery', galleryProject.create.bind(galleryProject))
 projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
 projectRoutes.get('/project/gallery/:id', galleryProject.find)
-projectRoutes.post('/project/gallery/send-email', checkToken, galleryProject.sendEmail)
+projectRoutes.post('/project/gallery/send-email', checkToken, uploadAttachments.array("attachments", 10), galleryProject.sendEmail)
 
 projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
 
