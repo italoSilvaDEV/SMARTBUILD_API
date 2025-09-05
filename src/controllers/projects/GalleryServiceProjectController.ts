@@ -376,6 +376,8 @@ export class GalleryProjectController {
                     }
                 }
 
+                const urlLogo = project.company?.avatar ? await getPresignedUrl(project.company.avatar) : '';
+
                 const mailOptions = {
                     from: SMTP_CONFIG.user,
                     replyTo: dataEmail.from,
@@ -385,7 +387,7 @@ export class GalleryProjectController {
                     subject: dataEmail.subject || 'Gallery Shared',
                     html: galleryEmail(
                         project.client?.name || '',
-                        project.company?.avatar || '',
+                        urlLogo || '',
                         project.company?.name || '',
                         serviceName,
                         attachmentFiles.length,
