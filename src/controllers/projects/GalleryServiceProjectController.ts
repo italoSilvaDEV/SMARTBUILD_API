@@ -8,6 +8,7 @@ import nodemailer from "nodemailer";
 import fs from "fs";
 
 const upload = multer({ dest: './public/tmp/gallery' }).single('file');
+
 export class GalleryProjectController {
     async create(request: Request, response: Response) {
         upload(request, response, async (err) => {

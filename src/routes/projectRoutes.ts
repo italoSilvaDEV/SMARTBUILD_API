@@ -163,9 +163,9 @@ projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle
 
 const galleryProject = new GalleryProjectController()
 projectRoutes.post('/project/gallery', galleryProject.create.bind(galleryProject))
-projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
-projectRoutes.get('/project/gallery/:id', galleryProject.find)
-projectRoutes.post('/project/gallery/send-email', checkToken, uploadAttachments.array("attachments", 10), galleryProject.sendEmail)
+projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete.bind(galleryProject))
+projectRoutes.get('/project/gallery/:id', galleryProject.find.bind(galleryProject))
+projectRoutes.post('/project/gallery/send-email', checkToken, uploadAttachments.array("attachments", 10), galleryProject.sendEmail.bind(galleryProject))
 
 projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
 
