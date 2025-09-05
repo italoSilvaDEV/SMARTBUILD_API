@@ -22,9 +22,9 @@ export class GalleryProjectController {
 
             const file = request.file;
 
-            if (!file) {
+            if (!file || !type) {
                 return response.status(400).json({
-                    error: 'Arquivo é obrigatório'
+                    error: 'Arquivo é obrigatório e tipo é obrigatório'
                 });
             }
             try {
