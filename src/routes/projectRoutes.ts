@@ -162,6 +162,7 @@ const galleryProject = new GalleryProjectController()
 projectRoutes.post('/project/gallery', galleryProject.create.bind(galleryProject))
 projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete)
 projectRoutes.get('/project/gallery/:id', galleryProject.find)
+projectRoutes.post('/project/gallery/send-email', checkToken, galleryProject.sendEmail)
 
 projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
 
