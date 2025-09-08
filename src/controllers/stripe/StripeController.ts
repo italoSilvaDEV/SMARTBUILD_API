@@ -172,7 +172,7 @@ export class StripeController {
 
             const emailClient = project.client.email || "";
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
+
             if (!emailRegex.test(emailClient)) {
                 console.error("Endereço de email inválido!");
                 return res.status(400).json({ error: "Invalid client email address" });
@@ -199,7 +199,7 @@ export class StripeController {
                     }
                 }
             }
-    
+
             if (!stripeCustomerId) {
                 console.log("Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
@@ -211,15 +211,15 @@ export class StripeController {
                     { stripeAccount: stripeAccountId }
                 );
                 stripeCustomerId = customer.id;
-    
+
                 await prisma.client.update({
                     where: { id: project.client.id },
                     data: { stripeCustomerId },
                 });
-    
+
                 console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             }
-        
+
             console.log("Criando Invoice Items...");
             let totalAmount = 0;
             const lineItems = [];
@@ -293,11 +293,36 @@ export class StripeController {
             // 4️⃣ Finalizar a fatura após adicionar os itens
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
+            // Buscar todos os invoices com externalInvoiceId numérico para a empresa
+            const allInvoices = await prisma.invoice.findMany({
+                where: {
+                    companyId: project.company_id,
+                    invoiceType: { in: ["custom", "stripe"] },
+                    externalInvoiceId: { not: null }
+                },
+                select: {
+                    externalInvoiceId: true
+                }
+            });
+
+            // Extrair apenas os números válidos e encontrar o maior
+            const numericIds = allInvoices
+                .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+                .filter(num => !isNaN(num) && num > 0);
+
+            // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
+            let nextInvoiceNumber = 1000;
+            if (numericIds.length > 0) {
+                const maxNumber = Math.max(...numericIds);
+                nextInvoiceNumber = maxNumber + 1;
+            }
+
             console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalizedInvoice.id,
-                    externalInvoiceId: finalizedInvoice.id,
+                    // externalInvoiceId: finalizedInvoice.id,
+                    externalInvoiceId: nextInvoiceNumber.toString(),
                     invoiceType: "stripe",
                     projectId: project.id,
                     companyId: project.company_id,
@@ -461,7 +486,7 @@ export class StripeController {
     // com stripe e custom
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; 
+        const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
         try {
             console.log("Buscando invoices do projeto:", projectId);
@@ -478,26 +503,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                OR: [
-                    {
-                        project: {
-                            is: {
-                                client: {
-                                    is: {
-                                        name: {
-                                            contains: search,
+                    OR: [
+                        {
+                            project: {
+                                is: {
+                                    client: {
+                                        is: {
+                                            name: {
+                                                contains: search,
+                                            }
                                         }
                                     }
                                 }
                             }
+                        },
+                        {
+                            stripeInvoiceId: {
+                                contains: search,
+                            }
                         }
-                    },
-                    {
-                        stripeInvoiceId: {
-                            contains: search,
-                        }
-                    }
-                ]
+                    ]
                 }
             };
 
@@ -643,26 +668,26 @@ export class StripeController {
                     { cancel_invoice_edit: null }
                 ],
                 AND: {
-                OR: [
-                    {
-                        project: {
-                            is: {
-                                client: {
-                                    is: {
-                                        name: {
-                                            contains: search,
+                    OR: [
+                        {
+                            project: {
+                                is: {
+                                    client: {
+                                        is: {
+                                            name: {
+                                                contains: search,
+                                            }
                                         }
                                     }
                                 }
                             }
+                        },
+                        {
+                            stripeInvoiceId: {
+                                contains: search,
+                            }
                         }
-                    },
-                    {
-                        stripeInvoiceId: {
-                            contains: search,
-                        }
-                    }
-                ]
+                    ]
                 }
 
             };
@@ -986,8 +1011,8 @@ export class StripeController {
 
     async createCheckoutSession(req: Request, res: Response) {
         try {
-            const { 
-                planId, 
+            const {
+                planId,
                 companyId,
                 referralId // ✅ Receber o referral ID do front-end
             } = req.body;
@@ -1042,9 +1067,9 @@ export class StripeController {
             // ✅ SOLUÇÃO FINAL: Separação de responsabilidades
             // client_reference_id: APENAS para Rewardful (referral ID)
             // metadata: Para sistema interno (companyId, planId, etc.)
-            
+
             const clientReferenceId = referralId || null; // Apenas referral ID (ou null)
-            
+
             if (referralId) {
                 console.log('🎯 [Rewardful] Referral ID enviado para rastreamento:', referralId);
             } else {
@@ -1058,7 +1083,7 @@ export class StripeController {
                     {
                         price: plan.stripePriceId,
                         quantity: 1,
-                    }, 
+                    },
                 ],
                 mode: 'subscription',
                 success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
@@ -1072,10 +1097,10 @@ export class StripeController {
                     endDate: endDate.toISOString(),
                     validityType: plan.validityType,
                     validityDuration: plan.validityDuration.toString(),
-                    allowedEmployees: company.allowedEmployees !== null ? 
-                        company.allowedEmployees.toString() : 
-                        plan.allowedEmployees !== null ? 
-                            plan.allowedEmployees.toString() : 
+                    allowedEmployees: company.allowedEmployees !== null ?
+                        company.allowedEmployees.toString() :
+                        plan.allowedEmployees !== null ?
+                            plan.allowedEmployees.toString() :
                             null,
                     // ✅ Referral ID também no metadata para backup/debugging
                     ...(referralId && { referralId })
@@ -1112,7 +1137,7 @@ export class StripeController {
         try {
             const { companyId } = req.params;
             const { returnUrl } = req.body; // Receber a URL de redirecionamento do front-end
-            
+
             if (!companyId) {
                 return res.status(400).json({ error: "Company ID is required." });
             }

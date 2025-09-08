@@ -104,31 +104,32 @@ export class CustomInvoiceController {
         }
       }
 
-      // Obter o maior número de invoice para a empresa especificada
-      const latestInvoice = await prisma.invoice.findFirst({
+      // Buscar todos os invoices com externalInvoiceId numérico para a empresa
+      const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId: project.company_id,
-          invoiceType: "custom",
+          invoiceType: { in: ["custom", "stripe"] },
           externalInvoiceId: { not: null }
         },
-        orderBy: [
-          { createdAt: "desc" },
-          { externalInvoiceId: "desc" }
-        ]
+        select: {
+          externalInvoiceId: true
+        }
       });
+
+      // Extrair apenas os números válidos e encontrar o maior
+      const numericIds = allInvoices
+        .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+        .filter(num => !isNaN(num) && num > 0);
 
       // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
       let nextInvoiceNumber = 1000;
-      if (latestInvoice && latestInvoice.externalInvoiceId) {
-        // Tentar extrair o número do último invoice
-        const lastNumber = parseInt(latestInvoice.externalInvoiceId);
-        if (!isNaN(lastNumber)) {
-          nextInvoiceNumber = lastNumber + 1;
-        }
+      if (numericIds.length > 0) {
+        const maxNumber = Math.max(...numericIds);
+        nextInvoiceNumber = maxNumber + 1;
       }
 
       // Criar a fatura personalizada no banco de dados
-      const newInvoice = await prisma.invoice.create({
+      const newInvoice = await prisma.invoice.create({ 
         data: {
           externalInvoiceId: nextInvoiceNumber.toString(), // Usar o número sequencial
           invoiceType: "custom",
@@ -1106,27 +1107,28 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "Project not found" });
       }
 
-      // Obter o maior número de invoice para a empresa especificada
-      const latestInvoice = await prisma.invoice.findFirst({
+      // Buscar todos os invoices com externalInvoiceId numérico para a empresa
+      const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId: project.company_id,
-          invoiceType: "custom",
+          invoiceType: { in: ["custom", "stripe"] },
           externalInvoiceId: { not: null }
         },
-        orderBy: [
-          { createdAt: "desc" },
-          { externalInvoiceId: "desc" }
-        ]
+        select: {
+          externalInvoiceId: true
+        }
       });
+
+      // Extrair apenas os números válidos e encontrar o maior
+      const numericIds = allInvoices
+        .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+        .filter(num => !isNaN(num) && num > 0);
 
       // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
       let nextInvoiceNumber = 1000;
-      if (latestInvoice && latestInvoice.externalInvoiceId) {
-        // Tentar extrair o número do último invoice
-        const lastNumber = parseInt(latestInvoice.externalInvoiceId);
-        if (!isNaN(lastNumber)) {
-          nextInvoiceNumber = lastNumber + 1;
-        }
+      if (numericIds.length > 0) {
+        const maxNumber = Math.max(...numericIds);
+        nextInvoiceNumber = maxNumber + 1;
       }
 
       return res.status(200).json({
