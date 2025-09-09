@@ -107,7 +107,6 @@ export class getAllController {
                                         some: {
                                             check_in_time: {
                                                 gte: startDate,
-                                                lte: deadlineDate,
                                             },
                                             OR: [
                                                 {
@@ -146,7 +145,6 @@ export class getAllController {
                                         where: {
                                             check_in_time: {
                                                 gte: startDate,
-                                                lte: deadlineDate,
                                             },
                                             OR: [
                                                 {
@@ -189,7 +187,6 @@ export class getAllController {
                 where: {
                     check_in_time: {
                         gte: startDate,
-                        lte: deadlineDate,
                     },
                     OR: [
                         {
