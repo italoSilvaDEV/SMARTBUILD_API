@@ -491,7 +491,7 @@ export class getAllController {
 
                         const payrollUser = payrollMap.get(userId);
                         if (serviceId) payrollUser.servicesCount.add(serviceId);
-                        payrollUser.total += (dailyHours * hourlyRate);
+                        payrollUser.total += attendancePrice;
                         payrollUser.workers.push({
                             project: projectLocation,
                             date: attendance.date,
