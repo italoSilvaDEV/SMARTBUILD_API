@@ -15,7 +15,7 @@ export class updatePdfInvoiceController {
     }
 
     deleteFiles(file: string) {
-        deleteFile(`./public/tmp/pdfestimate/${file}`);
+        deleteFile(`./public/tmp/pdfinvoice/${file}`);
     }
 
     async deleteFilesFromS3(file: string) {

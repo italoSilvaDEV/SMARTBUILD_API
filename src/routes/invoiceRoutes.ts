@@ -28,5 +28,5 @@ invoiceRoutes.post("/invoice/:invoiceId/cancel", checkToken, unifiedInvoiceContr
 invoiceRoutes.delete("/invoice/delete/:id", checkToken, customInvoiceController.deleteInvoice.bind(customInvoiceController));
 
 // Atualizar PDF Invoice
-invoiceRoutes.put("/invoice/:invoiceId/update-pdf", checkToken, updatePdfController.handle.bind(updatePdfController));
+invoiceRoutes.put("/invoice/update-pdf", checkToken, updatePdfController.handle.bind(updatePdfController));
 export { invoiceRoutes }; 
