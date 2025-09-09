@@ -107,7 +107,6 @@ export class getAllController {
                                         some: {
                                             check_in_time: {
                                                 gte: startDate,
-                                                lte: deadlineDate,
                                             },
                                             OR: [
                                                 {
@@ -146,7 +145,6 @@ export class getAllController {
                                         where: {
                                             check_in_time: {
                                                 gte: startDate,
-                                                lte: deadlineDate,
                                             },
                                             OR: [
                                                 {
@@ -189,7 +187,6 @@ export class getAllController {
                 where: {
                     check_in_time: {
                         gte: startDate,
-                        lte: deadlineDate,
                     },
                     OR: [
                         {
@@ -250,7 +247,6 @@ export class getAllController {
                 }
             });
 
-            // Usar função centralizada para calcular totais com overtime
             const overtimeTotals = calculateWeeklyOvertime(weeklyAttendances);
 
             const totalProjects = projects.length;
@@ -376,7 +372,6 @@ export class getAllController {
 
             const workersMap = new Map();
 
-            // Calcular totais por worker usando lógica centralizada
             const userWeeklyMap = new Map();
 
             weeklyAttendances.forEach((weekData, weekKey) => {
