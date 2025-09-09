@@ -50,10 +50,18 @@ export class getAllController {
                                         some: {
                                             check_in_time: {
                                                 gte: startDate,
-                                            },
-                                            check_out_time: {
                                                 lte: deadlineDate,
-                                            }
+                                            },
+                                            OR: [
+                                                {
+                                                    check_out_time: {
+                                                        lte: deadlineDate,
+                                                    }
+                                                },
+                                                {
+                                                    check_out_time: null
+                                                }
+                                            ]
                                         }
                                     }
                                 }
@@ -81,10 +89,18 @@ export class getAllController {
                                         where: {
                                             check_in_time: {
                                                 gte: startDate,
-                                            },
-                                            check_out_time: {
                                                 lte: deadlineDate,
-                                            }
+                                            },
+                                            OR: [
+                                                {
+                                                    check_out_time: {
+                                                        lte: deadlineDate,
+                                                    }
+                                                },
+                                                {
+                                                    check_out_time: null
+                                                }
+                                            ]
                                         },
                                         select: {
                                             date: true,
@@ -116,10 +132,18 @@ export class getAllController {
                 where: {
                     check_in_time: {
                         gte: startDate,
-                    },
-                    check_out_time: {
                         lte: deadlineDate,
                     },
+                    OR: [
+                        {
+                            check_out_time: {
+                                lte: deadlineDate,
+                            }
+                        },
+                        {
+                            check_out_time: null
+                        }
+                    ],
                     UserServiceProject: {
                         service_project: {
                             Project: {
@@ -157,7 +181,7 @@ export class getAllController {
             const weeklyAttendances = new Map();
 
             allAttendances.forEach(attendance => {
-                if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                if (attendance.check_in_time && attendance.user) {
                     const userId = attendance.user.id;
                     const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
                     const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
@@ -183,14 +207,20 @@ export class getAllController {
                 }> = [];
 
                 weekData.attendances.forEach((attendance: any) => {
-                    const hours = calcularHorasTrabalhadas(
-                        attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
-                        attendance.workStartTime,
-                        attendance.workEndTime,
-                    );
-
-                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    let dailyHours = 0;
+                    
+                    if (attendance.check_out_time) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    } else {
+                        dailyHours = 0;
+                    }
+                    
                     weeklyTotalHours += dailyHours;
 
                     weekAttendancesWithHours.push({
@@ -250,7 +280,7 @@ export class getAllController {
                 project.serviceProject.forEach(service => {
                     service.UserServiceProject.forEach(userService => {
                         userService.user_attendances.forEach(attendance => {
-                            if (attendance.check_out_time && attendance.check_in_time && attendance.user) {
+                            if (attendance.check_in_time && attendance.user) {
                                 const userId = attendance.user.id;
                                 const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
                                 const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
@@ -278,14 +308,20 @@ export class getAllController {
                     }> = [];
 
                     weekData.attendances.forEach((attendance: any) => {
-                        const hours = calcularHorasTrabalhadas(
-                            attendance.check_in_time.toISOString(),
-                            attendance.check_out_time.toISOString(),
-                            attendance.workStartTime,
-                            attendance.workEndTime,
-                        );
-
-                        const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        let dailyHours = 0;
+                        
+                        if (attendance.check_out_time) {
+                            const hours = calcularHorasTrabalhadas(
+                                attendance.check_in_time.toISOString(),
+                                attendance.check_out_time.toISOString(),
+                                attendance.workStartTime,
+                                attendance.workEndTime,
+                            );
+                            dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        } else {
+                            dailyHours = 0;
+                        }
+                        
                         weeklyTotalHours += dailyHours;
 
                         attendancesWithHours.push({
@@ -354,14 +390,20 @@ export class getAllController {
                 const WEEKLY_REGULAR_LIMIT = 40;
 
                 weekData.attendances.forEach((attendance: any) => {
-                    const hours = calcularHorasTrabalhadas(
-                        attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
-                        attendance.workStartTime,
-                        attendance.workEndTime,
-                    );
-
-                    const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    let dailyHours = 0;
+                    
+                    if (attendance.check_out_time) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                        );
+                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    } else {
+                        dailyHours = 0;
+                    }
+                    
                     const hadOvertimePermission = attendance.isOvertime === true;
                     const hourlyRate = attendance.user?.hourly_price || 0;
 
@@ -433,7 +475,8 @@ export class getAllController {
                             service.UserServiceProject.forEach(userService => {
                                 const foundAttendance = userService.user_attendances.find(ua =>
                                     ua.check_in_time?.getTime() === attendance.check_in_time?.getTime() &&
-                                    ua.check_out_time?.getTime() === attendance.check_out_time?.getTime() &&
+                                    (ua.check_out_time?.getTime() === attendance.check_out_time?.getTime() || 
+                                     (ua.check_out_time === null && attendance.check_out_time === null)) &&
                                     ua.user?.id === attendance.user?.id
                                 );
                                 if (foundAttendance) {
@@ -445,14 +488,20 @@ export class getAllController {
                     });
 
                     if (projectLocation) {
-                        const hours = calcularHorasTrabalhadas(
-                            attendance.check_in_time.toISOString(),
-                            attendance.check_out_time.toISOString(),
-                            attendance.workStartTime,
-                            attendance.workEndTime,
-                        );
-
-                        const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        let dailyHours = 0;
+                        
+                        if (attendance.check_out_time) {
+                            const hours = calcularHorasTrabalhadas(
+                                attendance.check_in_time.toISOString(),
+                                attendance.check_out_time.toISOString(),
+                                attendance.workStartTime,
+                                attendance.workEndTime,
+                            );
+                            dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        } else {
+                            dailyHours = 0;
+                        }
+                        
                         const hadOvertimePermission = attendance.isOvertime === true;
                         const hourlyRate = attendance.user.hourly_price || 0;
 
