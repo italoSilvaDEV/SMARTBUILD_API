@@ -292,9 +292,9 @@ export class getByWorkerIdController {
                             isOverTime: finalOvertimeHours > 0
                         },
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
-                        regular_hours: parseFloat(finalRegularHours.toFixed(2)),
-                        overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
-                        price: parseFloat(attendancePrice.toFixed(2))
+                        regular_hours: parseFloat(dailyHours.toFixed(2)),
+                        overtime_hours: 0,
+                        price: parseFloat((dailyHours * hourlyRate).toFixed(2))
                     });
                 });
             });
