@@ -360,10 +360,10 @@ export class getAllController {
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,
-                            regular_hours: parseFloat(finalRegularHours.toFixed(2)),
-                            overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
+                            regular_hours: parseFloat(dailyHours.toFixed(2)),
+                            overtime_hours: 0,
                             total_hours: parseFloat(dailyHours.toFixed(2)),
-                            price: parseFloat(price.toFixed(2))
+                            price: parseFloat((dailyHours * hourlyRate).toFixed(2))
                         });
                     });
                 });
@@ -529,13 +529,13 @@ export class getAllController {
 
                         const payrollUser = payrollMap.get(userId);
                         if (serviceId) payrollUser.servicesCount.add(serviceId);
-                        payrollUser.total += attendancePrice;
+                        payrollUser.total += (dailyHours * hourlyRate);
                         payrollUser.workers.push({
                             project: projectLocation,
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,
-                            total: parseFloat(attendancePrice.toFixed(2))
+                            total: parseFloat((dailyHours * hourlyRate).toFixed(2))
                         });
                     }
                 });
