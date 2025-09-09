@@ -123,6 +123,7 @@ export class getByWorkerIdController {
                     user_id: workerId,
                     check_in_time: {
                         gte: startDate,
+                        lte: deadlineDate,
                     },
                     OR: [
                         {
