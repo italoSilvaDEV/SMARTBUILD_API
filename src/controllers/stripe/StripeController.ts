@@ -960,7 +960,8 @@ export class StripeController {
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalized.id,
-                    externalInvoiceId: finalized.id,
+                    // externalInvoiceId: finalized.id,
+                    externalInvoiceId: oldInvoice.externalInvoiceId,
                     invoiceType: "stripe",
                     projectId: oldInvoice.projectId,
                     companyId: company.id,
