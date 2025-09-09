@@ -4,6 +4,67 @@ import { Request, Response } from "express";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
+function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
+    let totalPrice = 0;
+    let totalHours = 0;
+    let totalRegularHours = 0;
+    let totalOvertimeHours = 0;
+
+    weeklyAttendances.forEach(weekData => {
+        let weeklyRegularHoursUsed = 0;
+        const WEEKLY_REGULAR_LIMIT = 40;
+
+        const sortedAttendances = weekData.attendances.sort((a: any, b: any) =>
+            new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+        );
+
+        sortedAttendances.forEach((attendance: any) => {
+            if (!attendance.check_in_time || !attendance.user) return;
+
+            let dailyHours = 0;
+            if (attendance.check_out_time) {
+                const hours = calcularHorasTrabalhadas(
+                    attendance.check_in_time.toISOString(),
+                    attendance.check_out_time.toISOString(),
+                    attendance.workStartTime,
+                    attendance.workEndTime,
+                );
+                dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+            }
+
+            const hadOvertimePermission = attendance.isOvertime === true;
+            const hourlyRate = attendance.user.hourly_price || 0;
+
+            // Calcular horas regulares e overtime desta attendance
+            const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+            const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+            const potentialOvertimeHours = Math.max(0, dailyHours - regularHoursThisDay);
+
+            weeklyRegularHoursUsed += regularHoursThisDay;
+
+            // Aplicar overtime apenas se houver permissão
+            if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                totalRegularHours += regularHoursThisDay;
+                totalOvertimeHours += potentialOvertimeHours;
+                totalPrice += (regularHoursThisDay * hourlyRate) + (potentialOvertimeHours * hourlyRate * 1.5);
+            } else {
+                // Sem permissão de overtime: tudo vira horas regulares
+                totalRegularHours += dailyHours;
+                totalPrice += dailyHours * hourlyRate;
+            }
+
+            totalHours += dailyHours;
+        });
+    });
+
+    return {
+        totalPrice: parseFloat(totalPrice.toFixed(2)),
+        totalHours: parseFloat(totalHours.toFixed(2)),
+        totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
+        totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2))
+    };
+}
+
 export class getByWorkerIdController {
     async handle(req: Request, res: Response) {
         const {
@@ -88,6 +149,7 @@ export class getByWorkerIdController {
                 include: {
                     user: {
                         select: {
+                            id: true,
                             name: true,
                             hourly_price: true,
                             isOverTime: true
@@ -118,18 +180,14 @@ export class getByWorkerIdController {
                 attendance.check_in_time
             ));
 
-            let totalPrice = 0;
-            let totalHours = 0;
-            let totalRegularHours = 0;
-            let totalOvertimeHours = 0;
-
             const weeklyAttendances = new Map();
 
             attendances.forEach(attendance => {
                 if (attendance.check_in_time && attendance.user) {
+                    const userId = attendance.user.id;
                     const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
                     const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
-                    const weekKey = weekStart.toISODate();
+                    const weekKey = `${userId}-${weekStart.toISODate()}`;
 
                     if (!weeklyAttendances.has(weekKey)) {
                         weeklyAttendances.set(weekKey, {
@@ -142,62 +200,8 @@ export class getByWorkerIdController {
                 }
             });
 
-            weeklyAttendances.forEach(weekData => {
-                let weeklyTotalHours = 0;
-                const weekAttendancesWithHours: Array<{
-                    attendance: any;
-                    dailyHours: number;
-                    hadOvertimePermission: boolean;
-                }> = [];
-
-                weekData.attendances.sort((a: any, b: any) =>
-                    new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
-                ).forEach((attendance: any) => {
-                    let dailyHours = 0;
-
-                    if (attendance.check_out_time) {
-                        const hours = calcularHorasTrabalhadas(
-                            attendance.check_in_time.toISOString(),
-                            attendance.check_out_time.toISOString(),
-                            attendance.workStartTime,
-                            attendance.workEndTime,
-                        );
-                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-                    } else {
-                        dailyHours = 0;
-                    }
-                    weeklyTotalHours += dailyHours;
-
-                    weekAttendancesWithHours.push({
-                        attendance,
-                        dailyHours,
-                        hadOvertimePermission: attendance.isOvertime === true
-                    });
-                });
-
-                let weeklyRegularHoursUsed = 0;
-                const WEEKLY_REGULAR_LIMIT = 40;
-
-                weekAttendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
-                    const hourlyRate = attendance.user?.hourly_price || 0;
-                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
-                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
-                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
-
-                    totalRegularHours += regularHoursThisDay;
-                    weeklyRegularHoursUsed += regularHoursThisDay;
-
-                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
-                        totalOvertimeHours += overtimeHoursThisDay;
-                        totalPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
-                    } else {
-                        totalRegularHours += overtimeHoursThisDay;
-                        totalPrice += dailyHours * hourlyRate;
-                    }
-
-                    totalHours += dailyHours;
-                });
-            });
+            // Usar função centralizada para calcular totais com overtime
+            const overtimeTotals = calculateWeeklyOvertime(weeklyAttendances);
 
             let avatarUrl = "";
             if (user.avatar) {
@@ -214,7 +218,7 @@ export class getByWorkerIdController {
                 name: user.name,
                 avatar: avatarUrl,
                 office: user.office.name,
-                isOverTime: totalOvertimeHours > 0
+                isOverTime: overtimeTotals.totalOvertimeHours > 0
             };
 
             const workersWithCorrectOvertime: any[] = [];
@@ -306,12 +310,7 @@ export class getByWorkerIdController {
             const totalPages = 1;
 
             return res.status(200).json({
-                indicators: {
-                    totalPrice: parseFloat(totalPrice.toFixed(2)),
-                    totalHours: parseFloat(totalHours.toFixed(2)),
-                    totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
-                    totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2))
-                },
+                indicators: overtimeTotals,
                 userWorker,
                 workers,
                 totalPages
