@@ -200,7 +200,6 @@ export class getByWorkerIdController {
                 }
             });
 
-            // Usar função centralizada para calcular totais com overtime
             const overtimeTotals = calculateWeeklyOvertime(weeklyAttendances);
 
             let avatarUrl = "";
