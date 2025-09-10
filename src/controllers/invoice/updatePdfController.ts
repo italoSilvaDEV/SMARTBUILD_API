@@ -36,6 +36,9 @@ export class updatePdfInvoiceController {
 
                 const file = req.file;
 
+                console.log(file)
+                console.log(invoiceId)
+
                 if (!invoiceId) {
                     if (file) this.deleteFiles(file.filename);
 
