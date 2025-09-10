@@ -260,6 +260,8 @@ export class StripeController {
                 { stripeAccount: stripeAccountId }
             );
 
+            console.log("Criou invoice stripe")
+
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
             const newInvoice = await prisma.invoice.create({
@@ -268,7 +270,7 @@ export class StripeController {
                     externalInvoiceId: finalizedInvoice.id,
                     invoiceType: "stripe",
                     projectId: project.id,
-                    estimateId: estimateId,
+                    estimateId: estimateId || "",
                     companyId: project.company_id,
                     totalAmount: totalAmount,
                     status: finalizedInvoice.status ?? "draft",
@@ -280,6 +282,8 @@ export class StripeController {
                     user_id: userId,
                 },
             });
+
+            console.log("Criou invoice no banco")
 
             await prisma.invoiceTimeline.create({
                 data: {
