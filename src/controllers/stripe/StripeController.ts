@@ -149,7 +149,7 @@ export class StripeController {
             description,
             dueDate,
             userId,
-            services,
+            totalAmount,
             type_value,
             estimateId
         } = req.body;
@@ -242,10 +242,6 @@ export class StripeController {
                 console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             }
 
-            console.log("Criando Invoice Items...");
-            let totalAmount = 0;
-            const lineItems = [];
-
             const currentDate = new Date();
             const dueDateObj = new Date(dueDate);
             const daysUntilDue = Math.ceil((dueDateObj.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -263,53 +259,6 @@ export class StripeController {
                 },
                 { stripeAccount: stripeAccountId }
             );
-
-            for (const service of services) {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-                // Usar o total fornecido ou calcular se não estiver disponível
-                const serviceAmount = service.total || (quantity * price);
-                const adjustedAmount = serviceAmount * validCoefficient;
-
-                console.log("-------- Detalhes do Serviço --------");
-                console.log(`Serviço: ${service.name}`);
-                console.log(`Quantidade: ${service.quantity} -> Convertido: ${quantity}`);
-                console.log(`Preço (price): ${service.price} -> Convertido: ${price}`);
-                console.log(`Coeficiente (coefficient): ${coefficientPerfentage} -> Válido: ${validCoefficient}`);
-                console.log(`Valor Bruto (serviceAmount): ${serviceAmount}`);
-                console.log(`Valor Ajustado (adjustedAmount): ${adjustedAmount}`);
-                console.log("------------------------------------");
-
-                if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-                    console.warn(`⚠️ Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
-                    continue;
-                }
-
-                totalAmount += adjustedAmount;
-
-                console.log(` Adicionando serviço ajustado: ${service.name} - Valor final: $${adjustedAmount.toFixed(2)}`);
-
-                lineItems.push({
-                    name: service.name,
-                    description: createSafeDescription(service.name, service.description || "No additional description"),
-                    quantity: quantity,
-                    price: price,
-                    totalAmount: adjustedAmount
-                });
-
-                await stripe.invoiceItems.create(
-                    {
-                        customer: stripeCustomerId,
-                        amount: Math.round(adjustedAmount * 100), // Convertendo para centavos
-                        currency: "usd",
-                        description: createSafeDescription(service.name, service.description || "No additional description"),
-                        invoice: invoice.id // 3️⃣ Associar o item à fatura criada
-                    },
-                    { stripeAccount: stripeAccountId }
-                );
-            }
 
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
@@ -734,69 +683,6 @@ export class StripeController {
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
-                    let invoiceItems: any[] = [];
-                    let totalAmountInvoice = 0;
-
-                    if (invoice.estimate?.id) {
-                        const estimate = await prisma.estimate.findUnique({
-                            where: {
-                                id: invoice.estimate.id
-                            }
-                        })
-
-                        if (estimate) {
-                            invoiceItems = await prisma.estimateServiceProject.findMany({
-                                where: {
-                                    estimateId: invoice.estimate.id
-                                },
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    description: true,
-                                    quantity: true,
-                                    price: true,
-                                    lineTotal: true,
-                                    unitPrice: true,
-                                }
-                            })
-
-                            totalAmountInvoice = invoiceItems.reduce((acc, item) => acc + item.lineTotal, 0);
-                        }
-                    } else {
-                        invoiceItems = await prisma.serviceProject.findMany({
-                            where: {
-                                projectId: invoice.projectId
-                            },
-                            select: {
-                                id: true,
-                                name: true,
-                                description: true,
-                                hours: true,
-                                price: true,
-                            }
-                        })
-
-                        totalAmountInvoice = invoiceItems.reduce((acc, item) => acc + item.price * item.hours, 0);
-                    }
-
-                    if (invoiceItems.length > 0) {
-                        invoiceItems = await prisma.invoiceItem.findMany({
-                            where: {
-                                invoiceId: invoice.id
-                            },
-                            select: {
-                                id: true,
-                                name: true,
-                                description: true,
-                                quantity: true,
-                                price: true,
-                                totalAmount: true,
-                            }
-                        })
-
-                        totalAmountInvoice = invoiceItems.reduce((acc, item) => acc + item.totalAmount, 0);
-                    }
-
                     if (invoice.PdfProject && invoice.PdfProject.length > 0) {
                         for (const pdf of invoice.PdfProject) {
                             if (pdf.uri) {
@@ -841,11 +727,7 @@ export class StripeController {
                         const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
 
                         return {
-                            invoice: {
-                                ...invoice,
-                                totalAmount: totalAmountInvoice,
-                                InvoiceItems: invoiceItems
-                            },
+                            ...invoice,
                             lastSentAt: lastSend
                         };
                     } catch (stripeError: any) {
