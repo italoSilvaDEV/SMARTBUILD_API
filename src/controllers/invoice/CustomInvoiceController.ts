@@ -8,8 +8,19 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
-    const { projectId } = req.params;
-    const { userId, type_invoicebase, coefficientPerfentage, description, dueDate, services, type_value, totalAmount } = req.body;
+    const {
+      projectId
+    } = req.params;
+
+    const {
+      userId,
+      type_invoicebase,
+      coefficientPerfentage,
+      description, dueDate,
+      type_value,
+      totalAmount,
+      estimateId
+    } = req.body;
 
     try {
       const project = await prisma.project.findUnique({
@@ -28,83 +39,10 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Client not found for this project" });
       }
 
-      // Validar se o PdfProject existe
-      // const pdfProject = await prisma.pdfProject.findUnique({
-      //   where: { id: idPdfProject }
-      // });
-
-      // if (!pdfProject) {
-      //   return res.status(404).json({ error: "PDF Project not found" });
-      // }
-
-      // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-      // Calcular o valor total com base nos serviços e coeficiente
       let finalTotalAmount = 0;
-      const lineItems = [];
 
-      if (totalAmount && typeof totalAmount === 'number' && totalAmount > 0) {
-        // Usar o totalAmount calculado no frontend
-        finalTotalAmount = totalAmount;
-        console.log('✅ Usando totalAmount do frontend:', finalTotalAmount);
-
-        // Processar os services para criar lineItems, distribuindo proporcionalmente
-        const originalServicesTotal = services.reduce((sum: number, item: any) => {
-          const serviceTotal = item.total || (item.quantity * item.price) || 0;
-          return sum + serviceTotal;
-        }, 0);
-
-        console.log('📊 Total original dos services:', originalServicesTotal);
-
-        for (const item of services) {
-          const quantity = Number(item.quantity) || 0;
-          const price = Number(item.price) || 0;
-          const serviceTotal = item.total || (quantity * price) || 0;
-
-          // Calcular a proporção deste service no total
-          const proportion = originalServicesTotal > 0 ? serviceTotal / originalServicesTotal : 0;
-          const adjustedAmount = finalTotalAmount * proportion;
-
-          console.log(`📊 Service "${item.name}": original=${serviceTotal}, proportion=${proportion.toFixed(4)}, adjusted=${adjustedAmount}`);
-
-          lineItems.push({
-            name: item.name,
-            description: item.description || "",
-            quantity: quantity,
-            price: price,
-            totalAmount: adjustedAmount
-          });
-        }
-      } else {
-        // Fallback: calcular como antes se totalAmount não for fornecido
-        console.log('⚠️ totalAmount não fornecido, calculando internamente');
-
-        for (const item of services) {
-          const quantity = Number(item.quantity) || 0;
-          const price = Number(item.price) || 0;
-          const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-          // Usar o total fornecido ou calcular se não estiver disponível
-          const serviceAmount = item.total || (quantity * price);
-          const adjustedAmount = serviceAmount * validCoefficient;
-
-          if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-            continue;
-          }
-
-          finalTotalAmount += adjustedAmount;
-          lineItems.push({
-            name: item.name,
-            description: item.description || "",
-            quantity: quantity,
-            price: price,
-            totalAmount: adjustedAmount
-          });
-        }
-      }
-
-      // Obter o maior número de invoice para a empresa especificada
       const latestInvoice = await prisma.invoice.findFirst({
         where: {
           companyId: project.company_id,
@@ -117,23 +55,21 @@ export class CustomInvoiceController {
         ]
       });
 
-      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
       let nextInvoiceNumber = 1000;
+
       if (latestInvoice && latestInvoice.externalInvoiceId) {
-        // Tentar extrair o número do último invoice
         const lastNumber = parseInt(latestInvoice.externalInvoiceId);
         if (!isNaN(lastNumber)) {
           nextInvoiceNumber = lastNumber + 1;
         }
       }
 
-      // Criar a fatura personalizada no banco de dados
       const newInvoice = await prisma.invoice.create({
         data: {
-          externalInvoiceId: nextInvoiceNumber.toString(), // Usar o número sequencial
+          externalInvoiceId: nextInvoiceNumber.toString(),
           invoiceType: "custom",
           status: "open",
-          totalAmount: finalTotalAmount, // Usar o totalAmount calculado
+          totalAmount: totalAmount,
           dueDate: dueDateObj,
           description: description,
           projectId: project.id,
@@ -142,32 +78,10 @@ export class CustomInvoiceController {
           type_value: type_value,
           percentageCoefficient: coefficientPerfentage,
           type_invoicebase: type_invoicebase,
-          // Criar os itens da fatura
-          InvoiceItems: {
-            create: lineItems.map((item) => ({
-              name: item.name,
-              description: item.description,
-              quantity: item.quantity,
-              price: item.price,
-              totalAmount: item.totalAmount
-            }))
-          }
-        },
-        include: {
-          InvoiceItems: true // Incluir os itens na resposta
+          estimateId: estimateId
         }
       });
 
-      // Atualizar o PdfProject com o invoice_id
-      // await prisma.pdfProject.update({
-      //   where: { id: idPdfProject },
-      //   data: {
-      //     invoice_id: newInvoice.id,
-      //     project_id: project.id
-      //   }
-      // });
-
-      // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
         data: {
           description: `Created with total amount $${finalTotalAmount}`,
@@ -367,12 +281,12 @@ export class CustomInvoiceController {
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(
-        clientName, 
-        urlLogo, 
-        invoiceCode, 
-        invoiceAmount, 
-        companyName, 
-        phone || '', 
+        clientName,
+        urlLogo,
+        invoiceCode,
+        invoiceAmount,
+        companyName,
+        phone || '',
         customBody,
         customSubject,
         invoice.invoiceType,
@@ -537,12 +451,12 @@ export class CustomInvoiceController {
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(
-        clientName, 
-        urlLogo, 
-        invoiceCode, 
-        invoiceAmount, 
-        companyName, 
-        phone || '', 
+        clientName,
+        urlLogo,
+        invoiceCode,
+        invoiceAmount,
+        companyName,
+        phone || '',
         undefined, // customBody
         undefined, // customSubject
         invoice.invoiceType,
