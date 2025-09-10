@@ -305,11 +305,11 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Not a custom invoice" });
       }
 
-      if (!invoice.project.client) {
+      if (!invoice.project?.client) {
         return res.status(400).json({ error: "Client not found for this invoice" });
       }
 
-      if (!invoice.project.client.email) {
+      if (!invoice.project?.client.email) {
         return res.status(400).json({ error: "Client email is required" });
       }
 
@@ -524,13 +524,13 @@ export class CustomInvoiceController {
       });
 
       // Obter o logo da empresa
-      const company = invoice.project.company;
+      const company = invoice.project?.company;
       const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
       const phone = company?.phone || '';
-      const clientName = invoice.project.client?.name || 'Cliente';
+      const clientName = invoice.project?.client?.name || 'Cliente';
       const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
 
