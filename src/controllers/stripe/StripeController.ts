@@ -843,7 +843,8 @@ export class StripeController {
                         return {
                             invoice: {
                                 ...invoice,
-                                totalAmount: totalAmountInvoice
+                                totalAmount: totalAmountInvoice,
+                                InvoiceItems: invoiceItems
                             },
                             lastSentAt: lastSend
                         };
