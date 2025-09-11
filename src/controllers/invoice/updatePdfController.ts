@@ -36,9 +36,6 @@ export class updatePdfInvoiceController {
 
                 const file = req.file;
 
-                console.log(file)
-                console.log(invoiceId)
-
                 if (!invoiceId) {
                     if (file) this.deleteFiles(file.filename);
 
@@ -68,28 +65,13 @@ export class updatePdfInvoiceController {
                     });
                 }
 
-                console.log(invoiceId)
-
                 const existingPdf = await prisma.pdfProject.findFirst({
                     where: {
                         invoice_id: invoiceId
                     }
                 });
 
-                console.log(existingPdf?.id)
-
-                console.log(existingPdf)
-
-                if (!existingPdf) {
-                    this.deleteFiles(file.filename);
-                    return res.status(404).json({
-                        error: "PDF not found for this invoice"
-                    });
-                }
-
-                const newFileName = await uploadFileToS3_2(file, '');
-
-                if (existingPdf.uri) {
+                if (existingPdf && existingPdf.uri) {
                     try {
                         await this.deleteFilesFromS3(existingPdf.uri);
                     } catch (error) {
@@ -97,35 +79,64 @@ export class updatePdfInvoiceController {
                     }
                 }
 
-                const updatedPdf = await prisma.pdfProject.update({
-                    where: {
-                        id: existingPdf.id
-                    },
-                    data: {
-                        original_file_name: file.originalname,
-                        uri: newFileName,
-                        date_update: new Date()
-                    },
-                    select: {
-                        id: true,
-                        original_file_name: true,
-                        uri: true,
-                        type_pdf: true,
-                        invoice_id: true,
-                        date_creation: true,
-                        date_update: true
-                    }
-                });
+                const newFileName = await uploadFileToS3_2(file, '');
 
-                setImmediate(() => {
-                    this.deleteFiles(file.filename);
-                });
+                if (existingPdf) {
+                    const updatedPdf = await prisma.pdfProject.update({
+                        where: {
+                            id: existingPdf.id
+                        },
+                        data: {
+                            original_file_name: file.originalname,
+                            uri: newFileName,
+                            date_update: new Date()
+                        },
+                        select: {
+                            id: true,
+                            original_file_name: true,
+                            uri: true,
+                            type_pdf: true,
+                            invoice_id: true,
+                            date_creation: true,
+                            date_update: true
+                        }
+                    });
 
-                return res.status(200).json({
-                    message: "PDF updated successfully",
-                    data: updatedPdf
-                });
+                    setImmediate(() => {
+                        this.deleteFiles(file.filename);
+                    });
 
+                    return res.status(200).json({
+                        message: "PDF updated successfully",
+                        data: updatedPdf
+                    });
+                } else {
+                    const createdPdf = await prisma.pdfProject.create({
+                        data: {
+                            original_file_name: file.originalname,
+                            uri: newFileName,
+                            date_update: new Date()
+                        },
+                        select: {
+                            id: true,
+                            original_file_name: true,
+                            uri: true,
+                            type_pdf: true,
+                            invoice_id: true,
+                            date_creation: true,
+                            date_update: true
+                        }
+                    });
+
+                    setImmediate(() => {
+                        this.deleteFiles(file.filename);
+                    });
+
+                    return res.status(200).json({
+                        message: "PDF created successfully",
+                        data: createdPdf
+                    });
+                }
             } catch (error) {
                 console.error("Error updating PDF:", error);
                 if (req.file) {
