@@ -74,6 +74,8 @@ export class updatePdfInvoiceController {
                     }
                 });
 
+                console.log(existingPdf)
+
                 if (!existingPdf) {
                     this.deleteFiles(file.filename);
                     return res.status(404).json({
