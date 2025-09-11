@@ -68,11 +68,15 @@ export class updatePdfInvoiceController {
                     });
                 }
 
+                console.log(invoiceId)
+
                 const existingPdf = await prisma.pdfProject.findFirst({
                     where: {
                         invoice_id: invoiceId
                     }
                 });
+
+                console.log(existingPdf?.id)
 
                 console.log(existingPdf)
 
