@@ -11,7 +11,7 @@ export async function setupWebhook() {
   const EVENTS: { event: string; name: string }[] = [
     { event: "invoice.payment_succeeded", name: "Invoice payment (main account)" },
     // para caso usar o payment element na conta principal 
-    { event: "payment_intent.succeeded", name: "Payment Element succeeded (main account)" },
+    // { event: "payment_intent.succeeded", name: "Payment Element succeeded (main account)" },
 
     { event: "checkout.session.completed", name: "Checkout completed" },
     { event: "customer.subscription.updated", name: "Subscription updated" },

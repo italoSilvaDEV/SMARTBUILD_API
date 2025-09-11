@@ -95,14 +95,13 @@ export class PaymentElementController {
             let stripeCustomerId = client.stripeCustomerId;
 
             if (!stripeCustomerId) {
-                console.log("Creating new Stripe customer on main account...");
+                console.log("Creating new Stripe customer on connected account...");
                 const customer = await stripe.customers.create({
                     name: client.name,
                     email: client.email,
                     phone: client.phone ?? undefined,
-                }
-                    // { stripeAccount: stripeAccountId }
-                ); // SEM { stripeAccount } - criando na conta principal
+                }, { stripeAccount: stripeAccountId }); // Criando na conta conectada
+                
                 console.log('customer criado customer', customer);
                 console.log('customer id', customer.id);
                 stripeCustomerId = customer.id;
@@ -112,7 +111,7 @@ export class PaymentElementController {
                     data: { stripeCustomerId }
                 });
 
-                console.log("Customer created on main account:", stripeCustomerId);
+                console.log("Customer created on connected account:", stripeCustomerId);
             }
 
             // Calcular valor base (sem surcharge)
@@ -137,33 +136,32 @@ export class PaymentElementController {
 
                 paymentIntent = await stripe.paymentIntents.retrieve(
                     existingPaymentIntent.stripePaymentIntentId,
-                    // { stripeAccount: stripeAccountId }
-                ); // SEM { stripeAccount } - recuperando da conta principal
+                    { stripeAccount: stripeAccountId } // Recuperando da conta conectada
+                );
 
                 paymentIntentRecord = existingPaymentIntent;
             } else {
                 // Criar novo PaymentIntent (sem surcharge inicialmente)
                 console.log("Creating new PaymentIntent...");
 
-                // Criar PaymentIntent na CONTA PRINCIPAL (para usar pk_test da conta principal)
-                // O dinheiro será transferido para a conta conectada via destination charge
+                // DIRECT CHARGE: Criar PaymentIntent na CONTA CONECTADA
+                // Responsabilidade por chargebacks/refunds fica com a conta conectada
+                const platformFee = baseAmount * 0.029; // Taxa da plataforma (2.9%)
+                
                 paymentIntent = await stripe.paymentIntents.create({
                     amount: Math.round(baseAmount * 100), // em centavos (sem surcharge inicial)
                     currency: currency,
+                    customer: stripeCustomerId,
                     automatic_payment_methods: {
                         enabled: true,
                     },
-                    transfer_data: {
-                        destination: stripeAccountId, // Todo dinheiro vai para conta conectada
-                    },
+                    // application_fee_amount: Math.round(platformFee * 100), // Taxa da plataforma
                     metadata: {
                         invoiceId: invoice.id,
                         companyId: company.id,
                         projectId: invoice.projectId
                     }
-                },
-                    // { stripeAccount: stripeAccountId });
-                ); // SEM { stripeAccount } - criado na conta principal
+                }, { stripeAccount: stripeAccountId }); // CRIADO NA CONTA CONECTADA
 
                 console.log("PaymentIntent created:", paymentIntent.id);
 
@@ -195,6 +193,7 @@ export class PaymentElementController {
             return res.status(200).json({
                 clientSecret: paymentIntent.client_secret,
                 paymentIntentId: paymentIntent.id,
+                stripeAccountId: stripeAccountId, // Para usar no frontend
                 amountBreakdown,
                 companyName: company.name,
                 invoiceNumber: invoice.externalInvoiceId || invoice.id
@@ -262,14 +261,13 @@ export class PaymentElementController {
                 newTotal
             });
 
-            // Atualizar PaymentIntent no Stripe (conta principal)
+            // Atualizar PaymentIntent no Stripe (conta conectada)
             const updatedPaymentIntent = await stripe.paymentIntents.update(
                 paymentIntentId,
                 {
                     amount: Math.round(newTotal * 100) // em centavos
-                    // { stripeAccount: stripeAccountId } se conta conectada
-                }
-                // SEM { stripeAccount } - atualizando na conta principal
+                },
+                { stripeAccount: stripeAccountId } // Atualizando na conta conectada
             );
 
             // Atualizar registro no banco
@@ -330,12 +328,11 @@ export class PaymentElementController {
                 });
             }
 
-            // Buscar status atualizado no Stripe (conta principal)
+            // Buscar status atualizado no Stripe (conta conectada)
             const paymentIntent = await stripe.paymentIntents.retrieve(
-                paymentIntentId
-
-                // { stripeAccount: paymentRecord.stripeAccountId }
-            ); // SEM { stripeAccount } - buscando da conta principal
+                paymentIntentId,
+                { stripeAccount: paymentRecord.stripeAccountId } // Buscando da conta conectada
+            );
 
 
             // Buscar receipt URL se não estiver salvo e pagamento foi bem-sucedido
@@ -346,7 +343,7 @@ export class PaymentElementController {
                         ? paymentIntent.latest_charge 
                         : paymentIntent.latest_charge.id;
                     
-                    const charge = await stripe.charges.retrieve(chargeId);
+                    const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: paymentRecord.stripeAccountId });
                     receiptUrl = charge.receipt_url;
                     console.log("Receipt URL obtido do charge:", receiptUrl);
                 } catch (chargeError) {
