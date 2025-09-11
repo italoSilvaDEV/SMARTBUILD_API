@@ -15,7 +15,7 @@ export class StripeWebHookControllerConnect {
         this.sendPaymentConfirmationEmails = this.sendPaymentConfirmationEmails.bind(this);
     }
 
-    async handleConnectWebhook(req: Request, res: Response) {
+    async handleConnectWebhook(req: Request, res: Response) { 
         const sig = req.headers["stripe-signature"];
 
         try {
@@ -102,6 +102,104 @@ export class StripeWebHookControllerConnect {
                     }
                 }
             }
+             /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */
+            //  se decidir que vou usar o payment intent na conta conectada o webhook deve ter esse comportamento
+            //  if (event.type === "payment_intent.succeeded") {
+            //     console.log("Processando payment_intent.succeeded (Payment Element)");
+            //     const paymentIntent = event.data.object as Stripe.PaymentIntent;
+                
+            //     // Verificar se é um evento de conta conectada
+            //     const stripeEvent = event as Stripe.Event & { account?: string };
+                
+            //     if (stripeEvent.account) {
+            //         console.log("Payment Intent succeeded recebido (Conta Conectada):");
+            //         console.log("   • PaymentIntent ID:", paymentIntent.id);
+            //         console.log("   • Amount:", paymentIntent.amount_received);
+            //         console.log("   • Currency:", paymentIntent.currency);
+                    
+            //         // Buscar PaymentIntentRecord no banco
+            //         const paymentRecord = await prisma.paymentIntentRecord.findUnique({
+            //             where: { stripePaymentIntentId: paymentIntent.id },
+            //             include: {
+            //                 invoice: {
+            //                     include: {
+            //                         project: {
+            //                             include: {
+            //                                 client: {
+            //                                     select: {
+            //                                         id: true,
+            //                                         name: true,
+            //                                         email: true,
+            //                                         phone: true
+            //                                     }
+            //                                 }
+            //                             }
+            //                         },
+            //                         company: {
+            //                             select: {
+            //                                 id: true,
+            //                                 name: true,
+            //                                 avatar: true,
+            //                                 email: true,
+            //                                 phone: true
+            //                             }
+            //                         }
+            //                     }
+            //                 }
+            //             }
+            //         });
+                    
+            //         if (paymentRecord && paymentRecord.invoice) {
+            //             console.log("PaymentRecord encontrado para invoice:", paymentRecord.invoice.id);
+                        
+            //             // Atualizar status do PaymentIntentRecord
+            //             await prisma.paymentIntentRecord.update({
+            //                 where: { stripePaymentIntentId: paymentIntent.id },
+            //                 data: { 
+            //                     status: "succeeded",
+            //                     updatedAt: new Date()
+            //                 }
+            //             });
+                        
+            //             // Atualizar status da Invoice para "paid"
+            //             await prisma.invoice.update({
+            //                 where: { id: paymentRecord.invoice.id },
+            //                 data: { 
+            //                     status: "paid",
+            //                     stripePaymentIntentId: paymentIntent.id // Garantir que está vinculado
+            //                 }
+            //             });
+                        
+            //             console.log("Invoice atualizada como paga via Payment Element");
+                        
+            //             // Registrar timeline
+            //             await prisma.invoiceTimeline.create({
+            //                 data: {
+            //                     description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)}`,
+            //                     invoiceId: paymentRecord.invoice.id
+            //                 }
+            //             });
+                        
+            //             // Enviar emails de confirmação (reutilizando a função existente)
+            //             try {
+            //                 // Criar objeto similar ao stripeInvoice para compatibilidade
+            //                 const mockStripeInvoice = {
+            //                     id: paymentIntent.id,
+            //                     amount_paid: paymentIntent.amount_received,
+            //                     number: paymentRecord.invoice.externalInvoiceId || paymentRecord.invoice.id
+            //                 } as Stripe.Invoice;
+                            
+            //                 await this.sendPaymentConfirmationEmails(paymentRecord.invoice, mockStripeInvoice);
+            //             } catch (emailError: any) {
+            //                 console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
+            //             }
+                        
+            //         } else {
+            //             console.log("PaymentIntentRecord não encontrado no banco de dados local");
+            //         }
+            //     }
+            // }
+
             
             // Outros handlers de eventos conectados podem ser adicionados aqui
 
