@@ -817,20 +817,24 @@ export class StripeController {
    ADICIONE dentro da classe StripeController
 -------------------------------------------------------------------*/
     async updateInvoice(req: Request, res: Response) {
-        const { invoiceId } = req.params;
+        const {
+            invoiceId
+        } = req.params;
+
         const {
             coefficientPerfentage,
             description,
             dueDate,
             userId,
-            services,
-            type_value
+            type_value,
+            totalAmount
         } = req.body;
 
         try {
-            /* ---------- 1. localizar fatura antiga + entidade associada ---------- */
             const oldInvoice = await prisma.invoice.findUnique({
-                where: { id: invoiceId },
+                where: {
+                    id: invoiceId
+                },
                 include: {
                     project: {
                         include: {
@@ -843,12 +847,19 @@ export class StripeController {
             });
 
             if (!oldInvoice || !oldInvoice.project || !oldInvoice.project.company || !oldInvoice.project.client) {
-                console.log({ message: "Invoice, project, company, or client not found", oldInvoice });
-                return res.status(404).json({ error: "Invoice, project, company, or client not found" });
+                console.log({
+                    message: "Invoice, project, company, or client not found", oldInvoice
+                });
+
+                return res.status(404).json({
+                    error: "Invoice, project, company, or client not found"
+                });
             }
 
             if (!oldInvoice?.stripeInvoiceId) {
-                return res.status(400).json({ error: "Invoice is not linked to Stripe yet" });
+                return res.status(400).json({
+                    error: "Invoice is not linked to Stripe yet"
+                });
             }
             const stripeInvoiceId = oldInvoice.stripeInvoiceId;
 
@@ -856,14 +867,15 @@ export class StripeController {
             const client = oldInvoice.project.client;
             const stripeAccountId = company.stripeAccountId ?? undefined;
 
-            /* ---------- 2. cancelar a fatura antiga no Stripe ---------- */
-            //   await stripe.invoices.voidInvoice(invoiceId, { stripeAccount: stripeAccountId });
             await stripe.invoices.voidInvoice(stripeInvoiceId, { stripeAccount: stripeAccountId });
 
-            /* ---------- 3. marcar a fatura antiga como cancelada (edição) ---------- */
             await prisma.invoice.update({
-                where: { id: oldInvoice.id },
-                data: { status: "void", cancel_invoice_edit: true }
+                where: {
+                    id: oldInvoice.id
+                },
+                data: {
+                    status: "void", cancel_invoice_edit: true
+                }
             });
 
             await prisma.invoiceTimeline.create({
@@ -873,7 +885,6 @@ export class StripeController {
                 }
             });
 
-            /* ---------- 4. garantir cliente no Stripe ---------- */
             let stripeCustomerId = client.stripeCustomerId;
             if (!stripeCustomerId) {
                 const newCustomer = await stripe.customers.create(
@@ -891,7 +902,6 @@ export class StripeController {
                 });
             }
 
-            /* ---------- 5. criar nova invoice (rascunho) ---------- */
             const currentDate = new Date();
             const dueDateObj = new Date(dueDate);
             const daysUntilDue = Math.max(
@@ -911,56 +921,11 @@ export class StripeController {
                 { stripeAccount: stripeAccountId }
             );
 
-            /* ---------- 6. adicionar itens e calcular total ---------- */
-            let totalAmount = 0;
-            const preparedItems: {
-                name: string;
-                description: string;
-                quantity: number;
-                price: number;
-                totalAmount: number;
-            }[] = [];
-
-            for (const s of services) {
-                const quantity = Number(s.quantity) || 0;
-                const price = Number(s.price) || 0;
-                const base = s.total ?? quantity * price;
-                const coeff = typeof coefficientPerfentage === "number" && !isNaN(coefficientPerfentage)
-                    ? coefficientPerfentage
-                    : 1;
-                const adjusted = base * coeff;
-
-                if (adjusted <= 0 || isNaN(adjusted)) continue;
-
-                totalAmount += adjusted;
-
-                preparedItems.push({
-                    name: s.name,
-                    description: createSafeDescription(s.name, s.description || "No description"),
-                    quantity,
-                    price,
-                    totalAmount: adjusted
-                });
-
-                await stripe.invoiceItems.create(
-                    {
-                        customer: stripeCustomerId,
-                        amount: Math.round(adjusted * 100),
-                        currency: "usd",
-                        description: createSafeDescription(s.name, s.description || "No description"),
-                        invoice: draftInvoice.id
-                    },
-                    { stripeAccount: stripeAccountId }
-                );
-            }
-
-            /* ---------- 7. finalizar invoice ---------- */
             const finalized = await stripe.invoices.finalizeInvoice(
                 draftInvoice.id,
                 { stripeAccount: stripeAccountId }
             );
 
-            /* ---------- 8. salvar nova invoice no banco ---------- */
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalized.id,
@@ -968,7 +933,7 @@ export class StripeController {
                     invoiceType: "stripe",
                     projectId: oldInvoice.projectId,
                     companyId: company.id,
-                    totalAmount,
+                    totalAmount: totalAmount,
                     status: finalized.status ?? "draft",
                     invoiceUrl: finalized.hosted_invoice_url,
                     dueDate: dueDateObj,
@@ -979,27 +944,13 @@ export class StripeController {
                 }
             });
 
-            if (preparedItems.length) {
-                await prisma.invoiceItem.createMany({
-                    data: preparedItems.map(i => ({
-                        invoiceId: newInvoice.id,
-                        name: i.name,
-                        description: i.description,
-                        quantity: i.quantity,
-                        price: i.price,
-                        totalAmount: i.totalAmount
-                    }))
-                });
-            }
-
             await prisma.invoiceTimeline.create({
                 data: {
-                    description: "Invoice re‑created after edit",
+                    description: "Invoice recreated after edit",
                     invoiceId: newInvoice.id
                 }
             });
 
-            /* ---------- 9. resposta ---------- */
             return res.status(200).json({
                 message: "Invoice updated (old one voided, new one created)",
                 oldInvoiceId: oldInvoice.id,

@@ -853,11 +853,19 @@ export class CustomInvoiceController {
   }
 
   async updateInvoice(req: Request, res: Response) {
-    const { invoiceId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value, idPdfProject } = req.body;
+    const {
+      invoiceId
+    } = req.params;
+
+    const {
+      coefficientPerfentage,
+      description,
+      dueDate,
+      type_value,
+      totalAmount
+    } = req.body;
 
     try {
-      // Verificar se o invoice existe
       const existingInvoice = await prisma.invoice.findUnique({
         where: {
           id: invoiceId
@@ -874,78 +882,26 @@ export class CustomInvoiceController {
       });
 
       if (!existingInvoice) {
-        return res.status(404).json({ error: "Invoice not found" });
+        return res.status(404).json({
+          error: "Invoice not found"
+        });
       }
 
       if (existingInvoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Not a custom invoice" });
-      }
-
-      // Buscar PDF relacionado ao invoice atual para excluir
-      const existingPdfProject = await prisma.pdfProject.findFirst({
-        where: { invoice_id: existingInvoice.id }
-      });
-
-      // Excluir o PDF existente se houver
-      if (existingPdfProject) {
-        try {
-          const pdfController = new CreatePdfProjectEstimateInvoiceController();
-          await pdfController.deletePdfProject(existingPdfProject.id);
-        } catch (error) {
-          console.error("Error deleting existing PDF:", error);
-          // Continuar mesmo se não conseguir excluir o PDF anterior
-        }
-      }
-
-      // Validar se o novo PdfProject existe (se fornecido)
-      if (idPdfProject) {
-        const pdfProject = await prisma.pdfProject.findUnique({
-          where: { id: idPdfProject }
+        return res.status(400).json({
+          error:
+            "Not a custom invoice"
         });
-
-        if (!pdfProject) {
-          return res.status(404).json({ error: "PDF Project not found" });
-        }
       }
 
-      // Preparar a data de vencimento atualizada
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
-      // Calcular o valor total com base nos serviços e coeficiente
-      let totalAmount = 0;
-      const lineItems = [];
-
-      for (const item of services) {
-        const quantity = Number(item.quantity) || 0;
-        const price = Number(item.price) || 0;
-        const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-        // Usar o total fornecido ou calcular se não estiver disponível
-        const serviceAmount = item.total || (quantity * price);
-        const adjustedAmount = serviceAmount * validCoefficient;
-
-        if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-          continue;
-        }
-
-        totalAmount += adjustedAmount;
-        lineItems.push({
-          name: item.name,
-          description: item.description || "",
-          quantity: quantity,
-          price: price,
-          totalAmount: adjustedAmount
-        });
-      }
-
-      // Primeiro excluir todos os itens existentes
       await prisma.invoiceItem.deleteMany({
         where: {
           invoiceId: existingInvoice.id
         }
       });
 
-      // Atualizar o invoice com os novos valores e criar novos itens
       const updatedInvoice = await prisma.invoice.update({
         where: {
           id: invoiceId
@@ -957,37 +913,15 @@ export class CustomInvoiceController {
           type_value: type_value || existingInvoice.type_value,
           percentageCoefficient: coefficientPerfentage,
           updatedAt: new Date(),
-          // Criar os novos itens da fatura
-          InvoiceItems: {
-            create: lineItems.map((item) => ({
-              name: item.name,
-              description: item.description,
-              quantity: item.quantity,
-              price: item.price,
-              totalAmount: item.totalAmount
-            }))
-          }
         },
         include: {
           InvoiceItems: true
         }
       });
 
-      // Atualizar o novo PdfProject com o invoice_id (se fornecido)
-      if (idPdfProject) {
-        await prisma.pdfProject.update({
-          where: { id: idPdfProject },
-          data: {
-            invoice_id: updatedInvoice.id,
-            project_id: updatedInvoice.projectId
-          }
-        });
-      }
-
-      // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
         data: {
-          description: `Updated with ${lineItems.length} items and total amount of $${totalAmount.toFixed(2)}`,
+          description: `Updated total amount of $${totalAmount.toFixed(2)}`,
           invoice: {
             connect: { id: existingInvoice.id }
           }

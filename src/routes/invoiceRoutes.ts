@@ -3,13 +3,11 @@ import { UnifiedInvoiceController } from "../controllers/invoice/UnifiedInvoiceC
 import { checkToken } from "../middlewares/checkToken";
 import { CustomInvoiceController } from "../controllers/invoice/CustomInvoiceController";
 import { updatePdfInvoiceController } from "../controllers/invoice/updatePdfController";
-import { UpdateInvoiceController } from "../controllers/invoice/updateInvoice";
 
 const invoiceRoutes = Router();
 const unifiedInvoiceController = new UnifiedInvoiceController();
 const customInvoiceController = new CustomInvoiceController();
 const updatePdfController = new updatePdfInvoiceController();
-const updateInvoiceController = new UpdateInvoiceController();
 
 // Criar invoice (tipo definido no body)
 invoiceRoutes.post("/invoice/:projectId", checkToken, unifiedInvoiceController.createInvoice.bind(unifiedInvoiceController));
@@ -31,8 +29,5 @@ invoiceRoutes.delete("/invoice/delete/:id", checkToken, customInvoiceController.
 
 // Atualizar PDF Invoice
 invoiceRoutes.put("/invoice/update-pdf", checkToken, updatePdfController.handle.bind(updatePdfController));
-
-// Atualizar total amount Invoice
-invoiceRoutes.put("/invoice/update-total-amount", checkToken, updateInvoiceController.updateTotalAmount.bind(updateInvoiceController));
 
 export { invoiceRoutes }; 
