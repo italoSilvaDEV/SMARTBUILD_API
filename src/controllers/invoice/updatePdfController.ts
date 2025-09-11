@@ -115,7 +115,8 @@ export class updatePdfInvoiceController {
                         data: {
                             original_file_name: file.originalname,
                             uri: newFileName,
-                            date_update: new Date()
+                            date_update: new Date(),
+                            invoice_id: invoiceId
                         },
                         select: {
                             id: true,
