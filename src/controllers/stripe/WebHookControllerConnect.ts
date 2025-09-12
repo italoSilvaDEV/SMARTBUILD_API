@@ -159,7 +159,10 @@ export class StripeWebHookControllerConnect {
                                 ? paymentIntent.latest_charge 
                                 : paymentIntent.latest_charge.id;
                             
-                            const charge = await stripe.charges.retrieve(chargeId);
+                            const charge = await stripe.charges.retrieve(chargeId, 
+                                { stripeAccount: paymentRecord.stripeAccountId } 
+                                // ajuste para testar e ver 
+                            );
                             receiptUrl = charge.receipt_url;
                             console.log("Receipt URL encontrado:", receiptUrl);
                         }

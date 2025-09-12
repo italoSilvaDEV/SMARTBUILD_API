@@ -8,7 +8,7 @@ const stripe = stripeConfig.getClient();
 // Configurações de surcharge (taxa de cartão)
 const SURCHARGE_CONFIG = {
     percentage: 0.029, // 2.9%
-    cardMethods: ['card'] // métodos que aplicam surcharge
+    cardMethods: ['card', 'apple_pay', 'google_pay', 'link'] // métodos que aplicam surcharge
 };
 
 export class PaymentElementController {
@@ -122,7 +122,7 @@ export class PaymentElementController {
             let existingPaymentIntent = await prisma.paymentIntentRecord.findFirst({
                 where: {
                     invoiceId: invoice.id,
-                    status: { in: ['requires_payment_method', 'requires_confirmation', 'succeeded  '] }
+                    status: { in: ['requires_payment_method', 'requires_confirmation', 'succeeded'] }
                 },
                 orderBy: { createdAt: 'desc' }
             });
