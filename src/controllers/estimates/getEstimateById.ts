@@ -133,7 +133,6 @@ export class GetEstimateByProjectIdController {
             const estimate = await prisma.estimate.findFirst({
                 where: {
                     projectId: projectId,
-                    type_estimate: "estimate"
                 },
                 select: {
                     id: true,
