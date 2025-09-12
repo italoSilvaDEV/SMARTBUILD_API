@@ -8,7 +8,7 @@ const stripe = stripeConfig.getClient();
 // Configurações de surcharge (taxa de cartão)
 const SURCHARGE_CONFIG = {
     percentage: 0.029, // 2.9%
-    cardMethods: ['card', 'apple_pay', 'google_pay', 'link'] // métodos que aplicam surcharge
+    cardMethods: ['card'] // métodos que aplicam surcharge
 };
 
 export class PaymentElementController {
