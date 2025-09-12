@@ -18,8 +18,13 @@ export class GetEstimateByProjectIdController {
             const project = await prisma.project.findUnique({
                 where: {
                     id: projectId
+                },
+                select: {
+                    estimates: true
                 }
             })
+
+            console.log(project)
 
             if (!project) {
                 return res.status(404).json({

@@ -16,7 +16,8 @@ export class CustomInvoiceController {
       userId,
       type_invoicebase,
       coefficientPerfentage,
-      description, dueDate,
+      description,
+      dueDate,
       type_value,
       totalAmount,
       estimateId
