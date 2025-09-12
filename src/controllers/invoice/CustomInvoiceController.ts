@@ -7,186 +7,117 @@ import { generatePdf } from "../../utils/generatePdf";
 import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdfProjectEstimateInvoiceController";
 
 export class CustomInvoiceController {
-  async createInvoice(req: Request, res: Response) {
-    const { projectId } = req.params;
-    const { userId, type_invoicebase, coefficientPerfentage, description, dueDate, services, type_value, totalAmount } = req.body;
+ async createInvoice(req: Request, res: Response) {
+  const { projectId } = req.params;
+  const { userId, type_invoicebase, coefficientPerfentage, description, dueDate, type_value, totalAmount, estimateId, items } = req.body;
 
-    try {
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        include: {
-          client: true,
-          company: true,
-        },
-      });
+  try {
+    // Buscando o projeto no banco de dados
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        client: true,
+        company: true,
+      },
+    });
 
-      if (!project) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-
-      if (!project.client) {
-        return res.status(400).json({ error: "Client not found for this project" });
-      }
-
-      // Validar se o PdfProject existe
-      // const pdfProject = await prisma.pdfProject.findUnique({
-      //   where: { id: idPdfProject }
-      // });
-
-      // if (!pdfProject) {
-      //   return res.status(404).json({ error: "PDF Project not found" });
-      // }
-
-      // Preparar a data de vencimento
-      const dueDateObj = dueDate ? new Date(dueDate) : new Date();
-
-      // Calcular o valor total com base nos serviços e coeficiente
-      let finalTotalAmount = 0;
-      const lineItems = [];
-
-      if (totalAmount && typeof totalAmount === 'number' && totalAmount > 0) {
-        // Usar o totalAmount calculado no frontend
-        finalTotalAmount = totalAmount;
-        console.log('✅ Usando totalAmount do frontend:', finalTotalAmount);
-
-        // Processar os services para criar lineItems, distribuindo proporcionalmente
-        const originalServicesTotal = services.reduce((sum: number, item: any) => {
-          const serviceTotal = item.total || (item.quantity * item.price) || 0;
-          return sum + serviceTotal;
-        }, 0);
-
-        console.log('📊 Total original dos services:', originalServicesTotal);
-
-        for (const item of services) {
-          const quantity = Number(item.quantity) || 0;
-          const price = Number(item.price) || 0;
-          const serviceTotal = item.total || (quantity * price) || 0;
-
-          // Calcular a proporção deste service no total
-          const proportion = originalServicesTotal > 0 ? serviceTotal / originalServicesTotal : 0;
-          const adjustedAmount = finalTotalAmount * proportion;
-
-          console.log(`📊 Service "${item.name}": original=${serviceTotal}, proportion=${proportion.toFixed(4)}, adjusted=${adjustedAmount}`);
-
-          lineItems.push({
-            name: item.name,
-            description: item.description || "",
-            quantity: quantity,
-            price: price,
-            totalAmount: adjustedAmount
-          });
-        }
-      } else {
-        // Fallback: calcular como antes se totalAmount não for fornecido
-        console.log('⚠️ totalAmount não fornecido, calculando internamente');
-
-        for (const item of services) {
-          const quantity = Number(item.quantity) || 0;
-          const price = Number(item.price) || 0;
-          const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-          // Usar o total fornecido ou calcular se não estiver disponível
-          const serviceAmount = item.total || (quantity * price);
-          const adjustedAmount = serviceAmount * validCoefficient;
-
-          if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-            continue;
-          }
-
-          finalTotalAmount += adjustedAmount;
-          lineItems.push({
-            name: item.name,
-            description: item.description || "",
-            quantity: quantity,
-            price: price,
-            totalAmount: adjustedAmount
-          });
-        }
-      }
-
-      // Buscar todos os invoices com externalInvoiceId numérico para a empresa
-      const allInvoices = await prisma.invoice.findMany({
-        where: {
-          companyId: project.company_id,
-          invoiceType: { in: ["custom", "stripe"] },
-          externalInvoiceId: { not: null }
-        },
-        select: {
-          externalInvoiceId: true
-        }
-      });
-
-      // Extrair apenas os números válidos e encontrar o maior
-      const numericIds = allInvoices
-        .map(invoice => parseInt(invoice.externalInvoiceId || ""))
-        .filter(num => !isNaN(num) && num > 0);
-
-      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
-      let nextInvoiceNumber = 1000;
-      if (numericIds.length > 0) {
-        const maxNumber = Math.max(...numericIds);
-        nextInvoiceNumber = maxNumber + 1;
-      }
-
-      // Criar a fatura personalizada no banco de dados
-      const newInvoice = await prisma.invoice.create({ 
-        data: {
-          externalInvoiceId: nextInvoiceNumber.toString(), // Usar o número sequencial
-          invoiceType: "custom",
-          status: "open",
-          totalAmount: finalTotalAmount, // Usar o totalAmount calculado
-          dueDate: dueDateObj,
-          description: description,
-          projectId: project.id,
-          companyId: project.company_id,
-          user_id: userId,
-          type_value: type_value,
-          percentageCoefficient: coefficientPerfentage,
-          type_invoicebase: type_invoicebase,
-          // Criar os itens da fatura
-          InvoiceItems: {
-            create: lineItems.map((item) => ({
-              name: item.name,
-              description: item.description,
-              quantity: item.quantity,
-              price: item.price,
-              totalAmount: item.totalAmount
-            }))
-          }
-        },
-        include: {
-          InvoiceItems: true // Incluir os itens na resposta
-        }
-      });
-
-      // Atualizar o PdfProject com o invoice_id
-      // await prisma.pdfProject.update({
-      //   where: { id: idPdfProject },
-      //   data: {
-      //     invoice_id: newInvoice.id,
-      //     project_id: project.id
-      //   }
-      // });
-
-      // Registrar evento na timeline
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Created with total amount $${finalTotalAmount}`,
-          invoice: {
-            connect: { id: newInvoice.id }
-          }
-        }
-      });
-
-      return res.status(201).json({
-        message: "Custom invoice created successfully",
-        invoice: newInvoice
-      });
-    } catch (error: any) {
-      console.error("Error creating custom invoice:", error);
-      return res.status(500).json({ error: "Internal Server Error" });
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
     }
+
+    if (!project.client) {
+      return res.status(400).json({ error: "Client not found for this project" });
+    }
+
+    // Definindo a data de vencimento
+    const dueDateObj = dueDate ? new Date(dueDate) : new Date();
+
+    // Variável para o total final
+    let finalTotalAmount = 0;
+    const lineItems = [];
+
+    // Calculando o total com base nos itens, se houver
+    if (items && Array.isArray(items)) {
+      for (const item of items) {
+        const serviceAmount = item.total || (item.quantity * item.price);
+        const adjustedAmount = serviceAmount * (coefficientPerfentage || 1);
+
+        if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+          continue;
+        }
+
+        finalTotalAmount += adjustedAmount;
+
+        // Adicionando os itens na lista de itens da fatura
+        lineItems.push({
+          name: item.name,
+          description: item.description || "",
+          quantity: item.quantity,
+          price: item.price,
+          totalAmount: adjustedAmount
+        });
+      }
+    }
+
+    // Buscando a última fatura com externalInvoiceId
+    const latestInvoice = await prisma.invoice.findFirst({
+      where: {
+        companyId: project.company_id,
+        invoiceType: { in: ["custom", "stripe"] },
+        externalInvoiceId: { not: null }
+      },
+      select: {
+        externalInvoiceId: true
+      }
+    });
+
+    // Definindo o próximo número da fatura
+    let nextInvoiceNumber = 1000;
+    if (latestInvoice && latestInvoice.externalInvoiceId) {
+      const lastNumber = parseInt(latestInvoice.externalInvoiceId);
+      if (!isNaN(lastNumber)) {
+        nextInvoiceNumber = lastNumber + 1;
+      }
+    }
+
+    // Criando a fatura no banco de dados
+    const newInvoice = await prisma.invoice.create({
+      data: {
+        externalInvoiceId: nextInvoiceNumber.toString(),
+        invoiceType: "custom",
+        status: "open",
+        totalAmount: finalTotalAmount || totalAmount,  // Usando o total calculado ou o fornecido
+        dueDate: dueDateObj,
+        description: description,
+        projectId: project.id,
+        companyId: project.company_id,
+        user_id: userId,
+        type_value: type_value,
+        percentageCoefficient: coefficientPerfentage,
+        type_invoicebase: type_invoicebase,
+        estimateId: estimateId
+      }
+    });
+
+    // Adicionando a linha do histórico da fatura
+    await prisma.invoiceTimeline.create({
+      data: {
+        description: `Created with total amount $${finalTotalAmount || totalAmount}`,
+        invoice: {
+          connect: { id: newInvoice.id }
+        }
+      }
+    });
+
+    return res.status(201).json({
+      message: "Custom invoice created successfully",
+      invoice: newInvoice
+    });
+  } catch (error: any) {
+    console.error("Error creating custom invoice:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
+}
 
   async getInvoicesByProject(req: Request, res: Response) {
     const { projectId } = req.params;
@@ -321,9 +252,10 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Not a custom invoice" });
       }
 
-      if (!invoice.project.client) {
+      if (!invoice.project?.client) {
         return res.status(400).json({ error: "Client not found for this invoice" });
       }
+
 
       // Se não foram fornecidos customEmails, usar o email do cliente
       if (emailsToSend.length === 0) {
@@ -331,6 +263,7 @@ export class CustomInvoiceController {
           return res.status(400).json({ error: "Client email is required when customEmails is not provided" });
         }
         emailsToSend = [invoice.project.client.email];
+
       }
 
       // Atualizar o PdfProject com o invoice_id
@@ -387,12 +320,12 @@ export class CustomInvoiceController {
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(
-        clientName, 
-        urlLogo, 
-        invoiceCode, 
-        invoiceAmount, 
-        companyName, 
-        phone || '', 
+        clientName,
+        urlLogo,
+        invoiceCode,
+        invoiceAmount,
+        companyName,
+        phone || '',
         customBody,
         customSubject,
         invoice.invoiceType,
@@ -593,25 +526,25 @@ export class CustomInvoiceController {
       });
 
       // Obter o logo da empresa
-      const company = invoice.project.company;
+      const company = invoice.project?.company;
       const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
       const phone = company?.phone || '';
-      const clientName = invoice.project.client?.name || 'Cliente';
+      const clientName = invoice.project?.client?.name || 'Cliente';
       const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
       const emailTemplate = invoiceCustom(
-        clientName, 
-        urlLogo, 
-        invoiceCode, 
-        invoiceAmount, 
-        companyName, 
-        phone || '', 
+        clientName,
+        urlLogo,
+        invoiceCode,
+        invoiceAmount,
+        companyName,
+        phone || '',
         undefined, // customBody
         undefined, // customSubject
         invoice.invoiceType,
@@ -1008,11 +941,19 @@ export class CustomInvoiceController {
   }
 
   async updateInvoice(req: Request, res: Response) {
-    const { invoiceId } = req.params;
-    const { userId, coefficientPerfentage, description, dueDate, services, type_value, idPdfProject } = req.body;
+    const {
+      invoiceId
+    } = req.params;
+
+    const {
+      coefficientPerfentage,
+      description,
+      dueDate,
+      type_value,
+      totalAmount
+    } = req.body;
 
     try {
-      // Verificar se o invoice existe
       const existingInvoice = await prisma.invoice.findUnique({
         where: {
           id: invoiceId
@@ -1029,78 +970,26 @@ export class CustomInvoiceController {
       });
 
       if (!existingInvoice) {
-        return res.status(404).json({ error: "Invoice not found" });
+        return res.status(404).json({
+          error: "Invoice not found"
+        });
       }
 
       if (existingInvoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Not a custom invoice" });
-      }
-
-      // Buscar PDF relacionado ao invoice atual para excluir
-      const existingPdfProject = await prisma.pdfProject.findFirst({
-        where: { invoice_id: existingInvoice.id }
-      });
-
-      // Excluir o PDF existente se houver
-      if (existingPdfProject) {
-        try {
-          const pdfController = new CreatePdfProjectEstimateInvoiceController();
-          await pdfController.deletePdfProject(existingPdfProject.id);
-        } catch (error) {
-          console.error("Error deleting existing PDF:", error);
-          // Continuar mesmo se não conseguir excluir o PDF anterior
-        }
-      }
-
-      // Validar se o novo PdfProject existe (se fornecido)
-      if (idPdfProject) {
-        const pdfProject = await prisma.pdfProject.findUnique({
-          where: { id: idPdfProject }
+        return res.status(400).json({
+          error:
+            "Not a custom invoice"
         });
-
-        if (!pdfProject) {
-          return res.status(404).json({ error: "PDF Project not found" });
-        }
       }
 
-      // Preparar a data de vencimento atualizada
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
-      // Calcular o valor total com base nos serviços e coeficiente
-      let totalAmount = 0;
-      const lineItems = [];
-
-      for (const item of services) {
-        const quantity = Number(item.quantity) || 0;
-        const price = Number(item.price) || 0;
-        const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-        // Usar o total fornecido ou calcular se não estiver disponível
-        const serviceAmount = item.total || (quantity * price);
-        const adjustedAmount = serviceAmount * validCoefficient;
-
-        if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-          continue;
-        }
-
-        totalAmount += adjustedAmount;
-        lineItems.push({
-          name: item.name,
-          description: item.description || "",
-          quantity: quantity,
-          price: price,
-          totalAmount: adjustedAmount
-        });
-      }
-
-      // Primeiro excluir todos os itens existentes
       await prisma.invoiceItem.deleteMany({
         where: {
           invoiceId: existingInvoice.id
         }
       });
 
-      // Atualizar o invoice com os novos valores e criar novos itens
       const updatedInvoice = await prisma.invoice.update({
         where: {
           id: invoiceId
@@ -1112,37 +1001,15 @@ export class CustomInvoiceController {
           type_value: type_value || existingInvoice.type_value,
           percentageCoefficient: coefficientPerfentage,
           updatedAt: new Date(),
-          // Criar os novos itens da fatura
-          InvoiceItems: {
-            create: lineItems.map((item) => ({
-              name: item.name,
-              description: item.description,
-              quantity: item.quantity,
-              price: item.price,
-              totalAmount: item.totalAmount
-            }))
-          }
         },
         include: {
           InvoiceItems: true
         }
       });
 
-      // Atualizar o novo PdfProject com o invoice_id (se fornecido)
-      if (idPdfProject) {
-        await prisma.pdfProject.update({
-          where: { id: idPdfProject },
-          data: {
-            invoice_id: updatedInvoice.id,
-            project_id: updatedInvoice.projectId
-          }
-        });
-      }
-
-      // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
         data: {
-          description: `Updated with ${lineItems.length} items and total amount of $${totalAmount.toFixed(2)}`,
+          description: `Updated total amount of $${totalAmount.toFixed(2)}`,
           invoice: {
             connect: { id: existingInvoice.id }
           }

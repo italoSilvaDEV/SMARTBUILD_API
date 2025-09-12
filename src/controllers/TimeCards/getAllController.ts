@@ -3,6 +3,63 @@ import { Request, Response } from "express";
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
+function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
+    let totalPrice = 0;
+    let totalHours = 0;
+    let totalRegularHours = 0;
+    let totalOvertimeHours = 0;
+
+    weeklyAttendances.forEach(weekData => {
+        let weeklyRegularHoursUsed = 0;
+        const WEEKLY_REGULAR_LIMIT = 40;
+
+        const sortedAttendances = weekData.attendances.sort((a: any, b: any) =>
+            new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+        );
+
+        sortedAttendances.forEach((attendance: any) => {
+            if (!attendance.check_in_time || !attendance.user) return;
+
+            let dailyHours = 0;
+            if (attendance.check_out_time) {
+                const hours = calcularHorasTrabalhadas(
+                    attendance.check_in_time.toISOString(),
+                    attendance.check_out_time.toISOString(),
+                    attendance.workStartTime,
+                    attendance.workEndTime,
+                );
+                dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+            }
+
+            const hadOvertimePermission = attendance.isOvertime === true;
+            const hourlyRate = attendance.user.hourly_price || 0;
+            const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+            const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
+            const potentialOvertimeHours = Math.max(0, dailyHours - regularHoursThisDay);
+
+            weeklyRegularHoursUsed += regularHoursThisDay;
+
+            if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                totalRegularHours += regularHoursThisDay;
+                totalOvertimeHours += potentialOvertimeHours;
+                totalPrice += (regularHoursThisDay * hourlyRate) + (potentialOvertimeHours * hourlyRate * 1.5);
+            } else {
+                totalRegularHours += dailyHours;
+                totalPrice += dailyHours * hourlyRate;
+            }
+
+            totalHours += dailyHours;
+        });
+    });
+
+    return {
+        totalPrice: parseFloat(totalPrice.toFixed(2)),
+        totalHours: parseFloat(totalHours.toFixed(2)),
+        totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
+        totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2))
+    };
+}
+
 export class getAllController {
     async handle(req: Request, res: Response) {
         const {
@@ -173,11 +230,6 @@ export class getAllController {
                 }
             });
 
-            let totalPrice = 0;
-            let totalHours = 0;
-            let totalRegularHours = 0;
-            let totalOvertimeHours = 0;
-
             const weeklyAttendances = new Map();
 
             allAttendances.forEach(attendance => {
@@ -198,70 +250,13 @@ export class getAllController {
                 }
             });
 
-            weeklyAttendances.forEach(weekData => {
-                let weeklyTotalHours = 0;
-                const weekAttendancesWithHours: Array<{
-                    attendance: any;
-                    dailyHours: number;
-                    hadOvertimePermission: boolean;
-                }> = [];
-
-                weekData.attendances.forEach((attendance: any) => {
-                    let dailyHours = 0;
-                    
-                    if (attendance.check_out_time) {
-                        const hours = calcularHorasTrabalhadas(
-                            attendance.check_in_time.toISOString(),
-                            attendance.check_out_time.toISOString(),
-                            attendance.workStartTime,
-                            attendance.workEndTime,
-                        );
-                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-                    } else {
-                        dailyHours = 0;
-                    }
-                    
-                    weeklyTotalHours += dailyHours;
-
-                    weekAttendancesWithHours.push({
-                        attendance,
-                        dailyHours,
-                        hadOvertimePermission: attendance.isOvertime === true
-                    });
-                });
-
-                let weeklyRegularHoursUsed = 0;
-                const WEEKLY_REGULAR_LIMIT = 40;
-
-                weekAttendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
-                    const hourlyRate = attendance.user?.hourly_price || 0;
-
-                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
-                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
-                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
-
-                    totalRegularHours += regularHoursThisDay;
-                    weeklyRegularHoursUsed += regularHoursThisDay;
-
-                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
-                        totalOvertimeHours += overtimeHoursThisDay;
-                        totalPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
-                    } else {
-                        totalRegularHours += overtimeHoursThisDay;
-                        totalPrice += dailyHours * hourlyRate;
-                    }
-                    totalHours += dailyHours;
-                });
-            });
+            const overtimeTotals = calculateWeeklyOvertime(weeklyAttendances);
 
             const totalProjects = projects.length;
             const totalServices = projects.reduce((acc, project) => acc + project.serviceProject.length, 0);
 
             const indicators = {
-                totalPrice: parseFloat(totalPrice.toFixed(2)),
-                totalHours: parseFloat(totalHours.toFixed(2)),
-                totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
-                totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2)),
+                ...overtimeTotals,
                 totalServices,
                 totalProjects
             };
@@ -309,7 +304,7 @@ export class getAllController {
 
                     weekData.attendances.forEach((attendance: any) => {
                         let dailyHours = 0;
-                        
+
                         if (attendance.check_out_time) {
                             const hours = calcularHorasTrabalhadas(
                                 attendance.check_in_time.toISOString(),
@@ -321,7 +316,7 @@ export class getAllController {
                         } else {
                             dailyHours = 0;
                         }
-                        
+
                         weeklyTotalHours += dailyHours;
 
                         attendancesWithHours.push({
@@ -360,10 +355,10 @@ export class getAllController {
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,
-                            regular_hours: parseFloat(finalRegularHours.toFixed(2)),
-                            overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
+                            regular_hours: parseFloat(dailyHours.toFixed(2)),
+                            overtime_hours: 0,
                             total_hours: parseFloat(dailyHours.toFixed(2)),
-                            price: parseFloat(price.toFixed(2))
+                            price: parseFloat((dailyHours * hourlyRate).toFixed(2))
                         });
                     });
                 });
@@ -380,71 +375,36 @@ export class getAllController {
 
             const workersMap = new Map();
 
-            weeklyAttendances.forEach(weekData => {
+            const userWeeklyMap = new Map();
+
+            weeklyAttendances.forEach((weekData, weekKey) => {
                 const userId = weekData.user.id;
-                let weeklyTotalHours = 0;
-                let weeklyRegularHours = 0;
-                let weeklyOvertimeHours = 0;
-                let weeklyPrice = 0;
-                let weeklyRegularHoursUsed = 0;
-                const WEEKLY_REGULAR_LIMIT = 40;
 
-                weekData.attendances.forEach((attendance: any) => {
-                    let dailyHours = 0;
-                    
-                    if (attendance.check_out_time) {
-                        const hours = calcularHorasTrabalhadas(
-                            attendance.check_in_time.toISOString(),
-                            attendance.check_out_time.toISOString(),
-                            attendance.workStartTime,
-                            attendance.workEndTime,
-                        );
-                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-                    } else {
-                        dailyHours = 0;
-                    }
-                    
-                    const hadOvertimePermission = attendance.isOvertime === true;
-                    const hourlyRate = attendance.user?.hourly_price || 0;
-
-                    weeklyTotalHours += dailyHours;
-
-                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
-                    const regularHoursThisDay = Math.min(dailyHours, remainingRegularHours);
-                    const overtimeHoursThisDay = Math.max(0, dailyHours - regularHoursThisDay);
-
-                    weeklyRegularHours += regularHoursThisDay;
-                    weeklyRegularHoursUsed += regularHoursThisDay;
-
-                    if (hadOvertimePermission && overtimeHoursThisDay > 0) {
-                        weeklyOvertimeHours += overtimeHoursThisDay;
-                        weeklyPrice += (regularHoursThisDay * hourlyRate) + (overtimeHoursThisDay * hourlyRate * 1.5);
-                    } else {
-                        weeklyRegularHours += overtimeHoursThisDay;
-                        weeklyPrice += dailyHours * hourlyRate;
-                    }
-                });
-
-                if (!workersMap.has(userId)) {
-                    workersMap.set(userId, {
-                        user: {
-                            id: weekData.user.id,
-                            name: weekData.user.name,
-                            hourly_price: weekData.user.hourly_price,
-                            isOverTime: weekData.user.isOverTime
-                        },
-                        hours_worked: 0,
-                        regular_hours: 0,
-                        overtime_hours: 0,
-                        price: 0
+                if (!userWeeklyMap.has(userId)) {
+                    userWeeklyMap.set(userId, {
+                        user: weekData.user,
+                        weeklyAttendances: new Map()
                     });
                 }
 
-                const worker = workersMap.get(userId);
-                worker.hours_worked += weeklyTotalHours;
-                worker.regular_hours += weeklyRegularHours;
-                worker.overtime_hours += weeklyOvertimeHours;
-                worker.price += weeklyPrice;
+                userWeeklyMap.get(userId).weeklyAttendances.set(weekKey, weekData);
+            });
+
+            userWeeklyMap.forEach((userData, userId) => {
+                const userTotals = calculateWeeklyOvertime(userData.weeklyAttendances);
+
+                workersMap.set(userId, {
+                    user: {
+                        id: userData.user.id,
+                        name: userData.user.name,
+                        hourly_price: userData.user.hourly_price,
+                        isOverTime: userData.user.isOverTime
+                    },
+                    hours_worked: userTotals.totalHours,
+                    regular_hours: userTotals.totalRegularHours,
+                    overtime_hours: userTotals.totalOvertimeHours,
+                    price: userTotals.totalPrice
+                });
             });
 
             const formattedWorkers = Array.from(workersMap.values()).map(worker => ({
@@ -475,8 +435,8 @@ export class getAllController {
                             service.UserServiceProject.forEach(userService => {
                                 const foundAttendance = userService.user_attendances.find(ua =>
                                     ua.check_in_time?.getTime() === attendance.check_in_time?.getTime() &&
-                                    (ua.check_out_time?.getTime() === attendance.check_out_time?.getTime() || 
-                                     (ua.check_out_time === null && attendance.check_out_time === null)) &&
+                                    (ua.check_out_time?.getTime() === attendance.check_out_time?.getTime() ||
+                                        (ua.check_out_time === null && attendance.check_out_time === null)) &&
                                     ua.user?.id === attendance.user?.id
                                 );
                                 if (foundAttendance) {
@@ -489,7 +449,7 @@ export class getAllController {
 
                     if (projectLocation) {
                         let dailyHours = 0;
-                        
+
                         if (attendance.check_out_time) {
                             const hours = calcularHorasTrabalhadas(
                                 attendance.check_in_time.toISOString(),
@@ -501,7 +461,7 @@ export class getAllController {
                         } else {
                             dailyHours = 0;
                         }
-                        
+
                         const hadOvertimePermission = attendance.isOvertime === true;
                         const hourlyRate = attendance.user.hourly_price || 0;
 
@@ -535,7 +495,7 @@ export class getAllController {
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,
-                            total: parseFloat(attendancePrice.toFixed(2))
+                            total: parseFloat((dailyHours * hourlyRate).toFixed(2))
                         });
                     }
                 });
