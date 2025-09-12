@@ -15,6 +15,6 @@ stripeWebHooksRoutes.post(
 stripeWebHooksRoutes.post(
     "/webhook/connect",
     express.raw({ type: 'application/json' }), // Importante para o Stripe validar o webhook
-    stripeConnectController.handleConnectWebhook);
+    (req, res) => stripeConnectController.handleConnectWebhook(req, res));
 
 export { stripeWebHooksRoutes };

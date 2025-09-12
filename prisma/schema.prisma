@@ -606,11 +606,13 @@ enum TypeInvoiceBase {
 model Invoice {
   id                String  @id @default(uuid())
   stripeInvoiceId   String? @unique
+  stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId String?
 
-  invoiceType String? // "stripe", "quickbooks", "custom"
+  invoiceType String? // "stripe", "quickbooks", "custom", "payment_element"
   status      String // Status do invoice: draft, open, paid, void, uncollectible
   totalAmount Decimal
+  currency    String @default("usd") // NOVO: suporte a múltiplas moedas
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -652,6 +654,9 @@ model Invoice {
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects fildsPdfProject[]
+  
+  // NOVO: Relacionamento com PaymentIntentRecord (para Payment Element)
+  PaymentIntents PaymentIntentRecord[]
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -912,6 +917,28 @@ model InvoiceEmailLog {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+model PaymentIntentRecord {
+  id                    String   @id @default(uuid())
+  stripePaymentIntentId String   @unique
+  status                String   // requires_payment_method | processing | succeeded | canceled...
+  amount                Decimal  // valor total do PI (já com surcharge se houver)
+  surchargeAmount       Decimal? // quanto foi de taxa repassada (se cartão)
+  currency              String
+  paymentMethodType     String?  // "card" | "pix" | "customer_balance" etc.
+  stripeAccountId       String   // conta conectada
+  customerId            String?  // stripe customer
+  receiptUrl            String?  // URL do recibo do Stripe
+  errorMessage          String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // vínculo com sua fatura interna
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  @@index([invoiceId])
 }
 
 // Nova tabela de junção para relacionamento N:N entre User e Company

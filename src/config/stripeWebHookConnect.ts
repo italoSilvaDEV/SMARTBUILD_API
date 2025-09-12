@@ -10,6 +10,7 @@ export async function setupConnectWebhook() {
   /** eventos que você quer escutar para contas conectadas */
   const EVENTS: { event: string; name: string; connect: boolean }[] = [
     { event: "invoice.payment_succeeded", name: "Invoice payment (connected account)", connect: true },
+    { event: "payment_intent.succeeded", name: "Payment Element succeeded (connected account)", connect: true }, 
     // Outros eventos específicos para contas conectadas
   ];
 

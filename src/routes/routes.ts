@@ -9,6 +9,7 @@ import { serviceStageRoutes } from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
 import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
+import { paymentElementRoutes } from './paymentElementRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { businessDashboard } from './businessDashboardRoutes'
 import { dashboardMasterRoutes } from './dashboardMasterRoutes'
@@ -62,6 +63,7 @@ router.use(workedRours)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
+router.use(paymentElementRoutes)
 router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
 router.use("/finance-dashboard", financeDashboard);

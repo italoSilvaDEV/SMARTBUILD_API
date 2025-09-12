@@ -176,7 +176,15 @@ export class ListClientController {
                 orderBy: [{ name: "asc" }],
                 include: {
                     _count: {
-                        select: { projects: true },
+                        select: { 
+                            projects: {
+                                where: {
+                                    status_project: {
+                                        notIn: ["Pending", "Accepted"]
+                                    }
+                                }
+                            }
+                        },
                     },
                 },
             });

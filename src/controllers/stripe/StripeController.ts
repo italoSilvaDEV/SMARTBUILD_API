@@ -306,6 +306,30 @@ export class StripeController {
             // 4️⃣ Finalizar a fatura após adicionar os itens
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
 
+
+            // Buscar todos os invoices com externalInvoiceId numérico para a empresa
+            const allInvoices = await prisma.invoice.findMany({
+                where: {
+                    companyId: project.company_id,
+                    invoiceType: { in: ["custom", "stripe"] },
+                    externalInvoiceId: { not: null }
+                },
+                select: {
+                    externalInvoiceId: true
+                }
+            });
+
+            // Extrair apenas os números válidos e encontrar o maior
+            const numericIds = allInvoices
+                .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+                .filter(num => !isNaN(num) && num > 0);
+
+            // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
+            let nextInvoiceNumber = 1000;
+            if (numericIds.length > 0) {
+                const maxNumber = Math.max(...numericIds);
+                nextInvoiceNumber = maxNumber + 1;
+
             let estimate = null as Estimate | null;
 
             if (estimateId) {
@@ -317,13 +341,15 @@ export class StripeController {
                         id: true
                     }
                 })
+
             }
 
             console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalizedInvoice.id,
-                    externalInvoiceId: finalizedInvoice.id,
+                    // externalInvoiceId: finalizedInvoice.id,
+                    externalInvoiceId: nextInvoiceNumber.toString(),
                     invoiceType: "stripe",
                     projectId: project.id,
                     companyId: project.company_id,
@@ -929,7 +955,8 @@ export class StripeController {
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalized.id,
-                    externalInvoiceId: finalized.id,
+                    // externalInvoiceId: finalized.id,
+                    externalInvoiceId: oldInvoice.externalInvoiceId,
                     invoiceType: "stripe",
                     projectId: oldInvoice.projectId,
                     companyId: company.id,
