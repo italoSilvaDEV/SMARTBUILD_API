@@ -803,8 +803,6 @@ model EstimateServiceProject {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-
-  @@unique([estimateId, name])
 }
 
 model Permissions {
