@@ -452,8 +452,12 @@ export class StripeController {
 
         try {
             const invoice = await prisma.invoice.findUnique({
-                where: { stripeInvoiceId: invoiceId },
-                include: {
+                where: {
+                    id: invoiceId
+                },
+                select: {
+                    id: true,
+                    stripeInvoiceId: true,
                     project: {
                         include: {
                             company: true,
@@ -468,23 +472,30 @@ export class StripeController {
 
             const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
 
-            console.log("Cancelando a Invoice no Stripe...");
-            const canceledInvoice = await stripe.invoices.voidInvoice(invoiceId, { stripeAccount: stripeAccountId });
+            if (!invoice.stripeInvoiceId) {
+                return res.status(400).json({
+                    error: "Invoice is not linked to Stripe"
+                });
+            }
 
-            console.log("Atualizando status da Invoice no banco de dados...");
+            await stripe.invoices.voidInvoice(invoice.stripeInvoiceId, { stripeAccount: stripeAccountId })
+
             const updatedInvoice = await prisma.invoice.update({
-                where: { stripeInvoiceId: invoiceId },
-                data: { status: "void" },
+                where: {
+                    id: invoiceId
+                },
+                data: {
+                    status: "void"
+                },
             });
 
-            console.log("Invoice cancelada com sucesso!");
-
-            // Registrar evento na timeline
             await prisma.invoiceTimeline.create({
                 data: {
                     description: `Canceled`,
                     invoice: {
-                        connect: { id: invoice.id }
+                        connect: {
+                            id: invoice.id
+                        }
                     }
                 }
             });
