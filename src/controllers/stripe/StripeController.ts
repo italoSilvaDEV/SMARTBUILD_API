@@ -330,6 +330,7 @@ export class StripeController {
                 const maxNumber = Math.max(...numericIds);
                 nextInvoiceNumber = maxNumber + 1;
 
+            }
             let estimate = null as Estimate | null;
 
             if (estimateId) {
@@ -343,6 +344,7 @@ export class StripeController {
                 })
 
             }
+            
 
             console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
@@ -388,6 +390,7 @@ export class StripeController {
             console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
+    
     }
 
     async sendInvoice(req: Request, res: Response) {
