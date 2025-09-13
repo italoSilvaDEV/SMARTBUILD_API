@@ -692,59 +692,59 @@ export class CustomInvoiceController {
     try {
       const invoice = await prisma.invoice.findFirst({
         where: {
-          externalInvoiceId: invoiceId,
+          id: invoiceId,
           companyId: companyId,
           invoiceType: "custom"
         }
       });
 
       if (!invoice) {
-        return res.status(404).json({ error: "Invoice not found" });
+        return res.status(404).json({
+          error: "Invoice not found"
+        });
       }
 
       if (invoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Not a custom invoice" });
+        return res.status(400).json({
+          error: "Not a custom invoice"
+        });
       }
 
-      // Buscar PDF relacionado ao invoice para excluir
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { invoice_id: invoice.id },
         include: {
-          fildsPdfProjects: true // Incluir os registros relacionados
+          fildsPdfProjects: true
         }
       });
 
-      // Excluir registros relacionados se houver
       if (pdfProject) {
         try {
-          // Primeiro excluir todos os registros de fildsPdfProject relacionados ao PdfProject
           if (pdfProject.fildsPdfProjects.length > 0) {
             await prisma.fildsPdfProject.deleteMany({
               where: { pdfProjectId: pdfProject.id }
             });
           }
 
-          // Excluir também os registros de fildsPdfProject relacionados diretamente ao invoice
           await prisma.fildsPdfProject.deleteMany({
             where: { invoiceId: invoice.id }
           });
 
-          // Excluir o PdfProject (arquivo do S3 e registro do banco)
           const pdfController = new CreatePdfProjectEstimateInvoiceController();
           await pdfController.deletePdfProject(pdfProject.id);
         } catch (error) {
           console.error("Error deleting PDF and related records:", error);
-          // Continuar mesmo se não conseguir excluir os arquivos relacionados
         }
       }
 
-      // Atualizar o status da fatura para cancelado
       await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: "void" }
+        where: {
+          id: invoiceId
+        },
+        data: {
+          status: "void"
+        }
       });
 
-      // Registrar evento na timeline
       await prisma.invoiceTimeline.create({
         data: {
           description: `Canceled`,
