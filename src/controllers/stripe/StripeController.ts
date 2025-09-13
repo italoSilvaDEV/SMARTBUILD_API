@@ -234,11 +234,16 @@ export class StripeController {
             }
 
             console.log("Criando Invoice Items...");
-            let totalAmount = 0;
-            const lineItems = [];
+            const servicesArray = Array.isArray(services) ? services : [];
+            if (servicesArray.length === 0) {
+                console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
+            }
+    
+            let totalInvoiceAmount = 0;
+            const lineItems: any[] = [];
 
             const currentDate = new Date();
-            const dueDateObj = new Date(dueDate);
+            const dueDateObj = dueDate ? new Date(dueDate) : new Date();
             const daysUntilDue = Math.ceil((dueDateObj.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
 
             // 1️⃣ Criar a fatura antes dos itens
@@ -256,48 +261,36 @@ export class StripeController {
                 { stripeAccount: stripeAccountId }
             );
 
-            for (const service of services) {
+            for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
                 const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-                // Usar o total fornecido ou calcular se não estiver disponível
+    
                 const serviceAmount = service.total || (quantity * price);
                 const adjustedAmount = serviceAmount * validCoefficient;
-
-                console.log("-------- Detalhes do Serviço --------");
-                console.log(`Serviço: ${service.name}`);
-                console.log(`Quantidade: ${service.quantity} -> Convertido: ${quantity}`);
-                console.log(`Preço (price): ${service.price} -> Convertido: ${price}`);
-                console.log(`Coeficiente (coefficient): ${coefficientPerfentage} -> Válido: ${validCoefficient}`);
-                console.log(`Valor Bruto (serviceAmount): ${serviceAmount}`);
-                console.log(`Valor Ajustado (adjustedAmount): ${adjustedAmount}`);
-                console.log("------------------------------------");
-
+    
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(`⚠️ Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
-
-                totalAmount += adjustedAmount;
-
-                console.log(` Adicionando serviço ajustado: ${service.name} - Valor final: $${adjustedAmount.toFixed(2)}`);
-
+    
+                totalInvoiceAmount += adjustedAmount;
+    
                 lineItems.push({
                     name: service.name,
                     description: createSafeDescription(service.name, service.description || "No additional description"),
-                    quantity: quantity,
-                    price: price,
+                    quantity,
+                    price,
                     totalAmount: adjustedAmount
                 });
-
+    
                 await stripe.invoiceItems.create(
                     {
                         customer: stripeCustomerId,
-                        amount: Math.round(adjustedAmount * 100), // Convertendo para centavos
+                        amount: Math.round(adjustedAmount * 100),
                         currency: "usd",
                         description: createSafeDescription(service.name, service.description || "No additional description"),
-                        invoice: invoice.id // 3️⃣ Associar o item à fatura criada
+                        invoice: invoice.id
                     },
                     { stripeAccount: stripeAccountId }
                 );
