@@ -65,20 +65,6 @@ export class CreateServiceEstimateController {
         }
 
         try {
-
-            const existingService = await prisma.estimateServiceProject.findFirst({
-                where: {
-                    estimateId: estimate.id,
-                    name: name
-                }
-            })
-
-            if (existingService) {
-                return res.status(200).json({
-                    message: "Service already exists",
-                })
-            }
-
             const newService = await prisma.estimateServiceProject.create({
                 data: {
                     estimateId: estimate.id,
