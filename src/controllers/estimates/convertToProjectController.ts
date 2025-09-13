@@ -92,6 +92,29 @@ export class ConvertToProjectController {
                         }
                     })
                 }
+
+                const invoicesEstimate = await smartbuild.invoice.findMany({
+                    where: {
+                        estimateId: estimateId
+                    },
+                    select: {
+                        type_invoicebase: true,
+                        id: true
+                    }
+                })
+
+                invoicesEstimate.map(async (inv) => {
+                    if (inv.type_invoicebase === "estimate") {
+                        await smartbuild.invoice.update({
+                            where: {
+                                id: inv.id
+                            },
+                            data: {
+                                type_invoicebase: "project"
+                            }
+                        })
+                    }
+                })
             })
 
             return res.status(200).json({
