@@ -917,22 +917,34 @@ model InvoiceEmailLog {
   date_update   DateTime @updatedAt
 }
 
-model PaymentIntentRecord {
-  id                    String   @id @default(uuid())
-  stripePaymentIntentId String   @unique
-  status                String   // requires_payment_method | processing | succeeded | canceled...
-  amount                Decimal  // valor total do PI (já com surcharge se houver)
-  surchargeAmount       Decimal? // quanto foi de taxa repassada (se cartão)
-  currency              String
-  paymentMethodType     String?  // "card" | "pix" | "customer_balance" etc.
-  stripeAccountId       String   // conta conectada
-  customerId            String?  // stripe customer
-  receiptUrl            String?  // URL do recibo do Stripe
-  errorMessage          String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+enum PaymentIntentStatus {
+  requires_payment_method // Initial state - waiting for payment method
+  requires_confirmation   // Payment method added, waiting for confirmation
+  requires_action         // Requires additional authentication (3D Secure, etc.)
+  processing              // Payment being processed (ACH settlement, bank transfers)
+  requires_capture        // Payment authorized, waiting for capture
+  canceled                // Payment was canceled before completion
+  succeeded               // Payment completed successfully
+  payment_failed          // Payment attempt failed
+  disputed                // Payment has been disputed/charged back
+}
 
-  // vínculo com sua fatura interna
+model PaymentIntentRecord {
+  id                    String              @id @default(uuid())
+  stripePaymentIntentId String              @unique
+  status                PaymentIntentStatus // Payment status using enum
+  amount                Decimal             // Total PI amount (including surcharge if any)
+  surchargeAmount       Decimal?            // Surcharge amount passed to customer (if card)
+  currency              String
+  paymentMethodType     String?             // "card" | "us_bank_account" | "customer_balance" etc.
+  stripeAccountId       String              // Connected account ID
+  customerId            String?             // Stripe customer ID
+  receiptUrl            String?             // Stripe receipt URL
+  errorMessage          String?             // Error details if payment fails
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Link to internal invoice
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String
 
