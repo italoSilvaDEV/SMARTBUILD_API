@@ -1,47 +1,14 @@
-export const invoiceCustom = (
-    name: string, 
-    logo: string, 
-    code: string, 
-    invoiceAmount: string, 
-    companyName: string, 
-    phone: string, 
-    customBody?: string,
-    customSubject?: string,
-    invoiceType?: string,
-    invoiceUrl?: string,
-    invoiceId?: string
+export const invoicePaymentProcessingCompany = (
+    companyName: string,
+    invoiceCode: string, 
+    invoiceAmount: string,
+    clientName: string,
+    contractNumber?: string
 ) => {
     // Formatar o valor para mostrar em dólares
-
-    const urlPaymentElement = `${process.env.URL_FRONT}/pay/${invoiceId}`;
-
     const formattedValue = invoiceAmount.includes('$') 
         ? invoiceAmount 
         : `$${parseFloat(invoiceAmount.replace(/[^\d.-]/g, '') || '0').toFixed(2)}`;
-
-    // Função para processar formatação markdown básica
-    const processMarkdown = (text: string): string => {
-        if (!text) return '';
-        
-        return text
-            // Converter quebras de linha para <br>
-            .replace(/\n/g, '<br>')
-            // Converter **texto** para <strong>texto</strong>
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            // Converter *texto* para <em>texto</em>
-            .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-            // Converter --- para linha horizontal
-            .replace(/---/g, '<hr style="border: none; border-top: 1px solid #ddd; margin: 10px 0;">')
-            // Converter • para bullet points
-            .replace(/• /g, '&bull; ');
-    };
-
-    // Usar o corpo personalizado processado se fornecido
-    const emailContent = customBody ? processMarkdown(customBody) : `
-        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Hope you're doing well! I am here to inform you that a new invoice for <strong>${formattedValue}</strong> is available for you! 🎉</p>
-        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">If you have any questions, we're here to help! 😉</p>
-        <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">Have a great day!</p>
-    `;
 
     return `
 <!DOCTYPE html>
@@ -52,7 +19,7 @@ export const invoiceCustom = (
     <meta name="x-apple-disable-message-reformatting">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="format-detection" content="telephone=no">
-    <title>Invoice ${code}</title>
+    <title>Payment Processing - Invoice ${invoiceCode}</title>
     
     <style type="text/css">
         #outlook a { padding: 0; }
@@ -82,6 +49,18 @@ export const invoiceCustom = (
         body { margin: 0; padding: 0; }
         table { border-spacing: 0; }
         p { margin: 0; text-align: center; }
+        .processing-icon {
+            background-color: #ffc107;
+            color: white;
+            border-radius: 50%;
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            line-height: 50px;
+            text-align: center;
+            font-size: 24px;
+            margin: 10px auto;
+        }
     </style>
 </head>
 <body style="width:100%;font-family:arial, 'helvetica neue', helvetica, sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;padding:0;Margin:0">
@@ -89,54 +68,72 @@ export const invoiceCustom = (
         <table class="es-wrapper" width="100%" cellspacing="0" cellpadding="0" role="none" style="border-collapse: collapse;">
             <tr>
                 <td valign="top" align="center">
+                    <!-- Header -->
                     <table class="o" cellspacing="0" cellpadding="0" align="center" style="border-collapse: collapse; width: 600px;">
                         <tr>
                             <td align="center">
                                 <table class="bb" cellspacing="0" cellpadding="0" bgcolor="#ffffff" align="center" width="600" style="border-collapse: collapse;">
                                     <tr>
-                                        <td align="center" style="padding:20px;font-size:0px">
-                                            <img class="adapt-img" src="${logo}" alt="Company Logo" style="max-width:120px; height:auto; display:block; margin:0 auto;">
+                                        <td align="center" style="padding:20px;">
+                                            <h2 style="color:#333333;margin:0;font-size:24px;">${companyName}</h2>
                                         </td>
                                     </tr>
                                 </table>
                             </td>
                         </tr>
                     </table>
+                    
+                    <!-- Processing Banner -->
                     <table class="o" cellspacing="0" cellpadding="0" align="center" style="border-collapse: collapse; margin: 0; width: 600px;">
                         <tr>
                             <td align="center" style="padding: 0;">
                                 <table bgcolor="#ffffff" class="bb" align="center" width="600" style="border-collapse: collapse; margin: 0;">
                                     <tr>
-                                        <td align="center" bgcolor="#cfebf6" style="padding:30px; margin: 0;">
-                                            <p style="font-size:16px;color:#333333;margin:0;text-align:center;"><strong>${customSubject || (invoiceType === 'stripe' ? `Your Invoice is ready!` : `Your Invoice #${code} is ready!`)}</strong></p>
-                                            <p style="font-size:12px;color:#333333;margin:0;text-align:center;">Total ${formattedValue}</p>
-                                            <p style="font-size:12px;color:#333333;margin:15px 0;text-align:center;">
-                                              ${invoiceType === 'stripe' && invoiceUrl ? `
-                                                <a href="${urlPaymentElement}" 
-                                                 style="background-color:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;margin-top:10px;font-size:14px;">
-                                                View and pay
-                                              </a>
-                                              ` : ''}
-                                            </p>
+                                        <td align="center" bgcolor="#fff3cd" style="padding:30px; margin: 0; border: 1px solid #ffeaa7;">
+                                            <div class="processing-icon">⏳</div>
+                                            <p style="font-size:18px;color:#856404;margin:10px 0 0 0;text-align:center;font-weight:bold;">Payment Being Processed</p>
                                         </td>
                                     </tr>
                                 </table>
                             </td>
                         </tr>
                     </table>
+                    
+                    <!-- Main Content -->
                     <table class="o" cellspacing="0" cellpadding="0" align="center" style="border-collapse: collapse; margin: 0; width: 600px;">
                         <tr>
                             <td align="center" style="padding: 0;">
                                 <table bgcolor="#ffffff" class="bb" align="center" width="600" style="border-collapse: collapse; margin: 0;">
                                     <tr>
-                                        <td align="center" style="padding:20px; margin: 0;">
-                                            <div style="font-size:14px;color:#333333;line-height:1.6;text-align:${customBody ? 'center' : 'center'};max-width:500px;margin:0 auto;">
-                                                <p style="font-size:14px;color:#333333;margin:0;text-align:center;">Dear ${name}</p>
-                                                <div style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">
-                                                    ${emailContent}
+                                        <td align="center" style="padding:30px; margin: 0;">
+                                            <div style="font-size:14px;color:#333333;line-height:1.6;text-align:center;max-width:500px;margin:0 auto;">
+                                                
+                                                <div style="background-color:#f8f9fa;border:1px solid #dee2e6;border-radius:5px;padding:20px;margin:20px 0;">
+                                                    <p style="font-size:16px;color:#333333;margin:5px 0;text-align:center;font-weight:bold;">Invoice #${invoiceCode}</p>
+                                                    <p style="font-size:16px;color:#333333;margin:5px 0;text-align:center;font-weight:bold;">Amount: ${formattedValue}</p>
+                                                    <p style="font-size:14px;color:#333333;margin:5px 0;text-align:center;"><strong>Status:</strong> <span style="color:#ffc107;font-weight:bold;">PROCESSING</span></p>
                                                 </div>
-                                                <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;"><strong>${companyName}</strong></p>
-                                                ${phone ? `<p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;">${phone}</p>` : ''}
+                                                
+                                                <div style="background-color:#e7f3ff;border:1px solid #bee5eb;border-radius:5px;padding:15px;margin:20px 0;">
+                                                    <p style="font-size:14px;color:#0c5460;margin:0;text-align:center;font-weight:bold;">Payment Status Update</p>
+                                                    <p style="font-size:13px;color:#0c5460;margin:10px 0 0 0;text-align:center;">
+                                                        The customer's payment is being processed by the payment provider.<br>
+                                                        Bank transfers typically take 1-3 business days to complete.<br>
+                                                        You will be notified once the payment is finalized.
+                                                    </p>
+                                                </div>
+                                                
+                                                <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+                                                
+                                                <div style="background-color:#fff8e1;border:1px solid #ffcc02;border-radius:5px;padding:15px;margin:20px 0;">
+                                                    <p style="font-size:14px;color:#333333;margin:5px 0;text-align:center;font-weight:bold;">Client Information</p>
+                                                    <p style="font-size:14px;color:#666666;margin:5px 0;text-align:center;">Client: ${clientName}</p>
+                                                    ${contractNumber ? `<p style="font-size:14px;color:#666666;margin:5px 0;text-align:center;">Contract Number: ${contractNumber}</p>` : ''}
+                                                </div>
+                                                
+                                                <p style="font-size:12px;color:#888888;margin:20px 0 0 0;text-align:center;font-style:italic;">
+                                                    This is an automated notification for internal records.
+                                                </p>
                                             </div>
                                         </td>
                                     </tr>
@@ -152,4 +149,3 @@ export const invoiceCustom = (
 </html>
     `;
 };
-

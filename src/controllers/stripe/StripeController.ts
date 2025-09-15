@@ -252,7 +252,7 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
-                    auto_advance: true,
+                    auto_advance: false, //true manda o invoice para o cliente automaticamente
                     currency: "usd",
                     metadata: {
                         projectId: projectId,
@@ -270,7 +270,7 @@ export class StripeController {
                 const adjustedAmount = serviceAmount * validCoefficient;
     
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-                    console.warn(`⚠️ Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
+                    console.warn(` Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
     
@@ -297,7 +297,11 @@ export class StripeController {
             }
 
             // 4️⃣ Finalizar a fatura após adicionar os itens
-            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
+            const finalizedInvoice = await stripe.invoices.finalizeInvoice(
+                invoice.id, 
+                { auto_advance: false },//garatme q map sera emviado para enviar deixe sem auto_advance
+                { stripeAccount: stripeAccountId },
+            );
 
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
@@ -361,6 +365,20 @@ export class StripeController {
             });
 
             console.log("Invoice salva no banco com ID:", newInvoice.id);
+
+             // Adicione a criação dos InvoiceItems
+             if (lineItems && lineItems.length > 0) {
+                await prisma.invoiceItem.createMany({
+                    data: lineItems.map((item) => ({
+                        invoiceId: newInvoice.id, // Referência ao ID da fatura criada
+                        name: item.name,
+                        description: item.description,
+                        quantity: item.quantity,
+                        price: item.price,
+                        totalAmount: item.totalAmount,
+                    })),
+                });
+            }
 
             // Registrar evento na timeline
             await prisma.invoiceTimeline.create({
@@ -860,7 +878,8 @@ export class StripeController {
             dueDate,
             userId,
             type_value,
-            totalAmount
+            services,
+            // totalAmount é calculado abaixo talvez seja necessário remover
         } = req.body;
 
         try {
@@ -947,16 +966,61 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue,
-                    auto_advance: true,
+                    auto_advance: false,//true para enviar automaticamente
                     currency: "usd",
                     metadata: { projectId: oldInvoice.projectId }
                 },
                 { stripeAccount: stripeAccountId }
             );
 
+            // recalcular o total e criar os items
+
+            let totalAmount = 0;
+            const preparedItems: {
+                name: string;
+                description: string;
+                quantity: number;
+                price: number;
+                totalAmount: number;
+            }[] = [];
+
+            for (const s of services) {
+                const quantity = Number(s.quantity) || 0;
+                const price = Number(s.price) || 0;
+                const base = s.total ?? quantity * price;
+                const coeff = typeof coefficientPerfentage === "number" && !isNaN(coefficientPerfentage)
+                    ? coefficientPerfentage
+                    : 1;
+                const adjusted = base * coeff;
+
+                if (adjusted <= 0 || isNaN(adjusted)) continue;
+
+                totalAmount += adjusted;
+
+                preparedItems.push({
+                    name: s.name,
+                    description: createSafeDescription(s.name, s.description || "No description"),
+                    quantity,
+                    price,
+                    totalAmount: adjusted
+                });
+
+                await stripe.invoiceItems.create(
+                    {
+                        customer: stripeCustomerId,
+                        amount: Math.round(adjusted * 100),
+                        currency: "usd",
+                        description: createSafeDescription(s.name, s.description || "No description"),
+                        invoice: draftInvoice.id
+                    },
+                    { stripeAccount: stripeAccountId }
+                );
+            }
+
             const finalized = await stripe.invoices.finalizeInvoice(
                 draftInvoice.id,
-                { stripeAccount: stripeAccountId }
+                { auto_advance: false },//deixe sem auto_advance para enviar manualmente
+                { stripeAccount: stripeAccountId },
             );
 
             const newInvoice = await prisma.invoice.create({
@@ -977,6 +1041,19 @@ export class StripeController {
                     user_id: userId
                 }
             });
+
+            if (preparedItems.length) {
+                await prisma.invoiceItem.createMany({
+                    data: preparedItems.map(i => ({
+                        invoiceId: newInvoice.id,
+                        name: i.name,
+                        description: i.description,
+                        quantity: i.quantity,
+                        price: i.price,
+                        totalAmount: i.totalAmount
+                    }))
+                });
+            }
 
             await prisma.invoiceTimeline.create({
                 data: {

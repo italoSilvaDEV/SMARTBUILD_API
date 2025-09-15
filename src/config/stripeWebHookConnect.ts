@@ -9,9 +9,19 @@ export async function setupConnectWebhook() {
 
   /** eventos que você quer escutar para contas conectadas */
   const EVENTS: { event: string; name: string; connect: boolean }[] = [
+    // invoice payment succeeded
     { event: "invoice.payment_succeeded", name: "Invoice payment (connected account)", connect: true },
+
+    // payment element
     { event: "payment_intent.succeeded", name: "Payment Element succeeded (connected account)", connect: true }, 
-    // Outros eventos específicos para contas conectadas
+    { event: "payment_intent.payment_failed", name: "PI failed (connected)", connect: true },
+
+     // ACH é "delayed notification": acompanhar o período de compensação
+     { event: "payment_intent.processing", name: "PI processing (connected)", connect: true },
+
+     // Opcional, mas recomendado para retornos bancários/chargebacks de débito
+    { event: "charge.dispute.created", name: "Dispute created (connected)", connect: true },
+    
   ];
 
   try {
@@ -19,7 +29,7 @@ export async function setupConnectWebhook() {
     
     for (const { event, name, connect } of EVENTS) {
       // Verificar apenas pelo evento, sem restrição de nome
-      const existing = await prisma.webhooks.findFirst({
+      const existing = await prisma.webhooks.findFirst({ 
         where: { 
           name, 
           status: "enabled"
@@ -31,7 +41,6 @@ export async function setupConnectWebhook() {
         continue;
       }
 
-      // console.log(`Criando novo webhook conectado para ${event}...`);
       // Opções específicas para webhooks de contas conectadas
       const webhookOptions: Stripe.WebhookEndpointCreateParams = {
         url: webhookUrl,
