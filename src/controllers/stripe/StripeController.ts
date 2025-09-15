@@ -252,7 +252,7 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
-                    auto_advance: true,
+                    auto_advance: false, //true manda o invoice para o cliente automaticamente
                     currency: "usd",
                     metadata: {
                         projectId: projectId,
@@ -297,7 +297,11 @@ export class StripeController {
             }
 
             // 4️⃣ Finalizar a fatura após adicionar os itens
-            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
+            const finalizedInvoice = await stripe.invoices.finalizeInvoice(
+                invoice.id, 
+                { auto_advance: false },//garatme q map sera emviado para enviar deixe sem auto_advance
+                { stripeAccount: stripeAccountId },
+            );
 
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
@@ -962,7 +966,7 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue,
-                    auto_advance: true,
+                    auto_advance: false,//true para enviar automaticamente
                     currency: "usd",
                     metadata: { projectId: oldInvoice.projectId }
                 },
@@ -1015,7 +1019,8 @@ export class StripeController {
 
             const finalized = await stripe.invoices.finalizeInvoice(
                 draftInvoice.id,
-                { stripeAccount: stripeAccountId }
+                { auto_advance: false },//deixe sem auto_advance para enviar manualmente
+                { stripeAccount: stripeAccountId },
             );
 
             const newInvoice = await prisma.invoice.create({
