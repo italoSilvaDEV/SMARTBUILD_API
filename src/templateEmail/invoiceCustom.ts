@@ -8,9 +8,13 @@ export const invoiceCustom = (
     customBody?: string,
     customSubject?: string,
     invoiceType?: string,
-    invoiceUrl?: string
+    invoiceUrl?: string,
+    invoiceId?: string
 ) => {
     // Formatar o valor para mostrar em dólares
+
+    const urlPaymentElement = `${process.env.URL_FRONT}/pay/${invoiceId}`;
+
     const formattedValue = invoiceAmount.includes('$') 
         ? invoiceAmount 
         : `$${parseFloat(invoiceAmount.replace(/[^\d.-]/g, '') || '0').toFixed(2)}`;
@@ -108,7 +112,7 @@ export const invoiceCustom = (
                                             <p style="font-size:12px;color:#333333;margin:0;text-align:center;">Total ${formattedValue}</p>
                                             <p style="font-size:12px;color:#333333;margin:15px 0;text-align:center;">
                                               ${invoiceType === 'stripe' && invoiceUrl ? `
-                                              <a href="${invoiceUrl}" 
+                                                <a href="${urlPaymentElement}" 
                                                  style="background-color:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;margin-top:10px;font-size:14px;">
                                                 View and pay
                                               </a>

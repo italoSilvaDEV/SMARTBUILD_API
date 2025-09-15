@@ -319,7 +319,7 @@ export class CustomInvoiceController {
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(
+      const emailTemplate = invoiceCustom( 
         clientName,
         urlLogo,
         invoiceCode,
@@ -329,7 +329,8 @@ export class CustomInvoiceController {
         customBody,
         customSubject,
         invoice.invoiceType,
-        invoice.invoiceUrl
+        invoice.invoiceUrl,
+        invoice.id
       );
 
       const fileName = pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`;
