@@ -9,6 +9,10 @@ dotenv.config();
 
 const stripe = stripeConfig.getClient();
 
+type Estimate = {
+    id: string;
+}
+
 // Função auxiliar para garantir que a descrição completa não ultrapasse 500 caracteres
 function createSafeDescription(serviceName: string, description: string): string {
     const separator = " - ";
@@ -141,7 +145,16 @@ export class StripeController {
 
     async createInvoice(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { coefficientPerfentage, description, dueDate, userId, services, type_value } = req.body;
+        const {
+            coefficientPerfentage,
+            description,
+            dueDate,
+            userId,
+            services,
+            type_value,
+            totalAmount,
+            estimateId
+        } = req.body;
 
         try {
             console.log("Buscando o projeto no banco de dados...");
@@ -221,11 +234,16 @@ export class StripeController {
             }
 
             console.log("Criando Invoice Items...");
-            let totalAmount = 0;
-            const lineItems = [];
+            const servicesArray = Array.isArray(services) ? services : [];
+            if (servicesArray.length === 0) {
+                console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
+            }
+    
+            let totalInvoiceAmount = 0;
+            const lineItems: any[] = [];
 
             const currentDate = new Date();
-            const dueDateObj = new Date(dueDate);
+            const dueDateObj = dueDate ? new Date(dueDate) : new Date();
             const daysUntilDue = Math.ceil((dueDateObj.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
 
             // 1️⃣ Criar a fatura antes dos itens
@@ -234,7 +252,7 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
-                    auto_advance: true,
+                    auto_advance: false, //true manda o invoice para o cliente automaticamente
                     currency: "usd",
                     metadata: {
                         projectId: projectId,
@@ -243,55 +261,48 @@ export class StripeController {
                 { stripeAccount: stripeAccountId }
             );
 
-            for (const service of services) {
+            for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
                 const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-
-                // Usar o total fornecido ou calcular se não estiver disponível
+    
                 const serviceAmount = service.total || (quantity * price);
                 const adjustedAmount = serviceAmount * validCoefficient;
-
-                console.log("-------- Detalhes do Serviço --------");
-                console.log(`Serviço: ${service.name}`);
-                console.log(`Quantidade: ${service.quantity} -> Convertido: ${quantity}`);
-                console.log(`Preço (price): ${service.price} -> Convertido: ${price}`);
-                console.log(`Coeficiente (coefficient): ${coefficientPerfentage} -> Válido: ${validCoefficient}`);
-                console.log(`Valor Bruto (serviceAmount): ${serviceAmount}`);
-                console.log(`Valor Ajustado (adjustedAmount): ${adjustedAmount}`);
-                console.log("------------------------------------");
-
+    
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-                    console.warn(`⚠️ Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
+                    console.warn(` Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
-
-                totalAmount += adjustedAmount;
-
-                console.log(` Adicionando serviço ajustado: ${service.name} - Valor final: $${adjustedAmount.toFixed(2)}`);
-
+    
+                totalInvoiceAmount += adjustedAmount;
+    
                 lineItems.push({
                     name: service.name,
                     description: createSafeDescription(service.name, service.description || "No additional description"),
-                    quantity: quantity,
-                    price: price,
+                    quantity,
+                    price,
                     totalAmount: adjustedAmount
                 });
-
+    
                 await stripe.invoiceItems.create(
                     {
                         customer: stripeCustomerId,
-                        amount: Math.round(adjustedAmount * 100), // Convertendo para centavos
+                        amount: Math.round(adjustedAmount * 100),
                         currency: "usd",
                         description: createSafeDescription(service.name, service.description || "No additional description"),
-                        invoice: invoice.id // 3️⃣ Associar o item à fatura criada
+                        invoice: invoice.id
                     },
                     { stripeAccount: stripeAccountId }
                 );
             }
 
             // 4️⃣ Finalizar a fatura após adicionar os itens
-            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id, { stripeAccount: stripeAccountId });
+            const finalizedInvoice = await stripe.invoices.finalizeInvoice(
+                invoice.id, 
+                { auto_advance: false },//garatme q map sera emviado para enviar deixe sem auto_advance
+                { stripeAccount: stripeAccountId },
+            );
+
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
             const allInvoices = await prisma.invoice.findMany({
@@ -315,7 +326,22 @@ export class StripeController {
             if (numericIds.length > 0) {
                 const maxNumber = Math.max(...numericIds);
                 nextInvoiceNumber = maxNumber + 1;
+
             }
+            let estimate = null as Estimate | null;
+
+            if (estimateId) {
+                estimate = await prisma.estimate.findUnique({
+                    where: {
+                        id: estimateId
+                    },
+                    select: {
+                        id: true
+                    }
+                })
+
+            }
+            
 
             console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
@@ -334,11 +360,14 @@ export class StripeController {
                     percentageCoefficient: coefficientPerfentage,
                     type_value: type_value,
                     user_id: userId,
+                    estimateId: estimate?.id || null,
                 },
             });
 
-            // Adicione a criação dos InvoiceItems
-            if (lineItems && lineItems.length > 0) {
+            console.log("Invoice salva no banco com ID:", newInvoice.id);
+
+             // Adicione a criação dos InvoiceItems
+             if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
                     data: lineItems.map((item) => ({
                         invoiceId: newInvoice.id, // Referência ao ID da fatura criada
@@ -350,8 +379,6 @@ export class StripeController {
                     })),
                 });
             }
-
-            console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Registrar evento na timeline
             await prisma.invoiceTimeline.create({
@@ -374,6 +401,7 @@ export class StripeController {
             console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
+    
     }
 
     async sendInvoice(req: Request, res: Response) {
@@ -435,8 +463,12 @@ export class StripeController {
 
         try {
             const invoice = await prisma.invoice.findUnique({
-                where: { stripeInvoiceId: invoiceId },
-                include: {
+                where: {
+                    id: invoiceId
+                },
+                select: {
+                    id: true,
+                    stripeInvoiceId: true,
                     project: {
                         include: {
                             company: true,
@@ -451,23 +483,30 @@ export class StripeController {
 
             const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
 
-            console.log("Cancelando a Invoice no Stripe...");
-            const canceledInvoice = await stripe.invoices.voidInvoice(invoiceId, { stripeAccount: stripeAccountId });
+            if (!invoice.stripeInvoiceId) {
+                return res.status(400).json({
+                    error: "Invoice is not linked to Stripe"
+                });
+            }
 
-            console.log("Atualizando status da Invoice no banco de dados...");
+            await stripe.invoices.voidInvoice(invoice.stripeInvoiceId, { stripeAccount: stripeAccountId })
+
             const updatedInvoice = await prisma.invoice.update({
-                where: { stripeInvoiceId: invoiceId },
-                data: { status: "void" },
+                where: {
+                    id: invoiceId
+                },
+                data: {
+                    status: "void"
+                },
             });
 
-            console.log("Invoice cancelada com sucesso!");
-
-            // Registrar evento na timeline
             await prisma.invoiceTimeline.create({
                 data: {
                     description: `Canceled`,
                     invoice: {
-                        connect: { id: invoice.id }
+                        connect: {
+                            id: invoice.id
+                        }
                     }
                 }
             });
@@ -650,17 +689,20 @@ export class StripeController {
     }
 
     async getInvoicesByCompany(req: Request, res: Response) {
-        const { companyId } = req.params;
-        const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query; // Parâmetros para paginação e pesquisa
+        const {
+            companyId
+        } = req.params;
+        const {
+            searchTerm = "",
+            page = 1,
+            itemsPerPage = 10
+        } = req.query;
 
         try {
-            console.log("Buscando invoices da empresa:", companyId);
-
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
             const itemsLimit = Number(itemsPerPage);
             const search = typeof searchTerm === 'string' ? searchTerm : "";
 
-            // Filtro para busca com base no nome do cliente
             const filtro = {
                 companyId,
                 OR: [
@@ -692,15 +734,24 @@ export class StripeController {
 
             };
 
-            // Buscar invoices relacionadas ao companyId com paginação
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
-                orderBy: { createdAt: "desc" },
+                orderBy: {
+                    createdAt: "desc"
+                },
                 include: {
                     company: true,
-                    InvoiceSendHistory: { orderBy: { sentAt: "desc" } },
-                    InvoiceItems: true,
-                    PdfProject: true, // Incluir os PDFs relacionados
+                    estimate: {
+                        select: {
+                            id: true,
+                        }
+                    },
+                    InvoiceSendHistory: {
+                        orderBy: {
+                            sentAt: "desc"
+                        }
+                    },
+                    PdfProject: true,
                     project: {
                         include: {
                             client: {
@@ -711,7 +762,8 @@ export class StripeController {
                                     phone: true,
                                     location: true,
                                 }
-                            }
+                            },
+                            serviceProject: true,
                         }
                     },
                     payment: {
@@ -722,7 +774,7 @@ export class StripeController {
                             createdAt: true,
                             amount: true
                         }
-                    }
+                    },
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
@@ -732,15 +784,17 @@ export class StripeController {
 
             if (invoices.length === 0) {
                 console.log("Nenhuma invoice encontrada para este projeto.");
-                // return res.status(200).json({ message: "No invoices found for this project." });
-                return res.status(200).json({ total, invoices: [], message: "No invoices found for this project." });
+                return res.status(200).json({
+                    total,
+                    invoices: [],
+                    message: "No invoices found for this project."
+                });
             }
 
             console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
-                    // Gerar URLs presigned para PDFs se existirem
                     if (invoice.PdfProject && invoice.PdfProject.length > 0) {
                         for (const pdf of invoice.PdfProject) {
                             if (pdf.uri) {
@@ -749,13 +803,11 @@ export class StripeController {
                         }
                     }
 
-                    // Se a invoice não for do tipo "stripe", não tenta atualizar via Stripe.
                     if (invoice.invoiceType !== "stripe") {
                         const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
                         return { ...invoice, lastSentAt: lastSend };
                     }
 
-                    // Para invoices do tipo "stripe", execute a atualização via Stripe.
                     try {
                         if (!invoice.company || !invoice.company.stripeAccountId) {
                             console.warn(`Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
@@ -764,12 +816,10 @@ export class StripeController {
 
                         const stripeAccountId = invoice.company.stripeAccountId;
 
-                        // Verificar se o ID da fatura existe
                         if (!invoice.stripeInvoiceId) {
                             return res.status(400).json({ error: "Stripe invoice ID is missing" });
                         }
 
-                        // Agora é seguro usar o ID
                         const stripeInvoice = await stripe.invoices.retrieve(
                             invoice.stripeInvoiceId,
                             { stripeAccount: stripeAccountId }
@@ -788,7 +838,10 @@ export class StripeController {
 
                         const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
 
-                        return { ...invoice, lastSentAt: lastSend };
+                        return {
+                            ...invoice,
+                            lastSentAt: lastSend
+                        };
                     } catch (stripeError: any) {
                         if (stripeError.code === 'resource_missing') {
                             console.warn(`Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
@@ -801,8 +854,10 @@ export class StripeController {
                 })
             );
 
-            return res.status(200).json({ total, invoices: updatedInvoices });
-
+            return res.status(200).json({
+                total,
+                invoices: updatedInvoices
+            });
         } catch (error) {
             console.error("Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
@@ -813,20 +868,25 @@ export class StripeController {
    ADICIONE dentro da classe StripeController
 -------------------------------------------------------------------*/
     async updateInvoice(req: Request, res: Response) {
-        const { invoiceId } = req.params;
+        const {
+            invoiceId
+        } = req.params;
+
         const {
             coefficientPerfentage,
             description,
             dueDate,
             userId,
+            type_value,
             services,
-            type_value
+            // totalAmount é calculado abaixo talvez seja necessário remover
         } = req.body;
 
         try {
-            /* ---------- 1. localizar fatura antiga + entidade associada ---------- */
             const oldInvoice = await prisma.invoice.findUnique({
-                where: { id: invoiceId },
+                where: {
+                    id: invoiceId
+                },
                 include: {
                     project: {
                         include: {
@@ -839,12 +899,19 @@ export class StripeController {
             });
 
             if (!oldInvoice || !oldInvoice.project || !oldInvoice.project.company || !oldInvoice.project.client) {
-                console.log({ message: "Invoice, project, company, or client not found", oldInvoice });
-                return res.status(404).json({ error: "Invoice, project, company, or client not found" });
+                console.log({
+                    message: "Invoice, project, company, or client not found", oldInvoice
+                });
+
+                return res.status(404).json({
+                    error: "Invoice, project, company, or client not found"
+                });
             }
 
             if (!oldInvoice?.stripeInvoiceId) {
-                return res.status(400).json({ error: "Invoice is not linked to Stripe yet" });
+                return res.status(400).json({
+                    error: "Invoice is not linked to Stripe yet"
+                });
             }
             const stripeInvoiceId = oldInvoice.stripeInvoiceId;
 
@@ -852,14 +919,15 @@ export class StripeController {
             const client = oldInvoice.project.client;
             const stripeAccountId = company.stripeAccountId ?? undefined;
 
-            /* ---------- 2. cancelar a fatura antiga no Stripe ---------- */
-            //   await stripe.invoices.voidInvoice(invoiceId, { stripeAccount: stripeAccountId });
             await stripe.invoices.voidInvoice(stripeInvoiceId, { stripeAccount: stripeAccountId });
 
-            /* ---------- 3. marcar a fatura antiga como cancelada (edição) ---------- */
             await prisma.invoice.update({
-                where: { id: oldInvoice.id },
-                data: { status: "void", cancel_invoice_edit: true }
+                where: {
+                    id: oldInvoice.id
+                },
+                data: {
+                    status: "void", cancel_invoice_edit: true
+                }
             });
 
             await prisma.invoiceTimeline.create({
@@ -869,7 +937,6 @@ export class StripeController {
                 }
             });
 
-            /* ---------- 4. garantir cliente no Stripe ---------- */
             let stripeCustomerId = client.stripeCustomerId;
             if (!stripeCustomerId) {
                 const newCustomer = await stripe.customers.create(
@@ -887,7 +954,6 @@ export class StripeController {
                 });
             }
 
-            /* ---------- 5. criar nova invoice (rascunho) ---------- */
             const currentDate = new Date();
             const dueDateObj = new Date(dueDate);
             const daysUntilDue = Math.max(
@@ -900,14 +966,15 @@ export class StripeController {
                     customer: stripeCustomerId,
                     collection_method: "send_invoice",
                     days_until_due: daysUntilDue,
-                    auto_advance: true,
+                    auto_advance: false,//true para enviar automaticamente
                     currency: "usd",
                     metadata: { projectId: oldInvoice.projectId }
                 },
                 { stripeAccount: stripeAccountId }
             );
 
-            /* ---------- 6. adicionar itens e calcular total ---------- */
+            // recalcular o total e criar os items
+
             let totalAmount = 0;
             const preparedItems: {
                 name: string;
@@ -950,13 +1017,12 @@ export class StripeController {
                 );
             }
 
-            /* ---------- 7. finalizar invoice ---------- */
             const finalized = await stripe.invoices.finalizeInvoice(
                 draftInvoice.id,
-                { stripeAccount: stripeAccountId }
+                { auto_advance: false },//deixe sem auto_advance para enviar manualmente
+                { stripeAccount: stripeAccountId },
             );
 
-            /* ---------- 8. salvar nova invoice no banco ---------- */
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalized.id,
@@ -965,7 +1031,7 @@ export class StripeController {
                     invoiceType: "stripe",
                     projectId: oldInvoice.projectId,
                     companyId: company.id,
-                    totalAmount,
+                    totalAmount: totalAmount,
                     status: finalized.status ?? "draft",
                     invoiceUrl: finalized.hosted_invoice_url,
                     dueDate: dueDateObj,
@@ -991,12 +1057,11 @@ export class StripeController {
 
             await prisma.invoiceTimeline.create({
                 data: {
-                    description: "Invoice re‑created after edit",
+                    description: "Invoice recreated after edit",
                     invoiceId: newInvoice.id
                 }
             });
 
-            /* ---------- 9. resposta ---------- */
             return res.status(200).json({
                 message: "Invoice updated (old one voided, new one created)",
                 oldInvoiceId: oldInvoice.id,

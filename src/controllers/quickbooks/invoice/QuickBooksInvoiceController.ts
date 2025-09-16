@@ -554,7 +554,7 @@ export class QuickBooksInvoiceController {
         return res.status(400).json({ error: "QuickBooks invoice ID missing" });
       }
 
-      if (!invoice.project.client) {
+      if (!invoice.project?.client) {
         return res.status(400).json({ error: "Client not found for this invoice" });
       }
 

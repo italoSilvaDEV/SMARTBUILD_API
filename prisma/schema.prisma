@@ -606,11 +606,13 @@ enum TypeInvoiceBase {
 model Invoice {
   id                String  @id @default(uuid())
   stripeInvoiceId   String? @unique
+  stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId String?
 
-  invoiceType String? // "stripe", "quickbooks", "custom"
+  invoiceType String? // "stripe", "quickbooks", "custom", "payment_element"
   status      String // Status do invoice: draft, open, paid, void, uncollectible
   totalAmount Decimal
+  currency    String @default("usd") // NOVO: suporte a múltiplas moedas
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -628,7 +630,7 @@ model Invoice {
   externalDocNumber String?
 
   // Relacionamento com Project e Company
-  project   Project @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project? @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
   company   Company? @relation(name: "CompanyToInvoice", fields: [companyId], references: [id], onDelete: Cascade)
@@ -637,6 +639,8 @@ model Invoice {
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
 
+  estimate           Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  estimateId         String?
   // Relacionamentos
   InvoiceSendHistory InvoiceSendHistory[]
   InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
@@ -650,6 +654,9 @@ model Invoice {
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects fildsPdfProject[]
+  
+  // NOVO: Relacionamento com PaymentIntentRecord (para Payment Element)
+  PaymentIntents PaymentIntentRecord[]
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -759,6 +766,7 @@ model Estimate {
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects fildsPdfProject[]
+  Invoice          Invoice[]
 
   @@unique([number, projectId])
 }
@@ -795,8 +803,6 @@ model EstimateServiceProject {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-
-  @@unique([estimateId, name])
 }
 
 model Permissions {
@@ -909,6 +915,40 @@ model InvoiceEmailLog {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+enum PaymentIntentStatus {
+  requires_payment_method // Initial state - waiting for payment method
+  requires_confirmation   // Payment method added, waiting for confirmation
+  requires_action         // Requires additional authentication (3D Secure, etc.)
+  processing              // Payment being processed (ACH settlement, bank transfers)
+  requires_capture        // Payment authorized, waiting for capture
+  canceled                // Payment was canceled before completion
+  succeeded               // Payment completed successfully
+  payment_failed          // Payment attempt failed
+  disputed                // Payment has been disputed/charged back
+}
+
+model PaymentIntentRecord {
+  id                    String              @id @default(uuid())
+  stripePaymentIntentId String              @unique
+  status                PaymentIntentStatus // Payment status using enum
+  amount                Decimal             // Total PI amount (including surcharge if any)
+  surchargeAmount       Decimal?            // Surcharge amount passed to customer (if card)
+  currency              String
+  paymentMethodType     String?             // "card" | "us_bank_account" | "customer_balance" etc.
+  stripeAccountId       String              // Connected account ID
+  customerId            String?             // Stripe customer ID
+  receiptUrl            String?             // Stripe receipt URL
+  errorMessage          String?             // Error details if payment fails
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Link to internal invoice
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  @@index([invoiceId])
 }
 
 // Nova tabela de junção para relacionamento N:N entre User e Company
