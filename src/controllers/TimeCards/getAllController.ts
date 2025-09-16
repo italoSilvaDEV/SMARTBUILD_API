@@ -423,6 +423,7 @@ export class getAllController {
             weeklyAttendances.forEach(weekData => {
                 const userId = weekData.user.id;
                 const userName = weekData.user.name;
+                const userAvatar = weekData.user.avatar;
                 let weeklyRegularHoursUsed = 0;
                 const WEEKLY_REGULAR_LIMIT = 40;
 
@@ -481,6 +482,7 @@ export class getAllController {
                         if (!payrollMap.has(userId)) {
                             payrollMap.set(userId, {
                                 userName: userName,
+                                userAvatar: userAvatar,
                                 servicesCount: new Set(),
                                 total: 0,
                                 workers: []
@@ -503,6 +505,7 @@ export class getAllController {
 
             const formattedPayroll = Array.from(payrollMap.values()).map(user => ({
                 userName: user.userName,
+                userAvatar: user.userAvatar,
                 servicesCount: user.servicesCount.size,
                 total: parseFloat(user.total.toFixed(2)),
                 workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime())
