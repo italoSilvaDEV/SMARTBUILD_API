@@ -2,6 +2,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -170,7 +171,8 @@ export class getAllController {
                                                 select: {
                                                     id: true,
                                                     name: true,
-                                                    hourly_price: true
+                                                    hourly_price: true,
+                                                    avatar: true
                                                 }
                                             }
                                         },
@@ -224,7 +226,8 @@ export class getAllController {
                             id: true,
                             name: true,
                             hourly_price: true,
-                            isOverTime: true
+                            isOverTime: true,
+                            avatar: true
                         }
                     }
                 }
@@ -420,13 +423,21 @@ export class getAllController {
 
             const payrollMap = new Map();
 
-            weeklyAttendances.forEach(weekData => {
+            for (const weekData of weeklyAttendances.values()) {
                 const userId = weekData.user.id;
                 const userName = weekData.user.name;
+                let userAvatar = null;
+ 
+                try {
+                    userAvatar = weekData.user.avatar ? await getPresignedUrl(weekData.user.avatar) : null;
+                } catch (error) {
+                    userAvatar = null;
+                }
+
                 let weeklyRegularHoursUsed = 0;
                 const WEEKLY_REGULAR_LIMIT = 40;
 
-                weekData.attendances.forEach((attendance: any) => {
+                for (const attendance of weekData.attendances) {
                     let projectLocation = "";
                     let serviceId = "";
 
@@ -481,6 +492,7 @@ export class getAllController {
                         if (!payrollMap.has(userId)) {
                             payrollMap.set(userId, {
                                 userName: userName,
+                                userAvatar: userAvatar,
                                 servicesCount: new Set(),
                                 total: 0,
                                 workers: []
@@ -498,11 +510,12 @@ export class getAllController {
                             total: parseFloat((dailyHours * hourlyRate).toFixed(2))
                         });
                     }
-                });
-            });
+                }
+            }
 
             const formattedPayroll = Array.from(payrollMap.values()).map(user => ({
                 userName: user.userName,
+                userAvatar: user.userAvatar,
                 servicesCount: user.servicesCount.size,
                 total: parseFloat(user.total.toFixed(2)),
                 workers: user.workers.sort((a: any, b: any) => new Date(b.in).getTime() - new Date(a.in).getTime())
