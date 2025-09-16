@@ -171,7 +171,8 @@ export class getAllController {
                                                 select: {
                                                     id: true,
                                                     name: true,
-                                                    hourly_price: true
+                                                    hourly_price: true,
+                                                    avatar: true
                                                 }
                                             }
                                         },
@@ -225,7 +226,8 @@ export class getAllController {
                             id: true,
                             name: true,
                             hourly_price: true,
-                            isOverTime: true
+                            isOverTime: true,
+                            avatar: true
                         }
                     }
                 }
@@ -425,7 +427,7 @@ export class getAllController {
                 const userId = weekData.user.id;
                 const userName = weekData.user.name;
                 let userAvatar = null;
-
+ 
                 try {
                     userAvatar = weekData.user.avatar ? await getPresignedUrl(weekData.user.avatar) : null;
                 } catch (error) {
