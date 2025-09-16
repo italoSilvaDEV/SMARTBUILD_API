@@ -153,6 +153,7 @@ export class StripeController {
             services,
             type_value,
             totalAmount,
+            type_invoicebase,
             estimateId
         } = req.body;
 
@@ -238,7 +239,7 @@ export class StripeController {
             if (servicesArray.length === 0) {
                 console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
             }
-    
+
             let totalInvoiceAmount = 0;
             const lineItems: any[] = [];
 
@@ -265,17 +266,17 @@ export class StripeController {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
                 const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-    
+
                 const serviceAmount = service.total || (quantity * price);
                 const adjustedAmount = serviceAmount * validCoefficient;
-    
+
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(` Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
-    
+
                 totalInvoiceAmount += adjustedAmount;
-    
+
                 lineItems.push({
                     name: service.name,
                     description: createSafeDescription(service.name, service.description || "No additional description"),
@@ -283,7 +284,7 @@ export class StripeController {
                     price,
                     totalAmount: adjustedAmount
                 });
-    
+
                 await stripe.invoiceItems.create(
                     {
                         customer: stripeCustomerId,
@@ -298,7 +299,7 @@ export class StripeController {
 
             // 4️⃣ Finalizar a fatura após adicionar os itens
             const finalizedInvoice = await stripe.invoices.finalizeInvoice(
-                invoice.id, 
+                invoice.id,
                 { auto_advance: false },//garatme q map sera emviado para enviar deixe sem auto_advance
                 { stripeAccount: stripeAccountId },
             );
@@ -341,7 +342,7 @@ export class StripeController {
                 })
 
             }
-            
+
 
             console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
@@ -361,13 +362,14 @@ export class StripeController {
                     type_value: type_value,
                     user_id: userId,
                     estimateId: estimate?.id || null,
+                    type_invoicebase: type_invoicebase,
                 },
             });
 
             console.log("Invoice salva no banco com ID:", newInvoice.id);
 
-             // Adicione a criação dos InvoiceItems
-             if (lineItems && lineItems.length > 0) {
+            // Adicione a criação dos InvoiceItems
+            if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
                     data: lineItems.map((item) => ({
                         invoiceId: newInvoice.id, // Referência ao ID da fatura criada
@@ -401,7 +403,7 @@ export class StripeController {
             console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
-    
+
     }
 
     async sendInvoice(req: Request, res: Response) {
