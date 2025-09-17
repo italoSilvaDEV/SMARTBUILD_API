@@ -12,6 +12,7 @@ type payloadCreateEstimate = {
     projectId: string;
     idPdfProject: string;
     type_estimate: TypeEstimate;
+    multi_emails: string;
 }
 
 export class CreateNewEstimateController {
@@ -52,6 +53,7 @@ export class CreateNewEstimateController {
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
+                        multi_emails: payloadCreateEstimate.multi_emails,
                         project: {
                             connect: {
                                 id: payloadCreateEstimate.projectId

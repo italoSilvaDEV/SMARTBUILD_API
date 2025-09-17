@@ -7,117 +7,129 @@ import { generatePdf } from "../../utils/generatePdf";
 import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdfProjectEstimateInvoiceController";
 
 export class CustomInvoiceController {
- async createInvoice(req: Request, res: Response) {
-  const { projectId } = req.params;
-  const { userId, type_invoicebase, coefficientPerfentage, description, dueDate, type_value, totalAmount, estimateId, items } = req.body;
+  async createInvoice(req: Request, res: Response) {
+    const { projectId } = req.params;
+    const {
+      userId,
+      type_invoicebase,
+      coefficientPerfentage,
+      description,
+      dueDate,
+      type_value,
+      totalAmount,
+      estimateId,
+      items,
+      multi_emails
+    } = req.body;
 
-  try {
-    // Buscando o projeto no banco de dados
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        client: true,
-        company: true,
-      },
-    });
+    try {
+      // Buscando o projeto no banco de dados
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
 
-    if (!project) {
-      return res.status(404).json({ error: "Project not found" });
-    }
-
-    if (!project.client) {
-      return res.status(400).json({ error: "Client not found for this project" });
-    }
-
-    // Definindo a data de vencimento
-    const dueDateObj = dueDate ? new Date(dueDate) : new Date();
-
-    // Variável para o total final
-    let finalTotalAmount = 0;
-    const lineItems = [];
-
-    // Calculando o total com base nos itens, se houver
-    if (items && Array.isArray(items)) {
-      for (const item of items) {
-        const serviceAmount = item.total || (item.quantity * item.price);
-        const adjustedAmount = serviceAmount * (coefficientPerfentage || 1);
-
-        if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-          continue;
-        }
-
-        finalTotalAmount += adjustedAmount;
-
-        // Adicionando os itens na lista de itens da fatura
-        lineItems.push({
-          name: item.name,
-          description: item.description || "",
-          quantity: item.quantity,
-          price: item.price,
-          totalAmount: adjustedAmount
-        });
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
       }
-    }
 
-    // Buscando a última fatura com externalInvoiceId
-    const latestInvoice = await prisma.invoice.findFirst({
-      where: {
-        companyId: project.company_id,
-        invoiceType: { in: ["custom", "stripe"] },
-        externalInvoiceId: { not: null }
-      },
-      select: {
-        externalInvoiceId: true
+      if (!project.client) {
+        return res.status(400).json({ error: "Client not found for this project" });
       }
-    });
 
-    // Definindo o próximo número da fatura
-    let nextInvoiceNumber = 1000;
-    if (latestInvoice && latestInvoice.externalInvoiceId) {
-      const lastNumber = parseInt(latestInvoice.externalInvoiceId);
-      if (!isNaN(lastNumber)) {
-        nextInvoiceNumber = lastNumber + 1;
-      }
-    }
+      // Definindo a data de vencimento
+      const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-    // Criando a fatura no banco de dados
-    const newInvoice = await prisma.invoice.create({
-      data: {
-        externalInvoiceId: nextInvoiceNumber.toString(),
-        invoiceType: "custom",
-        status: "open",
-        totalAmount: finalTotalAmount || totalAmount,  // Usando o total calculado ou o fornecido
-        dueDate: dueDateObj,
-        description: description,
-        projectId: project.id,
-        companyId: project.company_id,
-        user_id: userId,
-        type_value: type_value,
-        percentageCoefficient: coefficientPerfentage,
-        type_invoicebase: type_invoicebase,
-        estimateId: estimateId
-      }
-    });
+      // Variável para o total final
+      let finalTotalAmount = 0;
+      const lineItems = [];
 
-    // Adicionando a linha do histórico da fatura
-    await prisma.invoiceTimeline.create({
-      data: {
-        description: `Created with total amount $${finalTotalAmount || totalAmount}`,
-        invoice: {
-          connect: { id: newInvoice.id }
+      // Calculando o total com base nos itens, se houver
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const serviceAmount = item.total || (item.quantity * item.price);
+          const adjustedAmount = serviceAmount * (coefficientPerfentage || 1);
+
+          if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+            continue;
+          }
+
+          finalTotalAmount += adjustedAmount;
+
+          // Adicionando os itens na lista de itens da fatura
+          lineItems.push({
+            name: item.name,
+            description: item.description || "",
+            quantity: item.quantity,
+            price: item.price,
+            totalAmount: adjustedAmount
+          });
         }
       }
-    });
 
-    return res.status(201).json({
-      message: "Custom invoice created successfully",
-      invoice: newInvoice
-    });
-  } catch (error: any) {
-    console.error("Error creating custom invoice:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+      // Buscando a última fatura com externalInvoiceId
+      const latestInvoice = await prisma.invoice.findFirst({
+        where: {
+          companyId: project.company_id,
+          invoiceType: { in: ["custom", "stripe"] },
+          externalInvoiceId: { not: null }
+        },
+        select: {
+          externalInvoiceId: true
+        }
+      });
+
+      // Definindo o próximo número da fatura
+      let nextInvoiceNumber = 1000;
+      if (latestInvoice && latestInvoice.externalInvoiceId) {
+        const lastNumber = parseInt(latestInvoice.externalInvoiceId);
+        if (!isNaN(lastNumber)) {
+          nextInvoiceNumber = lastNumber + 1;
+        }
+      }
+
+      // Criando a fatura no banco de dados
+      const newInvoice = await prisma.invoice.create({
+        data: {
+          externalInvoiceId: nextInvoiceNumber.toString(),
+          invoiceType: "custom",
+          status: "open",
+          totalAmount: finalTotalAmount || totalAmount,  // Usando o total calculado ou o fornecido
+          dueDate: dueDateObj,
+          description: description,
+          projectId: project.id,
+          companyId: project.company_id,
+          user_id: userId,
+          type_value: type_value,
+          percentageCoefficient: coefficientPerfentage,
+          type_invoicebase: type_invoicebase,
+          estimateId: estimateId,
+          multi_emails: multi_emails
+        }
+      });
+
+      // Adicionando a linha do histórico da fatura
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Created with total amount $${finalTotalAmount || totalAmount}`,
+          invoice: {
+            connect: { id: newInvoice.id }
+          }
+        }
+      });
+
+      return res.status(201).json({
+        message: "Custom invoice created successfully",
+        invoice: newInvoice
+      });
+    } catch (error: any) {
+      console.error("Error creating custom invoice:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
   }
-}
 
   async getInvoicesByProject(req: Request, res: Response) {
     const { projectId } = req.params;
@@ -319,7 +331,7 @@ export class CustomInvoiceController {
 
       // Usar o template invoiceCustom
       const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom( 
+      const emailTemplate = invoiceCustom(
         clientName,
         urlLogo,
         invoiceCode,
@@ -417,7 +429,7 @@ export class CustomInvoiceController {
 
       // Verificar se pelo menos um email foi enviado com sucesso
       const successfulSends = results.filter(r => r.status === "success");
-      
+
       return res.status(200).json({
         message: successfulSends.length > 0 ? "Invoice sent successfully" : "Failed to send invoice to all recipients",
         success: successfulSends.length > 0,
@@ -951,7 +963,8 @@ export class CustomInvoiceController {
       description,
       dueDate,
       type_value,
-      totalAmount
+      totalAmount,
+      multi_emails
     } = req.body;
 
     try {
@@ -1001,6 +1014,7 @@ export class CustomInvoiceController {
           description: description || existingInvoice.description,
           type_value: type_value || existingInvoice.type_value,
           percentageCoefficient: coefficientPerfentage,
+          multi_emails: multi_emails || existingInvoice.multi_emails,
           updatedAt: new Date(),
         },
         include: {
