@@ -561,7 +561,8 @@ export class CustomInvoiceController {
         undefined, // customBody
         undefined, // customSubject
         invoice.invoiceType,
-        invoice.invoiceUrl
+        invoice.invoiceUrl,
+        invoice.id
       );
 
       // Resultados do envio para cada email

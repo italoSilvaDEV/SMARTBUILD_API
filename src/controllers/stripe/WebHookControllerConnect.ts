@@ -131,7 +131,7 @@ export class StripeWebHookControllerConnect {
                 });
             };
 
-            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */
+            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */ 
             switch (event.type) {
 
                 /* ------------------- ACH (e outros) em compensação ------------------- */
@@ -144,6 +144,13 @@ export class StripeWebHookControllerConnect {
                             data: { status: "processing", updatedAt: new Date() }
                         });
 
+                        // NOVO: Invoice mantém status "open" enquanto payment está processing
+                        // O status do payment é acompanhado pelo PaymentIntentRecord
+                        // await prisma.invoice.update({
+                        //     where: { id: pr.invoice.id },
+                        //     data: { status: "open" } // Mantém open até confirmar o pagamento
+                        // });
+
                         // Enviar emails de notificação sobre processamento
                         try {
                             await this.sendPaymentProcessingEmails(pr.invoice, pi);
@@ -151,18 +158,9 @@ export class StripeWebHookControllerConnect {
                             console.error("Erro ao enviar emails de processamento:", emailError.message);
                         }
 
-                        // Se quiser um status específico na sua invoice:
-                        // não faz sentido autalizar o invoice ela continuara em aberto pois o invoice sincroniza status com stripe
-                        // await prisma.invoice.update({
-                        //     where: { id: pr.invoice.id },
-                        //     data: { status: "pending_settlement" } // crie esse enum/estado se ainda não existir
-                        // });
-
-                        // falta mandar email para o cliente e a companhia para avisar que o pagamento esta sendo processado
-
                         await prisma.invoiceTimeline.create({
                             data: {
-                                description: `Payment is processing (possibly ACH settlement window). Amount: ${(pi.amount / 100).toFixed(2)} ${pi.currency?.toUpperCase()}`,
+                                description: `Payment is processing (ACH settlement window). Amount: ${(pi.amount / 100).toFixed(2)} ${pi.currency?.toUpperCase()}`,
                                 invoiceId: pr.invoice.id
                             }
                         });
@@ -178,40 +176,6 @@ export class StripeWebHookControllerConnect {
                     console.log("   • PaymentIntent ID:", paymentIntent.id);
                     console.log("   • Amount:", paymentIntent.amount_received);
                     console.log("   • Currency:", paymentIntent.currency);
-                    console.log("   • Receipt URL:", (paymentIntent as any).receipt_url);
-                    console.log("   • PaymentIntent:", JSON.stringify(paymentIntent, null, 2));
-
-                    // Buscar PaymentIntentRecord no banco
-                    // const paymentRecord = await prisma.paymentIntentRecord.findUnique({
-                    //     where: { stripePaymentIntentId: paymentIntent.id },
-                    //     include: {
-                    //         invoice: {
-                    //             include: {
-                    //                 project: {
-                    //                     include: {
-                    //                         client: {
-                    //                             select: {
-                    //                                 id: true,
-                    //                                 name: true,
-                    //                                 email: true,
-                    //                                 phone: true
-                    //                             }
-                    //                         }
-                    //                     }
-                    //                 },
-                    //                 company: {
-                    //                     select: {
-                    //                         id: true,
-                    //                         name: true,
-                    //                         avatar: true,
-                    //                         email: true,
-                    //                         phone: true
-                    //                     }
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    // });
 
                     const pr = await findByPI(paymentIntent.id);
 
@@ -228,7 +192,6 @@ export class StripeWebHookControllerConnect {
 
                                 const charge = await stripe.charges.retrieve(chargeId,
                                     { stripeAccount: pr.stripeAccountId }
-                                    // ajuste para testar e ver 
                                 );
                                 receiptUrl = charge.receipt_url;
                                 console.log("Receipt URL encontrado:", receiptUrl);
@@ -247,27 +210,29 @@ export class StripeWebHookControllerConnect {
                             }
                         });
 
-                        // OBs verificar como fazer isso no stripe
-                        // Atualizar status da Invoice para "paid" 
+                        // NOVO: Atualizar dados do Invoice com informações de pagamento
                         await prisma.invoice.update({
                             where: { id: pr.invoice.id },
                             data: {
                                 status: "paid",
-                                stripePaymentIntentId: paymentIntent.id
+                                stripePaymentIntentId: paymentIntent.id,
+                                paymentMethodType: pr.paymentMethodType, // Vem do PaymentIntentRecord
+                                totalAmountPaid: pr.amount, // Valor total pago (com surcharge)
+                                totalAmountWithSurcharge: pr.amount // Valor com surcharge
                             }
                         });
 
-                        console.log("Invoice atualizada como paga via Payment Element (Conta Principal)");
+                        console.log("Invoice atualizada como paga via Payment Element");
 
                         // Registrar timeline
                         await prisma.invoiceTimeline.create({
                             data: {
-                                description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)}`,
+                                description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)} (Method: ${pr.paymentMethodType || 'unknown'})`,
                                 invoiceId: pr.invoice.id
                             }
                         });
 
-                        // Enviar emails de confirmação (usando mesma lógica do WebHookControllerConnect)
+                        // Enviar emails de confirmação
                         try {
                             await this.sendPaymentConfirmationEmails(pr.invoice, paymentIntent);
                         } catch (emailError: any) {
@@ -296,19 +261,18 @@ export class StripeWebHookControllerConnect {
                             data: { status: "payment_failed", updatedAt: new Date() }
                         });
 
+                        // NOVO: Manter invoice como "open" quando pagamento falha
+                        await prisma.invoice.update({
+                            where: { id: pr.invoice.id },
+                            data: { status: "open" } // Volta para open para permitir nova tentativa
+                        });
+
                         // Enviar emails de notificação sobre falha no pagamento
                         try {
                             await this.sendPaymentFailedEmails(pr.invoice, pi, failureMsg);
                         } catch (emailError: any) {
                             console.error("Erro ao enviar emails de falha no pagamento:", emailError.message);
                         }
-
-                        // ainda vou ver como fazer com o invoice pois ele esta lincado com stripe
-                        // Voltamos a invoice para “open” (ou “failed”, conforme seu domínio)
-                        // await prisma.invoice.update({
-                        //     where: { id: pr.invoice.id },
-                        //     data: { status: "open" }
-                        // });
 
                         await prisma.invoiceTimeline.create({
                             data: {
@@ -323,14 +287,20 @@ export class StripeWebHookControllerConnect {
                 /* --------- retorno bancário / disputa em ACH debit ---------- */
                 case "charge.dispute.created": {
                     const dispute = event.data.object as Stripe.Dispute;
-                    // Muitas vezes dá pra chegar na PI por dispute.charge.payment_intent
+                    // Encontrar o PaymentIntent associado através do charge
                     let paymentIntentId: string | undefined;
+                    let stripeAccountId: string | undefined;
+                    
                     try {
+                        // Obter conta conectada do evento se disponível
+                        const stripeEvent = event as Stripe.Event & { account?: string };
+                        stripeAccountId = stripeEvent.account;
+
                         const ch = await stripe.charges.retrieve(
                             typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
-                            // conectada – o webhook é “connect”, então use stripeAccount se você guardar
-                            // aqui não temos fácil, então tratamos só com o paymentIntent se vier
+                            stripeAccountId ? { stripeAccount: stripeAccountId } : {}
                         );
+                        
                         if (typeof ch.payment_intent === "string") {
                             paymentIntentId = ch.payment_intent;
                         } else if (ch.payment_intent?.id) {
@@ -341,25 +311,30 @@ export class StripeWebHookControllerConnect {
                     }
 
                     if (paymentIntentId) {
-                        const pr = await prisma.paymentIntentRecord.findUnique({
-                            where: { stripePaymentIntentId: paymentIntentId },
-                            include: { invoice: true }
-                        });
+                        const pr = await findByPI(paymentIntentId);
 
                         if (pr?.invoice) {
+                            // Atualizar PaymentIntentRecord como disputed
                             await prisma.paymentIntentRecord.update({
                                 where: { stripePaymentIntentId: paymentIntentId },
                                 data: { status: "disputed", updatedAt: new Date() }
                             });
 
+                            // NOVO: Atualizar Invoice como "disputed" ou "returned"
                             await prisma.invoice.update({
                                 where: { id: pr.invoice.id },
-                                data: { status: "returned" } // crie esse estado, se desejar diferenciar
+                                data: { 
+                                    status: "disputed", // Criar este status se necessário
+                                    // Limpar dados de pagamento já que foi disputado
+                                    paymentMethodType: null,
+                                    totalAmountPaid: null,
+                                    totalAmountWithSurcharge: null
+                                }
                             });
 
                             await prisma.invoiceTimeline.create({
                                 data: {
-                                    description: `ACH return/dispute created. Reason: ${dispute.reason || "unknown"}`,
+                                    description: `Payment disputed/returned. Reason: ${dispute.reason || "unknown"}. Amount: $${(dispute.amount / 100).toFixed(2)}`,
                                     invoiceId: pr.invoice.id
                                 }
                             });
@@ -369,6 +344,67 @@ export class StripeWebHookControllerConnect {
                                 await this.sendPaymentDisputedEmails(pr.invoice, dispute.reason || "unknown");
                             } catch (emailError: any) {
                                 console.error("Erro ao enviar emails de disputa:", emailError.message);
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                /* --------- Disputa resolvida em favor da empresa ---------- */
+                case "charge.dispute.closed": {
+                    const dispute = event.data.object as Stripe.Dispute;
+                    
+                    // Só processar se a disputa foi vencida pela empresa
+                    if (dispute.status === "won") {
+                        let paymentIntentId: string | undefined;
+                        let stripeAccountId: string | undefined;
+                        
+                        try {
+                            const stripeEvent = event as Stripe.Event & { account?: string };
+                            stripeAccountId = stripeEvent.account;
+
+                            const ch = await stripe.charges.retrieve(
+                                typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
+                                stripeAccountId ? { stripeAccount: stripeAccountId } : {}
+                            );
+                            
+                            if (typeof ch.payment_intent === "string") {
+                                paymentIntentId = ch.payment_intent;
+                            } else if (ch.payment_intent?.id) {
+                                paymentIntentId = ch.payment_intent.id;
+                            }
+                        } catch (e) {
+                            console.error("Não foi possível recuperar o charge da disputa resolvida:", e);
+                        }
+
+                        if (paymentIntentId) {
+                            const pr = await findByPI(paymentIntentId);
+
+                            if (pr?.invoice) {
+                                // Atualizar PaymentIntentRecord como succeeded novamente
+                                await prisma.paymentIntentRecord.update({
+                                    where: { stripePaymentIntentId: paymentIntentId },
+                                    data: { status: "succeeded", updatedAt: new Date() }
+                                });
+
+                                // NOVO: Restaurar Invoice como "paid" já que a disputa foi vencida
+                                await prisma.invoice.update({
+                                    where: { id: pr.invoice.id },
+                                    data: { 
+                                        status: "paid",
+                                        // Restaurar dados de pagamento
+                                        paymentMethodType: pr.paymentMethodType,
+                                        totalAmountPaid: pr.amount,
+                                        totalAmountWithSurcharge: pr.amount
+                                    }
+                                });
+
+                                await prisma.invoiceTimeline.create({
+                                    data: {
+                                        description: `Dispute resolved in favor of company. Payment restored. Amount: $${(dispute.amount / 100).toFixed(2)}`,
+                                        invoiceId: pr.invoice.id
+                                    }
+                                });
                             }
                         }
                     }

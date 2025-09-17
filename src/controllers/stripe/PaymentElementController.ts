@@ -50,6 +50,12 @@ export class PaymentElementController {
                 }
             });
 
+            if (invoice && invoice.status === 'void'){
+                return res.status(400).json({
+                    error: "Invoice is void"
+                });
+            }
+
             if (!invoice || !invoice.project || !invoice.project.company || !invoice.project.client) {
                 return res.status(404).json({
                     error: "Invoice, project, company, or client not found"

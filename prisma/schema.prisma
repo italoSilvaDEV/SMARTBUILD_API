@@ -609,7 +609,8 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
-  invoiceType String? // "stripe", "quickbooks", "custom", "payment_element"
+  invoiceType String? // "stripe", "quickbooks", "custom"
+  invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
   status      String // Status do invoice: draft, open, paid, void, uncollectible
   totalAmount Decimal
   currency    String    @default("usd") // NOVO: suporte a múltiplas moedas
@@ -629,6 +630,11 @@ model Invoice {
 
   // Campos específicos para QuickBooks
   externalDocNumber String?
+
+  // NOVOS CAMPOS PARA PAYMENT INTENT
+  paymentMethodType       String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)
+  totalAmountPaid         Decimal? // Valor total pago (inclui surcharge)
+  totalAmountWithSurcharge Decimal? // Valor original + surcharge
 
   // Relacionamento com Project e Company
   project   Project? @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
