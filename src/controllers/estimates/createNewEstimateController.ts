@@ -42,20 +42,6 @@ export class CreateNewEstimateController {
             })
         }
 
-        const invoices = await prisma.invoice.findMany({
-            where: {
-                projectId: payloadCreateEstimate.projectId,
-                status: "paid"
-            },
-            select: {
-                totalAmount: true
-            }
-        })
-
-        const totalAmountPaid = invoices.reduce((total, invoice) => {
-            return total + Number(invoice.totalAmount)
-        }, 0)
-
         try {
             await prisma.$transaction(async (smartbuild) => {
                 const createEstimate = await smartbuild.estimate.create({
@@ -95,7 +81,7 @@ export class CreateNewEstimateController {
                         },
                         data: {
                             price: totalPrice,
-                            balanceDue: totalPrice - Number(totalAmountPaid) || 0
+                            balanceDue: totalPrice || 0
                         },
                     })
                 } else {
@@ -105,7 +91,7 @@ export class CreateNewEstimateController {
                         },
                         data: {
                             price: Number(payloadCreateEstimate.totalAmount),
-                            balanceDue: Number(payloadCreateEstimate.totalAmount) - Number(totalAmountPaid) || 0
+                            balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
                         }
                     })
                 }

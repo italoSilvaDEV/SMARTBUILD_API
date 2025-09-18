@@ -694,64 +694,19 @@ export class ProjectController {
     const data: IServicesData = req.body;
 
     try {
-      await prisma.$transaction(async (smartbuild) => {
-        const result = await smartbuild.serviceProject.create({
-          data: {
-            id_service: data.id_service || null,
-            projectId: data.id_project,
-            description: data.description,
-            hours: data.hours,
-            name: data.name,
-            price: data.price,
-            company_id: data.company_id,
-          },
-        });
+      const result = await prisma.serviceProject.create({
+        data: {
+          id_service: data.id_service || null,
+          projectId: data.id_project,
+          description: data.description,
+          hours: data.hours,
+          name: data.name,
+          price: data.price,
+          company_id: data.company_id,
+        },
+      });
 
-        const project = await smartbuild.project.findUnique({
-          where: {
-            id: data.id_project
-          },
-          select: {
-            serviceProject: {
-              select: {
-                hours: true,
-                price: true
-              }
-            }
-          }
-        })
-
-        if (project) {
-          const totalPrice = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price)
-          }, 0)
-
-          const invoicesProject = await prisma.invoice.findMany({
-            where: {
-              projectId: data.id_project,
-              status: "paid"
-            },
-            select: {
-              totalAmount: true
-            }
-          })
-
-          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
-            return total + Number(invoice.totalAmount)
-          }, 0)
-
-          await smartbuild.project.update({
-            where: {
-              id: data.id_project
-            },
-            data: {
-              balanceDue: totalPrice - Number(totalAmountPaidProject),
-            },
-          });
-        }
-
-        return res.json(result);
-      })
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -775,71 +730,24 @@ export class ProjectController {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
 
-      await prisma.$transaction(async (smartbuild) => {
-        const result = await smartbuild.serviceProject.update({
-          where: {
-            id: data.id,
-          },
-          data: {
-            name: data.name,
-            description: data.description,
-            hours: data.hours,
-            price: data.price,
-          },
-          select: {
-            projectId: true
-          }
-        })
-
-        const project = await smartbuild.project.findUnique({
-          where: {
-            id: result.projectId || ""
-          },
-          select: {
-            amountPaid: true,
-            serviceProject: {
-              select: {
-                id: true,
-                hours: true,
-                price: true
-              }
-            }
-          }
-        })
-
-        if (project) {
-          const totalPrice = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price)
-          }, 0)
-
-          const invoicesProject = await prisma.invoice.findMany({
-            where: {
-              projectId: result.projectId || "",
-              status: "paid"
-            },
-            select: {
-              totalAmount: true
-            }
-          })
-
-          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
-            return total + Number(invoice.totalAmount)
-          }, 0)
-
-          await smartbuild.project.update({
-            where: {
-              id: result.projectId || ""
-            },
-            data: {
-              balanceDue: totalPrice - Number(totalAmountPaidProject)
-            }
-          })
+      const result = await prisma.serviceProject.update({
+        where: {
+          id: data.id,
+        },
+        data: {
+          name: data.name,
+          description: data.description,
+          hours: data.hours,
+          price: data.price,
+        },
+        select: {
+          projectId: true
         }
+      })
 
-        return res.status(200).json({
-          message: "Service project updated successfully",
-          data: result
-        })
+      return res.status(200).json({
+        message: "Service project updated successfully",
+        data: result
       })
     } catch (error) {
       if (error instanceof Error) {
@@ -955,91 +863,46 @@ export class ProjectController {
         });
       }
 
-      await prisma.$transaction(async (smartbuild) => {
-        await smartbuild.galleryBefore.deleteMany({
-          where: { serviceProjectId: id },
-        });
 
-        await smartbuild.galleryAfter.deleteMany({
-          where: { serviceProjectId: id },
-        });
+      await prisma.galleryBefore.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.imgServiceProject.deleteMany({
-          where: { serviceProjectId: id },
-        });
+      await prisma.galleryAfter.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.costProject.deleteMany({
-          where: { serviceProjectId: id },
-        });
+      await prisma.imgServiceProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.activities.deleteMany({
-          where: { serviceProjectId: id },
-        });
+      await prisma.costProject.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.serviceStages.deleteMany({
-          where: { serviceProjectId: id },
-        });
+      await prisma.activities.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.userServiceProject.deleteMany({
-          where: { service_project_id: id },
-        });
+      await prisma.serviceStages.deleteMany({
+        where: { serviceProjectId: id },
+      });
 
-        await smartbuild.timeLine.deleteMany({
-          where: { service_project_id: id },
-        });
+      await prisma.userServiceProject.deleteMany({
+        where: { service_project_id: id },
+      });
 
-        await smartbuild.serviceProject.delete({
-          where: { id },
-        });
+      await prisma.timeLine.deleteMany({
+        where: { service_project_id: id },
+      });
 
-        const project = await smartbuild.project.findUnique({
-          where: {
-            id: serviceProject.projectId || ""
-          },
-          select: {
-            id: true,
-            serviceProject: {
-              select: {
-                hours: true,
-                price: true
-              }
-            }
-          }
-        })
+      await prisma.serviceProject.delete({
+        where: { id },
+      });
 
-        if (project) {
-          const totalPrice = project.serviceProject.reduce((total, service) => {
-            return total + Number(service.hours) * Number(service.price)
-          }, 0)
-
-          const invoicesProject = await prisma.invoice.findMany({
-            where: {
-              projectId: project.id,
-              status: "paid"
-            },
-            select: {
-              totalAmount: true
-            }
-          })
-
-          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
-            return total + Number(invoice.totalAmount)
-          }, 0)
-
-          await smartbuild.project.update({
-            where: {
-              id: project.id
-            },
-            data: {
-              balanceDue: totalPrice - Number(totalAmountPaidProject)
-            }
-          })
-        }
-
-        return response.json({
-          message: "Service Project and its related data deleted successfully",
-        });
-      })
+      return response.json({
+        message: "Service Project and its related data deleted successfully",
+      });
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
