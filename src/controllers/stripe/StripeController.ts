@@ -648,8 +648,6 @@ export class StripeController {
                         select: {
                             id: true,
                             totalAmount: true,
-                            amountPaid: true,
-                            balanceDue: true,
                         }
                     },
                     InvoiceSendHistory: {
@@ -696,7 +694,67 @@ export class StripeController {
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
-            });
+            })
+
+            const invoicesWithBalance = await Promise.all(
+                invoices.map(async (invoice) => {
+                    let projectBalanceDue = 0;
+                    let estimateBalanceDue = 0;
+
+                    if (invoice.projectId) {
+                        const invoicesProject = await prisma.invoice.findMany({
+                            where: {
+                                projectId: invoice.projectId,
+                                status: "paid"
+                            },
+                            select: {
+                                totalAmount: true
+                            }
+                        });
+
+                        const totalAmountPaidProject = invoicesProject.reduce((total, inv) => {
+                            return total + Number(inv.totalAmount)
+                        }, 0);
+
+                        const projectTotalAmount = invoice.project?.serviceProject?.reduce((total: number, service: any) => {
+                            return total + (Number(service.totalAmount) || 0)
+                        }, 0) || 0;
+
+                        projectBalanceDue = projectTotalAmount - totalAmountPaidProject;
+                    }
+
+                    if (invoice.estimateId) {
+                        const invoicesPaidEstimate = await prisma.invoice.findMany({
+                            where: {
+                                estimateId: invoice.estimateId,
+                                status: "paid"
+                            },
+                            select: {
+                                totalAmount: true
+                            }
+                        });
+
+                        const totalAmountPaidEstimate = invoicesPaidEstimate.reduce((total, inv) => {
+                            return total + Number(inv.totalAmount)
+                        }, 0);
+
+                        const estimateTotalAmount = Number(invoice.estimate?.totalAmount) || 0;
+                        estimateBalanceDue = estimateTotalAmount - totalAmountPaidEstimate;
+                    }
+
+                    return {
+                        ...invoice,
+                        project: {
+                            ...invoice.project,
+                            balanceDue: projectBalanceDue
+                        },
+                        estimate: invoice.estimate ? {
+                            ...invoice.estimate,
+                            balanceDue: estimateBalanceDue
+                        } : null
+                    };
+                })
+            );
 
             const total = await prisma.invoice.count({ where: filtro });
 
@@ -712,7 +770,7 @@ export class StripeController {
             console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
-                invoices.map(async (invoice) => {
+                invoicesWithBalance.map(async (invoice) => {
                     if (invoice.PdfProject && invoice.PdfProject.length > 0) {
                         for (const pdf of invoice.PdfProject) {
                             if (pdf.uri) {
