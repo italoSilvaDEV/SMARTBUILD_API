@@ -16,6 +16,7 @@ import { GetNumberEstimateProjectController } from "../controllers/estimates/get
 import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
 import { DashboardEstimatesController } from "../controllers/estimates/dashboardEstimatesController";
 import { updatePdfEstimateController } from "../controllers/estimates/updatePdfEstimateController";
+import { BalanceController } from "../controllers/estimates/balanceController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -32,6 +33,7 @@ const dashboardEstimatesController = new DashboardEstimatesController();
 const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
 const getEstimateByProjectIdController = new GetEstimateByProjectIdController();
 const UpdatePdfEstimateController = new updatePdfEstimateController();
+const balanceController = new BalanceController();
 
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
@@ -52,6 +54,9 @@ estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, getNumbe
 estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProjectController.verifyNumber);
 estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
 estimateRoutes.put("/update/pdf-estimate", checkToken, UpdatePdfEstimateController.handle);
+estimateRoutes.patch("/update/balance-due", checkToken, balanceController.updateBalanceDue);
+estimateRoutes.patch("/update/amount-paid", checkToken, balanceController.updateAmountPaid);
+
 
 
 estimateRoutes.post("/", checkToken, estimateController.create);

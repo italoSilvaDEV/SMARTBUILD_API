@@ -663,18 +663,51 @@ export class ProjectController {
     const data: IServicesData = req.body;
 
     try {
-      const result = await prisma.serviceProject.create({
-        data: {
-          id_service: data.id_service || null,
-          projectId: data.id_project,
-          description: data.description,
-          hours: data.hours,
-          name: data.name,
-          price: data.price,
-          company_id: data.company_id,
-        },
-      });
-      return res.json(result);
+      await prisma.$transaction(async (smartbuild) => {
+        const result = await smartbuild.serviceProject.create({
+          data: {
+            id_service: data.id_service || null,
+            projectId: data.id_project,
+            description: data.description,
+            hours: data.hours,
+            name: data.name,
+            price: data.price,
+            company_id: data.company_id,
+          },
+        });
+
+        const project = await smartbuild.project.findUnique({
+          where: {
+            id: data.id_project
+          },
+          select: {
+            amountPaid: true,
+            serviceProject: {
+              select: {
+                hours: true,
+                price: true
+              }
+            }
+          }
+        })
+
+        if (project) {
+          const totalPrice = project.serviceProject.reduce((total, service) => {
+            return total + Number(service.hours) * Number(service.price)
+          }, 0)
+
+          await smartbuild.project.update({
+            where: {
+              id: data.id_project
+            },
+            data: {
+              balanceDue: totalPrice - Number(project.amountPaid),
+            },
+          });
+        }
+
+        return res.json(result);
+      })
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1179,6 +1212,8 @@ export class ProjectController {
           lat: data.lat,
           log: data.log,
           radius: data.radius ? Number(data.radius) : null,
+          balanceDue: price,
+          amountPaid: 0,
         },
       });
 

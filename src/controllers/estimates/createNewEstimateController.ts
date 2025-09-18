@@ -33,6 +33,9 @@ export class CreateNewEstimateController {
         const project = await prisma.project.findUnique({
             where: {
                 id: payloadCreateEstimate.projectId
+            },
+            select: {
+                amountPaid: true
             }
         })
 
@@ -49,6 +52,8 @@ export class CreateNewEstimateController {
                         number: payloadCreateEstimate.preGeneratedNumber,
                         approvedAt: payloadCreateEstimate.approvedAt,
                         totalAmount: Number(payloadCreateEstimate.totalAmount),
+                        balanceDue: Number(payloadCreateEstimate.totalAmount),
+                        amountPaid: 0,
                         description: payloadCreateEstimate.description,
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
@@ -78,8 +83,9 @@ export class CreateNewEstimateController {
                             id: payloadCreateEstimate.projectId
                         },
                         data: {
-                            price: totalPrice
-                        }
+                            price: totalPrice,
+                            balanceDue: totalPrice - Number(project.amountPaid)
+                        },
                     })
                 } else {
                     await smartbuild.project.update({
@@ -87,7 +93,8 @@ export class CreateNewEstimateController {
                             id: payloadCreateEstimate.projectId
                         },
                         data: {
-                            price: Number(payloadCreateEstimate.totalAmount)
+                            price: Number(payloadCreateEstimate.totalAmount),
+                            balanceDue: Number(payloadCreateEstimate.totalAmount) - Number(project.amountPaid)
                         }
                     })
                 }
