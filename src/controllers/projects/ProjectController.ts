@@ -547,7 +547,6 @@ export class ProjectController {
                 transaction_type: cost.transaction_type,
                 price: cost.price,
                 amout: cost.amout,
-                balanceDue: totalAmount - Number(totalAmountPaid),
                 service_project_id: cost.ServiceProject?.id,
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
@@ -658,6 +657,7 @@ export class ProjectController {
 
         res.json({
           ...project,
+          balanceDue: totalAmount - Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location, // Substitui client.location por project.location
