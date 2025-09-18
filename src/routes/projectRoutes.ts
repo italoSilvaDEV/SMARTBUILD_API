@@ -22,6 +22,7 @@ import { CreatePdfProjectEstimateInvoiceController } from "../controllers/projec
 import { FindPdfProjectEstimateInvoiceController } from "../controllers/projects/FindPdfProjectEstimateInvoiceController";
 import { DashboardProjectController } from "../controllers/projects/dashboardProjectController";
 import uploadConfig2 from "../config/uploadUtf8";
+import { BalanceController } from "../controllers/projects/balanceController";
 
 const projectRoutes = Router();
 const dashboardProjectController = new DashboardProjectController();
@@ -229,3 +230,8 @@ projectRoutes.post(
   checkToken,
   findPdfProjectEstimateInvoiceController.handle
 );
+
+const balanceController = new BalanceController();
+
+projectRoutes.patch("/project/update/balance-due", checkToken, balanceController.updateBalanceDue);
+projectRoutes.patch("/project/update/amount-paid", checkToken, balanceController.updateAmountPaid);

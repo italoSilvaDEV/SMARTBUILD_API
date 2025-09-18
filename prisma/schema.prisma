@@ -329,6 +329,9 @@ model Project {
   contractProject    ContractProject[]
   estimates          Estimate[]
 
+  amountPaid Decimal? @default(0)
+  balanceDue Decimal?
+
   invoices Invoice[] @relation(name: "ProjectToInvoice")
 
   client    Client? @relation(fields: [client_id], references: [id])
@@ -339,10 +342,11 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
-  radius   Float?
-  location String? @db.Text
-  log      String? @db.VarChar(191)
-  lat      String? @db.VarChar(191)
+  radius                 Float?
+  location               String?                  @db.Text
+  log                    String?                  @db.VarChar(191)
+  lat                    String?                  @db.VarChar(191)
+  InvoicePaymentTimeLine InvoicePaymentTimeLine[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -609,15 +613,15 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
-  invoiceType String? // "stripe", "quickbooks", "custom"
+  invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
-  status      String // Status do invoice: draft, open, paid, void, uncollectible
-  totalAmount Decimal
-  currency    String    @default("usd") // NOVO: suporte a múltiplas moedas
-  dueDate     DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  invoiceUrl  String?
+  status            String // Status do invoice: draft, open, paid, void, uncollectible
+  totalAmount       Decimal
+  currency          String    @default("usd") // NOVO: suporte a múltiplas moedas
+  dueDate           DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  invoiceUrl        String?
 
   type_invoicebase TypeInvoiceBase? @default(project)
   multi_emails     String?          @db.Text
@@ -632,8 +636,8 @@ model Invoice {
   externalDocNumber String?
 
   // NOVOS CAMPOS PARA PAYMENT INTENT
-  paymentMethodType       String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)
-  totalAmountPaid         Decimal? // Valor total pago (inclui surcharge)
+  paymentMethodType        String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)
+  totalAmountPaid          Decimal? // Valor total pago (inclui surcharge)
   totalAmountWithSurcharge Decimal? // Valor original + surcharge
 
   // Relacionamento com Project e Company
@@ -752,6 +756,9 @@ model Estimate {
   terms           String?  @db.Text
   status          String   @default("pending")
 
+  amountPaid Decimal? @default(0)
+  balanceDue Decimal?
+
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
 
@@ -773,8 +780,9 @@ model Estimate {
   PdfProject PdfProject[]
 
   // Relacionamento com fildsPdfProject
-  fildsPdfProjects fildsPdfProject[]
-  Invoice          Invoice[]
+  fildsPdfProjects       fildsPdfProject[]
+  Invoice                Invoice[]
+  InvoicePaymentTimeLine InvoicePaymentTimeLine[]
 
   @@unique([number, projectId])
 }
@@ -1132,4 +1140,20 @@ model QuickBooksOAuthState {
   createdAt  DateTime @default(now())
 
   @@map("quickbooks_oauth_state")
+}
+
+model InvoicePaymentTimeLine {
+  id String @id @default(uuid())
+
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  estimateId String?
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_payment_time_line")
 }

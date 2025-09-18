@@ -647,6 +647,9 @@ export class StripeController {
                     estimate: {
                         select: {
                             id: true,
+                            totalAmount: true,
+                            amountPaid: true,
+                            balanceDue: true,
                         }
                     },
                     InvoiceSendHistory: {

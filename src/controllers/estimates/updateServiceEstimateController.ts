@@ -95,29 +95,115 @@ export class UpdateServiceEstimateController {
             }
 
             if (serviceEstimate) {
-                const updatedServiceEstimate = await prisma.estimateServiceProject.update({
-                    where: {
-                        id: serviceId
-                    },
-                    data: campos
-                })
+                await prisma.$transaction(async (smartbuild) => {
+                    const updatedServiceEstimate = await smartbuild.estimateServiceProject.update({
+                        where: {
+                            id: serviceId
+                        },
+                        data: campos,
+                        select: {
+                            estimateId: true
+                        }
+                    })
 
-                return res.status(200).json({
-                    message: "Service estimate updated successfully",
-                    data: updatedServiceEstimate
+                    const estimate = await smartbuild.estimate.findUnique({
+                        where: {
+                            id: updatedServiceEstimate.estimateId
+                        },
+                        select: {
+                            id: true,
+                            amountPaid: true,
+                            projectId: true,
+                            type_estimate: true,
+                            serviceProjects: {
+                                select: {
+                                    quantity: true,
+                                    unitPrice: true
+                                }
+                            }
+                        }
+                    })
+
+                    if (estimate) {
+                        const totalAmount = estimate.serviceProjects.reduce((total, service) => {
+                            return total + Number(service.quantity) * Number(service.unitPrice)
+                        }, 0)
+
+                        await smartbuild.estimate.update({
+                            where: {
+                                id: estimate.id
+                            },
+                            data: {
+                                balanceDue: totalAmount - Number(estimate.amountPaid)
+                            }
+                        })
+
+                        if (estimate.type_estimate === "estimateProject") {
+                            await smartbuild.project.update({
+                                where: {
+                                    id: estimate.projectId
+                                },
+                                data: {
+                                    balanceDue: totalAmount - Number(estimate.amountPaid)
+                                }
+                            })
+                        }
+                    }
+
+                    return res.status(200).json({
+                        message: "Service estimate updated successfully",
+                        data: updatedServiceEstimate
+                    })
                 })
             }
 
             if (serviceProject) {
-                const updatedServiceProject = await prisma.serviceProject.update({
-                    where: {
-                        id: serviceId
-                    },
-                    data: campos
-                })
-                return res.status(200).json({
-                    message: "Service project updated successfully",
-                    data: updatedServiceProject
+                await prisma.$transaction(async (smartbuild) => {
+                    const updatedServiceProject = await smartbuild.serviceProject.update({
+                        where: {
+                            id: serviceId
+                        },
+                        data: campos,
+                        select: {
+                            projectId: true
+                        }
+                    })
+
+                    const project = await smartbuild.project.findUnique({
+                        where: {
+                            id: updatedServiceProject.projectId || ""
+                        },
+                        select: {
+                            id: true,
+                            amountPaid: true,
+                            serviceProject: {
+                                select: {
+                                    hours: true,
+                                    price: true
+                                }
+                            }
+                        }
+                    })
+
+                    if (project) {
+                        const totalAmount = project.serviceProject.reduce((total, service) => {
+                            return total + Number(service.hours) * Number(service.price)
+                        }, 0)
+
+                        await smartbuild.project.update({
+                            where: {
+                                id: project.id
+                            },
+                            data: {
+                                balanceDue: totalAmount - Number(project.amountPaid)
+                            }
+                        })
+                    }
+
+                    return res.status(200).json({
+                        message: "Service project updated successfully",
+                        data: updatedServiceProject
+                    })
                 })
             }
         } catch (error) {
