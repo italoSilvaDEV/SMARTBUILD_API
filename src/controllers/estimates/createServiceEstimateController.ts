@@ -43,10 +43,28 @@ export class CreateServiceEstimateController {
             where: {
                 id: estimateId
             },
-            include: {
+            select: {
+                id: true,
+                type_estimate: true,
+                amountPaid: true,
+                projectId: true,
                 project: {
                     select: {
-                        company_id: true
+                        id: true,
+                        company_id: true,
+                        amountPaid: true,
+                        serviceProject: {
+                            select: {
+                                hours: true,
+                                price: true
+                            }
+                        }
+                    }
+                },
+                serviceProjects: {
+                    select: {
+                        quantity: true,
+                        unitPrice: true
                     }
                 }
             }
@@ -65,42 +83,70 @@ export class CreateServiceEstimateController {
         }
 
         try {
-            const newService = await prisma.estimateServiceProject.create({
-                data: {
-                    estimateId: estimate.id,
-                    name,
-                    description,
-                    quantity,
-                    unitPrice,
-                    lineTotal,
-                    notes,
-                    id_service: id_service || null,
-                    hours,
-                    price,
-                    start_date,
-                    deadline
-                }
-            })
-
-            if (estimate.type_estimate === "estimateProject") {
-                await prisma.serviceProject.create({
+            await prisma.$transaction(async (smartbuild) => {
+                const newService = await smartbuild.estimateServiceProject.create({
                     data: {
-                        projectId: estimate.projectId,
-                        company_id: estimate.project.company_id,
+                        estimateId: estimate.id,
                         name,
                         description: description || "",
+                        quantity,
+                        unitPrice,
+                        lineTotal,
+                        notes,
                         id_service: id_service || null,
-                        hours: hours || 0,
-                        price: price || 0,
+                        hours: hours,
+                        price: price,
                         start_date,
                         deadline
                     }
                 })
-            }
 
-            return res.status(201).json({
-                message: "Service created successfully",
-                data: newService
+                const totalAmount = estimate.serviceProjects.reduce((total, service) => {
+                    return total + Number(service.quantity) * Number(service.unitPrice)
+                }, 0)
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: estimate.id
+                    },
+                    data: {
+                        balanceDue: totalAmount - Number(estimate.amountPaid)
+                    }
+                })
+
+                if (estimate.type_estimate === "estimateProject") {
+                    await smartbuild.serviceProject.create({
+                        data: {
+                            projectId: estimate.projectId,
+                            company_id: estimate.project.company_id,
+                            name,
+                            description: description || "",
+                            id_service: id_service || null,
+                            hours: hours || 0,
+                            price: price || 0,
+                            start_date,
+                            deadline
+                        }
+                    })
+
+                    const totalAmount = estimate.project.serviceProject.reduce((total, service) => {
+                        return total + Number(service.hours) * Number(service.price)
+                    }, 0)
+
+                    await smartbuild.project.update({
+                        where: {
+                            id: estimate.projectId
+                        },
+                        data: {
+                            balanceDue: totalAmount - Number(estimate.project.amountPaid)
+                        }
+                    })
+                }
+
+                return res.status(201).json({
+                    message: "Service created successfully",
+                    data: newService
+                })
             })
         } catch (error) {
             return res.status(500).json({

@@ -22,6 +22,8 @@ export class ConvertToProjectController {
                 serviceProjects: true,
                 status: true,
                 totalAmount: true,
+                amountPaid: true,
+                balanceDue: true,
                 project: {
                     select: {
                         company_id: true,
@@ -51,7 +53,9 @@ export class ConvertToProjectController {
                     },
                     data: {
                         status_project: "Pre-Start",
-                        price: Number(estimate.totalAmount)
+                        price: Number(estimate.totalAmount),
+                        balanceDue: Number(estimate.balanceDue),
+                        amountPaid: Number(estimate.amountPaid)
                     },
                     select: {
                         contract_number: true
