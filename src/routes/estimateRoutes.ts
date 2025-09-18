@@ -55,7 +55,7 @@ estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProj
 estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
 estimateRoutes.put("/update/pdf-estimate", checkToken, UpdatePdfEstimateController.handle);
 estimateRoutes.patch("/update/balance-due", checkToken, balanceController.updateBalanceDue);
-estimateRoutes.patch("/update/amount-paid", checkToken, balanceController.updateAmountPaid);
+estimateRoutes.get("/amount-paid/:estimateId", checkToken, balanceController.getAmountPaid);
 
 
 

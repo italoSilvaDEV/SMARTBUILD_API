@@ -62,15 +62,14 @@ export class BalanceController {
         }
     }
 
-    async updateAmountPaid(req: Request, res: Response) {
+    async getAmountPaid(req: Request, res: Response) {
         const {
             estimateId,
-            amountPaid
-        } = req.body
+        } = req.params
 
-        if (!estimateId || !amountPaid) {
+        if (!estimateId) {
             return res.status(400).json({
-                error: "Estimate ID and amount paid are required"
+                error: "Estimate ID is required"
             })
         }
 
@@ -87,18 +86,23 @@ export class BalanceController {
         }
 
         try {
-            const updateAmountPaid = await prisma.estimate.update({
+            const invoices = await prisma.invoice.findMany({
                 where: {
-                    id: estimateId
+                    estimateId: estimateId,
+                    status: "paid"
                 },
-                data: {
-                    amountPaid: Number(amountPaid)
+                select: {
+                    totalAmount: true
                 }
             })
 
+            const amountPaid = invoices.reduce((total, invoice) => {
+                return total + Number(invoice.totalAmount)
+            }, 0)
+
             return res.status(200).json({
-                message: "Estimate amount paid updated successfully",
-                updateAmountPaid
+                message: "Estimate amount paid retrieved successfully",
+                amountPaid
             })
         } catch (error) {
             return res.status(500).json({

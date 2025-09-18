@@ -234,4 +234,4 @@ projectRoutes.post(
 const balanceController = new BalanceController();
 
 projectRoutes.patch("/project/update/balance-due", checkToken, balanceController.updateBalanceDue);
-projectRoutes.patch("/project/update/amount-paid", checkToken, balanceController.updateAmountPaid);
+projectRoutes.get("/project/amount-paid/:projectId", checkToken, balanceController.getAmountPaid);
