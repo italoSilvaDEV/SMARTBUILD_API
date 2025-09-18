@@ -1,10 +1,10 @@
 -- AlterTable
-ALTER TABLE `Estimate` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL DEFAULT 0,
-    ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL DEFAULT 0;
+ALTER TABLE `Estimate` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL,
+    ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL;
 
 -- AlterTable
-ALTER TABLE `project` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL DEFAULT 0,
-    ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL DEFAULT 0;
+ALTER TABLE `project` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL,
+    ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL;
 
 -- CreateTable
 CREATE TABLE `invoice_payment_time_line` (
