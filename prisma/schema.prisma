@@ -756,6 +756,8 @@ model Estimate {
   terms           String?  @db.Text
   status          String   @default("pending")
 
+  amountPaid Decimal? @default(0)
+  balanceDue Decimal? @default(0)
 
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
