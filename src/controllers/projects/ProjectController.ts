@@ -719,22 +719,20 @@ export class ProjectController {
   //novo updateserviceProject
   async updateServiceProject(req: Request, res: Response) {
     const data: IputServiceData = req.body;
-    console.log(data);
+
     try {
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
-        }
+        },
       });
 
       if (!serviceExists) {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
 
-      // Atualizar o serviço
-      let result;
-      if (!data.id_service) {
-        result = await prisma.serviceProject.update({
+      await prisma.$transaction(async (smartbuild) => {
+        const result = await smartbuild.serviceProject.update({
           where: {
             id: data.id,
           },
@@ -744,50 +742,47 @@ export class ProjectController {
             hours: data.hours,
             price: data.price,
           },
-        });
-      } else {
-        result = await prisma.serviceProject.update({
-          where: {
-            id: data.id,
-          },
-          data: {
-            name: data.name,
-            description: data.description,
-            hours: data.hours,
-            price: data.price,
-          },
-        });
-      }
-
-      // Se temos id_project e description, atualizar os InvoiceItems relacionados
-      if (data.id_project && data.description) {
-        // Buscar todas as faturas do projeto
-        const invoices = await prisma.invoice.findMany({
-          where: {
-            projectId: data.id_project
-          },
-          include: {
-            InvoiceItems: true
+          select: {
+            projectId: true
           }
-        });
+        })
 
-        // Para cada fatura, atualizar os itens que correspondem ao nome do serviço
-        for (const invoice of invoices) {
-          for (const item of invoice.InvoiceItems) {
-            if (item.name === serviceExists.name) {
-              await prisma.invoiceItem.update({
-                where: { id: item.id },
-                data: {
-                  description: data.description
-                }
-              });
-              console.log(`Atualizada descrição do item ${item.id} na fatura ${invoice.id}`);
+        const project = await smartbuild.project.findUnique({
+          where: {
+            id: result.projectId || ""
+          },
+          select: {
+            amountPaid: true,
+            serviceProject: {
+              select: {
+                id: true,
+                hours: true,
+                price: true
+              }
             }
           }
-        }
-      }
+        })
 
-      return res.json(result);
+        if (project) {
+          const totalPrice = project.serviceProject.reduce((total, service) => {
+            return total + Number(service.hours) * Number(service.price)
+          }, 0)
+
+          await smartbuild.project.update({
+            where: {
+              id: result.projectId || ""
+            },
+            data: {
+              balanceDue: totalPrice - Number(project.amountPaid)
+            }
+          })
+        }
+
+        return res.status(200).json({
+          message: "Service project updated successfully",
+          data: result
+        })
+      })
     } catch (error) {
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
@@ -887,59 +882,93 @@ export class ProjectController {
     try {
       const { id } = request.params;
 
-      // Verificar se o serviço existe
       const serviceProject = await prisma.serviceProject.findUnique({
-        where: { id: String(id) }
+        where: {
+          id
+        },
+        select: {
+          projectId: true
+        }
       });
 
       if (!serviceProject) {
-        return response.status(404).json({ error: "Service Project not found" });
+        return response.status(404).json({
+          error: "Service Project not found"
+        });
       }
 
+      await prisma.$transaction(async (smartbuild) => {
+        await smartbuild.galleryBefore.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      // Excluir outras entidades relacionadas
-      await prisma.galleryBefore.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.galleryAfter.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      await prisma.galleryAfter.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.imgServiceProject.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      await prisma.imgServiceProject.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.costProject.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      await prisma.costProject.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.activities.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      await prisma.activities.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.serviceStages.deleteMany({
+          where: { serviceProjectId: id },
+        });
 
-      await prisma.serviceStages.deleteMany({
-        where: { serviceProjectId: id },
-      });
+        await smartbuild.userServiceProject.deleteMany({
+          where: { service_project_id: id },
+        });
 
-      await prisma.userServiceProject.deleteMany({
-        where: { service_project_id: id },
-      });
+        await smartbuild.timeLine.deleteMany({
+          where: { service_project_id: id },
+        });
 
-      await prisma.timeLine.deleteMany({
-        where: { service_project_id: id },
-      });
+        await smartbuild.serviceProject.delete({
+          where: { id },
+        });
 
-      // Agora podemos excluir o ServiceProject com segurança
-      await prisma.serviceProject.delete({
-        where: {
-          id: String(id),
-        },
-      });
+        const project = await smartbuild.project.findUnique({
+          where: {
+            id: serviceProject.projectId || ""
+          },
+          select: {
+            id: true,
+            amountPaid: true,
+            serviceProject: {
+              select: {
+                hours: true,
+                price: true
+              }
+            }
+          }
+        })
 
-      return response.json({
-        message: "Service Project and its related data deleted successfully",
-      });
+        if (project) {
+          const totalPrice = project.serviceProject.reduce((total, service) => {
+            return total + Number(service.hours) * Number(service.price)
+          }, 0)
+
+          await smartbuild.project.update({
+            where: {
+              id: project.id
+            },
+            data: {
+              balanceDue: totalPrice - Number(project.amountPaid)
+            }
+          })
+        }
+
+        return response.json({
+          message: "Service Project and its related data deleted successfully",
+        });
+      })
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
