@@ -42,6 +42,7 @@ export class GetAllEstimatesByCompanyController {
                     canceledAt: true,
                     canceledById: true,
                     terms: true,
+                    balanceDue: true,
                     type_estimate: true,
                     multi_emails: true,
                     project: {
@@ -137,6 +138,31 @@ export class GetAllEstimatesByCompanyController {
             })
 
             const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
+                const invoices = await prisma.invoice.findMany({
+                    where: {
+                        estimateId: estimate.id,
+                        status: "paid"
+                    },
+                    select: {
+                        totalAmount: true
+                    }
+                })
+
+                const services = await prisma.estimateServiceProject.findMany({
+                    where: {
+                        estimateId: estimate.id
+                    },
+                    select: {
+                        quantity: true,
+                        unitPrice: true
+                    }
+                })
+
+                const totalInvoices = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
+                const totalAmount = services.reduce((acc, service) => acc + Number(service.quantity) * Number(service.unitPrice), 0)
+
+                const balanceDue = Number(totalAmount) - Number(totalInvoices) || 0
+
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
                         return await getPresignedUrl(pdf.uri)
@@ -156,6 +182,7 @@ export class GetAllEstimatesByCompanyController {
                     ...estimate,
                     project: {
                         ...estimate.project,
+                        balanceDue: balanceDue,
                         company: {
                             ...estimate.project.company,
                             avatar: urlCompanyAvatar
