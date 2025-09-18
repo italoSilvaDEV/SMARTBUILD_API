@@ -22,8 +22,6 @@ export class ConvertToProjectController {
                 serviceProjects: true,
                 status: true,
                 totalAmount: true,
-                amountPaid: true,
-                balanceDue: true,
                 project: {
                     select: {
                         company_id: true,
@@ -45,6 +43,22 @@ export class ConvertToProjectController {
             })
         }
 
+        const invoices = await prisma.invoice.findMany({
+            where: {
+                estimateId: estimateId,
+                status: "paid"
+            },
+            select: {
+                totalAmount: true
+            }
+        })
+
+        const totalAmountPaid = invoices.reduce((total, invoice) => {
+            return total + Number(invoice.totalAmount)
+        }, 0)
+
+        const balanceDue = Number(estimate.totalAmount) - Number(totalAmountPaid) || 0
+
         try {
             await prisma.$transaction(async (smartbuild) => {
                 const project = await smartbuild.project.update({
@@ -54,8 +68,8 @@ export class ConvertToProjectController {
                     data: {
                         status_project: "Pre-Start",
                         price: Number(estimate.totalAmount),
-                        balanceDue: Number(estimate.balanceDue),
-                        amountPaid: Number(estimate.amountPaid)
+                        balanceDue: Number(balanceDue),
+                        amountPaid: Number(totalAmountPaid)
                     },
                     select: {
                         contract_number: true

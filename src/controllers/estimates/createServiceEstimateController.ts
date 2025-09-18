@@ -46,13 +46,11 @@ export class CreateServiceEstimateController {
             select: {
                 id: true,
                 type_estimate: true,
-                amountPaid: true,
                 projectId: true,
                 project: {
                     select: {
                         id: true,
                         company_id: true,
-                        amountPaid: true,
                         serviceProject: {
                             select: {
                                 hours: true,
@@ -105,12 +103,26 @@ export class CreateServiceEstimateController {
                     return total + Number(service.quantity) * Number(service.unitPrice)
                 }, 0)
 
+                const invoices = await prisma.invoice.findMany({
+                    where: {
+                        estimateId: estimate.id,
+                        status: "paid"
+                    },
+                    select: {
+                        totalAmount: true
+                    }
+                })
+
+                const totalAmountPaid = invoices.reduce((total, invoice) => {
+                    return total + Number(invoice.totalAmount)
+                }, 0)
+
                 await smartbuild.estimate.update({
                     where: {
                         id: estimate.id
                     },
                     data: {
-                        balanceDue: totalAmount - Number(estimate.amountPaid)
+                        balanceDue: totalAmount - Number(totalAmountPaid)
                     }
                 })
 
@@ -133,12 +145,26 @@ export class CreateServiceEstimateController {
                         return total + Number(service.hours) * Number(service.price)
                     }, 0)
 
+                    const invoicesProject = await prisma.invoice.findMany({
+                        where: {
+                            projectId: estimate.projectId,
+                            status: "paid"
+                        },
+                        select: {
+                            totalAmount: true
+                        }
+                    })
+
+                    const totalAmountPaid = invoicesProject.reduce((total, invoice) => {
+                        return total + Number(invoice.totalAmount)
+                    }, 0)
+
                     await smartbuild.project.update({
                         where: {
                             id: estimate.projectId
                         },
                         data: {
-                            balanceDue: totalAmount - Number(estimate.project.amountPaid)
+                            balanceDue: totalAmount - Number(totalAmountPaid)
                         }
                     })
                 }

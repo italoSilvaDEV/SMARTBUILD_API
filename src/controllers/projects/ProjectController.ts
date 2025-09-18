@@ -681,7 +681,6 @@ export class ProjectController {
             id: data.id_project
           },
           select: {
-            amountPaid: true,
             serviceProject: {
               select: {
                 hours: true,
@@ -696,12 +695,26 @@ export class ProjectController {
             return total + Number(service.hours) * Number(service.price)
           }, 0)
 
+          const invoicesProject = await prisma.invoice.findMany({
+            where: {
+              projectId: data.id_project,
+              status: "paid"
+            },
+            select: {
+              totalAmount: true
+            }
+          })
+
+          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
+            return total + Number(invoice.totalAmount)
+          }, 0)
+
           await smartbuild.project.update({
             where: {
               id: data.id_project
             },
             data: {
-              balanceDue: totalPrice - Number(project.amountPaid),
+              balanceDue: totalPrice - Number(totalAmountPaidProject),
             },
           });
         }
@@ -768,12 +781,26 @@ export class ProjectController {
             return total + Number(service.hours) * Number(service.price)
           }, 0)
 
+          const invoicesProject = await prisma.invoice.findMany({
+            where: {
+              projectId: result.projectId || "",
+              status: "paid"
+            },
+            select: {
+              totalAmount: true
+            }
+          })
+
+          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
+            return total + Number(invoice.totalAmount)
+          }, 0)
+
           await smartbuild.project.update({
             where: {
               id: result.projectId || ""
             },
             data: {
-              balanceDue: totalPrice - Number(project.amountPaid)
+              balanceDue: totalPrice - Number(totalAmountPaidProject)
             }
           })
         }
@@ -940,7 +967,6 @@ export class ProjectController {
           },
           select: {
             id: true,
-            amountPaid: true,
             serviceProject: {
               select: {
                 hours: true,
@@ -955,12 +981,26 @@ export class ProjectController {
             return total + Number(service.hours) * Number(service.price)
           }, 0)
 
+          const invoicesProject = await prisma.invoice.findMany({
+            where: {
+              projectId: project.id,
+              status: "paid"
+            },
+            select: {
+              totalAmount: true
+            }
+          })
+
+          const totalAmountPaidProject = invoicesProject.reduce((total, invoice) => {
+            return total + Number(invoice.totalAmount)
+          }, 0)
+
           await smartbuild.project.update({
             where: {
               id: project.id
             },
             data: {
-              balanceDue: totalPrice - Number(project.amountPaid)
+              balanceDue: totalPrice - Number(totalAmountPaidProject)
             }
           })
         }
@@ -1242,7 +1282,6 @@ export class ProjectController {
           log: data.log,
           radius: data.radius ? Number(data.radius) : null,
           balanceDue: price,
-          amountPaid: 0,
         },
       });
 
