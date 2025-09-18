@@ -648,6 +648,8 @@ export class StripeController {
                         select: {
                             id: true,
                             totalAmount: true,
+                            amountPaid: true,
+                            balanceDue: true,
                         }
                     },
                     InvoiceSendHistory: {
