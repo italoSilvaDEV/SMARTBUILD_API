@@ -1,9 +1,9 @@
 -- AlterTable
-ALTER TABLE `Estimate` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL,
+ALTER TABLE `Estimate` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL DEFAULT 0,
     ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL;
 
 -- AlterTable
-ALTER TABLE `project` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL,
+ALTER TABLE `project` ADD COLUMN `amountPaid` DECIMAL(65, 30) NULL DEFAULT 0,
     ADD COLUMN `balanceDue` DECIMAL(65, 30) NULL;
 
 -- CreateTable
