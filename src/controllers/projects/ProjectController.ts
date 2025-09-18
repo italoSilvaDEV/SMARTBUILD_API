@@ -348,7 +348,7 @@ export class ProjectController {
       });
 
       // Montar resultado otimizado
-      const projectsWithCalculations = projects.map(async (project) => {
+      const projectsWithCalculations = projects.map(project => {
         const projectEstimates = estimatesMap.get(project.id) || [];
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
