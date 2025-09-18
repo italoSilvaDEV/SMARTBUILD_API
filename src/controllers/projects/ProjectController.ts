@@ -357,36 +357,6 @@ export class ProjectController {
         const totalNumberOfHoursWorked = workedHoursData?.totalNumberOfHoursWorked || 0;
         const workersOnThisProject = workedHoursData?.uniqueUsers?.size || 0;
 
-        const services = await prisma.serviceProject.findMany({
-          where: {
-            projectId: project.id
-          },
-          select: {
-            hours: true,
-            price: true
-          }
-        })
-
-        const invoices = await prisma.invoice.findMany({
-          where: {
-            projectId: project.id,
-            status: "paid"
-          },
-          select: {
-            totalAmount: true
-          }
-        })
-
-        const totalAmountPaid = invoices.reduce((total, invoice) => {
-          return total + Number(invoice.totalAmount)
-        }, 0)
-
-        const totalAmount = services.reduce((total, service) => {
-          return total + Number(service.hours) * Number(service.price)
-        }, 0)
-
-        const balanceDue = Number(totalAmount) - Number(totalAmountPaid) || 0
-
         const userAttendance = project.serviceProject.reduce((total, service) => {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
@@ -431,7 +401,6 @@ export class ProjectController {
 
         return {
           ...project,
-          balanceDue: balanceDue,
           client: {
             ...project.client,
             location: project.location,
