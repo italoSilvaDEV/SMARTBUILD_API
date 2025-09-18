@@ -97,7 +97,7 @@ export class CustomInvoiceController {
           externalInvoiceId: nextInvoiceNumber.toString(),
           invoiceType: "custom",
           status: "open",
-          totalAmount: finalTotalAmount || totalAmount,  // Usando o total calculado ou o fornecido
+          totalAmount: finalTotalAmount || totalAmount,
           dueDate: dueDateObj,
           description: description,
           projectId: project.id,

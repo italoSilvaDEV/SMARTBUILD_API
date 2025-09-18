@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const stripe = stripeConfig.getClient(); 
+const stripe = stripeConfig.getClient();
 
 type Estimate = {
     id: string;
@@ -154,7 +154,8 @@ export class StripeController {
             type_value,
             totalAmount,
             type_invoicebase,
-            estimateId
+            estimateId,
+            multi_emails
         } = req.body;
 
         try {
@@ -285,6 +286,7 @@ export class StripeController {
                     user_id: userId,
                     estimateId: estimate?.id || null,
                     type_invoicebase: type_invoicebase,
+                    multi_emails: multi_emails
                 },
             });
 
@@ -350,8 +352,8 @@ export class StripeController {
 
             // Para novos invoices (payment_element), não tem mais envio via Stripe
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
-                return res.status(400).json({ 
-                    error: "Payment Element invoices are not sent via Stripe. Use payment link instead." 
+                return res.status(400).json({
+                    error: "Payment Element invoices are not sent via Stripe. Use payment link instead."
                 });
             }
 
@@ -431,7 +433,7 @@ export class StripeController {
             // Se for um invoice antigo do Stripe (tipo "invoice"), tentar cancelar no Stripe também
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "invoice" && invoice.stripeInvoiceId) {
                 const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
-                
+
                 try {
                     await stripe.invoices.voidInvoice(invoice.stripeInvoiceId, { stripeAccount: stripeAccountId });
                     console.log("Invoice cancelado no Stripe também");
@@ -744,7 +746,8 @@ export class StripeController {
             userId,
             type_value,
             services,
-            totalAmount
+            totalAmount,
+            multi_emails
         } = req.body;
 
         try {
@@ -822,7 +825,8 @@ export class StripeController {
                     percentageCoefficient: coefficientPerfentage,
                     type_value: type_value,
                     user_id: userId,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
+                    multi_emails: multi_emails
                 }
             });
 
