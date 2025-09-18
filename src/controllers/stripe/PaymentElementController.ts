@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
 
@@ -421,6 +422,63 @@ export class PaymentElementController {
 
         } catch (error) {
             console.error("Erro ao listar PaymentIntents:", error);
+            return res.status(500).json({
+                error: "Internal Server Error"
+            });
+        }
+    }
+
+    /**
+     * Busca o PDF de uma invoice
+     */
+    getInvoicePdf = async (req: Request, res: Response) => {
+        const { invoiceId } = req.params;
+
+        try {
+            console.log("Buscando PDF para invoice:", invoiceId);
+
+            // Buscar invoice com PDFs relacionados
+            const invoice = await prisma.invoice.findUnique({
+                where: { id: invoiceId },
+                include: {
+                    PdfProject: true
+                }
+            });
+
+            if (!invoice) {
+                return res.status(404).json({
+                    error: "Invoice not found"
+                });
+            }
+
+            // Verificar se existe PDF
+            if (!invoice.PdfProject || invoice.PdfProject.length === 0) {
+                return res.status(404).json({
+                    error: "No PDF found for this invoice"
+                });
+            }
+
+            // Pegar o primeiro PDF (assumindo que há apenas um por invoice)
+            const pdf = invoice.PdfProject[0];
+
+            if (!pdf.uri) {
+                return res.status(404).json({
+                    error: "PDF URI not found"
+                });
+            }
+
+            // Gerar URL presigned para o PDF
+            const pdfUrl = await getPresignedUrl(pdf.uri);
+
+            console.log("PDF URL gerada com sucesso");
+
+            return res.status(200).json({
+                pdfUrl: pdfUrl,
+                fileName: pdf.original_file_name || 'invoice.pdf'
+            });
+
+        } catch (error) {
+            console.error("Erro ao buscar PDF da invoice:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });
