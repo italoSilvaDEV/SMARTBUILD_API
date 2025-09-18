@@ -330,7 +330,7 @@ model Project {
   estimates          Estimate[]
 
   amountPaid Decimal? @default(0)
-  balanceDue Decimal? @default(0)
+  balanceDue Decimal?
 
   invoices Invoice[] @relation(name: "ProjectToInvoice")
 
@@ -757,7 +757,7 @@ model Estimate {
   status          String   @default("pending")
 
   amountPaid Decimal? @default(0)
-  balanceDue Decimal? @default(0)
+  balanceDue Decimal?
 
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
