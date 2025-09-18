@@ -445,6 +445,10 @@ export class ProjectController {
 
   async getProjectById(req: Request, res: Response) {
     const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: "Project ID is required" });
+    }
     try {
       const project = await prisma.project.findUnique({
         where: { id },
@@ -511,6 +515,28 @@ export class ProjectController {
         },
       });
 
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const totalAmount = project.serviceProject.reduce((total, service) => {
+        return total + Number(service.hours) * Number(service.price)
+      }, 0)
+
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          projectId: project.id,
+          status: "paid"
+        },
+        select: {
+          totalAmount: true
+        }
+      })
+
+      const totalAmountPaid = invoices.reduce((total, invoice) => {
+        return total + Number(invoice.totalAmount)
+      }, 0)
+
       if (project) {
         const costProjects = await Promise.all(
           project.serviceProject.flatMap(async (serviceProject) =>
@@ -521,6 +547,7 @@ export class ProjectController {
                 transaction_type: cost.transaction_type,
                 price: cost.price,
                 amout: cost.amout,
+                balanceDue: totalAmount - Number(totalAmountPaid),
                 service_project_id: cost.ServiceProject?.id,
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
