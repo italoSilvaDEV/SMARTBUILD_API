@@ -348,7 +348,7 @@ export class ProjectController {
       });
 
       // Montar resultado otimizado
-      const projectsWithCalculations = projects.map(project => {
+      const projectsWithCalculations = projects.map(async (project) => {
         const projectEstimates = estimatesMap.get(project.id) || [];
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
@@ -399,8 +399,22 @@ export class ProjectController {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
 
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            projectId: project.id,
+            status: "paid"
+          }
+        });
+
+        const totalAmountPaid = invoices.reduce((total, invoice) => {
+          return total + Number(invoice.totalAmount);
+        }, 0);
+
+        const balanceDue = priceProject - Number(totalAmountPaid);
+
         return {
           ...project,
+          balanceDue: balanceDue,
           client: {
             ...project.client,
             location: project.location,
