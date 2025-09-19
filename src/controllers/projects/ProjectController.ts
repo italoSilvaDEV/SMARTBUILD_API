@@ -348,7 +348,7 @@ export class ProjectController {
       });
 
       // Montar resultado otimizado
-      const projectsWithCalculations = projects.map(async (project) => {
+      const projectsWithCalculations = await Promise.all(projects.map(async (project) => {
         const projectEstimates = estimatesMap.get(project.id) || [];
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
@@ -426,7 +426,7 @@ export class ProjectController {
           price_project: priceProject,
           estimates: projectEstimates
         };
-      });
+      }));
 
       // Consulta do total apenas uma vez
       const total = await prisma.project.count({
