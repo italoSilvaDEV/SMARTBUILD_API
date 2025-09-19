@@ -16,12 +16,18 @@ export class DeleteServiceEstimateController {
         const serviceEstimate = await prisma.estimateServiceProject.findUnique({
             where: {
                 id: serviceId
+            },
+            select: {
+                estimateId: true,
             }
         })
 
         const serviceProject = await prisma.serviceProject.findUnique({
             where: {
                 id: serviceId
+            },
+            select: {
+                projectId: true,
             }
         })
 

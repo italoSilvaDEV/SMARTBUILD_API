@@ -12,9 +12,12 @@ paymentElementRoutes.post("/stripe/payments/start/:invoiceId", paymentElementCon
 paymentElementRoutes.post("/stripe/payments/recalculate", paymentElementController.recalculatePayment);
 
 // Obter status do PaymentIntent
-paymentElementRoutes.get("/stripe/payments/status/:paymentIntentId", paymentElementController.getPaymentStatus);
+paymentElementRoutes.get("/stripe/payments/status/:paymentIntentId", paymentElementController.getPaymentStatus); 
 
 // Listar PaymentIntents de uma invoice
 paymentElementRoutes.get("/stripe/payments/invoice/:invoiceId", checkToken, paymentElementController.getInvoicePaymentIntents);
+
+// Buscar PDF de uma invoice
+paymentElementRoutes.get("/stripe/payments/invoice/:invoiceId/pdf", paymentElementController.getInvoicePdf);
 
 export { paymentElementRoutes };

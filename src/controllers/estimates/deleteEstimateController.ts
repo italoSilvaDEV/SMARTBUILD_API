@@ -20,6 +20,7 @@ export class DeleteEstimateController {
             select: {
                 status: true,
                 projectId: true,
+                type_estimate: true,
                 project: {
                     select: {
                         status_project: true,
@@ -41,20 +42,24 @@ export class DeleteEstimateController {
         }
 
         try {
-            await prisma.estimate.delete({
-                where: {
-                    id: estimateId
-                }
-            })
+            await prisma.$transaction(async (smartbuild) => {
+                await smartbuild.estimate.delete({
+                    where: {
+                        id: estimateId
+                    }
+                })
 
-            await prisma.project.delete({
-                where: {
-                    id: estimate.projectId
+                if (estimate.type_estimate === "estimate") {
+                    await smartbuild.project.delete({
+                        where: {
+                            id: estimate.projectId
+                        }
+                    })
                 }
-            })
 
-            return res.status(200).json({
-                message: "Estimate deleted successfully"
+                return res.status(200).json({
+                    message: "Estimate deleted successfully"
+                })
             })
         } catch (error) {
             return res.status(500).json({

@@ -12,6 +12,7 @@ type payloadCreateEstimate = {
     projectId: string;
     idPdfProject: string;
     type_estimate: TypeEstimate;
+    multi_emails: string;
 }
 
 export class CreateNewEstimateController {
@@ -32,7 +33,7 @@ export class CreateNewEstimateController {
         const project = await prisma.project.findUnique({
             where: {
                 id: payloadCreateEstimate.projectId
-            }
+            },
         })
 
         if (!project) {
@@ -48,10 +49,13 @@ export class CreateNewEstimateController {
                         number: payloadCreateEstimate.preGeneratedNumber,
                         approvedAt: payloadCreateEstimate.approvedAt,
                         totalAmount: Number(payloadCreateEstimate.totalAmount),
+                        balanceDue: Number(payloadCreateEstimate.totalAmount),
+                        amountPaid: 0,
                         description: payloadCreateEstimate.description,
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
+                        multi_emails: payloadCreateEstimate.multi_emails,
                         project: {
                             connect: {
                                 id: payloadCreateEstimate.projectId
@@ -76,8 +80,9 @@ export class CreateNewEstimateController {
                             id: payloadCreateEstimate.projectId
                         },
                         data: {
-                            price: totalPrice
-                        }
+                            price: totalPrice,
+                            balanceDue: totalPrice || 0
+                        },
                     })
                 } else {
                     await smartbuild.project.update({
@@ -85,7 +90,8 @@ export class CreateNewEstimateController {
                             id: payloadCreateEstimate.projectId
                         },
                         data: {
-                            price: Number(payloadCreateEstimate.totalAmount)
+                            price: Number(payloadCreateEstimate.totalAmount),
+                            balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
                         }
                     })
                 }

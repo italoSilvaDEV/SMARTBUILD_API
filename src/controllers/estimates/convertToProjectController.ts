@@ -51,7 +51,7 @@ export class ConvertToProjectController {
                     },
                     data: {
                         status_project: "Pre-Start",
-                        price: Number(estimate.totalAmount)
+                        price: Number(estimate.totalAmount),
                     },
                     select: {
                         contract_number: true

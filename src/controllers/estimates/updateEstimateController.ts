@@ -5,6 +5,7 @@ type Fields = {
     description?: string | null
     terms?: string | null
     totalAmount?: number
+    multi_emails?: string | null
 }
 
 export class UpdateEstimateFieldsController {
@@ -14,6 +15,7 @@ export class UpdateEstimateFieldsController {
             description,
             terms,
             totalAmount,
+            multi_emails,
         } = req.body
 
         if (!estimateId) {
@@ -34,7 +36,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        if (description === null && terms === null) {
+        if (description === null && terms === null && multi_emails === null) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -48,13 +50,21 @@ export class UpdateEstimateFieldsController {
             } else if (description === "") {
                 campos.description = null
             }
+
             if (terms !== undefined) {
                 campos.terms = terms
             } else if (terms === "") {
                 campos.terms = null
             }
+
             if (totalAmount !== undefined) {
                 campos.totalAmount = totalAmount
+            }
+
+            if (multi_emails !== undefined) {
+                campos.multi_emails = multi_emails
+            } else if (multi_emails === "") {
+                campos.multi_emails = null
             }
 
             const updatedEstimate = await prisma.estimate.update({

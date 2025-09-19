@@ -99,7 +99,7 @@ export class UpdateServiceEstimateController {
                     where: {
                         id: serviceId
                     },
-                    data: campos
+                    data: campos,
                 })
 
                 return res.status(200).json({
@@ -113,8 +113,9 @@ export class UpdateServiceEstimateController {
                     where: {
                         id: serviceId
                     },
-                    data: campos
+                    data: campos,
                 })
+
                 return res.status(200).json({
                     message: "Service project updated successfully",
                     data: updatedServiceProject

@@ -348,7 +348,7 @@ export class ProjectController {
       });
 
       // Montar resultado otimizado
-      const projectsWithCalculations = projects.map(project => {
+      const projectsWithCalculations = await Promise.all(projects.map(async (project) => {
         const projectEstimates = estimatesMap.get(project.id) || [];
         const costOfWork = costsMap.get(project.id) || 0;
         const workedHoursData = workedHoursMap.get(project.id);
@@ -399,8 +399,22 @@ export class ProjectController {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
 
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            projectId: project.id,
+            status: "paid"
+          }
+        });
+
+        const totalAmountPaid = invoices.reduce((total, invoice) => {
+          return total + Number(invoice.totalAmount);
+        }, 0);
+
+        const balanceDue = priceProject - Number(totalAmountPaid);
+
         return {
           ...project,
+          balanceDue: balanceDue,
           client: {
             ...project.client,
             location: project.location,
@@ -412,7 +426,7 @@ export class ProjectController {
           price_project: priceProject,
           estimates: projectEstimates
         };
-      });
+      }));
 
       // Consulta do total apenas uma vez
       const total = await prisma.project.count({
@@ -445,6 +459,10 @@ export class ProjectController {
 
   async getProjectById(req: Request, res: Response) {
     const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: "Project ID is required" });
+    }
     try {
       const project = await prisma.project.findUnique({
         where: { id },
@@ -510,6 +528,28 @@ export class ProjectController {
           },
         },
       });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const totalAmount = project.serviceProject.reduce((total, service) => {
+        return total + Number(service.hours) * Number(service.price)
+      }, 0)
+
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          projectId: project.id,
+          status: "paid"
+        },
+        select: {
+          totalAmount: true
+        }
+      })
+
+      const totalAmountPaid = invoices.reduce((total, invoice) => {
+        return total + Number(invoice.totalAmount)
+      }, 0)
 
       if (project) {
         const costProjects = await Promise.all(
@@ -631,6 +671,7 @@ export class ProjectController {
 
         res.json({
           ...project,
+          balanceDue: totalAmount - Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location, // Substitui client.location por project.location
@@ -674,6 +715,7 @@ export class ProjectController {
           company_id: data.company_id,
         },
       });
+
       return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -686,75 +728,37 @@ export class ProjectController {
   //novo updateserviceProject
   async updateServiceProject(req: Request, res: Response) {
     const data: IputServiceData = req.body;
-    console.log(data);
+
     try {
       const serviceExists = await prisma.serviceProject.findUnique({
         where: {
           id: data.id,
-        }
+        },
       });
 
       if (!serviceExists) {
         return res.status(400).json({ error: "Serviço não encontrado" });
       }
 
-      // Atualizar o serviço
-      let result;
-      if (!data.id_service) {
-        result = await prisma.serviceProject.update({
-          where: {
-            id: data.id,
-          },
-          data: {
-            name: data.name,
-            description: data.description,
-            hours: data.hours,
-            price: data.price,
-          },
-        });
-      } else {
-        result = await prisma.serviceProject.update({
-          where: {
-            id: data.id,
-          },
-          data: {
-            name: data.name,
-            description: data.description,
-            hours: data.hours,
-            price: data.price,
-          },
-        });
-      }
-
-      // Se temos id_project e description, atualizar os InvoiceItems relacionados
-      if (data.id_project && data.description) {
-        // Buscar todas as faturas do projeto
-        const invoices = await prisma.invoice.findMany({
-          where: {
-            projectId: data.id_project
-          },
-          include: {
-            InvoiceItems: true
-          }
-        });
-
-        // Para cada fatura, atualizar os itens que correspondem ao nome do serviço
-        for (const invoice of invoices) {
-          for (const item of invoice.InvoiceItems) {
-            if (item.name === serviceExists.name) {
-              await prisma.invoiceItem.update({
-                where: { id: item.id },
-                data: {
-                  description: data.description
-                }
-              });
-              console.log(`Atualizada descrição do item ${item.id} na fatura ${invoice.id}`);
-            }
-          }
+      const result = await prisma.serviceProject.update({
+        where: {
+          id: data.id,
+        },
+        data: {
+          name: data.name,
+          description: data.description,
+          hours: data.hours,
+          price: data.price,
+        },
+        select: {
+          projectId: true
         }
-      }
+      })
 
-      return res.json(result);
+      return res.status(200).json({
+        message: "Service project updated successfully",
+        data: result
+      })
     } catch (error) {
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
@@ -854,17 +858,22 @@ export class ProjectController {
     try {
       const { id } = request.params;
 
-      // Verificar se o serviço existe
       const serviceProject = await prisma.serviceProject.findUnique({
-        where: { id: String(id) }
+        where: {
+          id
+        },
+        select: {
+          projectId: true
+        }
       });
 
       if (!serviceProject) {
-        return response.status(404).json({ error: "Service Project not found" });
+        return response.status(404).json({
+          error: "Service Project not found"
+        });
       }
 
 
-      // Excluir outras entidades relacionadas
       await prisma.galleryBefore.deleteMany({
         where: { serviceProjectId: id },
       });
@@ -897,11 +906,8 @@ export class ProjectController {
         where: { service_project_id: id },
       });
 
-      // Agora podemos excluir o ServiceProject com segurança
       await prisma.serviceProject.delete({
-        where: {
-          id: String(id),
-        },
+        where: { id },
       });
 
       return response.json({
@@ -1179,6 +1185,7 @@ export class ProjectController {
           lat: data.lat,
           log: data.log,
           radius: data.radius ? Number(data.radius) : null,
+          balanceDue: price,
         },
       });
 
