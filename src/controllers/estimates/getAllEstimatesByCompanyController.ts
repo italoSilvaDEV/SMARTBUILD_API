@@ -161,11 +161,7 @@ export class GetAllEstimatesByCompanyController {
                 const totalInvoices = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
                 const totalAmount = services.reduce((acc, service) => acc + Number(service.quantity) * Number(service.unitPrice), 0)
 
-                console.log(totalAmount, totalInvoices)
-
                 const balanceDue = Number(totalAmount) - Number(totalInvoices) || 0
-
-                console.log(balanceDue)
 
                 const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
                     if (pdf.uri) {
@@ -184,9 +180,9 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
+                    balanceDue: balanceDue,
                     project: {
                         ...estimate.project,
-                        balanceDue: balanceDue,
                         company: {
                             ...estimate.project.company,
                             avatar: urlCompanyAvatar
