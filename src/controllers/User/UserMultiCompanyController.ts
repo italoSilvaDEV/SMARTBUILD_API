@@ -130,8 +130,6 @@ export class UserMultiCompanyController {
         companyId
       } = req.body;
 
-      console.log(companyId)
-
       if (!tokenCompany || !companyId) {
         return res.status(400).json({ error: "Token and companyId are required!" });
       }
@@ -293,8 +291,6 @@ export class UserMultiCompanyController {
               if (stripeSubscription.status === 'past_due' || stripeSubscription.status === 'unpaid') {
                 paymentFailed = true;
               }
-
-              console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
             }
             // catch (stripeError: any) {
             //   console.error('Erro ao verificar assinatura no Stripe:', stripeError);
@@ -358,11 +354,6 @@ export class UserMultiCompanyController {
           expiresIn: "30d"
         }
       );
-
-      console.log(selectedOffice?.name)
-      console.log(selectedOffice)
-
-      console.log("Está chegando aqui?")
 
       return res.status(200).json({
         msg: "Authentication completed successfully!",
