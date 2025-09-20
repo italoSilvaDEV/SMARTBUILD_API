@@ -95,6 +95,9 @@ export class UserMultiCompanyController {
         }
       );
 
+      console.log(companiesWithAvatarUrls)
+      console.log("Está chegando aqui?")
+
       // Formatar resposta com array de companies
       return res.json({
         msg: "Authentication completed successfully!",
