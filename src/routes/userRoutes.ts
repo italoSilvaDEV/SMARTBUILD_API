@@ -39,7 +39,7 @@ userRoutes.put("/user/img/:id",
 )
 
 // search one user
-userRoutes.get("/user/consulta/:id", checkToken, User.searchOneUser)
+userRoutes.get("/user/consulta/:id/:company_id", checkToken, User.searchOneUser)
 
 // app
 userRoutes.get("/user/details/:id", checkToken, User.getUserDetails);
