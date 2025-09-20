@@ -165,10 +165,12 @@ export class UserMultiCompanyController {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const userCompany = await prisma.userCompany.findFirst({
+      const userCompany = await prisma.userCompany.findUnique({
         where: {
-          userId: user.id,
-          companyId: companyId
+          userId_companyId: {
+            userId: user.id,
+            companyId: companyId
+          }
         },
         include: {
           office: true,

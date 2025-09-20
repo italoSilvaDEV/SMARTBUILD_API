@@ -28,7 +28,7 @@ export class UserController {
     deleteFile(`./public/tmp/user/${file}`);
     deleteFile(`./public/tmp/user/${requestFile}`);
   }
-// criar
+  // criar
   async create(req: Request, res: Response) {
     const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -138,7 +138,7 @@ export class UserController {
           });
 
           const urlLogo = company.avatar ? await getPresignedUrl(company.avatar) : '';
-          
+
           const templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
           const mailOptions = {
             from: SMTP_CONFIG.user,
@@ -217,7 +217,7 @@ export class UserController {
         subject: "Smart Build",
         html: templateEmail,
       };
-      
+
       // apagar tmp
       if (req.file?.filename) {
         deleteFile(`./public/tmp/user/${req.file.filename}`);
@@ -229,7 +229,7 @@ export class UserController {
         console.error(`[create][${reqId}] email SEND ERROR:`, mailErr);
         // segue retorno 201 mesmo assim? (mantive sua lógica atual de sucesso antes do send)
       }
-      
+
       return res.status(201).json({ message: "User created successfully" });
     } catch (error: any) {
       console.error(`[create][${reqId}] CATCH ERROR:`, error);
@@ -930,29 +930,47 @@ export class UserController {
         avatar: true,
         document: true,
         isDisabled: true,
-        office: {
-          select: {
-            name: true,
-          },
-        },
         city_and_state: true,
         hourly_price: true
       },
     });
 
-    // Processar URLs dos avatares
     const usersWithPresignedAvatar = await Promise.all(
       result.map(async (user) => ({
         ...user,
-        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null, // Gera URL assinada
+        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
       }))
     );
+
+    const userWithOffice = await Promise.all(result.map(async (user) => {
+      const userCompany = await prisma.userCompany.findUnique({
+        where: {
+          userId_companyId: {
+            userId: user.id,
+            companyId: company_id
+          }
+        },
+        select: {
+          office: true
+        }
+      })
+
+      return {
+        user: {
+          usersWithPresignedAvatar,
+          office: userCompany?.office
+        }
+      }
+    }))
 
     const total = await prisma.user.count({
       where: whereCondition
     });
 
-    return response.json({ users: usersWithPresignedAvatar, total });
+    return response.json({
+      users: userWithOffice,
+      total
+    });
   }
 
   async delete(request: Request, response: Response) {
