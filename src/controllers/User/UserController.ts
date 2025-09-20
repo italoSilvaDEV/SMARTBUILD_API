@@ -1418,10 +1418,9 @@ export class UserController {
 
   async getLocalSubscriptionsStatus(req: Request, res: Response) {
     try {
-      const userIdFromParam = req.params.userId;
-      const userId = userIdFromParam;
+      const { userId, company_id } = req.params;
 
-      if (!userId) {
+      if (!userId || !company_id) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
 
@@ -1506,6 +1505,24 @@ export class UserController {
         }
       }
 
+      let office = null;
+
+      if (company_id) {
+        const userCompany = await prisma.userCompany.findUnique({
+          where: {
+            userId_companyId: {
+              userId: userId,
+              companyId: company_id
+            }
+          },
+          select: {
+            office: true
+          }
+        })
+
+        office = userCompany?.office;
+      }
+
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
         subscription,
@@ -1513,7 +1530,8 @@ export class UserController {
         stripeSubscriptionCanceled,
         paymentFailed,
         permissions,
-        plan: planInfo
+        plan: planInfo,
+        office: office
       });
 
     } catch (error) {
