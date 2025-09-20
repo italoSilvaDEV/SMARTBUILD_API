@@ -130,6 +130,8 @@ export class UserMultiCompanyController {
         companyId
       } = req.body;
 
+      console.log(companyId)
+
       if (!tokenCompany || !companyId) {
         return res.status(400).json({ error: "Token and companyId are required!" });
       }
