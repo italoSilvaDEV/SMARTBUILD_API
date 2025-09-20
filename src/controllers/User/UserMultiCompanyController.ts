@@ -184,6 +184,8 @@ export class UserMultiCompanyController {
         }
       });
 
+      console.log(userCompany)
+
       const company = await prisma.company.findUnique({
         where: {
           id: companyId
