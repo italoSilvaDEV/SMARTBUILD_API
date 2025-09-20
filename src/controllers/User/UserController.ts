@@ -798,7 +798,7 @@ export class UserController {
 
   async searchOneUser(request: Request, response: Response) {
     try {
-      let { id } = request.params;
+      let { id, company_id } = request.params;
       const result = await prisma.user.findUnique({
         where: { id },
         select: {
@@ -813,12 +813,6 @@ export class UserController {
           profession: true,
           isDisabled: true,
           isOverTime: true,
-          office: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
           seller_project: {
             select: {
               status_project: true,
@@ -838,11 +832,26 @@ export class UserController {
           },
         },
       });
+
+      const userCompany = await prisma.userCompany.findUnique({
+        where: {
+          userId_companyId: {
+            userId: id,
+            companyId: company_id
+          }
+        },
+        select: {
+          office: true
+        }
+      })
+
       if (!result) {
         throw Error("User not found!");
       }
+
       const formattedResult = {
         ...result,
+        office: userCompany?.office,
         avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
         seller_project: result?.seller_project.map((project) => {
           const price_project = project.serviceProject.reduce(
