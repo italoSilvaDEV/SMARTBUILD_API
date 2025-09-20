@@ -71,11 +71,8 @@ export class CompanyController {
                 }
             });
 
-            console.log("Criou company", company)
-
             const isMultiCompany = await isMultiCompanyEnabled()
             if (isMultiCompany) {
-                console.log("Criou user com multi company")
                 const user = await prisma.user.create({
                     data: {
                         name: data.name,
@@ -90,19 +87,15 @@ export class CompanyController {
                         company_id: company.id
                     },
                 });
-                console.log("Criou user", user)
-                const userCompany = await prisma.userCompany.create({
+                await prisma.userCompany.create({
                     data: {
                         userId: user.id,
                         companyId: company.id,
                         office_id: String(office?.id),
-
                     }
                 });
-                console.log("Criou userCompany", userCompany)
             } else {
-                console.log("Criou user sem multi company")
-                const user = await prisma.user.create({
+                await prisma.user.create({
                     data: {
                         name: data.name,
                         email: data.email,
@@ -116,7 +109,6 @@ export class CompanyController {
                         company_id: company.id
                     },
                 });
-                console.log("Criou user", user)
             }
 
             return res.status(201).json(company);

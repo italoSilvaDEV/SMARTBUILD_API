@@ -555,6 +555,7 @@ export class UserController {
       id,
       name,
       email,
+      company_id,
       city_and_state,
       office,
       phone,
@@ -632,9 +633,21 @@ export class UserController {
             },
           });
         }
-
       }
 
+      if (office && company_id) {
+        await prisma.userCompany.update({
+          where: {
+            userId_companyId: {
+              userId: user.id,
+              companyId: company_id
+            }
+          },
+          data: {
+            office_id: office.id,
+          }
+        })
+      }
 
       if (current_password && password) {
         const checkPassword = await bcrypt.compare(
@@ -657,7 +670,6 @@ export class UserController {
             email,
             password: hashedPassword,
             city_and_state,
-            office_id: office.id,
             phone,
             hourly_price,
             profession,
@@ -672,7 +684,6 @@ export class UserController {
             name,
             email,
             city_and_state,
-            office_id: office.id,
             phone,
             hourly_price,
             profession,
