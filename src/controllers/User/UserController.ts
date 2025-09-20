@@ -1541,5 +1541,93 @@ export class UserController {
       });
     }
   }
+
+  async deleteUserCompany(req: Request, res: Response) {
+    const {
+      userId,
+      companyId
+    } = req.params
+
+    if (!userId || !companyId) {
+      return res.status(400).json({
+        error: "ID de usuário e empresa não fornecidos"
+      })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId
+      }
+    })
+
+    if (!user) {
+      return res.status(404).json({
+        where: {
+          error: "Usuário não encontrado"
+        }
+      })
+    }
+
+    const company = await prisma.company.findUnique({
+      where: {
+        id: companyId
+      }
+    })
+
+    if (!company) {
+      return res.status(400).json({
+        error: "ID de empresa não fornecido"
+      })
+    }
+
+    const userCompany = await prisma.userCompany.findUnique({
+      where: {
+        userId_companyId: {
+          userId: user.id,
+          companyId: company.id
+        }
+      },
+      select: {
+        id: true,
+        userId: true,
+        companyId: true,
+        office: {
+          select: {
+            name: true,
+          }
+        }
+      }
+    })
+
+    if (!userCompany) {
+      return res.status(404).json({
+        error: "Usuário não encontrado na empresa"
+      })
+    }
+
+    if (userCompany.office.name === "administrator" || userCompany.office.name === "Administrator") {
+      return res.status(400).json({
+        error: "Não é possível remover o usuário administrador da empresa"
+      })
+    }
+
+    try {
+      await prisma.userCompany.delete({
+        where: {
+          id: userCompany.id,
+          userId: userCompany.userId,
+          companyId: userCompany.companyId
+        }
+      })
+
+      return res.json({
+        message: "Usuário removido da empresa com sucesso"
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal server error"
+      })
+    }
+  }
 }
 

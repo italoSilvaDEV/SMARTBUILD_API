@@ -80,4 +80,7 @@ userRoutes.post("/auth/by-company", async (req, res) => {
   return UserMultiCompany.authenticateByCompany(req, res);
 });
 
+userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, User.deleteUserCompany);
+
+
 export { userRoutes }
