@@ -352,6 +352,8 @@ export class UserMultiCompanyController {
         }
       );
 
+      console.log(selectedOffice)
+
       // Formatar resposta
       return res.status(200).json({
         msg: "Authentication completed successfully!",
