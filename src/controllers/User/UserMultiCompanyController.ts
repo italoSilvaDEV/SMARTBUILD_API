@@ -352,9 +352,11 @@ export class UserMultiCompanyController {
         }
       );
 
+      console.log(selectedOffice?.name)
       console.log(selectedOffice)
 
-      // Formatar resposta
+      console.log("Está chegando aqui?")
+
       return res.status(200).json({
         msg: "Authentication completed successfully!",
         token,
