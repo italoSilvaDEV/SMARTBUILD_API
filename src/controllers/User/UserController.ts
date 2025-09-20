@@ -935,13 +935,6 @@ export class UserController {
       },
     });
 
-    const usersWithPresignedAvatar = await Promise.all(
-      result.map(async (user) => ({
-        ...user,
-        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
-      }))
-    );
-
     const userWithOffice = await Promise.all(result.map(async (user) => {
       const userCompany = await prisma.userCompany.findUnique({
         where: {
@@ -956,10 +949,9 @@ export class UserController {
       })
 
       return {
-        user: {
-          usersWithPresignedAvatar,
-          office: userCompany?.office
-        }
+        ...user,
+        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
+        office: userCompany?.office
       }
     }))
 
