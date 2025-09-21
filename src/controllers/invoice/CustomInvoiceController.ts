@@ -992,12 +992,12 @@ export class CustomInvoiceController {
         });
       }
 
-      if (existingInvoice.invoiceType !== "custom") {
-        return res.status(400).json({
-          error:
-            "Not a custom invoice"
-        });
-      }
+      // if (existingInvoice.invoiceType !== "custom") {
+      //   return res.status(400).json({
+      //     error:
+      //       "Not a custom invoice"
+      //   });
+      // }
 
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
@@ -1006,6 +1006,14 @@ export class CustomInvoiceController {
           invoiceId: existingInvoice.id
         }
       });
+
+      let newInvoiceType
+      if (existingInvoice.invoiceType === "stripe") {
+        newInvoiceType = "custom";
+      }else{
+        newInvoiceType = existingInvoice.invoiceType;
+      }
+
 
       const updatedInvoice = await prisma.invoice.update({
         where: {
@@ -1017,6 +1025,8 @@ export class CustomInvoiceController {
           description: description || existingInvoice.description,
           type_value: type_value || existingInvoice.type_value,
           percentageCoefficient: coefficientPerfentage,
+          invoiceType: newInvoiceType,
+          invoiceTypeStripe: null,
           multi_emails: multi_emails || existingInvoice.multi_emails,
           updatedAt: new Date(),
         },
