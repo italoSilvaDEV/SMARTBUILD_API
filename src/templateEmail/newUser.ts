@@ -132,7 +132,7 @@ export const NewUser = (name: string, logo: string, code: string) => `<!DOCTYPE 
 </tr>
 <tr>
 <td align="center" style="padding:0;Margin:0;padding-top:5px;padding-bottom:25px">
-<table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px;background:linear-gradient(135deg, #007AFF 0%, #0051D5 100%);border-radius:12px;box-shadow:0 4px 15px rgba(0,122,255,0.3);" role="presentation">
+<table href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" target="_blank" cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px;background:linear-gradient(135deg, #007AFF 0%, #0051D5 100%);border-radius:12px;box-shadow:0 4px 15px rgba(0,122,255,0.3);" role="presentation">
 <tr>
 <td align="center" style="padding:0;Margin:0;padding:15px 25px">
 <table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px" role="presentation">
@@ -141,7 +141,7 @@ export const NewUser = (name: string, logo: string, code: string) => `<!DOCTYPE 
 <span style="font-size:20px;color:#FFFFFF;line-height:24px">📱</span>
 </td>
 <td align="left" valign="middle" style="padding:0;Margin:0">
-<a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" target="_blank" style="text-decoration:none;color:#FFFFFF;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;line-height:22px;display:block">Download on App Store</a>
+<a style="text-decoration:none;color:#FFFFFF;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;line-height:22px;display:block">Download on App Store</a>
 <p style="Margin:0;color:#E3F2FD;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:14px;margin-top:2px">Available for iPhone & iPad</p>
 </td>
 </tr>
