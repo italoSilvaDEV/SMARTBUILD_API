@@ -138,7 +138,7 @@ mso-hide:all;
 <table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px" role="presentation">
 <tr>
 <td align="center" valign="middle" style="padding:0;Margin:0;padding-right:12px;width:24px">
-<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDMTMuMSAyIDE0IDIuOSAxNCA0VjhIMTBWNEMxMCAyLjkgMTAuOSAyIDEyIDJaTTIxIDlWN0gyMVY5WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTEgMTQuNUMxIDEyLjAxIDMuMDEgMTAgNS41IDEwUzEwIDEyLjAxIDEwIDE0LjVTNy45OSAxOSA1LjUgMTlTMSAxNi45OSAxIDE0LjVaTTE0IDE0LjVDMTQgMTIuMDEgMTYuMDEgMTAgMTguNSAxMFMyMyAxMi4wMSAyMyAxNC41UzIwLjk5IDE5IDE4LjUgMTlTMTQgMTYuOTkgMTQgMTQuNVoiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo=" alt="App Store" width="24" height="24" style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic">
+<span style="font-size:20px;color:#FFFFFF;line-height:24px">📱</span>
 </td>
 <td align="left" valign="middle" style="padding:0;Margin:0">
 <a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" target="_blank" style="text-decoration:none;color:#FFFFFF;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;line-height:22px;display:block">Download on App Store</a>
