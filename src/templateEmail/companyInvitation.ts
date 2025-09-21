@@ -126,10 +126,35 @@ mso-hide:all;
 <td align="left" style="padding:0;Margin:0;width:600px">
 <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px">
 <tr>
-<td align="center" class="es-m-p0r es-m-p0l" style="Margin:0;padding-top:5px;padding-bottom:5px;padding-left:40px;padding-right:40px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">To access the platform, please visit our website and log in with your existing credentials.<br><br></p><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">Access: app.prosmartbuild.com<br type="_moz"></p><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px"><br></p><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px"><br></p></td>
+<td align="center" class="es-m-p0r es-m-p0l" style="Margin:0;padding-top:5px;padding-bottom:15px;padding-left:40px;padding-right:40px">
+<p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;line-height:22px;color:#333333;font-size:16px">Get started with the <strong>SmartBuild4U</strong> mobile app. Available now on the App Store.</p>
+</td>
 </tr>
 <tr>
-<td align="center" style="padding:0;Margin:0;padding-bottom:35px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">© 2024 All Rights Reserved for SMART BUILD<br></p></td>
+<td align="center" style="padding:0;Margin:0;padding-top:5px;padding-bottom:25px">
+<a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" target="_blank" style="text-decoration:none;display:inline-block;">
+<table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px;background:linear-gradient(135deg, #007AFF 0%, #0051D5 100%);border-radius:12px;box-shadow:0 4px 15px rgba(0,122,255,0.3);" role="presentation">
+<tr>
+<td align="center" style="padding:0;Margin:0;padding:15px 25px">
+<table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px" role="presentation">
+<tr>
+<td align="center" valign="middle" style="padding:0;Margin:0;padding-right:12px;width:24px">
+<span style="font-size:20px;color:#FFFFFF;line-height:24px">📱</span>
+</td>
+<td align="left" valign="middle" style="padding:0;Margin:0">
+<span style="text-decoration:none;color:#FFFFFF;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;line-height:22px;display:block">Download on App Store</span>
+<p style="Margin:0;color:#E3F2FD;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:14px;margin-top:2px">Available for iPhone & iPad</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</a>
+</td>
+</tr>
+<tr>
+<td align="center" style="padding:0;Margin:0;padding-bottom:35px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">© ${new Date().getFullYear()} All Rights Reserved for SMART BUILD<br></p></td>
 </tr>
 </table></td>
 </tr>

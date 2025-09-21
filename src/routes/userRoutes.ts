@@ -19,10 +19,10 @@ const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
 
 
 userRoutes.post("/user",
-    checkToken,
-    uploadPhoto.single("avatar"),
-    compressImage("user"),
-    User.create)
+  checkToken,
+  uploadPhoto.single("avatar"),
+  compressImage("user"),
+  User.create)
 
 //update user
 userRoutes.put("/user", checkToken, User.update)
@@ -32,14 +32,14 @@ userRoutes.put("/user/update-profile", checkToken, User.updateUserProfile);
 
 //update imgUser
 userRoutes.put("/user/img/:id",
-    checkToken,
-    uploadPhoto.single("file"),    
-    compressImage("user"),
-    User.updateImg
+  checkToken,
+  uploadPhoto.single("file"),
+  compressImage("user"),
+  User.updateImg
 )
 
 // search one user
-userRoutes.get("/user/consulta/:id", checkToken, User.searchOneUser)
+userRoutes.get("/user/consulta/:id/:company_id", checkToken, User.searchOneUser)
 
 // app
 userRoutes.get("/user/details/:id", checkToken, User.getUserDetails);
@@ -65,21 +65,22 @@ userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPas
 userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscriptionStatus);
 
 // Rota para verificar status da assinatura local
-userRoutes.get('/user/local-subscription-status/:userId?', checkToken, User.getLocalSubscriptionsStatus);
+userRoutes.get('/user/local-subscription-status/:userId?/:company_id?', checkToken, User.getLocalSubscriptionsStatus);
 
 // rota com feature toggle para autenticação
 userRoutes.post("/auth", async (req, res) => {
   const multiCompanyEnabled = await isMultiCompanyEnabled();
   if (multiCompanyEnabled) {
-    console.log('🔄 Using multi-company authentication');
     return UserMultiCompany.authenticateMultiCompany(req, res);
   } else {
-    console.log('🔄 Using single company authentication');
     return User.authenticate(req, res);
   }
 });
 userRoutes.post("/auth/by-company", async (req, res) => {
   return UserMultiCompany.authenticateByCompany(req, res);
 });
+
+userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, User.deleteUserCompany);
+
 
 export { userRoutes }
