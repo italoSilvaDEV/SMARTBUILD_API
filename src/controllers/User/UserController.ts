@@ -28,7 +28,7 @@ export class UserController {
     deleteFile(`./public/tmp/user/${file}`);
     deleteFile(`./public/tmp/user/${requestFile}`);
   }
-// criar
+  // criar
   async create(req: Request, res: Response) {
     const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -138,7 +138,7 @@ export class UserController {
           });
 
           const urlLogo = company.avatar ? await getPresignedUrl(company.avatar) : '';
-          
+
           const templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
           const mailOptions = {
             from: SMTP_CONFIG.user,
@@ -217,7 +217,7 @@ export class UserController {
         subject: "Smart Build",
         html: templateEmail,
       };
-      
+
       // apagar tmp
       if (req.file?.filename) {
         deleteFile(`./public/tmp/user/${req.file.filename}`);
@@ -229,7 +229,7 @@ export class UserController {
         console.error(`[create][${reqId}] email SEND ERROR:`, mailErr);
         // segue retorno 201 mesmo assim? (mantive sua lógica atual de sucesso antes do send)
       }
-      
+
       return res.status(201).json({ message: "User created successfully" });
     } catch (error: any) {
       console.error(`[create][${reqId}] CATCH ERROR:`, error);
@@ -555,6 +555,7 @@ export class UserController {
       id,
       name,
       email,
+      company_id,
       city_and_state,
       office,
       phone,
@@ -632,9 +633,21 @@ export class UserController {
             },
           });
         }
-
       }
 
+      if (office && company_id) {
+        await prisma.userCompany.update({
+          where: {
+            userId_companyId: {
+              userId: user.id,
+              companyId: company_id
+            }
+          },
+          data: {
+            office_id: office.id,
+          }
+        })
+      }
 
       if (current_password && password) {
         const checkPassword = await bcrypt.compare(
@@ -657,7 +670,6 @@ export class UserController {
             email,
             password: hashedPassword,
             city_and_state,
-            office_id: office.id,
             phone,
             hourly_price,
             profession,
@@ -672,7 +684,6 @@ export class UserController {
             name,
             email,
             city_and_state,
-            office_id: office.id,
             phone,
             hourly_price,
             profession,
@@ -787,7 +798,7 @@ export class UserController {
 
   async searchOneUser(request: Request, response: Response) {
     try {
-      let { id } = request.params;
+      let { id, company_id } = request.params;
       const result = await prisma.user.findUnique({
         where: { id },
         select: {
@@ -802,12 +813,6 @@ export class UserController {
           profession: true,
           isDisabled: true,
           isOverTime: true,
-          office: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
           seller_project: {
             select: {
               status_project: true,
@@ -827,11 +832,26 @@ export class UserController {
           },
         },
       });
+
+      const userCompany = await prisma.userCompany.findUnique({
+        where: {
+          userId_companyId: {
+            userId: id,
+            companyId: company_id
+          }
+        },
+        select: {
+          office: true
+        }
+      })
+
       if (!result) {
         throw Error("User not found!");
       }
+
       const formattedResult = {
         ...result,
+        office: userCompany?.office,
         avatar: result.avatar ? await getPresignedUrl(result.avatar) : null,
         seller_project: result?.seller_project.map((project) => {
           const price_project = project.serviceProject.reduce(
@@ -930,29 +950,39 @@ export class UserController {
         avatar: true,
         document: true,
         isDisabled: true,
-        office: {
-          select: {
-            name: true,
-          },
-        },
         city_and_state: true,
         hourly_price: true
       },
     });
 
-    // Processar URLs dos avatares
-    const usersWithPresignedAvatar = await Promise.all(
-      result.map(async (user) => ({
+    const userWithOffice = await Promise.all(result.map(async (user) => {
+      const userCompany = await prisma.userCompany.findUnique({
+        where: {
+          userId_companyId: {
+            userId: user.id,
+            companyId: company_id
+          }
+        },
+        select: {
+          office: true
+        }
+      })
+
+      return {
         ...user,
-        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null, // Gera URL assinada
-      }))
-    );
+        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
+        office: userCompany?.office
+      }
+    }))
 
     const total = await prisma.user.count({
       where: whereCondition
     });
 
-    return response.json({ users: usersWithPresignedAvatar, total });
+    return response.json({
+      users: userWithOffice,
+      total
+    });
   }
 
   async delete(request: Request, response: Response) {
@@ -1388,10 +1418,9 @@ export class UserController {
 
   async getLocalSubscriptionsStatus(req: Request, res: Response) {
     try {
-      const userIdFromParam = req.params.userId;
-      const userId = userIdFromParam;
+      const { userId, company_id } = req.params;
 
-      if (!userId) {
+      if (!userId || !company_id) {
         return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
       }
 
@@ -1476,6 +1505,24 @@ export class UserController {
         }
       }
 
+      let office = null;
+
+      if (company_id) {
+        const userCompany = await prisma.userCompany.findUnique({
+          where: {
+            userId_companyId: {
+              userId: userId,
+              companyId: company_id
+            }
+          },
+          select: {
+            office: true
+          }
+        })
+
+        office = userCompany?.office;
+      }
+
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
         subscription,
@@ -1483,7 +1530,8 @@ export class UserController {
         stripeSubscriptionCanceled,
         paymentFailed,
         permissions,
-        plan: planInfo
+        plan: planInfo,
+        office: office
       });
 
     } catch (error) {
@@ -1491,6 +1539,94 @@ export class UserController {
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
+    }
+  }
+
+  async deleteUserCompany(req: Request, res: Response) {
+    const {
+      userId,
+      companyId
+    } = req.params
+
+    if (!userId || !companyId) {
+      return res.status(400).json({
+        error: "ID de usuário e empresa não fornecidos"
+      })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId
+      }
+    })
+
+    if (!user) {
+      return res.status(404).json({
+        where: {
+          error: "Usuário não encontrado"
+        }
+      })
+    }
+
+    const company = await prisma.company.findUnique({
+      where: {
+        id: companyId
+      }
+    })
+
+    if (!company) {
+      return res.status(400).json({
+        error: "ID de empresa não fornecido"
+      })
+    }
+
+    const userCompany = await prisma.userCompany.findUnique({
+      where: {
+        userId_companyId: {
+          userId: user.id,
+          companyId: company.id
+        }
+      },
+      select: {
+        id: true,
+        userId: true,
+        companyId: true,
+        office: {
+          select: {
+            name: true,
+          }
+        }
+      }
+    })
+
+    if (!userCompany) {
+      return res.status(404).json({
+        error: "Usuário não encontrado na empresa"
+      })
+    }
+
+    if (userCompany.office.name === "administrator" || userCompany.office.name === "Administrator") {
+      return res.status(400).json({
+        error: "Não é possível remover o usuário administrador da empresa"
+      })
+    }
+
+    try {
+      await prisma.userCompany.delete({
+        where: {
+          id: userCompany.id,
+          userId: userCompany.userId,
+          companyId: userCompany.companyId
+        }
+      })
+
+      return res.json({
+        message: "Usuário removido da empresa com sucesso"
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal server error"
+      })
     }
   }
 }
