@@ -126,17 +126,33 @@ mso-hide:all;
 <td align="left" style="padding:0;Margin:0;width:600px">
 <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px">
 <tr>
-<td align="center" class="es-m-p0r es-m-p0l" style="Margin:0;padding-top:5px;padding-bottom:5px;padding-left:40px;padding-right:40px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">To access the platform, please download our mobile app and log in with your existing credentials.<br><br></p></td>
-</tr>
-<tr>
-<td align="center" style="padding:0;Margin:0;padding-top:10px;padding-bottom:20px">
-<span class="es-button-border" style="border-style:solid;border-color:#2CB543;background:#2CB543;border-width:0px;display:inline-block;border-radius:6px;width:auto">
-<a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" class="es-button" target="_blank" style="mso-style-priority:100 !important;text-decoration:none;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;color:#FFFFFF;font-size:20px;padding:10px 30px 10px 30px;display:inline-block;background:#2CB543;border-radius:6px;font-family:arial, 'helvetica neue', helvetica, sans-serif;font-weight:normal;font-style:normal;line-height:24px;width:auto;text-align:center;mso-padding-alt:0;mso-border-alt:10px solid #2CB543">Download App</a>
-</span>
+<td align="center" class="es-m-p0r es-m-p0l" style="Margin:0;padding-top:5px;padding-bottom:15px;padding-left:40px;padding-right:40px">
+<p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;line-height:22px;color:#333333;font-size:16px">Get started with the <strong>SmartBuild4U</strong> mobile app. Available now on the App Store.</p>
 </td>
 </tr>
 <tr>
-<td align="center" style="padding:0;Margin:0;padding-bottom:35px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">© 2024 All Rights Reserved for SMART BUILD<br></p></td>
+<td align="center" style="padding:0;Margin:0;padding-top:5px;padding-bottom:25px">
+<table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px;background:linear-gradient(135deg, #007AFF 0%, #0051D5 100%);border-radius:12px;box-shadow:0 4px 15px rgba(0,122,255,0.3);" role="presentation">
+<tr>
+<td align="center" style="padding:0;Margin:0;padding:15px 25px">
+<table cellpadding="0" cellspacing="0" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;border-spacing:0px" role="presentation">
+<tr>
+<td align="center" valign="middle" style="padding:0;Margin:0;padding-right:12px;width:24px">
+<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDMTMuMSAyIDE0IDIuOSAxNCA0VjhIMTBWNEMxMCAyLjkgMTAuOSAyIDEyIDJaTTIxIDlWN0gyMVY5WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTEgMTQuNUMxIDEyLjAxIDMuMDEgMTAgNS41IDEwUzEwIDEyLjAxIDEwIDE0LjVTNy45OSAxOSA1LjUgMTlTMSAxNi45OSAxIDE0LjVaTTE0IDE0LjVDMTQgMTIuMDEgMTYuMDEgMTAgMTguNSAxMFMyMyAxMi4wMSAyMyAxNC41UzIwLjk5IDE5IDE4LjUgMTlTMTQgMTYuOTkgMTQgMTQuNVoiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo=" alt="App Store" width="24" height="24" style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic">
+</td>
+<td align="left" valign="middle" style="padding:0;Margin:0">
+<a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" target="_blank" style="text-decoration:none;color:#FFFFFF;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;line-height:22px;display:block">Download on App Store</a>
+<p style="Margin:0;color:#E3F2FD;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:14px;margin-top:2px">Available for iPhone & iPad</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td align="center" style="padding:0;Margin:0;padding-bottom:35px"><p style="Margin:0;-webkit-text-size-adjust:none;-ms-text-size-adjust:none;mso-line-height-rule:exactly;font-family:arial, 'helvetica neue', helvetica, sans-serif;line-height:18px;color:#333333;font-size:12px">© ${new Date().getFullYear()} All Rights Reserved for SMART BUILD<br></p></td>
 </tr>
 </table></td>
 </tr>
