@@ -1421,10 +1421,11 @@ export class UserController {
       const { userId, company_id } = req.params;
 
       if (!userId || !company_id) {
-        return res.status(401).json({ error: "ID de usuário não fornecido e usuário não autenticado" });
+        return res.status(401).json({
+          error: "ID de usuário não fornecido e usuário não autenticado"
+        });
       }
 
-      // Buscar o usuário com sua empresa e o plano associado
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -1448,18 +1449,20 @@ export class UserController {
         }
       });
 
-      if (!user || !user.company?.id) {
-        return res.status(404).json({ error: "Usuário ou empresa não encontrados" });
+      if (!user) {
+        return res.status(404).json({
+          error: "Usuário ou empresa não encontrados"
+        });
       }
 
       // Obter permissões do plano
       let permissions: string[] = [];
-      if (user.company.Plan?.permissionGroup?.GroupPermissionsList) {
+      if (user.company?.Plan?.permissionGroup?.GroupPermissionsList) {
         permissions = user.company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
       }
 
       // Obter informações do plano
-      const planInfo = user.company.Plan ? {
+      const planInfo = user.company?.Plan ? {
         id: user.company.Plan.id,
         name: user.company.Plan.name,
         validityType: user.company.Plan.validityType,
@@ -1471,7 +1474,7 @@ export class UserController {
       // Buscar a assinatura mais recente pelo startDate
       const subscription = await prisma.subscription.findFirst({
         where: {
-          companyId: user.company.id,
+          companyId: user.company?.id,
         },
         orderBy: { startDate: 'desc' }
       });

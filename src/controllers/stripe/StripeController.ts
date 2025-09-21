@@ -818,6 +818,13 @@ export class StripeController {
                 });
             }
 
+            let newInvoiceType
+            if(existingInvoice.invoiceType === "custom"){
+                newInvoiceType = "stripe";
+            }else{
+                newInvoiceType = existingInvoice.invoiceType;
+            }
+
             // Atualizar invoice no banco de dados
             const updatedInvoice = await prisma.invoice.update({
                 where: { id: invoiceId },
@@ -826,6 +833,8 @@ export class StripeController {
                     dueDate: dueDateObj,
                     description: description,
                     percentageCoefficient: coefficientPerfentage,
+                    invoiceType: newInvoiceType,
+                    invoiceTypeStripe: "payment_element",
                     type_value: type_value,
                     user_id: userId,
                     updatedAt: new Date(),

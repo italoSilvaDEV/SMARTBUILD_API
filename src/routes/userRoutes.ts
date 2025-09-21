@@ -65,7 +65,7 @@ userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPas
 userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscriptionStatus);
 
 // Rota para verificar status da assinatura local
-userRoutes.get('/user/local-subscription-status/:userId?/:company_id?', checkToken, User.getLocalSubscriptionsStatus);
+userRoutes.get('/user/local-subscription-status/:userId/:company_id', checkToken, User.getLocalSubscriptionsStatus);
 
 // rota com feature toggle para autenticação
 userRoutes.post("/auth", async (req, res) => {
