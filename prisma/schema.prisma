@@ -130,8 +130,9 @@ model Company {
   SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
   QuickBooksAccount QuickBooksAccount?
 
-  SyncLog    SyncLog[]    @relation("synclog")
-  SyncStatus SyncStatus[] @relation("SyncStatus")
+  SyncLog       SyncLog[]       @relation("synclog")
+  SyncStatus    SyncStatus[]    @relation("SyncStatus")
+  ContractTerms ContractTerms[]
 }
 
 model ContractNotes {
@@ -1156,4 +1157,25 @@ model InvoicePaymentTimeLine {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("invoice_payment_time_line")
+}
+
+enum ContractTermsType {
+  letter
+  termseconditions
+}
+
+model ContractTerms {
+  id String @id @default(uuid())
+
+  terms             String?           @db.Text
+  contractTermsType ContractTermsType
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([contractTermsType, companyId])
+  @@map("contract_terms")
 }
