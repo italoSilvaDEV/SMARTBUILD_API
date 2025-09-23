@@ -80,4 +80,44 @@ export class ContractTermController {
             })
         }
     }
+
+    async get(req: Request, res: Response) {
+        const {
+            companyId
+        } = req.params
+
+        if (!companyId) {
+            return res.status(400).json({
+                error: "Company ID is required"
+            })
+        }
+
+        const company = await prisma.company.findUnique({
+            where: {
+                id: companyId
+            }
+        })
+
+        if (!company) {
+            return res.status(400).json({
+                error: "Company not found"
+            })
+        }
+
+        try {
+            const allTerms = await prisma.contractTerms.findMany({
+                where: {
+                    companyId: companyId
+                }
+            })
+
+            return res.status(200).json({
+                data: allTerms
+            })
+        } catch (error) {
+            return res.status(500).json({
+                error: "Internal server error"
+            })
+        }
+    }
 }
