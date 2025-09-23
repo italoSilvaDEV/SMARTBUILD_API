@@ -27,6 +27,8 @@ export class PaymentElementController {
         return amount * SURCHARGE_CONFIG.percentage;
     }
 
+
+
     /**
      * Inicia o processo de pagamento via Payment Element
      * Cria um PaymentIntent e retorna o client_secret
@@ -51,7 +53,7 @@ export class PaymentElementController {
                 }
             });
 
-            if (invoice && invoice.status === 'void'){
+            if (invoice && invoice.status === 'void') {
                 return res.status(400).json({
                     error: "Invoice is void"
                 });
@@ -103,12 +105,16 @@ export class PaymentElementController {
 
             if (!stripeCustomerId) {
                 console.log("Creating new Stripe customer on connected account...");
+
+                const stripePhone = client.phone
+                    ? client.phone.replace(/\D/g, '').substring(0, 20)
+                    : undefined;
                 const customer = await stripe.customers.create({
                     name: client.name,
                     email: client.email,
-                    phone: client.phone ?? undefined,
+                    phone: stripePhone
                 }, { stripeAccount: stripeAccountId }); // Criando na conta conectada
-                
+
                 console.log('customer criado customer', customer);
                 console.log('customer id', customer.id);
                 stripeCustomerId = customer.id;
@@ -154,7 +160,7 @@ export class PaymentElementController {
                 // DIRECT CHARGE: Criar PaymentIntent na CONTA CONECTADA
                 // Responsabilidade por chargebacks/refunds fica com a conta conectada
                 const platformFee = baseAmount * 0.029; // Taxa da plataforma (2.9%)
-                
+
                 paymentIntent = await stripe.paymentIntents.create({
                     amount: Math.round(baseAmount * 100), // em centavos (sem surcharge inicial)
                     currency: currency,
@@ -258,7 +264,7 @@ export class PaymentElementController {
             const baseAmount = Number(paymentRecord.invoice.totalAmount);
 
             // Calcular surcharge baseado no método
-            const surcharge = this.calculateSurcharge(baseAmount, methodType); 
+            const surcharge = this.calculateSurcharge(baseAmount, methodType);
             const newTotal = baseAmount + surcharge;
 
             console.log("Cálculo de valores:", {
@@ -346,10 +352,10 @@ export class PaymentElementController {
             let receiptUrl = paymentRecord.receiptUrl;
             if (!receiptUrl && paymentIntent.status === 'succeeded' && paymentIntent.latest_charge) {
                 try {
-                    const chargeId = typeof paymentIntent.latest_charge === 'string' 
-                        ? paymentIntent.latest_charge 
+                    const chargeId = typeof paymentIntent.latest_charge === 'string'
+                        ? paymentIntent.latest_charge
                         : paymentIntent.latest_charge.id;
-                    
+
                     const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: paymentRecord.stripeAccountId });
                     receiptUrl = charge.receipt_url;
                     console.log("Receipt URL obtido do charge:", receiptUrl);
@@ -362,7 +368,7 @@ export class PaymentElementController {
             if (paymentRecord.status !== paymentIntent.status || (!paymentRecord.receiptUrl && receiptUrl)) {
                 await prisma.paymentIntentRecord.update({
                     where: { stripePaymentIntentId: paymentIntentId },
-                    data: { 
+                    data: {
                         status: paymentIntent.status,
                         receiptUrl: receiptUrl
                     }
