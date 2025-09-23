@@ -9,7 +9,7 @@ export class ContractTermController {
             companyId
         } = req.body
 
-        if (!terms || !type || !companyId) {
+        if (terms === undefined || !type || !companyId) {
             return res.status(400).json({
                 error: "Terms, type and companyId are required"
             })
