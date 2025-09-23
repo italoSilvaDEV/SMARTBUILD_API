@@ -7,5 +7,6 @@ const contractTermRoutes = Router();
 const contractTermController = new ContractTermController();
 
 contractTermRoutes.post('/handle', checkToken, contractTermController.handle)
+contractTermRoutes.get('/get/:companyId', checkToken, contractTermController.get)
 
 export { contractTermRoutes };
