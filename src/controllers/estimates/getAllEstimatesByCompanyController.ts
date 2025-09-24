@@ -30,7 +30,7 @@ export class GetAllEstimatesByCompanyController {
             const estimates = await prisma.estimate.findMany({
                 where: {
                     project: {
-                        company_id: companyId
+                        company_id: companyId,
                     },
                 },
                 select: {

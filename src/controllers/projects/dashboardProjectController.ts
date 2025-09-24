@@ -27,9 +27,6 @@ export class DashboardProjectController {
             "In Progress",
             "Final walkthrough",
             "Finished",
-            "Waiting for Decision",
-            "Denied",
-            "Canceled",
         ];
 
         if (!validPeriods.includes(period as string)) {
