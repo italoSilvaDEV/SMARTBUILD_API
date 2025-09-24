@@ -144,7 +144,7 @@ export class ProjectController {
       const projects = await prisma.project.findMany({
         where: {
           status_project: {
-            notIn: ["Pending"]
+            in: ["In Progress", "Finished", "Pre-Start", "Final walkthrough"]
           },
           ...query
         },
