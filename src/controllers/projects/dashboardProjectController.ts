@@ -27,9 +27,6 @@ export class DashboardProjectController {
             "In Progress",
             "Final walkthrough",
             "Finished",
-            "Waiting for Decision",
-            "Denied",
-            "Canceled",
         ];
 
         if (!validPeriods.includes(period as string)) {
@@ -146,7 +143,7 @@ export class DashboardProjectController {
                 }
             });
 
-            const totalSalesProjectsResult = await prisma.project.aggregate({
+            const totalSalesProjectsResult = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -158,16 +155,27 @@ export class DashboardProjectController {
                         }
                     })
                 },
-                _sum: {
-                    price: true
+                include: {
+                    serviceProject: {
+                        select: {
+                            hours: true,
+                            price: true
+                        }
+                    }
                 }
             });
+
+            const totalProjects = totalSalesProjectsResult.reduce((acc, project) => {
+                return acc + Number(project.serviceProject.reduce((acc, service) => {
+                    return acc + Number(service.hours) * Number(service.price);
+                }, 0));
+            }, 0);
 
             const totalSalesEstimates = totalSalesEstimatesResult._sum.totalAmount || 0;
-            const totalSalesProjects = totalSalesProjectsResult._sum.price || 0;
+            const totalSalesProjects = totalProjects || 0;
             const totalSales = Number(totalSalesEstimates) + Number(totalSalesProjects);
 
-            const averageValueResult = await prisma.project.aggregate({
+            const projectsForAverage = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -179,12 +187,25 @@ export class DashboardProjectController {
                         }
                     })
                 },
-                _avg: {
-                    price: true
+                include: {
+                    serviceProject: {
+                        select: {
+                            hours: true,
+                            price: true
+                        }
+                    }
                 }
             });
 
-            const averageValue = averageValueResult._avg.price || 0;
+            const totalProjectsValue = projectsForAverage.reduce((acc, project) => {
+                return acc + Number(project.serviceProject.reduce((acc, service) => {
+                    return acc + Number(service.hours) * Number(service.price);
+                }, 0));
+            }, 0);
+
+            const averageValue = projectsForAverage.length > 0 
+                ? totalProjectsValue / projectsForAverage.length 
+                : 0;
 
             const totalEstimates = await prisma.estimate.count({
                 where: {
@@ -244,8 +265,13 @@ export class DashboardProjectController {
                     })
                 },
                 select: {
-                    price: true,
-                    date_creation: true
+                    date_creation: true,
+                    serviceProject: {
+                        select: {
+                            hours: true,
+                            price: true
+                        }
+                    }
                 }
             });
 
@@ -263,7 +289,9 @@ export class DashboardProjectController {
             projectsForChart.forEach(project => {
                 const date = new Date(project.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
-                const amount = Number(project.price) || 0;
+                const amount = project.serviceProject.reduce((acc, service) => {
+                    return acc + Number(service.hours) * Number(service.price);
+                }, 0);
 
                 monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
             });
