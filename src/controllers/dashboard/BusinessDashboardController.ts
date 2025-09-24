@@ -911,32 +911,40 @@ export class BusinessDashboardController {
 
             const [pendingEstimates, acceptedEstimates, deniedEstimates] = await Promise.all([
 
-                prisma.project.count({
+                prisma.estimate.count({
                     where: {
-                        company_id: valid.response?.id,
-                        status_project: {
-                            in: ["Waiting for Decision", "Pending"]
+                        project: {
+                            company_id: valid.response?.id,
+                        },
+                        status: {
+                            in: ["pending"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
                     }
                 }),
-                prisma.project.count({
+                prisma.estimate.count({
                     where: {
-                        company_id: valid.response?.id,
-                        status_project: {
-                            in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                        project: {
+                            company_id: valid.response?.id,
+                        },
+                        status: {
+                            in: ["approved"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
                     }
                 }),
-                prisma.project.count({
+                prisma.estimate.count({
                     where: {
-                        company_id: valid.response?.id,
-                        status_project: "Denied",
+                        project: {
+                            company_id: valid.response?.id,
+                        },
+                        status: {
+                            in: ["canceled"]
+                        },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         })
