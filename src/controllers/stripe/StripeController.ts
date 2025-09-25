@@ -738,8 +738,13 @@ export class StripeController {
                                 }
                             ],
                             status: "paid"
+                        },
+                        select: {
+                            totalAmount: true
                         }
                     })
+
+                    console.log("amountPaid", amountPaid)
 
                     const amountPaidInvoice = amountPaid.reduce((acc, item) => acc + Number(item.totalAmount), 0)
 
