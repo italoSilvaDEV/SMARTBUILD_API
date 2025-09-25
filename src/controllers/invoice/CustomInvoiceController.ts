@@ -21,7 +21,7 @@ export class CustomInvoiceController {
       type_value,
       totalAmount,
       estimateId,
-      items,
+      services,
       multi_emails
     } = req.body
 
@@ -49,8 +49,8 @@ export class CustomInvoiceController {
       let finalTotalAmount = 0;
       const lineItems: any[] = [];
 
-      if (items && Array.isArray(items)) {
-        for (const item of items) {
+      if (services && Array.isArray(services)) {
+        for (const item of services) {
           const serviceAmount = item.total || (item.quantity * item.price);
           const adjustedAmount = serviceAmount * (coefficientPerfentage || 1);
 

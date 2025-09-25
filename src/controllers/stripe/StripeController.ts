@@ -722,39 +722,10 @@ export class StripeController {
                         }
                     }
 
-                    const totalInvoice = invoice.InvoiceItems.reduce(
-                        (acc, item) => acc + Number(item.quantity) * Number(item.price),
-                        0
-                    );
-
-                    const amountPaid = await prisma.invoice.findMany({
-                        where: {
-                            OR: [
-                                {
-                                    estimateId: invoice.estimateId
-                                },
-                                {
-                                    projectId: invoice.projectId
-                                }
-                            ],
-                            status: "paid"
-                        },
-                        select: {
-                            totalAmount: true
-                        }
-                    })
-
-                    console.log("amountPaid", amountPaid)
-
-                    const amountPaidInvoice = amountPaid.reduce((acc, item) => acc + Number(item.totalAmount), 0)
-
-                    const balanceDue = Number(totalInvoice) - Number(amountPaidInvoice)
-
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
                     return {
                         ...invoice,
                         lastSentAt: lastSend,
-                        balanceDue: balanceDue
                     };
                 })
             );
