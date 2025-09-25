@@ -693,12 +693,7 @@ export class StripeController {
                         }
 
                     },
-                    InvoiceItems: {
-                        select: {
-                            quantity: true,
-                            price: true,
-                        }
-                    }
+                    InvoiceItems: true,
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
