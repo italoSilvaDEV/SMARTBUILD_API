@@ -706,32 +706,6 @@ export class StripeController {
 
             const total = await prisma.invoice.count({ where: filtro });
 
-            const totalInvoices = invoices.reduce((acc, invoice) =>
-                acc + invoice.InvoiceItems.reduce((acc, item) => acc + Number(item.quantity) * Number(item.price), 0)
-                , 0)
-
-            const invoicesPaid = await Promise.all(
-                invoices.map((invoice) =>
-                    prisma.invoice.findUnique({
-                        where: {
-                            id: invoice.id,
-                            status: "paid"
-                        },
-                        select: {
-                            totalAmount: true
-                        }
-                    })
-                )
-            );
-
-            const amountPaid = invoicesPaid
-                .filter(Boolean) // remove nulls (caso não ache nada)
-                .reduce((acc, item) => acc + Number(item?.totalAmount), 0);
-
-            const balanceDue = Number(totalInvoices) - Number(amountPaid)
-
-            console.log("balanceDue", balanceDue)
-
             if (invoices.length === 0) {
                 console.log("Nenhuma invoice encontrada para este projeto.");
                 return res.status(200).json({
@@ -752,6 +726,29 @@ export class StripeController {
                             }
                         }
                     }
+
+                    const totalInvoice = invoice.InvoiceItems.reduce(
+                        (acc, item) => acc + Number(item.quantity) * Number(item.price),
+                        0
+                    );
+
+                    const amountPaid = await prisma.invoice.findMany({
+                        where: {
+                            OR: [
+                                {
+                                    estimateId: invoice.estimateId
+                                },
+                                {
+                                    projectId: invoice.projectId
+                                }
+                            ],
+                            status: "paid"
+                        }
+                    })
+
+                    const amountPaidInvoice = amountPaid.reduce((acc, item) => acc + Number(item.totalAmount), 0)
+
+                    const balanceDue = Number(totalInvoice) - Number(amountPaidInvoice)
 
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
                     return {
