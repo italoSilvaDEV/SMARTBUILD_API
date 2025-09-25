@@ -8,7 +8,10 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 
 export class CustomInvoiceController {
   async createInvoice(req: Request, res: Response) {
-    const { projectId } = req.params;
+    const {
+      projectId
+    } = req.params
+
     const {
       userId,
       type_invoicebase,
@@ -20,12 +23,13 @@ export class CustomInvoiceController {
       estimateId,
       items,
       multi_emails
-    } = req.body;
+    } = req.body
 
     try {
-      // Buscando o projeto no banco de dados
       const project = await prisma.project.findUnique({
-        where: { id: projectId },
+        where: {
+          id: projectId
+        },
         include: {
           client: true,
           company: true,
@@ -40,14 +44,11 @@ export class CustomInvoiceController {
         return res.status(400).json({ error: "Client not found for this project" });
       }
 
-      // Definindo a data de vencimento
       const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-      // Variável para o total final
       let finalTotalAmount = 0;
-      const lineItems = [];
+      const lineItems: any[] = [];
 
-      // Calculando o total com base nos itens, se houver
       if (items && Array.isArray(items)) {
         for (const item of items) {
           const serviceAmount = item.total || (item.quantity * item.price);
@@ -59,7 +60,6 @@ export class CustomInvoiceController {
 
           finalTotalAmount += adjustedAmount;
 
-          // Adicionando os itens na lista de itens da fatura
           lineItems.push({
             name: item.name,
             description: item.description || "",
@@ -73,60 +73,75 @@ export class CustomInvoiceController {
       const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId: project.company_id,
-          invoiceType: { in: ["custom", "stripe"] },
-          externalInvoiceId: { not: null }
+          invoiceType: {
+            in: ["custom", "stripe"]
+          },
+          externalInvoiceId: {
+            not: null
+          }
         },
         select: {
           externalInvoiceId: true
         }
       });
 
-      // Extrair apenas os números válidos e encontrar o maior
       const numericIds = allInvoices
         .map(invoice => parseInt(invoice.externalInvoiceId || ""))
         .filter(num => !isNaN(num) && num > 0);
 
-      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
       let nextInvoiceNumber = 1000;
       if (numericIds.length > 0) {
         const maxNumber = Math.max(...numericIds);
         nextInvoiceNumber = maxNumber + 1;
       }
 
-      // Criando a fatura no banco de dados
-      const newInvoice = await prisma.invoice.create({
-        data: {
-          externalInvoiceId: nextInvoiceNumber.toString(),
-          invoiceType: "custom",
-          status: "open",
-          totalAmount: finalTotalAmount || totalAmount,
-          dueDate: dueDateObj,
-          description: description,
-          projectId: project.id,
-          companyId: project.company_id,
-          user_id: userId,
-          type_value: type_value,
-          percentageCoefficient: coefficientPerfentage,
-          type_invoicebase: type_invoicebase,
-          estimateId: estimateId,
-          multi_emails: multi_emails
-        }
-      });
-
-      // Adicionando a linha do histórico da fatura
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Created with total amount $${finalTotalAmount || totalAmount}`,
-          invoice: {
-            connect: { id: newInvoice.id }
+      await prisma.$transaction(async (smartbuild) => {
+        const newInvoice = await smartbuild.invoice.create({
+          data: {
+            externalInvoiceId: nextInvoiceNumber.toString(),
+            invoiceType: "custom",
+            status: "open",
+            totalAmount: finalTotalAmount || totalAmount,
+            dueDate: dueDateObj,
+            description: description,
+            projectId: project.id,
+            companyId: project.company_id,
+            user_id: userId,
+            type_value: type_value,
+            percentageCoefficient: coefficientPerfentage,
+            type_invoicebase: type_invoicebase,
+            estimateId: estimateId,
+            multi_emails: multi_emails
           }
-        }
-      });
+        });
 
-      return res.status(201).json({
-        message: "Custom invoice created successfully",
-        invoice: newInvoice
-      });
+        if (lineItems && lineItems.length > 0) {
+          await smartbuild.invoiceItem.createMany({
+            data: lineItems.map((item) => ({
+              invoiceId: newInvoice.id,
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              price: item.price,
+              totalAmount: item.totalAmount,
+            }))
+          });
+        }
+
+        await smartbuild.invoiceTimeline.create({
+          data: {
+            description: `Created with total amount $${finalTotalAmount || totalAmount}`,
+            invoice: {
+              connect: { id: newInvoice.id }
+            }
+          }
+        });
+
+        return res.status(201).json({
+          message: "Custom invoice created successfully",
+          invoice: newInvoice
+        });
+      })
     } catch (error: any) {
       console.error("Error creating custom invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
@@ -992,13 +1007,6 @@ export class CustomInvoiceController {
         });
       }
 
-      // if (existingInvoice.invoiceType !== "custom") {
-      //   return res.status(400).json({
-      //     error:
-      //       "Not a custom invoice"
-      //   });
-      // }
-
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
       await prisma.invoiceItem.deleteMany({
@@ -1010,44 +1018,45 @@ export class CustomInvoiceController {
       let newInvoiceType
       if (existingInvoice.invoiceType === "stripe") {
         newInvoiceType = "custom";
-      }else{
+      } else {
         newInvoiceType = existingInvoice.invoiceType;
       }
 
-
-      const updatedInvoice = await prisma.invoice.update({
-        where: {
-          id: invoiceId
-        },
-        data: {
-          totalAmount: totalAmount,
-          dueDate: dueDateObj,
-          description: description || existingInvoice.description,
-          type_value: type_value || existingInvoice.type_value,
-          percentageCoefficient: coefficientPerfentage,
-          invoiceType: newInvoiceType,
-          invoiceTypeStripe: null,
-          multi_emails: multi_emails || existingInvoice.multi_emails,
-          updatedAt: new Date(),
-        },
-        include: {
-          InvoiceItems: true
-        }
-      });
-
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Updated total amount of $${totalAmount.toFixed(2)}`,
-          invoice: {
-            connect: { id: existingInvoice.id }
+      await prisma.$transaction(async (smartbuild) => {
+        const updatedInvoice = await smartbuild.invoice.update({
+          where: {
+            id: invoiceId
+          },
+          data: {
+            totalAmount: totalAmount,
+            dueDate: dueDateObj,
+            description: description || existingInvoice.description,
+            type_value: type_value || existingInvoice.type_value,
+            percentageCoefficient: coefficientPerfentage,
+            invoiceType: newInvoiceType,
+            invoiceTypeStripe: null,
+            multi_emails: multi_emails || existingInvoice.multi_emails,
+            updatedAt: new Date(),
+          },
+          include: {
+            InvoiceItems: true
           }
-        }
-      });
+        });
 
-      return res.status(200).json({
-        message: "Invoice updated successfully",
-        invoice: updatedInvoice
-      });
+        await smartbuild.invoiceTimeline.create({
+          data: {
+            description: `Updated total amount of $${totalAmount.toFixed(2)}`,
+            invoice: {
+              connect: { id: existingInvoice.id }
+            }
+          }
+        });
+
+        return res.status(200).json({
+          message: "Invoice updated successfully",
+          invoice: updatedInvoice
+        });
+      })
     } catch (error: any) {
       console.error("Error updating invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
