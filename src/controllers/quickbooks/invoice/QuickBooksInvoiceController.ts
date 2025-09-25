@@ -10,9 +10,9 @@ import { fireAndForgetUpsertToQBO } from "../customer/FireAndForgetUpsertToQBO";
 interface InvoiceLineItem {
   Amount: number; // ou o tipo correto que você espera
   // Adicione outros campos que você espera que o item tenha
-}
+} 
 
-export class QuickBooksInvoiceController {
+export class QuickBooksInvoiceController { 
 
   private async getQBClient(userId: string) {
     // Verificar se o usuário tem uma conta QuickBooks
@@ -66,10 +66,19 @@ export class QuickBooksInvoiceController {
     return { qb, account };
   }
 
-  async createInvoice(req: Request, res: Response) {
-
-    const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
+  // Método interno para criação de invoice sem req/res
+  async createInvoiceInternal(params: {
+    projectId: string;
+    description?: string;
+    type_invoicebase?: string;
+    dueDate?: string;
+    userId: string;
+    coefficientPerfentage?: number;
+    services: any[];
+    type_value?: string;
+    calledFromStripe?: boolean; // Novo parâmetro para identificar origem
+  }) {
+    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, calledFromStripe = false } = params;
 
     try {
       // Buscar o projeto
@@ -82,15 +91,15 @@ export class QuickBooksInvoiceController {
       });
 
       if (!project) {
-        return res.status(404).json({ error: "Project not found" });
+        throw new Error("Project not found");
       }
 
       if (!project.client) {
-        return res.status(400).json({ error: "Client not found for this project" });
+        throw new Error("Client not found for this project");
       }
 
       if (!project.company) {
-        return res.status(400).json({ error: "Company not found for this project" });
+        throw new Error("Company not found for this project");
       }
 
       // Obter cliente QuickBooks
@@ -117,16 +126,40 @@ export class QuickBooksInvoiceController {
           data: { needsReauthorization: true }
         });
 
-        return res.status(403).json({
-          error: "Insufficient permissions",
-          message: "You need to reconnect your QuickBooks account with additional permissions",
-          action: "reauthorize"
-        });
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
       }
 
       // Preparar os itens da fatura com logs detalhados
       console.log("Serviços do projeto:", services);
       console.log("Coeficiente recebido:", coefficientPerfentage);
+
+      // Buscar invoices pagos do projeto para calcular valor já pago
+      console.log("Buscando invoices pagos do projeto para QuickBooks...");
+      const paidInvoices = await prisma.invoice.findMany({
+        where: {
+          projectId: project.id,
+          status: "paid"
+        },
+        select: {
+          totalAmount: true
+        }
+      });
+
+      const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+      console.log(`Total já pago no projeto (QB): $${totalPaidAmount}`);
+
+      // Calcular valor total original do projeto (sem coeficiente)
+      const originalProjectValue = services.reduce((sum: number, service: any) => {
+        const quantity = Number(service.quantity) || 0;
+        const price = Number(service.price) || 0;
+        return sum + (service.total || (quantity * price));
+      }, 0);
+
+      console.log(`Valor original do projeto (QB): $${originalProjectValue}`);
+
+      // Calcular saldo restante após pagamentos
+      const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
+      console.log(`Saldo restante (QB): $${remainingBalance}`);
 
       const processedLineItems = [];
 
@@ -134,8 +167,29 @@ export class QuickBooksInvoiceController {
 
       const coef = await this.normalizeCoefficient(coefficientPerfentage);
 
+      // Aplicar coeficiente sobre o saldo restante
+      const invoiceAmountWithCoefficient = remainingBalance * coef;
+      console.log(`Valor da fatura QB após coeficiente (${coef}): $${invoiceAmountWithCoefficient}`);
+
+      // Validar se há serviços
+      if (!services || !Array.isArray(services) || services.length === 0) {
+        throw new Error("No services provided for invoice creation");
+      }
+
       for (const service of services) {
-        const itemName = service?.name ?? "Service";
+        // Validações básicas do serviço
+        if (!service || typeof service !== 'object') {
+          console.warn("Serviço inválido encontrado, ignorando:", service);
+          continue;
+        }
+
+        const itemName = service?.name?.trim() || "Service";
+        
+        // Validar se o nome do item não está vazio
+        if (!itemName || itemName === "Service") {
+          console.warn("Nome do serviço vazio ou inválido, ignorando:", service);
+          continue;
+        }
 
         // Parse seguro (aceita "7.500,00", "7,500.00", "7500", number, etc.)
         const qtyParsed = await this.parseMoney(service?.quantity);
@@ -145,24 +199,30 @@ export class QuickBooksInvoiceController {
         // Quantidade efetiva (se vier 0/NaN e houver valor -> usa 1 como fallback)
         let qty = Number.isFinite(qtyParsed) && qtyParsed > 0 ? qtyParsed : 0;
 
-        // Total base (antes do coeficiente). Se não vier, calcula por price*qty.
-        const baseTotal = totalParsed != null && Number.isFinite(totalParsed) && totalParsed > 0
+        // Total original do serviço (antes do coeficiente e desconto de pagamentos)
+        const originalServiceAmount = totalParsed != null && Number.isFinite(totalParsed) && totalParsed > 0
           ? totalParsed
           : await this.round2(priceParsed * (qty || 0));
 
         // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
-        if ((!qty || qty <= 0) && baseTotal > 0) qty = 1;
+        if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
 
-        // Valor desejado da linha após coeficiente
-        const desiredAmount = await this.round2(baseTotal * coef);
+        // Calcular proporção deste serviço no valor total original
+        const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
+        
+        // Aplicar a proporção ao valor da fatura com coeficiente
+        const desiredAmount = await this.round2(invoiceAmountWithCoefficient * serviceProportion);
 
         // UnitPrice calculado para que Amount == UnitPrice * Qty (após arredondar)
         const unitPrice = await this.round2(desiredAmount / (qty || 1));
         const amount = await this.round2(unitPrice * (qty || 1));
 
-        // Validação
-        if (!qty || amount <= 0) {
-          console.warn(`⚠️ Valor inválido para o serviço: ${itemName}. Ignorando item.`);
+        // Log detalhado para monitoramento
+        console.log(`QB - ${itemName}: Valor original $${originalServiceAmount}, Proporção ${(serviceProportion * 100).toFixed(2)}%, Valor ajustado $${amount}`);
+
+        // Validação melhorada
+        if (qty <= 0 || amount <= 0 || !Number.isFinite(qty) || !Number.isFinite(amount)) {
+          console.warn(`⚠️ Valor inválido para o serviço: ${itemName}. qty=${qty}, amount=${amount}. Ignorando item.`);
           continue;
         }
 
@@ -195,8 +255,8 @@ export class QuickBooksInvoiceController {
 
           // Logs defensivos
           console.log(
-            `[DBG] ${itemName} -> qty=${qty} basePrice=${priceParsed} baseTotal=${baseTotal} ` +
-            `coef=${coef} unit=${unitPrice} amount=${amount}`
+            `[DBG] ${itemName} -> qty=${qty} basePrice=${priceParsed} originalAmount=${originalServiceAmount} ` +
+            `proporção=${(serviceProportion * 100).toFixed(2)}% unitPrice=${unitPrice} amount=${amount}`
           );
         } catch (itemError: any) {
           console.error(`Erro ao processar item "${itemName}":`, itemError);
@@ -212,73 +272,87 @@ export class QuickBooksInvoiceController {
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date();
       // dueDateObj.setDate(dueDateObj.getDate() + 30);
 
-      // Antes de criar a fatura, verifique se o cliente existe no QuickBooks usando SDK
-      try {
-        console.log("Verificando se o cliente existe no QuickBooks...");
+        // Verificar cliente no QuickBooks - abordagem conservadora
+        try {
+          console.log("Verificando cliente no QuickBooks...");
 
-        let clientId;
-        const findCustomerResult = await new Promise((resolve, reject) => {
-          qb.findCustomers([{ field: 'DisplayName', value: project.client!.name }], (err: any, data: any) => {
-            if (err) {
-              console.error("Erro ao buscar cliente:", err);
-              reject(err);
-            } else {
-              resolve(data);
+          let clientId;
+
+          // 1) Primeiro verificar se o cliente local já tem idQuickbooks
+          if (project.client!.idQuickbooks) {
+            console.log(`Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
+            
+            // Verificar se o cliente ainda existe no QuickBooks
+            try {
+              const existingCustomer = await new Promise((resolve, reject) => {
+                qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
+                  if (err) {
+                    console.warn("Cliente com idQuickbooks não encontrado no QBO, será criado novo");
+                    resolve(null);
+                  } else {
+                    resolve(data);
+                  }
+                });
+              });
+
+              if (existingCustomer) {
+                const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
+                clientId = customer.Id;
+                console.log(`Cliente existente confirmado no QBO com ID: ${clientId}`);
+              }
+            } catch (getError) {
+              console.warn("Erro ao verificar cliente existente, criando novo:", getError);
             }
-          });
-        });
-
-        const customers = (findCustomerResult as any)?.QueryResponse?.Customer || [];
-
-        if (customers.length > 0) {
-          // Cliente encontrado
-          clientId = customers[0].Id;
-          console.log(`Cliente "${project.client!.name}" encontrado com ID: ${clientId}`);
-        } else {
-          // Cliente não encontrado, criar um novo usando SDK
-          console.log(`Cliente "${project.client!.name}" não encontrado. Criando cliente...`);
-          const clientData = {
-            DisplayName: project.client!.name,
-            CompanyName: project.client!.name,
-            PrimaryEmailAddr: {
-              Address: project.client!.email || "cliente@exemplo.com"
-            }
-          };
-
-          let createCustomerResultId;
-          if (project?.company_id) {
-            createCustomerResultId = await fireAndForgetUpsertToQBO(project.company_id, userId, project.client!.id);
-          } else {
-            throw new Error("ERR_CLIENT_NOT_FOUND");
           }
 
-          clientId = createCustomerResultId;
-          console.log(`Cliente "${project.client!.name}" criado com ID: ${clientId}`);
+          // 2) Se não tem idQuickbooks válido, criar novo cliente (abordagem conservadora)
+          if (!clientId) {
+            console.log(`Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            
+            const createCustomerData = {
+              DisplayName: project.client!.name,
+              CompanyName: project.client!.name,
+              PrimaryEmailAddr: {
+                Address: project.client!.email || "cliente@exemplo.com"
+              }
+            };
+
+            const createCustomerResult = await new Promise((resolve, reject) => {
+              qb.createCustomer(createCustomerData, (err: any, data: any) => {
+                if (err) {
+                  console.error("Erro ao criar cliente:", err);
+                  reject(err);
+                } else {
+                  resolve(data);
+                }
+              });
+            });
+
+            const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
+            
+            if (!createdCustomer || !createdCustomer.Id) {
+              throw new Error("Failed to create customer in QuickBooks");
+            }
+
+            clientId = createdCustomer.Id;
+            console.log(`Novo cliente criado no QBO com ID: ${clientId}`);
+
+            // Atualizar cliente local com o novo idQuickbooks
+            await prisma.client.update({
+              where: { id: project.client!.id },
+              data: { idQuickbooks: clientId }
+            });
+            console.log(`Cliente local atualizado com idQuickbooks: ${clientId}`);
+          }
+
+        // Verificar se há itens processados
+        if (processedLineItems.length === 0) {
+          throw new Error("No valid items to include in the invoice. Please check the services data.");
         }
 
-        // Preparar dados da fatura usando os itens processados ou dados simplificados
-        const invoiceData = processedLineItems.length > 0 ? {
+        // Preparar dados da fatura
+        const invoiceData = {
           Line: processedLineItems,
-          CustomerRef: {
-            value: clientId
-          },
-          DueDate: dueDateObj.toISOString().split('T')[0],
-          PrivateNote: description || `Invoice for Project ${project.id}`,
-          AllowOnlineCreditCardPayment: true,
-          AllowOnlineACHPayment: true
-        } : {
-          Line: [
-            {
-              DetailType: "SalesItemLineDetail",
-              Amount: totalAmount,
-              SalesItemLineDetail: {
-                ItemRef: {
-                  name: "Services",
-                  value: "1"  // Usar o ID 1 que geralmente é o item de serviços padrão
-                }
-              }
-            }
-          ],
           CustomerRef: {
             value: clientId
           },
@@ -327,53 +401,65 @@ export class QuickBooksInvoiceController {
         const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
         const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
 
-        // 5) Persistir no banco
-        const newInvoice = await prisma.invoice.create({
-          data: {
-            stripeInvoiceId: `qb-${Date.now()}`,
-            externalInvoiceId: inv.Id,
-            invoiceType: "quickbooks",
-            externalDocNumber: inv.DocNumber,
-            status: deriveQboInvoicePaymentStatus(inv), // << status real
-            // use o valor vindo do QBO, se existir
+        // 5) Persistir no banco - comportamento baseado na origem da chamada
+        if (calledFromStripe) {
+          // Quando chamado pelo StripeController, retornar apenas IDs do QuickBooks
+          return {
+            success: true,
+            message: "QuickBooks invoice created successfully",
+            quickbooksId: inv.Id,
+            docNumber: inv.DocNumber,
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
-            dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
-            description: description || `Invoice for Project ${project.id}`,
-            projectId: project.id,
-            companyId: project.company_id,
-            user_id: userId,
-            percentageCoefficient: coefficientPerfentage || 1,
-            type_value: type_value,
-            type_invoicebase: type_invoicebase,
+            status: deriveQboInvoicePaymentStatus(inv)
+          };
+        } else {
+          // Quando chamado diretamente (rota QuickBooks), persistir no banco local
+          const newInvoice = await prisma.invoice.create({
+            data: {
+              stripeInvoiceId: `qb-${Date.now()}`,
+              externalInvoiceId: inv.Id,
+              invoiceType: "quickbooks",
+              externalDocNumber: inv.DocNumber,
+              idQuickBooksRef: inv.Id, // Novo campo para referência QB
+              status: deriveQboInvoicePaymentStatus(inv), // << status real
+              // use o valor vindo do QBO, se existir
+              totalAmount: Number(inv?.TotalAmt ?? totalAmount),
+              dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
+              description: description || `Invoice for Project ${project.id}`,
+              projectId: project.id,
+              companyId: project.company_id,
+              user_id: userId,
+              percentageCoefficient: coefficientPerfentage || 1,
+              type_value: type_value,
+              type_invoicebase: type_invoicebase as "project" | "estimate" | null,
 
-            // (opcional) guarde os status de envio/impressão se quiser
-            // emailStatusQbo: emailStatus,
-            // printStatusQbo: printStatus,
+              // (opcional) guarde os status de envio/impressão se quiser
+              // emailStatusQbo: emailStatus,
+              // printStatusQbo: printStatus,
 
-            InvoiceItems: {
-              create: processedLineItems.map((item: any) => ({
-                name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
-                description: item.Description,
-                quantity: item?.SalesItemLineDetail?.Qty || 1,
-                price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-                totalAmount: item.Amount
-              }))
-            }
-          },
-          include: { InvoiceItems: true }
-        });
+              InvoiceItems: {
+                create: processedLineItems.map((item: any) => ({
+                  name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
+                  description: item.Description,
+                  quantity: item?.SalesItemLineDetail?.Qty || 1,
+                  price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+                  totalAmount: item.Amount
+                }))
+              }
+            },
+            include: { InvoiceItems: true }
+          });
 
-        return res.status(201).json({
-          message: "QuickBooks invoice created successfully",
-          invoice: newInvoice
-        });
+          return {
+            success: true,
+            message: "QuickBooks invoice created successfully",
+            invoice: newInvoice
+          };
+        }
 
       } catch (clientError: any) {
         console.error("Erro ao processar cliente:", clientError);
-        return res.status(400).json({
-          error: "Error processing client in QuickBooks",
-          details: clientError.message
-        });
+        throw new Error(`Error processing client in QuickBooks: ${clientError.message}`);
       }
     } catch (error: any) {
       console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
@@ -392,6 +478,35 @@ export class QuickBooksInvoiceController {
           console.error("Erro ao atualizar status de reautorização:", updateError);
         }
 
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
+  async createInvoice(req: Request, res: Response) {
+    const { projectId } = req.params;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
+
+    try {
+      const result = await this.createInvoiceInternal({
+        projectId,
+        description,
+        type_invoicebase,
+        dueDate,
+        userId,
+        coefficientPerfentage,
+        services,
+        type_value
+      });
+
+      return res.status(201).json(result);
+    } catch (error: any) {
+      console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (error.message.includes("401") || error.message.includes("403") || error.message.includes("Insufficient permissions"))) {
         return res.status(403).json({
           error: "Insufficient permissions",
           message: "You need to reconnect your QuickBooks account with additional permissions",
@@ -758,7 +873,15 @@ export class QuickBooksInvoiceController {
       qb.createItem(payload, (err: any, data: any) => (err ? reject(err) : resolve(data)));
     });
 
-    return { id: created.Item.Id, name: created.Item.Name };
+    // Extrair o item da resposta (pode estar em created.Item ou diretamente em created)
+    const item = created?.Item || created;
+    
+    if (!item || !item.Id) {
+      console.error('Item criado mas sem ID válido:', created);
+      throw new Error(`Failed to create or retrieve item ID for: ${name}`);
+    }
+
+    return { id: item.Id, name: item.Name || name };
   }
 
   async round2(n: number) {
@@ -766,13 +889,20 @@ export class QuickBooksInvoiceController {
   }
 
   async parseMoney(input: any): Promise<number> {
-    if (typeof input === 'number' && Number.isFinite(input)) return input;
+    // Se já é um número válido, retornar
+    if (typeof input === 'number' && Number.isFinite(input) && input >= 0) return input;
 
-    let s = String(input ?? '').trim();
-    if (!s) return 0;
+    // Se é null, undefined ou string vazia, retornar 0
+    if (input == null) return 0;
 
-    // remove símbolos de moeda e espaços
+    let s = String(input).trim();
+    if (!s || s === 'undefined' || s === 'null') return 0;
+
+    // remove símbolos de moeda e espaços, mantém apenas números, pontos e vírgulas
     s = s.replace(/[^\d.,-]/g, '');
+    
+    // Se ficou vazio após limpeza, retornar 0
+    if (!s) return 0;
 
     const hasComma = s.includes(',');
     const hasDot = s.includes('.');
@@ -794,7 +924,7 @@ export class QuickBooksInvoiceController {
     }
 
     const n = Number(s);
-    return Number.isFinite(n) ? n : 0;
+    return Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
   async parseQty(input: any): Promise<number> {

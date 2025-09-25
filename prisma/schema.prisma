@@ -635,6 +635,11 @@ model Invoice {
 
   // Campos específicos para QuickBooks
   externalDocNumber String?
+  idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
+  
+  // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
+  idQuickbookContabio          String? // ID do invoice no QuickBooks criado via Stripe
+  docNumberQuickBooksContabio  String? // Número do documento QuickBooks criado via Stripe
 
   // NOVOS CAMPOS PARA PAYMENT INTENT
   paymentMethodType        String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)

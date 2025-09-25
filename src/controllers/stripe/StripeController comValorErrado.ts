@@ -205,55 +205,19 @@ export class StripeController {
                 console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
             }
 
-            // Buscar invoices pagos do projeto para calcular valor já pago
-            console.log("Buscando invoices pagos do projeto...");
-            const paidInvoices = await prisma.invoice.findMany({
-                where: {
-                    projectId: project.id,
-                    status: "paid"
-                },
-                select: {
-                    totalAmount: true
-                }
-            });
-
-            const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
-            console.log(`Total já pago no projeto: $${totalPaidAmount}`);
-
-            // Calcular valor total original do projeto (sem coeficiente)
-            const originalProjectValue = servicesArray.reduce((sum, service) => {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                return sum + (service.total || (quantity * price));
-            }, 0);
-
-            console.log(`Valor original do projeto: $${originalProjectValue}`);
-
-            // Calcular saldo restante após pagamentos
-            const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
-            console.log(`Saldo restante: $${remainingBalance}`);
-
-            // Aplicar coeficiente sobre o saldo restante
-            const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-            const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
-            console.log(`Valor da fatura após coeficiente (${validCoefficient}): $${invoiceAmountWithCoefficient}`);
-
             let totalInvoiceAmount = 0;
             const lineItems: any[] = [];
 
             const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-            // Processar serviços com nova lógica
+            // Processar serviços
             for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
-                const originalServiceAmount = service.total || (quantity * price);
+                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-                // Calcular proporção deste serviço no valor total original
-                const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-                
-                // Aplicar a proporção ao valor da fatura com coeficiente
-                const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
+                const serviceAmount = service.total || (quantity * price);
+                const adjustedAmount = serviceAmount * validCoefficient;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
@@ -269,8 +233,6 @@ export class StripeController {
                     price,
                     totalAmount: adjustedAmount
                 });
-
-                console.log(`Serviço ${service.name}: Valor original $${originalServiceAmount}, Valor ajustado $${adjustedAmount.toFixed(2)}`);
             }
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
@@ -397,27 +359,15 @@ export class StripeController {
                         userId: userId,
                         coefficientPerfentage: coefficientPerfentage,
                         services: qbServices,
-                        type_value: type_value,
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
+                        type_value: type_value
                     });
 
-                    console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
-
-                    // Atualizar o invoice Stripe com os dados do QuickBooks
-                    if (quickBooksResult?.quickbooksId) {
-                        await prisma.invoice.update({
-                            where: { id: newInvoice.id },
-                            data: {
-                                idQuickbookContabio: quickBooksResult.quickbooksId,
-                                docNumberQuickBooksContabio: quickBooksResult.docNumber
-                            }
-                        });
-                    }
+                    console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.invoice?.id);
 
                     // Adicionar evento na timeline sobre sucesso no QuickBooks
                     await prisma.invoiceTimeline.create({
                         data: {
-                            description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
+                            description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.invoice?.externalInvoiceId})`,
                             invoice: {
                                 connect: { id: newInvoice.id }
                             }
@@ -920,54 +870,21 @@ export class StripeController {
                 });
             }
 
-            console.log("Processando serviços e calculando valores para update...");
+            console.log("Processando serviços e calculando valores...");
             const servicesArray = Array.isArray(services) ? services : [];
-
-            // Buscar invoices pagos do projeto (excluindo o invoice sendo atualizado)
-            const paidInvoices = await prisma.invoice.findMany({
-                where: {
-                    projectId: existingInvoice.project.id,
-                    status: "paid",
-                    id: { not: invoiceId } // Excluir o invoice sendo atualizado
-                },
-                select: {
-                    totalAmount: true
-                }
-            });
-
-            const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
-            console.log(`Total já pago no projeto (update): $${totalPaidAmount}`);
-
-            // Calcular valor total original do projeto (sem coeficiente)
-            const originalProjectValue = servicesArray.reduce((sum, service) => {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                return sum + (service.total || (quantity * price));
-            }, 0);
-
-            // Calcular saldo restante após pagamentos
-            const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
-            
-            // Aplicar coeficiente sobre o saldo restante
-            const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-            const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
-
             let calculatedTotalAmount = 0;
             const lineItems: any[] = [];
 
             const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-            // Processar serviços com nova lógica
+            // Processar serviços
             for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
-                const originalServiceAmount = service.total || (quantity * price);
+                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-                // Calcular proporção deste serviço no valor total original
-                const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-                
-                // Aplicar a proporção ao valor da fatura com coeficiente
-                const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
+                const serviceAmount = service.total || (quantity * price);
+                const adjustedAmount = serviceAmount * validCoefficient;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
