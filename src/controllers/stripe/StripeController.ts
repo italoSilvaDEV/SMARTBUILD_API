@@ -710,8 +710,6 @@ export class StripeController {
                 acc + invoice.InvoiceItems.reduce((acc, item) => acc + Number(item.quantity) * Number(item.price), 0)
                 , 0)
 
-                console.log("totalInvoices", totalInvoices)
-
             const invoicesPaid = await Promise.all(
                 invoices.map((invoice) =>
                     prisma.invoice.findUnique({
@@ -726,14 +724,13 @@ export class StripeController {
                 )
             );
 
-            console.log("invoicesPaid", invoicesPaid)
-
             const amountPaid = invoicesPaid
                 .filter(Boolean) // remove nulls (caso não ache nada)
                 .reduce((acc, item) => acc + Number(item?.totalAmount), 0);
 
-            console.log("amountPaid", amountPaid)
-            const balanceDue = totalInvoices - amountPaid || 0
+            const balanceDue = Number(totalInvoices) - Number(amountPaid)
+
+            console.log("balanceDue", balanceDue)
 
             if (invoices.length === 0) {
                 console.log("Nenhuma invoice encontrada para este projeto.");
