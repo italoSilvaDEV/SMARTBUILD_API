@@ -692,6 +692,12 @@ export class StripeController {
                             paymentMethodType: true,
                         }
 
+                    },
+                    InvoiceItems: {
+                        select: {
+                            quantity: true,
+                            price: true,
+                        }
                     }
                 },
                 skip: pageNumber * itemsLimit,
@@ -699,6 +705,21 @@ export class StripeController {
             });
 
             const total = await prisma.invoice.count({ where: filtro });
+
+            const totalInvoices = invoices.reduce((acc, invoice) =>
+                acc + invoice.InvoiceItems.reduce((acc, item) => acc + Number(item.quantity) * Number(item.price), 0)
+                , 0)
+
+            const amountPaid = invoices.reduce((acc, invoice) => {
+                const isPaidInvoice = invoice.status === "paid"
+
+                if (isPaidInvoice) {
+                    return acc + Number(invoice.totalAmount)
+                }
+                return acc
+            }, 0)
+
+            const balanceDue = totalInvoices - amountPaid || 0
 
             if (invoices.length === 0) {
                 console.log("Nenhuma invoice encontrada para este projeto.");
@@ -721,9 +742,12 @@ export class StripeController {
                         }
                     }
 
-                    // Não mais sincronizar com Stripe - usar dados locais apenas
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
-                    return { ...invoice, lastSentAt: lastSend };
+                    return {
+                        ...invoice,
+                        lastSentAt: lastSend,
+                        balanceDue: balanceDue
+                    };
                 })
             );
 
@@ -819,9 +843,9 @@ export class StripeController {
             }
 
             let newInvoiceType
-            if(existingInvoice.invoiceType === "custom"){
+            if (existingInvoice.invoiceType === "custom") {
                 newInvoiceType = "stripe";
-            }else{
+            } else {
                 newInvoiceType = existingInvoice.invoiceType;
             }
 
