@@ -1018,12 +1018,14 @@ export class CustomInvoiceController {
       }
 
       await prisma.$transaction(async (smartbuild) => {
+        const total = services.reduce((acc: number, item: any) => acc + item.total, 0)
+
         const updatedInvoice = await smartbuild.invoice.update({
           where: {
             id: invoiceId
           },
           data: {
-            totalAmount: totalAmount,
+            totalAmount: total,
             dueDate: dueDateObj,
             description: description || existingInvoice.description,
             type_value: type_value || existingInvoice.type_value,
