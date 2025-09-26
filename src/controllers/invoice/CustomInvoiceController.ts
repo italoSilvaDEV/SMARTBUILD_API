@@ -986,8 +986,6 @@ export class CustomInvoiceController {
       multi_emails
     } = req.body;
 
-    console.log("services", services);
-
     try {
       const existingInvoice = await prisma.invoice.findUnique({
         where: {
