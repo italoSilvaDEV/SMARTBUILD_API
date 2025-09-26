@@ -1052,7 +1052,7 @@ export class CustomInvoiceController {
               description: item.description,
               quantity: item.quantity,
               price: item.price,
-              totalAmount: item.totalAmount,
+              totalAmount: item.total,
             }))
           });
         }
