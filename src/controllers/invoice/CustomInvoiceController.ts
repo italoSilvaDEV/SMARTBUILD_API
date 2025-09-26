@@ -981,6 +981,7 @@ export class CustomInvoiceController {
       description,
       dueDate,
       type_value,
+      services,
       totalAmount,
       multi_emails
     } = req.body;
@@ -1009,12 +1010,6 @@ export class CustomInvoiceController {
 
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
-      await prisma.invoiceItem.deleteMany({
-        where: {
-          invoiceId: existingInvoice.id
-        }
-      });
-
       let newInvoiceType
       if (existingInvoice.invoiceType === "stripe") {
         newInvoiceType = "custom";
@@ -1042,6 +1037,25 @@ export class CustomInvoiceController {
             InvoiceItems: true
           }
         });
+
+        if (services && Array.isArray(services)) {
+          await smartbuild.invoiceItem.deleteMany({
+            where: {
+              invoiceId: updatedInvoice.id
+            }
+          });
+
+          await smartbuild.invoiceItem.createMany({
+            data: services.map((item) => ({
+              invoiceId: updatedInvoice.id,
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              price: item.price,
+              totalAmount: item.totalAmount,
+            }))
+          });
+        }
 
         await smartbuild.invoiceTimeline.create({
           data: {
