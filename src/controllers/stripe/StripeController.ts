@@ -398,6 +398,7 @@ export class StripeController {
                         coefficientPerfentage: coefficientPerfentage,
                         services: qbServices,
                         type_value: type_value,
+                        totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
                         calledFromStripe: true // Indicar que foi chamado pelo Stripe
                     });
 
@@ -542,6 +543,8 @@ export class StripeController {
                     invoiceType: true,
                     invoiceTypeStripe: true,
                     stripeInvoiceId: true,
+                    user_id: true,
+                    idQuickbookContabio: true,
                     project: {
                         include: {
                             company: true,
@@ -598,9 +601,78 @@ export class StripeController {
                 }
             });
 
+            // Tentar cancelar invoice no QuickBooks (não deve falhar o processo se der erro)
+            let quickBooksCancelResult = null;
+            let quickBooksCancelError = null;
+
+            try {
+                console.log("Tentando cancelar invoice no QuickBooks...");
+                
+                // Verificar se o usuário tem uma conta QuickBooks conectada
+                const quickBooksAccount = invoice.user_id ? await prisma.quickBooksAccount.findFirst({
+                    where: { user_id: invoice.user_id },
+                }) : null;
+
+                // Verificar se o invoice tinha referência do QuickBooks
+                if (quickBooksAccount && invoice.idQuickbookContabio && invoice.user_id) {
+                    // Usar o controller instanciado no constructor
+                    const qbController = this.quickBooksController;
+                    
+                    if (!qbController) {
+                        throw new Error("QuickBooksController is not initialized");
+                    }
+
+                    quickBooksCancelResult = await qbController.cancelInvoiceInternal({
+                        quickBooksInvoiceId: invoice.idQuickbookContabio,
+                        userId: invoice.user_id,
+                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
+                    });
+
+                    console.log("Invoice cancelado no QuickBooks com sucesso:", quickBooksCancelResult?.quickbooksId);
+
+                    // Adicionar evento na timeline sobre sucesso no QuickBooks
+                    await prisma.invoiceTimeline.create({
+                        data: {
+                            description: `QuickBooks invoice voided successfully (ID: ${quickBooksCancelResult?.quickbooksId})`,
+                            invoice: {
+                                connect: { id: invoice.id }
+                            }
+                        }
+                    });
+                } else {
+                    if (!quickBooksAccount) {
+                        console.log("Usuário não possui conta QuickBooks conectada. Pulando cancelamento no QB.");
+                    } else {
+                        console.log("Invoice não possui referência do QuickBooks. Pulando cancelamento no QB.");
+                    }
+                }
+            } catch (qbError: any) {
+                console.error("Erro ao cancelar invoice no QuickBooks:", qbError.message);
+                quickBooksCancelError = qbError.message;
+
+                // Adicionar evento na timeline sobre erro no QuickBooks
+                try {
+                    await prisma.invoiceTimeline.create({
+                        data: {
+                            description: `Failed to void QuickBooks invoice: ${qbError.message}`,
+                            invoice: {
+                                connect: { id: invoice.id }
+                            }
+                        }
+                    });
+                } catch (timelineError) {
+                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+                }
+            }
+
             return res.status(200).json({
                 message: "Invoice canceled successfully",
                 updatedInvoice,
+                quickBooks: {
+                    success: !!quickBooksCancelResult,
+                    result: quickBooksCancelResult,
+                    error: quickBooksCancelError
+                }
             });
 
         } catch (error) {
@@ -1035,9 +1107,93 @@ export class StripeController {
                 }
             });
 
+            // Tentar atualizar invoice no QuickBooks (não deve falhar o processo se der erro)
+            let quickBooksUpdateResult = null;
+            let quickBooksUpdateError = null;
+
+            try {
+                console.log("Tentando atualizar invoice no QuickBooks...");
+                
+                // Verificar se o usuário tem uma conta QuickBooks conectada
+                const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+                    where: { user_id: userId },
+                });
+
+                // Verificar se o invoice original tinha referência do QuickBooks
+                if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
+                    // Preparar serviços para o formato esperado pelo QuickBooks
+                    const qbServices = services.map((service: any) => ({
+                        name: service.name || "Service",
+                        description: service.description || "",
+                        quantity: service.quantity || 1,
+                        price: service.price || 0,
+                        total: service.total || (service.quantity * service.price)
+                    }));
+
+                    // Usar o controller instanciado no constructor
+                    const qbController = this.quickBooksController;
+                    
+                    if (!qbController) {
+                        throw new Error("QuickBooksController is not initialized");
+                    }
+
+                    quickBooksUpdateResult = await qbController.updateInvoiceInternal({
+                        quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
+                        projectId: existingInvoice.project.id,
+                        description: description || `Updated Invoice for Project ${existingInvoice.project.id}`,
+                        dueDate: dueDate,
+                        userId: userId,
+                        coefficientPerfentage: coefficientPerfentage,
+                        services: qbServices,
+                        totalAmountTarget: totalAmount || calculatedTotalAmount, // Passar o valor total exato do banco local
+                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
+                    });
+
+                    console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
+
+                    // Adicionar evento na timeline sobre sucesso no QuickBooks
+                    await prisma.invoiceTimeline.create({
+                        data: {
+                            description: `QuickBooks invoice updated successfully (ID: ${quickBooksUpdateResult?.quickbooksId})`,
+                            invoice: {
+                                connect: { id: invoiceId }
+                            }
+                        }
+                    });
+                } else {
+                    if (!quickBooksAccount) {
+                        console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
+                    } else {
+                        console.log("Invoice não possui referência do QuickBooks. Pulando atualização no QB.");
+                    }
+                }
+            } catch (qbError: any) {
+                console.error("Erro ao atualizar invoice no QuickBooks:", qbError.message);
+                quickBooksUpdateError = qbError.message;
+
+                // Adicionar evento na timeline sobre erro no QuickBooks
+                try {
+                    await prisma.invoiceTimeline.create({
+                        data: {
+                            description: `Failed to update QuickBooks invoice: ${qbError.message}`,
+                            invoice: {
+                                connect: { id: invoiceId }
+                            }
+                        }
+                    });
+                } catch (timelineError) {
+                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+                }
+            }
+
             return res.status(200).json({
                 message: "Invoice updated successfully",
-                updatedInvoice: updatedInvoice
+                updatedInvoice: updatedInvoice,
+                quickBooks: {
+                    success: !!quickBooksUpdateResult,
+                    result: quickBooksUpdateResult,
+                    error: quickBooksUpdateError
+                }
             });
 
         } catch (err) {

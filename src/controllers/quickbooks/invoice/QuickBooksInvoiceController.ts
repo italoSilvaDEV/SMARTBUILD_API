@@ -76,9 +76,10 @@ export class QuickBooksInvoiceController {
     coefficientPerfentage?: number;
     services: any[];
     type_value?: string;
+    totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
     calledFromStripe?: boolean; // Novo parâmetro para identificar origem
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, calledFromStripe = false } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false } = params;
 
     try {
       // Buscar o projeto
@@ -176,6 +177,10 @@ export class QuickBooksInvoiceController {
         throw new Error("No services provided for invoice creation");
       }
 
+      // Primeiro, calcular os valores com coeficiente ANTES de processar os itens
+      const serviceCalculations = [];
+      let totalWithCoefficientCalculated = 0;
+
       for (const service of services) {
         // Validações básicas do serviço
         if (!service || typeof service !== 'object') {
@@ -207,33 +212,76 @@ export class QuickBooksInvoiceController {
         // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
         if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
 
-        // Calcular proporção deste serviço no valor total original
-        const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
+        // CORREÇÃO: Aplicar coeficiente diretamente no valor do serviço
+        const serviceAmountWithCoefficient = originalServiceAmount * coef;
         
-        // Aplicar a proporção ao valor da fatura com coeficiente
-        const desiredAmount = await this.round2(invoiceAmountWithCoefficient * serviceProportion);
+        // Calcular proporção baseada no valor COM coeficiente
+        const serviceProportion = invoiceAmountWithCoefficient > 0 ? serviceAmountWithCoefficient / invoiceAmountWithCoefficient : 0;
 
-        // UnitPrice calculado para que Amount == UnitPrice * Qty (após arredondar)
-        const unitPrice = await this.round2(desiredAmount / (qty || 1));
-        const amount = await this.round2(unitPrice * (qty || 1));
+        serviceCalculations.push({
+          service,
+          itemName,
+          qty,
+          priceParsed,
+          originalServiceAmount,
+          serviceAmountWithCoefficient,
+          serviceProportion
+        });
 
+        totalWithCoefficientCalculated += serviceAmountWithCoefficient;
+      }
+
+      // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
+      const totalTargetAmount = totalAmountTarget || invoiceAmountWithCoefficient;
+      
+      console.log(`Total com coeficiente calculado: ${totalWithCoefficientCalculated}, Total alvo: ${totalTargetAmount}`);
+
+      // Agora processar os itens com ajuste para garantir o total exato
+      let totalProcessed = 0;
+
+      for (let i = 0; i < serviceCalculations.length; i++) {
+        const calc = serviceCalculations[i];
+        const isLastItem = i === serviceCalculations.length - 1;
+
+        let finalAmount;
+        let unitPrice;
+        let exactAmount;
+        
+        // SOLUÇÃO: Usar Qty=1 e Rate=valor total para evitar limitação de arredondamento do QB
+        const qtyForQB = 1; // Sempre usar quantidade 1 no QuickBooks
+        
+        if (isLastItem) {
+          // Para o último item, usar o valor restante para garantir total exato
+          const remainingAmount = await this.round2(totalTargetAmount - totalProcessed);
+          unitPrice = await this.round2(remainingAmount); // Rate = valor total (já que Qty=1)
+          exactAmount = await this.round2(unitPrice * qtyForQB); // Amount = Rate × 1
+          finalAmount = remainingAmount; // Para logs
+        } else {
+          // Para os outros itens, usar o valor com coeficiente já aplicado
+          finalAmount = await this.round2(calc.serviceAmountWithCoefficient);
+          unitPrice = await this.round2(finalAmount); // Rate = valor total (já que Qty=1)
+          exactAmount = await this.round2(unitPrice * qtyForQB); // Amount = Rate × 1
+        }
+        
+        totalProcessed += exactAmount;
+        
         // Log detalhado para monitoramento
-        console.log(`QB - ${itemName}: Valor original $${originalServiceAmount}, Proporção ${(serviceProportion * 100).toFixed(2)}%, Valor ajustado $${amount}`);
+        console.log(`QB - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
 
         // Validação melhorada
-        if (qty <= 0 || amount <= 0 || !Number.isFinite(qty) || !Number.isFinite(amount)) {
-          console.warn(`⚠️ Valor inválido para o serviço: ${itemName}. qty=${qty}, amount=${amount}. Ignorando item.`);
+        if (qtyForQB <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQB) || !Number.isFinite(exactAmount)) {
+          console.warn(`⚠️ Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQB}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
         try {
-          console.log(`Verificando/criando Item "${itemName}" no QuickBooks...`);
+          console.log(`Verificando/criando Item "${calc.itemName}" no QuickBooks...`);
 
           // IMPORTANTe: use o id de conta de receita válido que você obteve antes do loop (incomeAccount.id)
           const { id: itemId, name: qboItemName } = await this.findOrCreateServiceItem(
             qb,
-            itemName,
-            priceParsed,     // preço base do Item; a linha pode usar UnitPrice diferente
+            calc.itemName,
+            calc.priceParsed,     // preço base do Item; a linha pode usar UnitPrice diferente
             incomeAccount.id // << id de Account (Income) do QBO, NÃO é userId
           );
 
@@ -241,28 +289,31 @@ export class QuickBooksInvoiceController {
             throw new Error("ERR_ITEM_NOT_FOUND_AND_ERR_TO_CREATE");
           }
 
-          // Monta a linha garantindo consistência Amount = UnitPrice * Qty
+          // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
           processedLineItems.push({
             DetailType: "SalesItemLineDetail",
-            Amount: amount, // <- fechado com UnitPrice*Qty
-            Description: service?.description || "",
+            Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
+            Description: calc.service?.description || "",
             SalesItemLineDetail: {
               ItemRef: { value: itemId, name: qboItemName },
-              Qty: qty,
-              UnitPrice: unitPrice
+              Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
+              UnitPrice: unitPrice // Rate = valor total do serviço
             }
           });
 
           // Logs defensivos
           console.log(
-            `[DBG] ${itemName} -> qty=${qty} basePrice=${priceParsed} originalAmount=${originalServiceAmount} ` +
-            `proporção=${(serviceProportion * 100).toFixed(2)}% unitPrice=${unitPrice} amount=${amount}`
+            `[DBG] ${calc.itemName} -> qtyOriginal=${calc.qty} qtyQB=${qtyForQB} basePrice=${calc.priceParsed} originalAmount=${calc.originalServiceAmount} ` +
+            `serviceAmountWithCoef=${calc.serviceAmountWithCoefficient} unitPrice=${unitPrice} exactAmount=${exactAmount}`
           );
         } catch (itemError: any) {
-          console.error(`Erro ao processar item "${itemName}":`, itemError);
+          console.error(`Erro ao processar item "${calc.itemName}":`, itemError);
           // Continua para o próximo serviço
         }
       }
+
+      console.log(`Total calculado: ${totalProcessed}, Total target: ${totalTargetAmount}, Diferença: ${Math.abs(totalProcessed - totalTargetAmount)}`);
+      
 
       // Calcular o total
       const totalAmount = processedLineItems.reduce((sum: number, item: InvoiceLineItem) => sum + item.Amount, 0);
@@ -466,6 +517,439 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é um erro de autorização
       if (error.message && error.message.includes("401") || error.message.includes("403")) {
+        // Atualizar o status da conta para indicar que precisa de reautorização
+        try {
+          await prisma.quickBooksAccount.update({
+            where: { user_id: userId },
+            data: {
+              needsReauthorization: true
+            }
+          });
+        } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
+        }
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
+  // Método interno para atualização de invoice sem req/res
+  async updateInvoiceInternal(params: {
+    quickBooksInvoiceId: string;
+    projectId: string;
+    description?: string;
+    dueDate?: string;
+    userId: string;
+    coefficientPerfentage?: number;
+    services: any[];
+    totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
+    calledFromStripe?: boolean; // Parâmetro para identificar origem
+  }) {
+    const { 
+      quickBooksInvoiceId, 
+      projectId, 
+      description, 
+      dueDate, 
+      userId, 
+      coefficientPerfentage, 
+      services, 
+      totalAmountTarget,
+      calledFromStripe = false 
+    } = params;
+
+    try {
+      // Buscar o projeto
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      if (!project.client) {
+        throw new Error("Client not found for this project");
+      }
+
+      if (!project.company) {
+        throw new Error("Company not found for this project");
+      }
+
+      // Obter cliente QuickBooks
+      const { qb, account } = await this.getQBClient(userId);
+
+      // Testar conexão com uma operação simples
+      try {
+        await new Promise((resolve, reject) => {
+          qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
+            if (err) {
+              console.error("Erro ao buscar informações da empresa:", err);
+              reject(err);
+            } else {
+              console.log("Informações da empresa obtidas com sucesso");
+              resolve(data);
+            }
+          });
+        });
+      } catch (companyError: any) {
+        console.error("Erro ao buscar informações da empresa:", companyError);
+        // Marcar que precisa de reautorização
+        await prisma.quickBooksAccount.update({
+          where: { user_id: userId },
+          data: { needsReauthorization: true }
+        });
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      // Primeiro, buscar a fatura atual para obter o SyncToken e outras informações
+      console.log(`Buscando invoice ${quickBooksInvoiceId} no QuickBooks para atualização...`);
+      const currentInvoiceData = await new Promise((resolve, reject) => {
+        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao buscar fatura para atualização:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
+      
+      if (!currentInvoice || !currentInvoice.Id) {
+        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+      }
+
+      console.log(`Invoice encontrado. SyncToken: ${currentInvoice.SyncToken}`);
+
+      // Verificar se a fatura pode ser editada (não pode estar paga ou cancelada)
+      if (currentInvoice.TxnStatus === "Voided") {
+        throw new Error("Cannot update a voided invoice");
+      }
+
+      // Verificar se está paga (Balance = 0 e TotalAmt > 0)
+      const totalAmt = Number(currentInvoice.TotalAmt || 0);
+      const balance = Number(currentInvoice.Balance || 0);
+      if (totalAmt > 0 && balance === 0) {
+        throw new Error("Cannot update a paid invoice");
+      }
+
+      // Preparar os itens da fatura com logs detalhados
+      console.log("Preparando serviços para atualização:", services);
+      console.log("Coeficiente recebido:", coefficientPerfentage);
+
+      // Buscar invoices pagos do projeto para calcular valor já pago
+      console.log("Buscando invoices pagos do projeto para atualização QB...");
+      const paidInvoices = await prisma.invoice.findMany({
+        where: {
+          projectId: project.id,
+          status: "paid",
+          idQuickbookContabio: { not: quickBooksInvoiceId } // Excluir o invoice sendo atualizado
+        },
+        select: {
+          totalAmount: true
+        }
+      });
+
+      const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+      console.log(`Total já pago no projeto (QB Update): $${totalPaidAmount}`);
+
+      // Calcular valor total original do projeto (sem coeficiente)
+      const originalProjectValue = services.reduce((sum: number, service: any) => {
+        const quantity = Number(service.quantity) || 0;
+        const price = Number(service.price) || 0;
+        return sum + (service.total || (quantity * price));
+      }, 0);
+
+      console.log(`Valor original do projeto (QB Update): $${originalProjectValue}`);
+
+      // Calcular saldo restante após pagamentos
+      const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
+      console.log(`Saldo restante (QB Update): $${remainingBalance}`);
+
+      const processedLineItems = [];
+
+      const incomeAccount = await this.getIncomeAccount(qb);
+      const coef = await this.normalizeCoefficient(coefficientPerfentage);
+
+      // Aplicar coeficiente sobre o saldo restante
+      const invoiceAmountWithCoefficient = remainingBalance * coef;
+      console.log(`Valor da fatura QB após coeficiente para update (${coef}): $${invoiceAmountWithCoefficient}`);
+
+      // Validar se há serviços
+      if (!services || !Array.isArray(services) || services.length === 0) {
+        throw new Error("No services provided for invoice update");
+      }
+
+      // Primeiro, calcular os valores com coeficiente ANTES de processar os itens (UPDATE)
+      const serviceCalculationsUpdate = [];
+      let totalWithCoefficientCalculatedUpdate = 0;
+
+      for (const service of services) {
+        // Validações básicas do serviço
+        if (!service || typeof service !== 'object') {
+          console.warn("Serviço inválido encontrado, ignorando:", service);
+          continue;
+        }
+
+        const itemName = service?.name?.trim() || "Service";
+        
+        // Validar se o nome do item não está vazio
+        if (!itemName || itemName === "Service") {
+          console.warn("Nome do serviço vazio ou inválido, ignorando:", service);
+          continue;
+        }
+
+        // Parse seguro (aceita "7.500,00", "7,500.00", "7500", number, etc.)
+        const qtyParsed = await this.parseMoney(service?.quantity);
+        const priceParsed = await this.parseMoney(service?.price);
+        const totalParsed = service?.total != null ? await this.parseMoney(service.total) : null;
+
+        // Quantidade efetiva (se vier 0/NaN e houver valor -> usa 1 como fallback)
+        let qty = Number.isFinite(qtyParsed) && qtyParsed > 0 ? qtyParsed : 0;
+
+        // Total original do serviço (antes do coeficiente e desconto de pagamentos)
+        const originalServiceAmount = totalParsed != null && Number.isFinite(totalParsed) && totalParsed > 0
+          ? totalParsed
+          : await this.round2(priceParsed * (qty || 0));
+
+        // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
+        if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
+
+        // CORREÇÃO: Aplicar coeficiente diretamente no valor do serviço
+        const serviceAmountWithCoefficient = originalServiceAmount * coef;
+        
+        // Calcular proporção baseada no valor COM coeficiente
+        const serviceProportion = invoiceAmountWithCoefficient > 0 ? serviceAmountWithCoefficient / invoiceAmountWithCoefficient : 0;
+
+        serviceCalculationsUpdate.push({
+          service,
+          itemName,
+          qty,
+          priceParsed,
+          originalServiceAmount,
+          serviceAmountWithCoefficient,
+          serviceProportion
+        });
+
+        totalWithCoefficientCalculatedUpdate += serviceAmountWithCoefficient;
+      }
+
+      // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
+      const totalTargetAmountUpdate = totalAmountTarget || invoiceAmountWithCoefficient;
+      
+      console.log(`Total com coeficiente calculado (Update): ${totalWithCoefficientCalculatedUpdate}, Total alvo: ${totalTargetAmountUpdate}`);
+
+      // Agora processar os itens com ajuste para garantir o total exato (UPDATE)
+      let totalProcessedUpdate = 0;
+
+      for (let i = 0; i < serviceCalculationsUpdate.length; i++) {
+        const calc = serviceCalculationsUpdate[i];
+        const isLastItem = i === serviceCalculationsUpdate.length - 1;
+
+        let finalAmount;
+        let unitPrice;
+        let exactAmount;
+        
+        // SOLUÇÃO: Usar Qty=1 e Rate=valor total para evitar limitação de arredondamento do QB (UPDATE)
+        const qtyForQBUpdate = 1; // Sempre usar quantidade 1 no QuickBooks
+        
+        if (isLastItem) {
+          // Para o último item, usar o valor restante para garantir total exato
+          const remainingAmount = await this.round2(totalTargetAmountUpdate - totalProcessedUpdate);
+          unitPrice = await this.round2(remainingAmount); // Rate = valor total (já que Qty=1)
+          exactAmount = await this.round2(unitPrice * qtyForQBUpdate); // Amount = Rate × 1
+          finalAmount = remainingAmount; // Para logs
+        } else {
+          // Para os outros itens, usar o valor com coeficiente já aplicado
+          finalAmount = await this.round2(calc.serviceAmountWithCoefficient);
+          unitPrice = await this.round2(finalAmount); // Rate = valor total (já que Qty=1)
+          exactAmount = await this.round2(unitPrice * qtyForQBUpdate); // Amount = Rate × 1
+        }
+        
+        totalProcessedUpdate += exactAmount;
+        
+        // Log detalhado para monitoramento
+        console.log(`QB Update - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
+
+        // Validação melhorada
+        if (qtyForQBUpdate <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQBUpdate) || !Number.isFinite(exactAmount)) {
+          console.warn(`⚠️ Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
+          continue;
+        }
+
+        try {
+          console.log(`Verificando/criando Item "${calc.itemName}" no QuickBooks para update...`);
+
+          // Usar o id de conta de receita válido
+          const { id: itemId, name: qboItemName } = await this.findOrCreateServiceItem(
+            qb,
+            calc.itemName,
+            calc.priceParsed,     // preço base do Item
+            incomeAccount.id // id de Account (Income) do QBO
+          );
+
+          if (!itemId) {
+            throw new Error("ERR_ITEM_NOT_FOUND_AND_ERR_TO_CREATE");
+          }
+
+          // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
+          processedLineItems.push({
+            DetailType: "SalesItemLineDetail",
+            Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
+            Description: calc.service?.description || "",
+            SalesItemLineDetail: {
+              ItemRef: { value: itemId, name: qboItemName },
+              Qty: qtyForQBUpdate, // Sempre 1 para evitar limitação de arredondamento
+              UnitPrice: unitPrice // Rate = valor total do serviço
+            }
+          });
+
+          // Logs defensivos
+          console.log(
+            `[DBG Update] ${calc.itemName} -> qtyOriginal=${calc.qty} qtyQB=${qtyForQBUpdate} basePrice=${calc.priceParsed} originalAmount=${calc.originalServiceAmount} ` +
+            `serviceAmountWithCoef=${calc.serviceAmountWithCoefficient} unitPrice=${unitPrice} exactAmount=${exactAmount}`
+          );
+        } catch (itemError: any) {
+          console.error(`Erro ao processar item "${calc.itemName}" para update:`, itemError);
+          // Continua para o próximo serviço
+        }
+      }
+
+      console.log(`Total calculado (Update): ${totalProcessedUpdate}, Total target: ${totalTargetAmountUpdate}, Diferença: ${Math.abs(totalProcessedUpdate - totalTargetAmountUpdate)}`);
+      
+
+      // Verificar se há itens processados
+      if (processedLineItems.length === 0) {
+        throw new Error("No valid items to include in the invoice update. Please check the services data.");
+      }
+
+      // Calcular o total
+      const calculatedTotal = processedLineItems.reduce((sum: number, item: InvoiceLineItem) => sum + item.Amount, 0);
+      console.log("Total calculado para update:", calculatedTotal);
+
+      // Preparar a data de vencimento
+      const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date(currentInvoice.DueDate);
+
+      // Preparar dados da fatura para atualização
+      const updateInvoiceData = {
+        Id: quickBooksInvoiceId,
+        SyncToken: currentInvoice.SyncToken,
+        Line: processedLineItems,
+        CustomerRef: currentInvoice.CustomerRef, // Manter o cliente atual
+        DueDate: dueDateObj.toISOString().split('T')[0],
+        PrivateNote: description || currentInvoice.PrivateNote || `Updated Invoice for Project ${project.id}`,
+        AllowOnlineCreditCardPayment: currentInvoice.AllowOnlineCreditCardPayment || true,
+        AllowOnlineACHPayment: currentInvoice.AllowOnlineACHPayment || true,
+        sparse: false // Atualização completa
+      };
+
+      // Atualizar a fatura usando SDK
+      console.log("Atualizando fatura no QuickBooks usando SDK...");
+
+      const updateResult = await new Promise((resolve, reject) => {
+        qb.updateInvoice(updateInvoiceData, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro na atualização do QuickBooks:", err);
+            return reject(err);
+          }
+          resolve(data);
+        });
+      });
+
+      // Normalize o objeto retornado
+      const updated = (updateResult as any)?.Invoice ?? (updateResult as any);
+      const updatedId = updated?.Id;
+
+      // Buscar o invoice atualizado completo
+      const fetchedUpdated = await new Promise((resolve, reject) => {
+        qb.getInvoice(updatedId, (err: any, data: any) => {
+          if (err) return reject(err);
+          resolve(data);
+        });
+      });
+      const updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
+
+      // Derive o status de pagamento
+      function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
+        if (i?.TxnStatus === "Voided") return "voided";
+        const total = Number(i?.TotalAmt ?? 0);
+        const bal = Number(i?.Balance ?? 0);
+        if (total > 0 && bal === 0) return "paid";
+        if (bal > 0 && bal < total) return "partial";
+        return "open";
+      }
+
+      console.log(`Invoice ${quickBooksInvoiceId} atualizado com sucesso no QuickBooks`);
+
+      if (calledFromStripe) {
+        // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
+        return {
+          success: true,
+          message: "QuickBooks invoice updated successfully",
+          quickbooksId: updatedInv.Id,
+          docNumber: updatedInv.DocNumber,
+          totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
+          status: deriveQboInvoicePaymentStatus(updatedInv)
+        };
+      } else {
+        // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
+        const localInvoice = await prisma.invoice.findFirst({
+          where: { idQuickbookContabio: quickBooksInvoiceId }
+        });
+
+        if (localInvoice) {
+          await prisma.invoice.update({
+            where: { id: localInvoice.id },
+            data: {
+              totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
+              status: deriveQboInvoicePaymentStatus(updatedInv),
+              dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
+              description: description || localInvoice.description,
+              updatedAt: new Date()
+            }
+          });
+
+          // Atualizar itens da invoice
+          await prisma.invoiceItem.deleteMany({
+            where: { invoiceId: localInvoice.id }
+          });
+
+          await prisma.invoiceItem.createMany({
+            data: processedLineItems.map((item: any) => ({
+              invoiceId: localInvoice.id,
+              name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
+              description: item.Description,
+              quantity: item?.SalesItemLineDetail?.Qty || 1,
+              price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+              totalAmount: item.Amount
+            }))
+          });
+        }
+
+        return {
+          success: true,
+          message: "QuickBooks invoice updated successfully",
+          quickbooksId: updatedInv.Id,
+          docNumber: updatedInv.DocNumber,
+          totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
+          status: deriveQboInvoicePaymentStatus(updatedInv)
+        };
+      }
+
+    } catch (error: any) {
+      console.error("Erro detalhado ao atualizar fatura no QuickBooks:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (error.message.includes("401") || error.message.includes("403"))) {
         // Atualizar o status da conta para indicar que precisa de reautorização
         try {
           await prisma.quickBooksAccount.update({
@@ -734,6 +1218,177 @@ export class QuickBooksInvoiceController {
     }
   }
 
+  // Método interno para cancelamento de invoice sem req/res
+  async cancelInvoiceInternal(params: {
+    quickBooksInvoiceId: string;
+    userId: string;
+    calledFromStripe?: boolean; // Parâmetro para identificar origem
+  }) {
+    const { quickBooksInvoiceId, userId, calledFromStripe = false } = params;
+
+    try {
+      // Obter cliente QuickBooks configurado
+      const { qb, account } = await this.getQBClient(userId);
+
+      // Testar conexão com uma operação simples
+      try {
+        await new Promise((resolve, reject) => {
+          qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
+            if (err) {
+              console.error("Erro ao buscar informações da empresa:", err);
+              reject(err);
+            } else {
+              console.log("Informações da empresa obtidas com sucesso");
+              resolve(data);
+            }
+          });
+        });
+      } catch (companyError: any) {
+        console.error("Erro ao buscar informações da empresa:", companyError);
+        // Marcar que precisa de reautorização
+        await prisma.quickBooksAccount.update({
+          where: { user_id: userId },
+          data: { needsReauthorization: true }
+        });
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      // Primeiro, buscar a fatura atual para obter o SyncToken e verificar status
+      console.log(`Buscando invoice ${quickBooksInvoiceId} no QuickBooks para cancelamento...`);
+      const currentInvoiceData = await new Promise((resolve, reject) => {
+        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao buscar fatura para cancelamento:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
+      
+      if (!currentInvoice || !currentInvoice.Id) {
+        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+      }
+
+      console.log(`Invoice encontrado para cancelamento. SyncToken: ${currentInvoice.SyncToken}, Status: ${currentInvoice.TxnStatus}`);
+
+      // Verificar se a fatura já está cancelada
+      if (currentInvoice.TxnStatus === "Voided") {
+        console.log("Invoice já está cancelado no QuickBooks");
+        return {
+          success: true,
+          message: "Invoice was already voided in QuickBooks",
+          quickbooksId: currentInvoice.Id,
+          status: "voided",
+          alreadyVoided: true
+        };
+      }
+
+      // Verificar se está paga (Balance = 0 e TotalAmt > 0)
+      const totalAmt = Number(currentInvoice.TotalAmt || 0);
+      const balance = Number(currentInvoice.Balance || 0);
+      if (totalAmt > 0 && balance === 0) {
+        throw new Error("Cannot void a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      // Cancelar a fatura no QuickBooks (marcar como void) usando SDK
+      const voidInvoiceData = {
+        SyncToken: currentInvoice.SyncToken,
+        Id: quickBooksInvoiceId,
+        sparse: true,
+        PrivateNote: calledFromStripe ? "Voided by Stripe integration" : "Voided by system"
+      };
+
+      console.log("Cancelando fatura no QuickBooks usando SDK...");
+      const voidResult = await new Promise((resolve, reject) => {
+        qb.voidInvoice(voidInvoiceData, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao cancelar fatura:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      // Normalize o objeto retornado
+      const voided = (voidResult as any)?.Invoice ?? (voidResult as any);
+      
+      console.log(`Invoice ${quickBooksInvoiceId} cancelado com sucesso no QuickBooks`);
+
+      if (calledFromStripe) {
+        // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
+        return {
+          success: true,
+          message: "QuickBooks invoice voided successfully",
+          quickbooksId: voided.Id,
+          status: "voided"
+        };
+      } else {
+        // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
+        const localInvoice = await prisma.invoice.findFirst({
+          where: { 
+            OR: [
+              { externalInvoiceId: quickBooksInvoiceId },
+              { idQuickbookContabio: quickBooksInvoiceId }
+            ]
+          }
+        });
+
+        if (localInvoice) {
+          await prisma.invoice.update({
+            where: { id: localInvoice.id },
+            data: { 
+              status: "void",
+              updatedAt: new Date()
+            }
+          });
+        }
+
+        return {
+          success: true,
+          message: "QuickBooks invoice voided successfully",
+          quickbooksId: voided.Id,
+          status: "voided"
+        };
+      }
+
+    } catch (error: any) {
+      console.error("Erro detalhado ao cancelar fatura no QuickBooks:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (error.message.includes("401") || error.message.includes("403"))) {
+        // Atualizar o status da conta para indicar que precisa de reautorização
+        try {
+          await prisma.quickBooksAccount.update({
+            where: { user_id: userId },
+            data: {
+              needsReauthorization: true
+            }
+          });
+        } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
+        }
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        throw new Error("Cannot void a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      if (error.message && error.message.includes("already voided")) {
+        throw new Error("Invoice is already voided in QuickBooks");
+      }
+
+      throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
   async cancelInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId } = req.body;
@@ -760,54 +1415,36 @@ export class QuickBooksInvoiceController {
         return res.status(400).json({ error: "QuickBooks invoice ID missing" });
       }
 
-      // Obter cliente QuickBooks configurado
-      const { qb } = await this.getQBClient(userId);
-
-      // Primeiro, buscar a fatura atual para obter o SyncToken
-      const currentInvoice = await new Promise((resolve, reject) => {
-        qb.getInvoice(invoice.externalInvoiceId, (err: any, data: any) => {
-          if (err) {
-            console.error("Erro ao buscar fatura para cancelamento:", err);
-            reject(err);
-          } else {
-            resolve(data);
-          }
-        });
+      const result = await this.cancelInvoiceInternal({
+        quickBooksInvoiceId: invoice.externalInvoiceId,
+        userId: userId
       });
 
-      // Cancelar a fatura no QuickBooks (marcar como void) usando SDK
-      const voidInvoiceData = {
-        SyncToken: (currentInvoice as any).SyncToken,
-        Id: invoice.externalInvoiceId,
-        sparse: true,
-        PrivateNote: "Voided by system"
-      };
-
-      await new Promise((resolve, reject) => {
-        qb.voidInvoice(voidInvoiceData, (err: any, data: any) => {
-          if (err) {
-            console.error("Erro ao cancelar fatura:", err);
-            reject(err);
-          } else {
-            resolve(data);
-          }
-        });
-      });
-
-      // Atualizar o status da fatura
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: "void" }
-      });
-
-      return res.status(200).json({
-        message: "Invoice voided successfully"
-      });
+      return res.status(200).json(result);
     } catch (error: any) {
       console.error("Error voiding QuickBooks invoice:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (error.message.includes("401") || error.message.includes("403") || error.message.includes("Insufficient permissions"))) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account with additional permissions",
+          action: "reauthorize"
+        });
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        return res.status(400).json({
+          error: "Cannot void paid invoice",
+          message: "Cannot void a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
       return res.status(500).json({
         error: "Internal Server Error",
-        details: error.message
+        message: error.message,
+        details: error.toString()
       });
     }
   }
