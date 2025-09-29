@@ -127,7 +127,8 @@ export class GetEstimateByProjectIdController {
                             id: true,
                             uri: true
                         }
-                    }
+                    },
+                    InvoicePaymentTimeLine: true
                 },
             })
 

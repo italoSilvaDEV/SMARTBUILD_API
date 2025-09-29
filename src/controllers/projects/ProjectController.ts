@@ -203,6 +203,7 @@ export class ProjectController {
               }
             }
           },
+          InvoicePaymentTimeLine: true,
           _count: {
             select: {
               serviceProject: true,
@@ -527,6 +528,7 @@ export class ProjectController {
               name: true,
             },
           },
+          InvoicePaymentTimeLine: true
         },
       });
 
