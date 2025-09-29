@@ -54,6 +54,7 @@ export class ConvertToProjectController {
                         price: Number(estimate.totalAmount),
                     },
                     select: {
+                        id: true,
                         contract_number: true
                     }
                 })
@@ -108,6 +109,26 @@ export class ConvertToProjectController {
                         await smartbuild.invoice.update({
                             where: { id: inv.id },
                             data: { type_invoicebase: "project" }
+                        })
+                    }
+                }
+
+                const paymentsHistory = await smartbuild.invoicePaymentTimeLine.findMany({
+                    where: {
+                        estimateId: estimateId
+                    }
+                })
+
+                for (const pay of paymentsHistory) {
+                    if (pay.estimateId) {
+                        await smartbuild.invoicePaymentTimeLine.update({
+                            where: {
+                                id: pay.id
+                            },
+                            data: {
+                                estimateId: null,
+                                projectId: project.id
+                            }
                         })
                     }
                 }
