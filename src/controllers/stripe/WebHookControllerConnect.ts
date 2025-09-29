@@ -65,7 +65,9 @@ export class StripeWebHookControllerConnect {
 
                     // Buscar dados completos da invoice com relacionamentos
                     const invoiceData = await prisma.invoice.findFirst({
-                        where: { stripeInvoiceId: invoice.id },
+                        where: {
+                            stripeInvoiceId: invoice.id
+                        },
                         include: {
                             project: {
                                 include: {
@@ -77,6 +79,11 @@ export class StripeWebHookControllerConnect {
                                             phone: true
                                         }
                                     }
+                                }
+                            },
+                            estimate: {
+                                select: {
+                                    id: true,
                                 }
                             },
                             company: {
@@ -92,7 +99,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                     if (invoiceData) {
-                        // Atualizar status da fatura
                         await prisma.invoice.updateMany({
                             where: { stripeInvoiceId: invoice.id },
                             data: { status: "paid" },
@@ -124,6 +130,7 @@ export class StripeWebHookControllerConnect {
                                         client: { select: { id: true, name: true, email: true, phone: true } }
                                     }
                                 },
+                                estimate: { select: { id: true } },
                                 company: { select: { id: true, name: true, avatar: true, email: true, phone: true } }
                             }
                         }
@@ -131,7 +138,7 @@ export class StripeWebHookControllerConnect {
                 });
             };
 
-            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */ 
+            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */
             switch (event.type) {
 
                 /* ------------------- ACH (e outros) em compensação ------------------- */
@@ -222,6 +229,28 @@ export class StripeWebHookControllerConnect {
                             }
                         });
 
+                        if (pr.invoice.type_invoicebase === "project" && pr.invoice.project) {
+                            await prisma.invoicePaymentTimeLine.create({
+                                data: {
+                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                                        style: 'currency',
+                                        currency: 'USD',
+                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
+                                    projectId: pr.invoice.project.id
+                                }
+                            })
+                        } else if (pr.invoice.type_invoicebase === "estimate" && pr.invoice.estimate) {
+                            await prisma.invoicePaymentTimeLine.create({
+                                data: {
+                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                                        style: 'currency',
+                                        currency: 'USD',
+                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
+                                    estimateId: pr.invoice.estimate.id
+                                }
+                            })
+                        }
+
                         console.log("Invoice atualizada como paga via Payment Element");
 
                         // Registrar timeline
@@ -290,7 +319,7 @@ export class StripeWebHookControllerConnect {
                     // Encontrar o PaymentIntent associado através do charge
                     let paymentIntentId: string | undefined;
                     let stripeAccountId: string | undefined;
-                    
+
                     try {
                         // Obter conta conectada do evento se disponível
                         const stripeEvent = event as Stripe.Event & { account?: string };
@@ -300,7 +329,7 @@ export class StripeWebHookControllerConnect {
                             typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
                             stripeAccountId ? { stripeAccount: stripeAccountId } : {}
                         );
-                        
+
                         if (typeof ch.payment_intent === "string") {
                             paymentIntentId = ch.payment_intent;
                         } else if (ch.payment_intent?.id) {
@@ -323,7 +352,7 @@ export class StripeWebHookControllerConnect {
                             // NOVO: Atualizar Invoice como "disputed" ou "returned"
                             await prisma.invoice.update({
                                 where: { id: pr.invoice.id },
-                                data: { 
+                                data: {
                                     status: "disputed", // Criar este status se necessário
                                     // Limpar dados de pagamento já que foi disputado
                                     paymentMethodType: null,
@@ -353,12 +382,12 @@ export class StripeWebHookControllerConnect {
                 /* --------- Disputa resolvida em favor da empresa ---------- */
                 case "charge.dispute.closed": {
                     const dispute = event.data.object as Stripe.Dispute;
-                    
+
                     // Só processar se a disputa foi vencida pela empresa
                     if (dispute.status === "won") {
                         let paymentIntentId: string | undefined;
                         let stripeAccountId: string | undefined;
-                        
+
                         try {
                             const stripeEvent = event as Stripe.Event & { account?: string };
                             stripeAccountId = stripeEvent.account;
@@ -367,7 +396,7 @@ export class StripeWebHookControllerConnect {
                                 typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
                                 stripeAccountId ? { stripeAccount: stripeAccountId } : {}
                             );
-                            
+
                             if (typeof ch.payment_intent === "string") {
                                 paymentIntentId = ch.payment_intent;
                             } else if (ch.payment_intent?.id) {
@@ -390,7 +419,7 @@ export class StripeWebHookControllerConnect {
                                 // NOVO: Restaurar Invoice como "paid" já que a disputa foi vencida
                                 await prisma.invoice.update({
                                     where: { id: pr.invoice.id },
-                                    data: { 
+                                    data: {
                                         status: "paid",
                                         // Restaurar dados de pagamento
                                         paymentMethodType: pr.paymentMethodType,

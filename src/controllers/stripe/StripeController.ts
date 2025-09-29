@@ -692,7 +692,8 @@ export class StripeController {
                             paymentMethodType: true,
                         }
 
-                    }
+                    },
+                    InvoiceItems: true,
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
@@ -721,9 +722,11 @@ export class StripeController {
                         }
                     }
 
-                    // Não mais sincronizar com Stripe - usar dados locais apenas
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
-                    return { ...invoice, lastSentAt: lastSend };
+                    return {
+                        ...invoice,
+                        lastSentAt: lastSend,
+                    };
                 })
             );
 
@@ -819,9 +822,9 @@ export class StripeController {
             }
 
             let newInvoiceType
-            if(existingInvoice.invoiceType === "custom"){
+            if (existingInvoice.invoiceType === "custom") {
                 newInvoiceType = "stripe";
-            }else{
+            } else {
                 newInvoiceType = existingInvoice.invoiceType;
             }
 
