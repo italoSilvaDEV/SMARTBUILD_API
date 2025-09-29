@@ -415,6 +415,7 @@ export class ProjectController {
         return {
           ...project,
           balanceDue: balanceDue,
+          amountPaid: Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location,
