@@ -97,7 +97,10 @@ export class CustomInvoicePaymentController {
         } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
           await smartbuild.invoicePaymentTimeLine.create({
             data: {
-              description: "Payment invoice " + invoice.externalInvoiceId + " of " + invoice.totalAmount + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
               estimateId: invoice.estimate.id
             }
           })
