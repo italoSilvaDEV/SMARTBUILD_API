@@ -154,7 +154,8 @@ export class BusinessDashboardController {
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
-                        })
+                        }),
+                        type_estimate: "estimate"
                     }
                 }),
                 // Total Projects
@@ -921,7 +922,8 @@ export class BusinessDashboardController {
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
-                        })
+                        }),
+                        type_estimate: "estimate"
                     }
                 }),
                 prisma.estimate.count({
