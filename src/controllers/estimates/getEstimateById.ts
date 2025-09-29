@@ -176,6 +176,7 @@ export class GetEstimateByProjectIdController {
                 data: {
                     ...estimate,
                     balanceDue: totalAmount - Number(totalAmountPaid),
+                    amountPaid: Number(totalAmountPaid),
                     PdfProject: presignedUrls,
                     project: {
                         ...estimate.project,
