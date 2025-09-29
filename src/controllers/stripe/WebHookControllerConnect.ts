@@ -229,27 +229,16 @@ export class StripeWebHookControllerConnect {
                             }
                         });
 
-                        if (pr.invoice.type_invoicebase === "project" && pr.invoice.project) {
-                            await prisma.invoicePaymentTimeLine.create({
-                                data: {
-                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
-                                        style: 'currency',
-                                        currency: 'USD',
-                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
-                                    projectId: pr.invoice.project.id
-                                }
-                            })
-                        } else if (pr.invoice.type_invoicebase === "estimate" && pr.invoice.estimate) {
-                            await prisma.invoicePaymentTimeLine.create({
-                                data: {
-                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
-                                        style: 'currency',
-                                        currency: 'USD',
-                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
-                                    estimateId: pr.invoice.estimate.id
-                                }
-                            })
-                        }
+                        await prisma.invoicePaymentTimeLine.create({
+                            data: {
+                                description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: 'USD',
+                                }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
+                                projectId: pr.invoice.project?.id,
+                                estimateId: pr.invoice.estimate?.id
+                            }
+                        })
 
                         console.log("Invoice atualizada como paga via Payment Element");
 
