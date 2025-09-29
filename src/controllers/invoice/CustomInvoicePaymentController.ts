@@ -31,6 +31,8 @@ export class CustomInvoicePaymentController {
         }
       });
 
+      console.log("invoice: ", invoice);
+
       if (!invoice) {
         return res.status(404).json({ error: "Invoice not found" });
       }
