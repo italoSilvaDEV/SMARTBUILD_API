@@ -84,16 +84,27 @@ export class CustomInvoicePaymentController {
           }
         });
 
-        await smartbuild.invoicePaymentTimeLine.create({
-          data: {
-            description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD',
-            }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
-            projectId: invoice.project?.id,
-            estimateId: invoice.estimate?.id
-          }
-        })
+        if (invoice.type_invoicebase === "project" && invoice.project) {
+          await smartbuild.invoicePaymentTimeLine.create({
+            data: {
+              description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              projectId: invoice.project.id
+            }
+          })
+        } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
+          await smartbuild.invoicePaymentTimeLine.create({
+            data: {
+              description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              estimateId: invoice.estimate.id
+            }
+          })
+        }
 
         return res.status(201).json({
           message: "Payment recorded successfully",
