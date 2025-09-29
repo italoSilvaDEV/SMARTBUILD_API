@@ -10,7 +10,25 @@ export class CustomInvoicePaymentController {
       // Verificar se a fatura existe e é do tipo custom
       const invoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
-        include: { payment: true }
+        select: {
+          id: true,
+          type_invoicebase: true,
+          invoiceType: true,
+          payment: true,
+          externalInvoiceId: true,
+          updatedAt: true,
+          totalAmount: true,
+          project: {
+            select: {
+              id: true,
+            }
+          },
+          estimate: {
+            select: {
+              id: true,
+            }
+          }
+        }
       });
 
       if (!invoice) {
@@ -23,7 +41,7 @@ export class CustomInvoicePaymentController {
 
       // Verificar se já existe um pagamento para esta fatura
       if (invoice.payment) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Payment already exists for this invoice",
           payment: invoice.payment
         });
@@ -39,36 +57,54 @@ export class CustomInvoicePaymentController {
         return res.status(400).json({ error: "Valid payment amount is required" });
       }
 
-      // Criar o registro de pagamento
-      const payment = await prisma.invoicePayment.create({
-        data: {
-          paymentMethod,
-          notes: notes || "",
-          amount,
-          invoiceId
-        }
-      });
-
-      // Atualizar o status da fatura para "paid"
-      await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { status: "paid" }
-      });
-
-      // Registrar evento na timeline
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Payment`,
-          invoice: {
-            connect: { id: invoiceId }
+      await prisma.$transaction(async (smartbuild) => {
+        const payment = await smartbuild.invoicePayment.create({
+          data: {
+            paymentMethod,
+            notes: notes || "",
+            amount,
+            invoiceId
           }
-        }
-      });
+        });
 
-      return res.status(201).json({
-        message: "Payment recorded successfully",
-        payment
-      });
+        await smartbuild.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            status: "paid",
+            updatedAt: new Date()
+          }
+        });
+
+        await smartbuild.invoiceTimeline.create({
+          data: {
+            description: `Payment`,
+            invoice: {
+              connect: { id: invoiceId }
+            }
+          }
+        });
+
+        if (invoice.type_invoicebase === "project" && invoice.project) {
+          await smartbuild.invoicePaymentTimeLine.create({
+            data: {
+              description: "Payment invoice " + invoice.externalInvoiceId + " of" + invoice.totalAmount + " on" + invoice.updatedAt.toLocaleDateString('en-US'),
+              projectId: invoice.project.id
+            }
+          })
+        } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
+          await smartbuild.invoicePaymentTimeLine.create({
+            data: {
+              description: "Payment invoice " + invoice.externalInvoiceId + " of" + invoice.totalAmount + " on" + invoice.updatedAt.toLocaleDateString('en-US'),
+              estimateId: invoice.estimate.id
+            }
+          })
+        }
+
+        return res.status(201).json({
+          message: "Payment recorded successfully",
+          payment
+        });
+      })
     } catch (error: any) {
       console.error("Error recording custom invoice payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
