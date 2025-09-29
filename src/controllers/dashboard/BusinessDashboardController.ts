@@ -147,7 +147,10 @@ export class BusinessDashboardController {
                 prisma.estimate.count({
                     where: {
                         project: {
-                            company_id: valid.response?.id
+                            company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["approved", "pending", "canceled"]
@@ -155,7 +158,6 @@ export class BusinessDashboardController {
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         }),
-                        type_estimate: "estimate"
                     }
                 }),
                 // Total Projects
@@ -916,6 +918,9 @@ export class BusinessDashboardController {
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["pending"]
@@ -923,13 +928,15 @@ export class BusinessDashboardController {
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
                         }),
-                        type_estimate: "estimate"
                     }
                 }),
                 prisma.estimate.count({
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["approved"]
@@ -943,6 +950,9 @@ export class BusinessDashboardController {
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["canceled"]
