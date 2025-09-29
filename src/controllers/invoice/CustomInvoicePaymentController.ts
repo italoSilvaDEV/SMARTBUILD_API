@@ -31,8 +31,6 @@ export class CustomInvoicePaymentController {
         }
       });
 
-      console.log("invoice: ", invoice);
-
       if (!invoice) {
         return res.status(404).json({ error: "Invoice not found" });
       }
@@ -89,14 +87,14 @@ export class CustomInvoicePaymentController {
         if (invoice.type_invoicebase === "project" && invoice.project) {
           await smartbuild.invoicePaymentTimeLine.create({
             data: {
-              description: "Payment invoice " + invoice.externalInvoiceId + " of" + invoice.totalAmount + " on" + invoice.updatedAt.toLocaleDateString('en-US'),
+              description: "Payment invoice " + invoice.externalInvoiceId + " of " + invoice.totalAmount + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
               projectId: invoice.project.id
             }
           })
         } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
           await smartbuild.invoicePaymentTimeLine.create({
             data: {
-              description: "Payment invoice " + invoice.externalInvoiceId + " of" + invoice.totalAmount + " on" + invoice.updatedAt.toLocaleDateString('en-US'),
+              description: "Payment invoice " + invoice.externalInvoiceId + " of " + invoice.totalAmount + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
               estimateId: invoice.estimate.id
             }
           })
