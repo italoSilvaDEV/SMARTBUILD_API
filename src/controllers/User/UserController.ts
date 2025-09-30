@@ -1455,26 +1455,46 @@ export class UserController {
         });
       }
 
+      // Buscar informações da empresa correta com o plano
+      const company = await prisma.company.findUnique({
+        where: { id: company_id },
+        include: {
+          Plan: {
+            include: {
+              permissionGroup: {
+                include: {
+                  GroupPermissionsList: {
+                    include: {
+                      Permissions: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
       // Obter permissões do plano
       let permissions: string[] = [];
-      if (user.company?.Plan?.permissionGroup?.GroupPermissionsList) {
-        permissions = user.company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
+      if (company?.Plan?.permissionGroup?.GroupPermissionsList) {
+        permissions = company.Plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
       }
 
       // Obter informações do plano
-      const planInfo = user.company?.Plan ? {
-        id: user.company.Plan.id,
-        name: user.company.Plan.name,
-        validityType: user.company.Plan.validityType,
-        validityDuration: user.company.Plan.validityDuration,
-        stripePriceId: user.company.Plan.stripePriceId,
-        stripeProductId: user.company.Plan.stripeProductId
+      const planInfo = company?.Plan ? {
+        id: company.Plan.id,
+        name: company.Plan.name,
+        validityType: company.Plan.validityType,
+        validityDuration: company.Plan.validityDuration,
+        stripePriceId: company.Plan.stripePriceId,
+        stripeProductId: company.Plan.stripeProductId
       } : null;
 
-      // Buscar a assinatura mais recente pelo startDate
+      // Buscar a assinatura mais recente pelo startDate usando o company_id do parâmetro
       const subscription = await prisma.subscription.findFirst({
         where: {
-          companyId: user.company?.id,
+          companyId: company_id,
         },
         orderBy: { startDate: 'desc' }
       });

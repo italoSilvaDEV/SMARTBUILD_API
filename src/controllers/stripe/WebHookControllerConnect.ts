@@ -14,6 +14,93 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
 
+// ========= Helpers para capturar Charge + Fees reais (com retry) =========
+type FeeBreakdown = {
+    currency: string;
+    gross: number;        // amount (unidades monetárias)
+    feeTotal: number;     // fee total (Stripe + app fee, se houver)
+    stripeFee: number;    // apenas a parte stripe_fee
+    applicationFee: number; // apenas a parte application_fee (se houver)
+    net: number;          // net recebido pela conta conectada
+    receiptUrl: string | null;
+  };
+
+  async function wait(ms: number) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+  
+  /**
+   * Busca o Charge e a BalanceTransaction (conta conectada) e extrai as taxas reais.
+   * Faz tentativas, pois a BT pode não estar pronta no exato instante do webhook.
+   */
+  async function fetchChargeAndFeesWithRetry(opts: {
+    stripe: Stripe;
+    stripeAccountId: string;
+    paymentIntent: Stripe.PaymentIntent;
+    maxTries?: number;
+    delayMs?: number;
+  }): Promise<FeeBreakdown | null> {
+    const { stripe, stripeAccountId, paymentIntent, maxTries = 6, delayMs = 2000 } = opts;
+  
+    const chargeId =
+      typeof paymentIntent.latest_charge === "string"
+        ? paymentIntent.latest_charge
+        : paymentIntent.latest_charge?.id;
+  
+    if (!chargeId) return null;
+  
+    let lastError: any = null;
+  
+    for (let attempt = 1; attempt <= maxTries; attempt++) {
+      try {
+        const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: stripeAccountId });
+        const receiptUrl = charge.receipt_url ?? null;
+  
+        const btId =
+          typeof charge.balance_transaction === "string"
+            ? charge.balance_transaction
+            : charge.balance_transaction?.id;
+  
+        let bt: Stripe.BalanceTransaction | null = null;
+  
+        if (btId) {
+          bt = await stripe.balanceTransactions.retrieve(btId, { stripeAccount: stripeAccountId });
+        } else {
+          const list = await stripe.balanceTransactions.list(
+            { source: chargeId, limit: 1 },
+            { stripeAccount: stripeAccountId }
+          );
+          bt = list.data[0] ?? null;
+        }
+  
+        if (!bt) throw new Error("Balance transaction ainda não disponível");
+  
+        const currency = (bt.currency || paymentIntent.currency || "usd").toUpperCase();
+        const gross = bt.amount / 100;
+        const feeTotal = bt.fee / 100;
+        const net = bt.net / 100;
+  
+        let stripeFee = 0;
+        let applicationFee = 0;
+  
+        for (const fd of bt.fee_details || []) {
+          const amount = (fd.amount || 0) / 100;
+          if (fd.type === "stripe_fee") stripeFee += amount;
+          if (fd.type === "application_fee") applicationFee += amount;
+        }
+  
+        return { currency, gross, feeTotal, stripeFee, applicationFee, net, receiptUrl };
+      } catch (err) {
+        lastError = err;
+        await wait(delayMs);
+      }
+    }
+  
+    console.error("Não foi possível obter BalanceTransaction após retries:", lastError?.message || lastError);
+    return null;
+  }
+  
+
 export class StripeWebHookControllerConnect {
     constructor() {
         this.handleConnectWebhook = this.handleConnectWebhook.bind(this);
@@ -23,6 +110,7 @@ export class StripeWebHookControllerConnect {
         this.sendPaymentFailedEmails = this.sendPaymentFailedEmails.bind(this);
         this.sendPaymentDisputedEmails = this.sendPaymentDisputedEmails.bind(this);
     }
+    
 
     async handleConnectWebhook(req: Request, res: Response) {
         const sig = req.headers["stripe-signature"];
@@ -176,15 +264,22 @@ export class StripeWebHookControllerConnect {
                 }
 
                 /* -------------------------- Pagamento concluído ----------------------- */
+               
                 case "payment_intent.succeeded": {
                     console.log("Processando payment_intent.succeeded (Payment Element)");
                     const paymentIntent = event.data.object as Stripe.PaymentIntent;
-
+                  
                     console.log("   • PaymentIntent ID:", paymentIntent.id);
                     console.log("   • Amount:", paymentIntent.amount_received);
                     console.log("   • Currency:", paymentIntent.currency);
-
+                  
                     const pr = await findByPI(paymentIntent.id);
+
+                  
+                    if (!pr || !pr.invoice) {
+                      console.log("PaymentIntentRecord não encontrado no banco de dados local");
+                      break;
+
 
                     if (pr && pr.invoice) {
                         console.log("pr encontrado para invoice:", pr.invoice.id);
@@ -270,10 +365,82 @@ export class StripeWebHookControllerConnect {
 
                     } else {
                         console.log("PaymentIntentRecord não encontrado no banco de dados local");
-                    }
-                    break;
-                }
 
+                    }
+                  
+                    console.log("PR encontrado para invoice:", pr.invoice.id);
+                  
+                    //  Busca fees reais + receipt_url na CONTA CONECTADA (com retry)
+                    const feeInfo = await fetchChargeAndFeesWithRetry({
+                      stripe,
+                      stripeAccountId: pr.stripeAccountId,
+                      paymentIntent,
+                    });
+                  
+                    const receiptUrl: string | null = feeInfo?.receiptUrl ?? null;
+                  
+                    // Totais da sua aplicação
+                    const originalAmount = Number(pr.invoice.totalAmount); // valor base da invoice (sem surcharge local)
+                    const paidAmount = Number(pr.amount);                  // total ajustado no PI (com surcharge local se cartão)
+                    const localSurcharge = paidAmount - originalAmount;
+                  
+                    // Atualiza o registro do PaymentIntent
+                    await prisma.paymentIntentRecord.update({
+                      where: { stripePaymentIntentId: paymentIntent.id },
+                      data: {
+                        status: "succeeded",
+                        receiptUrl,
+                        updatedAt: new Date()
+                      }
+                    });
+                  
+                    // Fees reais vindas da Stripe (se ainda não disponíveis, feeInfo será null e salvamos 0 — sem estimativa)
+                    const stripeFeesReal = feeInfo?.feeTotal ?? 0;
+                    const currency = feeInfo?.currency || paymentIntent.currency?.toUpperCase() || "USD";
+                    const netToConnected = feeInfo?.net ?? (paidAmount - stripeFeesReal);
+                  
+                    console.log("Resumo do pagamento:", {
+                      originalAmount,
+                      paidAmount,
+                      localSurcharge,
+                      stripeFeesReal,
+                      netToConnected,
+                      currency,
+                    });
+                  
+                    // Atualiza a Invoice com dados robustos do pagamento
+                    await prisma.invoice.update({
+                      where: { id: pr.invoice.id },
+                      data: {
+                        status: "paid",
+                        stripePaymentIntentId: paymentIntent.id,
+                        paymentMethodType: pr.paymentMethodType || null,
+                        totalAmountPaid: paidAmount,            // total cobrado do cliente
+                        surchargePaymentLocal: localSurcharge,  // taxa local aplicada (só quando método = card/link/apple/google)
+                        surchargePaymentStripe: stripeFeesReal, //  taxa Stripe REAL (BT)
+                      
+                      }
+                    });
+                  
+                    // Timeline
+                    await prisma.invoiceTimeline.create({
+                      data: {
+                        description: `Payment completed (PI ${paymentIntent.id}) • Paid: ${paidAmount.toFixed(2)} ${currency} • Local surcharge: ${localSurcharge.toFixed(2)} • Stripe fees: ${stripeFeesReal.toFixed(2)} • Net to connected: ${netToConnected.toFixed(2)}`,
+                        invoiceId: pr.invoice.id
+                      }
+                    });
+                  
+                    // E-mails
+                    try {
+                      await this.sendPaymentConfirmationEmails(pr.invoice, paymentIntent);
+                    } catch (emailError: any) {
+                      console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
+                    }
+                  
+                    break;
+                  }
+                  
+               
                 /* ------------------------------ Falhou -------------------------------- */
                 case "payment_intent.payment_failed": {
                     const pi = event.data.object as Stripe.PaymentIntent;
@@ -357,7 +524,8 @@ export class StripeWebHookControllerConnect {
                                     // Limpar dados de pagamento já que foi disputado
                                     paymentMethodType: null,
                                     totalAmountPaid: null,
-                                    totalAmountWithSurcharge: null
+                                    surchargePaymentLocal: null,
+                                    surchargePaymentStripe: null
                                 }
                             });
 
@@ -416,6 +584,11 @@ export class StripeWebHookControllerConnect {
                                     data: { status: "succeeded", updatedAt: new Date() }
                                 });
 
+                                // Recalcular taxas para restaurar dados corretos
+                                const originalAmount = Number(pr.invoice.totalAmount);
+                                const paidAmount = Number(pr.amount);
+                                const localSurcharge = paidAmount - originalAmount;
+
                                 // NOVO: Restaurar Invoice como "paid" já que a disputa foi vencida
                                 await prisma.invoice.update({
                                     where: { id: pr.invoice.id },
@@ -424,7 +597,8 @@ export class StripeWebHookControllerConnect {
                                         // Restaurar dados de pagamento
                                         paymentMethodType: pr.paymentMethodType,
                                         totalAmountPaid: pr.amount,
-                                        totalAmountWithSurcharge: pr.amount
+                                        surchargePaymentLocal: localSurcharge,
+                                        // Nota: surchargePaymentStripe não é restaurado pois não temos o dado salvo no PR
                                     }
                                 });
 
