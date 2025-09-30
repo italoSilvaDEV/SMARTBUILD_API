@@ -646,6 +646,7 @@ model Invoice {
   totalAmountPaid          Decimal? // Valor total pago (inclui surcharge)
   surchargePaymentLocal    Decimal? // Taxa local aplicada (diferença entre valor original e final)
   surchargePaymentStripe   Decimal? // Taxa de processamento cobrada pelo Stripe
+  totalAmountWithSurcharge Decimal? // Valor total pago (com surcharge)
 
   // Relacionamento com Project e Company
   project   Project? @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
