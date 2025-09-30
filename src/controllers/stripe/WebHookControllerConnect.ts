@@ -153,7 +153,9 @@ export class StripeWebHookControllerConnect {
 
                     // Buscar dados completos da invoice com relacionamentos
                     const invoiceData = await prisma.invoice.findFirst({
-                        where: { stripeInvoiceId: invoice.id },
+                        where: {
+                            stripeInvoiceId: invoice.id
+                        },
                         include: {
                             project: {
                                 include: {
@@ -165,6 +167,11 @@ export class StripeWebHookControllerConnect {
                                             phone: true
                                         }
                                     }
+                                }
+                            },
+                            estimate: {
+                                select: {
+                                    id: true,
                                 }
                             },
                             company: {
@@ -180,7 +187,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                     if (invoiceData) {
-                        // Atualizar status da fatura
                         await prisma.invoice.updateMany({
                             where: { stripeInvoiceId: invoice.id },
                             data: { status: "paid" },
@@ -212,6 +218,7 @@ export class StripeWebHookControllerConnect {
                                         client: { select: { id: true, name: true, email: true, phone: true } }
                                     }
                                 },
+                                estimate: { select: { id: true } },
                                 company: { select: { id: true, name: true, avatar: true, email: true, phone: true } }
                             }
                         }
@@ -219,7 +226,7 @@ export class StripeWebHookControllerConnect {
                 });
             };
 
-            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */ 
+            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */
             switch (event.type) {
 
                 /* ------------------- ACH (e outros) em compensação ------------------- */
@@ -267,10 +274,98 @@ export class StripeWebHookControllerConnect {
                     console.log("   • Currency:", paymentIntent.currency);
                   
                     const pr = await findByPI(paymentIntent.id);
+
                   
                     if (!pr || !pr.invoice) {
                       console.log("PaymentIntentRecord não encontrado no banco de dados local");
                       break;
+
+
+                    if (pr && pr.invoice) {
+                        console.log("pr encontrado para invoice:", pr.invoice.id);
+
+                        // Buscar receipt_url do Charge associado ao PaymentIntent
+                        let receiptUrl = null;
+                        try {
+                            if (paymentIntent.latest_charge) {
+                                const chargeId = typeof paymentIntent.latest_charge === 'string'
+                                    ? paymentIntent.latest_charge
+                                    : paymentIntent.latest_charge.id;
+
+                                const charge = await stripe.charges.retrieve(chargeId,
+                                    { stripeAccount: pr.stripeAccountId }
+                                );
+                                receiptUrl = charge.receipt_url;
+                                console.log("Receipt URL encontrado:", receiptUrl);
+                            }
+                        } catch (chargeError) {
+                            console.error("Erro ao buscar charge para receipt URL:", chargeError);
+                        }
+
+                        // Atualizar status do PaymentIntentRecord e salvar receipt URL
+                        await prisma.paymentIntentRecord.update({
+                            where: { stripePaymentIntentId: paymentIntent.id },
+                            data: {
+                                status: "succeeded",
+                                receiptUrl: receiptUrl,
+                                updatedAt: new Date()
+                            }
+                        });
+
+                        // NOVO: Atualizar dados do Invoice com informações de pagamento
+                        await prisma.invoice.update({
+                            where: { id: pr.invoice.id },
+                            data: {
+                                status: "paid",
+                                stripePaymentIntentId: paymentIntent.id,
+                                paymentMethodType: pr.paymentMethodType, // Vem do PaymentIntentRecord
+                                totalAmountPaid: pr.amount, // Valor total pago (com surcharge)
+                                totalAmountWithSurcharge: pr.amount // Valor com surcharge
+                            }
+                        });
+
+                        if (pr.invoice.type_invoicebase === "project" && pr.invoice.project) {
+                            await prisma.invoicePaymentTimeLine.create({
+                                data: {
+                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                                        style: 'currency',
+                                        currency: 'USD',
+                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
+                                    projectId: pr.invoice.project.id
+                                }
+                            })
+                        } else if (pr.invoice.type_invoicebase === "estimate" && pr.invoice.estimate) {
+                            await prisma.invoicePaymentTimeLine.create({
+                                data: {
+                                    description: "Payment invoice #" + pr.invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+                                        style: 'currency',
+                                        currency: 'USD',
+                                    }).format(Number(pr.invoice.totalAmount)) + " on " + pr.invoice.updatedAt.toLocaleDateString('en-US'),
+                                    estimateId: pr.invoice.estimate.id
+                                }
+                            })
+                        }
+
+                        console.log("Invoice atualizada como paga via Payment Element");
+
+                        // Registrar timeline
+                        await prisma.invoiceTimeline.create({
+                            data: {
+                                description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)} (Method: ${pr.paymentMethodType || 'unknown'})`,
+                                invoiceId: pr.invoice.id
+                            }
+                        });
+
+                        // Enviar emails de confirmação
+                        try {
+                            await this.sendPaymentConfirmationEmails(pr.invoice, paymentIntent);
+                        } catch (emailError: any) {
+                            console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
+                        }
+
+                    } else {
+                        console.log("PaymentIntentRecord não encontrado no banco de dados local");
+
                     }
                   
                     console.log("PR encontrado para invoice:", pr.invoice.id);
@@ -391,7 +486,7 @@ export class StripeWebHookControllerConnect {
                     // Encontrar o PaymentIntent associado através do charge
                     let paymentIntentId: string | undefined;
                     let stripeAccountId: string | undefined;
-                    
+
                     try {
                         // Obter conta conectada do evento se disponível
                         const stripeEvent = event as Stripe.Event & { account?: string };
@@ -401,7 +496,7 @@ export class StripeWebHookControllerConnect {
                             typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
                             stripeAccountId ? { stripeAccount: stripeAccountId } : {}
                         );
-                        
+
                         if (typeof ch.payment_intent === "string") {
                             paymentIntentId = ch.payment_intent;
                         } else if (ch.payment_intent?.id) {
@@ -424,7 +519,7 @@ export class StripeWebHookControllerConnect {
                             // NOVO: Atualizar Invoice como "disputed" ou "returned"
                             await prisma.invoice.update({
                                 where: { id: pr.invoice.id },
-                                data: { 
+                                data: {
                                     status: "disputed", // Criar este status se necessário
                                     // Limpar dados de pagamento já que foi disputado
                                     paymentMethodType: null,
@@ -455,12 +550,12 @@ export class StripeWebHookControllerConnect {
                 /* --------- Disputa resolvida em favor da empresa ---------- */
                 case "charge.dispute.closed": {
                     const dispute = event.data.object as Stripe.Dispute;
-                    
+
                     // Só processar se a disputa foi vencida pela empresa
                     if (dispute.status === "won") {
                         let paymentIntentId: string | undefined;
                         let stripeAccountId: string | undefined;
-                        
+
                         try {
                             const stripeEvent = event as Stripe.Event & { account?: string };
                             stripeAccountId = stripeEvent.account;
@@ -469,7 +564,7 @@ export class StripeWebHookControllerConnect {
                                 typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id,
                                 stripeAccountId ? { stripeAccount: stripeAccountId } : {}
                             );
-                            
+
                             if (typeof ch.payment_intent === "string") {
                                 paymentIntentId = ch.payment_intent;
                             } else if (ch.payment_intent?.id) {
@@ -497,7 +592,7 @@ export class StripeWebHookControllerConnect {
                                 // NOVO: Restaurar Invoice como "paid" já que a disputa foi vencida
                                 await prisma.invoice.update({
                                     where: { id: pr.invoice.id },
-                                    data: { 
+                                    data: {
                                         status: "paid",
                                         // Restaurar dados de pagamento
                                         paymentMethodType: pr.paymentMethodType,

@@ -127,7 +127,8 @@ export class GetEstimateByProjectIdController {
                             id: true,
                             uri: true
                         }
-                    }
+                    },
+                    InvoicePaymentTimeLine: true
                 },
             })
 
@@ -176,6 +177,7 @@ export class GetEstimateByProjectIdController {
                 data: {
                     ...estimate,
                     balanceDue: totalAmount - Number(totalAmountPaid),
+                    amountPaid: Number(totalAmountPaid),
                     PdfProject: presignedUrls,
                     project: {
                         ...estimate.project,

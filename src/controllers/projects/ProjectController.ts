@@ -203,6 +203,7 @@ export class ProjectController {
               }
             }
           },
+          InvoicePaymentTimeLine: true,
           _count: {
             select: {
               serviceProject: true,
@@ -415,6 +416,7 @@ export class ProjectController {
         return {
           ...project,
           balanceDue: balanceDue,
+          amountPaid: Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location,
@@ -526,6 +528,7 @@ export class ProjectController {
               name: true,
             },
           },
+          InvoicePaymentTimeLine: true
         },
       });
 
@@ -672,6 +675,7 @@ export class ProjectController {
         res.json({
           ...project,
           balanceDue: totalAmount - Number(totalAmountPaid),
+          amountPaid: Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location, // Substitui client.location por project.location

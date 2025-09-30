@@ -147,14 +147,17 @@ export class BusinessDashboardController {
                 prisma.estimate.count({
                     where: {
                         project: {
-                            company_id: valid.response?.id
+                            company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["approved", "pending", "canceled"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
-                        })
+                        }),
                     }
                 }),
                 // Total Projects
@@ -915,19 +918,25 @@ export class BusinessDashboardController {
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["pending"]
                         },
                         ...(Object.keys(dateFilter).length > 0 && {
                             date_creation: dateFilter
-                        })
+                        }),
                     }
                 }),
                 prisma.estimate.count({
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["approved"]
@@ -941,6 +950,9 @@ export class BusinessDashboardController {
                     where: {
                         project: {
                             company_id: valid.response?.id,
+                            status_project: {
+                                in: ["Pending", "Accepted"]
+                            }
                         },
                         status: {
                             in: ["canceled"]

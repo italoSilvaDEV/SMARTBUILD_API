@@ -131,6 +131,7 @@ export class GetAllEstimatesByCompanyController {
                             uri: true
                         }
                     },
+                    InvoicePaymentTimeLine: true
                 },
                 orderBy: {
                     date_creation: "desc"
@@ -181,6 +182,7 @@ export class GetAllEstimatesByCompanyController {
                 return {
                     ...estimate,
                     balanceDue: balanceDue,
+                    amountPaid: Number(totalInvoices),
                     project: {
                         ...estimate.project,
                         company: {
