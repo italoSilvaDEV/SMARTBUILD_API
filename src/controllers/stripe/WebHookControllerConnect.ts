@@ -276,9 +276,9 @@ export class StripeWebHookControllerConnect {
                     const pr = await findByPI(paymentIntent.id);
 
                   
-                    if (!pr || !pr.invoice) {
-                      console.log("PaymentIntentRecord não encontrado no banco de dados local");
-                      break;
+                    // if (!pr || !pr.invoice) {
+                    //   console.log("PaymentIntentRecord não encontrado no banco de dados local");
+                    //   break;
 
 
                     if (pr && pr.invoice) {
@@ -320,7 +320,7 @@ export class StripeWebHookControllerConnect {
                                 stripePaymentIntentId: paymentIntent.id,
                                 paymentMethodType: pr.paymentMethodType, // Vem do PaymentIntentRecord
                                 totalAmountPaid: pr.amount, // Valor total pago (com surcharge)
-                                totalAmountWithSurcharge: pr.amount // Valor com surcharge
+                                // totalAmountWithSurcharge: pr.amount // Valor com surcharge
                             }
                         });
 
@@ -365,7 +365,7 @@ export class StripeWebHookControllerConnect {
 
                     } else {
                         console.log("PaymentIntentRecord não encontrado no banco de dados local");
-
+                        break;
                     }
                   
                     console.log("PR encontrado para invoice:", pr.invoice.id);
