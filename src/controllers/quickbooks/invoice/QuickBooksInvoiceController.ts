@@ -3,8 +3,35 @@ import { prisma } from "../../../utils/prisma";
 // @ts-ignore
 import QuickBooks from "node-quickbooks";
 
-import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { fireAndForgetUpsertToQBO } from "../customer/FireAndForgetUpsertToQBO";
+import { getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
+
+// Função para determinar se deve marcar needsReauthorization
+function shouldRequireReauthorization(err: any): boolean {
+  const status = err?.status || err?.response?.status;
+  const code = err?.code || err?.response?.data?.error;
+  const desc = err?.response?.data?.error_description || "";
+  
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === "invalid_grant" ||
+    /invalid_token|token expired|reauthoriz/i.test(String(desc))
+  );
+}
+
+// Função para retry com backoff exponencial
+async function callWithRetry<T>(operation: () => Promise<T>, attempts = 2, delayMs = 200): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (attempts <= 0) {
+      throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    return callWithRetry(operation, attempts - 1, delayMs * 2);
+  }
+}
 
 // Defina a interface para os itens da fatura
 interface InvoiceLineItem {
@@ -14,57 +41,6 @@ interface InvoiceLineItem {
 
 export class QuickBooksInvoiceController { 
 
-  private async getQBClient(userId: string) {
-    // Verificar se o usuário tem uma conta QuickBooks
-    console.log("Verificando conta QuickBooks para o usuário:", userId);
-    const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-      where: { user_id: userId },
-    });
-
-    if (!quickBooksAccount) {
-      throw new Error("User not connected to QuickBooks");
-    }
-
-    console.log("Verificando validade do token. Expira em:", quickBooksAccount.expiresAt);
-    console.log("Data atual:", new Date());
-
-    // Verificar se o token está expirado e atualizar se necessário
-    let account = quickBooksAccount;
-    if (new Date() > quickBooksAccount.expiresAt) {
-      console.log("Token expirado, tentando refresh...");
-      const refreshResult = await refreshAccessToken(quickBooksAccount.refreshToken, quickBooksAccount.id);
-      console.log("Resultado do refresh:", refreshResult);
-      if (!refreshResult.success) {
-        throw new Error(`Failed to refresh QuickBooks token: ${refreshResult.error}`);
-      }
-
-      // Buscar a conta atualizada após o refresh
-      const updatedAccount = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId },
-      });
-      if (!updatedAccount) {
-        throw new Error("QuickBooks account not found after token refresh");
-      }
-      account = updatedAccount;
-      console.log("Token atualizado com sucesso");
-    }
-
-    // Instanciar QuickBooks SDK
-    const qb = new QuickBooks(
-      process.env.QUICKBOOKS_CLIENT_ID!,
-      process.env.QUICKBOOKS_CLIENT_SECRET!,
-      account.accessToken,
-      false, // Não é tokenSecret (usar OAuth2)
-      account.realmId,
-      true, // Use sandbox? Troque para false em produção!
-      true, // Use the new API
-      null,
-      "2.0",
-      account.refreshToken
-    );
-
-    return { qb, account };
-  }
 
   // Método interno para criação de invoice sem req/res
   async createInvoiceInternal(params: {
@@ -99,35 +75,44 @@ export class QuickBooksInvoiceController {
         throw new Error("Client not found for this project");
       }
 
-      if (!project.company) {
+      if (!project.company || !project.company_id) {
         throw new Error("Company not found for this project");
       }
 
-      // Obter cliente QuickBooks
-      const { qb, account } = await this.getQBClient(userId);
+      // Obter cliente QuickBooks com método robusto
+      const { qb, account } = await getQbClientWithAccountOrThrow(userId, project.company_id);
 
       // Testar conexão com uma operação simples
       try {
-        await new Promise((resolve, reject) => {
-          qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
-            if (err) {
-              console.error("Erro ao buscar informações da empresa:", err);
-              reject(err);
-            } else {
-              console.log("Informações da empresa obtidas com sucesso");
-              resolve(data);
-            }
-          });
-        });
+        await callWithRetry(
+          () => new Promise((resolve, reject) => {
+            qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
+              if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
+                reject(err);
+              } else {
+                console.log("Informações da empresa obtidas com sucesso");
+                resolve(data);
+              }
+            });
+          }),
+          2, // 2 tentativas adicionais
+          200 // 200ms de delay inicial
+        );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        // Marcar que precisa de reautorização
-        await prisma.quickBooksAccount.update({
-          where: { user_id: userId },
-          data: { needsReauthorization: true }
-        });
-
-        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        
+        // Só marcar needsReauthorization se for realmente um erro de autorização
+        if (shouldRequireReauthorization(companyError)) {
+          await prisma.quickBooksAccount.update({
+            where: { company_id: project.company_id },
+            data: { needsReauthorization: true }
+          });
+          throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        }
+        
+        // Para outros erros (timeout, 500, etc.), não marcar como reauth
+        throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
 
       // Preparar os itens da fatura com logs detalhados
@@ -212,7 +197,7 @@ export class QuickBooksInvoiceController {
         // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
         if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
 
-        // CORREÇÃO: Aplicar coeficiente diretamente no valor do serviço
+        //  Aplicar coeficiente diretamente no valor do serviço
         const serviceAmountWithCoefficient = originalServiceAmount * coef;
         
         // Calcular proporção baseada no valor COM coeficiente
@@ -270,7 +255,7 @@ export class QuickBooksInvoiceController {
 
         // Validação melhorada
         if (qtyForQB <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQB) || !Number.isFinite(exactAmount)) {
-          console.warn(`⚠️ Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQB}, amount=${exactAmount}. Ignorando item.`);
+          console.warn(` Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQB}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
@@ -515,16 +500,24 @@ export class QuickBooksInvoiceController {
     } catch (error: any) {
       console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
 
-      // Verificar se é um erro de autorização
-      if (error.message && error.message.includes("401") || error.message.includes("403")) {
+      // Verificar se é um erro de autorização usando nossa função mais robusta
+      if (shouldRequireReauthorization(error)) {
         // Atualizar o status da conta para indicar que precisa de reautorização
         try {
-          await prisma.quickBooksAccount.update({
-            where: { user_id: userId },
-            data: {
-              needsReauthorization: true
-            }
+          // Buscar company_id pelo projectId
+          const projectForError = await prisma.project.findUnique({
+            where: { id: projectId },
+            select: { company_id: true }
           });
+          
+          if (projectForError?.company_id) {
+            await prisma.quickBooksAccount.update({
+              where: { company_id: projectForError.company_id },
+              data: {
+                needsReauthorization: true
+              }
+            });
+          }
         } catch (updateError) {
           console.error("Erro ao atualizar status de reautorização:", updateError);
         }
@@ -578,35 +571,44 @@ export class QuickBooksInvoiceController {
         throw new Error("Client not found for this project");
       }
 
-      if (!project.company) {
+      if (!project.company || !project.company_id) {
         throw new Error("Company not found for this project");
       }
 
-      // Obter cliente QuickBooks
-      const { qb, account } = await this.getQBClient(userId);
+      // Obter cliente QuickBooks com método robusto
+      const { qb, account } = await getQbClientWithAccountOrThrow(userId, project.company_id);
 
       // Testar conexão com uma operação simples
       try {
-        await new Promise((resolve, reject) => {
-          qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
-            if (err) {
-              console.error("Erro ao buscar informações da empresa:", err);
-              reject(err);
-            } else {
-              console.log("Informações da empresa obtidas com sucesso");
-              resolve(data);
-            }
-          });
-        });
+        await callWithRetry(
+          () => new Promise((resolve, reject) => {
+            qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
+              if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
+                reject(err);
+              } else {
+                console.log("Informações da empresa obtidas com sucesso");
+                resolve(data);
+              }
+            });
+          }),
+          2, // 2 tentativas adicionais
+          200 // 200ms de delay inicial
+        );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        // Marcar que precisa de reautorização
-        await prisma.quickBooksAccount.update({
-          where: { user_id: userId },
-          data: { needsReauthorization: true }
-        });
-
-        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        
+        // Só marcar needsReauthorization se for realmente um erro de autorização
+        if (shouldRequireReauthorization(companyError)) {
+          await prisma.quickBooksAccount.update({
+            where: { company_id: project.company_id },
+            data: { needsReauthorization: true }
+          });
+          throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        }
+        
+        // Para outros erros (timeout, 500, etc.), não marcar como reauth
+        throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
 
       // Primeiro, buscar a fatura atual para obter o SyncToken e outras informações
@@ -948,16 +950,24 @@ export class QuickBooksInvoiceController {
     } catch (error: any) {
       console.error("Erro detalhado ao atualizar fatura no QuickBooks:", error);
 
-      // Verificar se é um erro de autorização
-      if (error.message && (error.message.includes("401") || error.message.includes("403"))) {
+      // Verificar se é um erro de autorização usando nossa função mais robusta
+      if (shouldRequireReauthorization(error)) {
         // Atualizar o status da conta para indicar que precisa de reautorização
         try {
-          await prisma.quickBooksAccount.update({
-            where: { user_id: userId },
-            data: {
-              needsReauthorization: true
-            }
+          // Buscar company_id pelo projectId
+          const projectForError = await prisma.project.findUnique({
+            where: { id: projectId },
+            select: { company_id: true }
           });
+          
+          if (projectForError?.company_id) {
+            await prisma.quickBooksAccount.update({
+              where: { company_id: projectForError.company_id },
+              data: {
+                needsReauthorization: true
+              }
+            });
+          }
         } catch (updateError) {
           console.error("Erro ao atualizar status de reautorização:", updateError);
         }
@@ -1062,6 +1072,26 @@ export class QuickBooksInvoiceController {
 
       const total = await prisma.invoice.count({ where: filtro });
 
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      if (!project.client) {
+        throw new Error("Client not found for this project");
+      }
+
+      if (!project.company || !project.company_id) {
+        throw new Error("Company not found for this project");
+      }
+
       // Atualizar status das faturas do QuickBooks
       const updatedInvoices = await Promise.all(
         invoices.map(async (invoice) => {
@@ -1072,18 +1102,18 @@ export class QuickBooksInvoiceController {
 
             // Buscar o usuário com conta QuickBooks
             const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-              where: { user_id: invoice.user_id }
+              where: { company_id: project.company_id }
             });
 
-            if (!quickBooksAccount) {
-              return { ...invoice, error: "QuickBooks account not found" };
+            if (!quickBooksAccount || !project.company_id) {
+              return { ...invoice, error: "QuickBooks account not found or missing company ID" };
             }
 
             // Obter cliente QuickBooks configurado
             if (!invoice.user_id) {
               return { ...invoice, error: "User ID is missing" };
             }
-            const { qb } = await this.getQBClient(invoice.user_id);
+            const { qb } = await getQbClientWithAccountOrThrow(invoice.user_id, project.company_id);
 
             // Buscar status atualizado da fatura no QuickBooks usando SDK
             const invoiceResult = await new Promise((resolve, reject) => {
@@ -1161,8 +1191,41 @@ export class QuickBooksInvoiceController {
         return res.status(400).json({ error: "Client email is required" });
       }
 
-      // Obter cliente QuickBooks configurado
-      const { qb } = await this.getQBClient(userId);
+
+      const project = await prisma.project.findUnique({
+        where: { id: invoice.project.id },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      if (!project.client) {
+        throw new Error("Client not found for this project");
+      }
+
+      if (!project.company || !project.company_id) {
+        throw new Error("Company not found for this project");
+      }
+
+
+      
+
+      // Buscar conta QuickBooks para obter company_id
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: project.company_id }
+      });
+
+      if (!quickBooksAccount || !project.company_id) {
+        return res.status(404).json({ error: "QuickBooks account not found or missing company ID" });
+      }
+
+      // Obter cliente QuickBooks configurado com método robusto
+      const { qb } = await getQbClientWithAccountOrThrow(userId, project.company_id);
 
       // Enviar a fatura pelo QuickBooks usando SDK
       const sendInvoiceData = {
@@ -1222,36 +1285,52 @@ export class QuickBooksInvoiceController {
   async cancelInvoiceInternal(params: {
     quickBooksInvoiceId: string;
     userId: string;
+    companyId?: string; // Adicionar companyId como parâmetro opcional
     calledFromStripe?: boolean; // Parâmetro para identificar origem
   }) {
-    const { quickBooksInvoiceId, userId, calledFromStripe = false } = params;
+    const { quickBooksInvoiceId, userId, companyId, calledFromStripe = false } = params;
 
     try {
-      // Obter cliente QuickBooks configurado
-      const { qb, account } = await this.getQBClient(userId);
+      // Se não foi fornecido companyId, busca pela userId (fallback)
+         
+      if (!companyId) {
+        throw new Error("Company ID is required for QuickBooks operations");
+      }
+
+      // Obter cliente QuickBooks configurado com método robusto
+      const { qb, account } = await getQbClientWithAccountOrThrow(userId, companyId);
 
       // Testar conexão com uma operação simples
       try {
-        await new Promise((resolve, reject) => {
-          qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
-            if (err) {
-              console.error("Erro ao buscar informações da empresa:", err);
-              reject(err);
-            } else {
-              console.log("Informações da empresa obtidas com sucesso");
-              resolve(data);
-            }
-          });
-        });
+        await callWithRetry(
+          () => new Promise((resolve, reject) => {
+            qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
+              if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
+                reject(err);
+              } else {
+                console.log("Informações da empresa obtidas com sucesso");
+                resolve(data);
+              }
+            });
+          }),
+          2, // 2 tentativas adicionais
+          200 // 200ms de delay inicial
+        );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        // Marcar que precisa de reautorização
-        await prisma.quickBooksAccount.update({
-          where: { user_id: userId },
-          data: { needsReauthorization: true }
-        });
-
-        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        
+        // Só marcar needsReauthorization se for realmente um erro de autorização
+        if (shouldRequireReauthorization(companyError)) {
+          await prisma.quickBooksAccount.update({
+            where: { company_id: companyId },
+            data: { needsReauthorization: true }
+          });
+          throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+        }
+        
+        // Para outros erros (timeout, 500, etc.), não marcar como reauth
+        throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
 
       // Primeiro, buscar a fatura atual para obter o SyncToken e verificar status
@@ -1359,12 +1438,12 @@ export class QuickBooksInvoiceController {
     } catch (error: any) {
       console.error("Erro detalhado ao cancelar fatura no QuickBooks:", error);
 
-      // Verificar se é um erro de autorização
-      if (error.message && (error.message.includes("401") || error.message.includes("403"))) {
+      // Verificar se é um erro de autorização usando nossa função mais robusta
+      if (shouldRequireReauthorization(error)) {
         // Atualizar o status da conta para indicar que precisa de reautorização
         try {
           await prisma.quickBooksAccount.update({
-            where: { user_id: userId },
+            where: { company_id: companyId },
             data: {
               needsReauthorization: true
             }
