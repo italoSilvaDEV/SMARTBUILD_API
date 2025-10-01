@@ -43,7 +43,7 @@ export class StripeController {
 
     constructor() {
         this.quickBooksController = new QuickBooksInvoiceController();
-    }
+    } 
 
     async connectCompany(req: Request, res: Response) {
         const { companyId } = req.params;
@@ -196,7 +196,7 @@ export class StripeController {
 
             if (!emailRegex.test(emailClient)) {
                 console.error("Endereço de email inválido!");
-                return res.status(400).json({ error: "Invalid client email address" });
+                return res.status(400).json({ error: "Invalid client email address" }); 
             }
 
             console.log("Processando serviços e calculando valores...");
@@ -205,55 +205,19 @@ export class StripeController {
                 console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
             }
 
-            // Buscar invoices pagos do projeto para calcular valor já pago
-            console.log("Buscando invoices pagos do projeto...");
-            const paidInvoices = await prisma.invoice.findMany({
-                where: {
-                    projectId: project.id,
-                    status: "paid"
-                },
-                select: {
-                    totalAmount: true
-                }
-            });
-
-            const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
-            console.log(`Total já pago no projeto: $${totalPaidAmount}`);
-
-            // Calcular valor total original do projeto (sem coeficiente)
-            const originalProjectValue = servicesArray.reduce((sum, service) => {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                return sum + (service.total || (quantity * price));
-            }, 0);
-
-            console.log(`Valor original do projeto: $${originalProjectValue}`);
-
-            // Calcular saldo restante após pagamentos
-            const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
-            console.log(`Saldo restante: $${remainingBalance}`);
-
-            // Aplicar coeficiente sobre o saldo restante
-            const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-            const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
-            console.log(`Valor da fatura após coeficiente (${validCoefficient}): $${invoiceAmountWithCoefficient}`);
-
             let totalInvoiceAmount = 0;
             const lineItems: any[] = [];
 
             const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-            // Processar serviços com nova lógica
+            // Processar serviços
             for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
-                const originalServiceAmount = service.total || (quantity * price);
+                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-                // Calcular proporção deste serviço no valor total original
-                const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-
-                // Aplicar a proporção ao valor da fatura com coeficiente
-                const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
+                const serviceAmount = service.total || (quantity * price);
+                const adjustedAmount = serviceAmount * validCoefficient;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
@@ -269,8 +233,6 @@ export class StripeController {
                     price,
                     totalAmount: adjustedAmount
                 });
-
-                console.log(`Serviço ${service.name}: Valor original $${originalServiceAmount}, Valor ajustado $${adjustedAmount.toFixed(2)}`);
             }
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
@@ -337,15 +299,15 @@ export class StripeController {
             console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Adicionar os InvoiceItems
-            if (services && services.length > 0) {
+            if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
-                    data: services.map((item: any) => ({
+                    data: lineItems.map((item) => ({
                         invoiceId: newInvoice.id,
                         name: item.name,
                         description: item.description,
-                        quantity: Number(item.quantity),
-                        price: Number(item.price),
-                        totalAmount: Number(item.totalAmount),
+                        quantity: item.quantity,
+                        price: item.price,
+                        totalAmount: item.totalAmount,
                     })),
                 });
             }
@@ -366,7 +328,7 @@ export class StripeController {
 
             try {
                 console.log("Tentando criar invoice no QuickBooks...");
-
+                
                 // Verificar se o usuário tem uma conta QuickBooks conectada
                 const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
                     where: { user_id: userId },
@@ -384,7 +346,7 @@ export class StripeController {
 
                     // Usar o controller instanciado no constructor
                     const qbController = this.quickBooksController;
-
+                    
                     if (!qbController) {
                         throw new Error("QuickBooksController is not initialized");
                     }
@@ -397,28 +359,15 @@ export class StripeController {
                         userId: userId,
                         coefficientPerfentage: coefficientPerfentage,
                         services: qbServices,
-                        type_value: type_value,
-                        totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
+                        type_value: type_value
                     });
 
-                    console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
-
-                    // Atualizar o invoice Stripe com os dados do QuickBooks
-                    if (quickBooksResult?.quickbooksId) {
-                        await prisma.invoice.update({
-                            where: { id: newInvoice.id },
-                            data: {
-                                idQuickbookContabio: quickBooksResult.quickbooksId,
-                                docNumberQuickBooksContabio: quickBooksResult.docNumber
-                            }
-                        });
-                    }
+                    console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.invoice?.id);
 
                     // Adicionar evento na timeline sobre sucesso no QuickBooks
                     await prisma.invoiceTimeline.create({
                         data: {
-                            description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
+                            description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.invoice?.externalInvoiceId})`,
                             invoice: {
                                 connect: { id: newInvoice.id }
                             }
@@ -543,8 +492,6 @@ export class StripeController {
                     invoiceType: true,
                     invoiceTypeStripe: true,
                     stripeInvoiceId: true,
-                    user_id: true,
-                    idQuickbookContabio: true,
                     project: {
                         include: {
                             company: true,
@@ -601,79 +548,9 @@ export class StripeController {
                 }
             });
 
-            // Tentar cancelar invoice no QuickBooks (não deve falhar o processo se der erro)
-            let quickBooksCancelResult = null;
-            let quickBooksCancelError = null;
-
-            try {
-                console.log("Tentando cancelar invoice no QuickBooks...");
-
-                // Verificar se o usuário tem uma conta QuickBooks conectada
-                const quickBooksAccount = invoice.user_id ? await prisma.quickBooksAccount.findFirst({
-                    where: { user_id: invoice.user_id },
-                }) : null;
-
-                // Verificar se o invoice tinha referência do QuickBooks
-                if (quickBooksAccount && invoice.idQuickbookContabio && invoice.user_id) {
-                    // Usar o controller instanciado no constructor
-                    const qbController = this.quickBooksController;
-
-                    if (!qbController) {
-                        throw new Error("QuickBooksController is not initialized");
-                    }
-
-                    quickBooksCancelResult = await qbController.cancelInvoiceInternal({
-                        quickBooksInvoiceId: invoice.idQuickbookContabio,
-                        userId: invoice.user_id,
-                        companyId: invoice.project.company.id, // Passar o companyId
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
-                    });
-
-                    console.log("Invoice cancelado no QuickBooks com sucesso:", quickBooksCancelResult?.quickbooksId);
-
-                    // Adicionar evento na timeline sobre sucesso no QuickBooks
-                    await prisma.invoiceTimeline.create({
-                        data: {
-                            description: `QuickBooks invoice voided successfully (ID: ${quickBooksCancelResult?.quickbooksId})`,
-                            invoice: {
-                                connect: { id: invoice.id }
-                            }
-                        }
-                    });
-                } else {
-                    if (!quickBooksAccount) {
-                        console.log("Usuário não possui conta QuickBooks conectada. Pulando cancelamento no QB.");
-                    } else {
-                        console.log("Invoice não possui referência do QuickBooks. Pulando cancelamento no QB.");
-                    }
-                }
-            } catch (qbError: any) {
-                console.error("Erro ao cancelar invoice no QuickBooks:", qbError.message);
-                quickBooksCancelError = qbError.message;
-
-                // Adicionar evento na timeline sobre erro no QuickBooks
-                try {
-                    await prisma.invoiceTimeline.create({
-                        data: {
-                            description: `Failed to void QuickBooks invoice: ${qbError.message}`,
-                            invoice: {
-                                connect: { id: invoice.id }
-                            }
-                        }
-                    });
-                } catch (timelineError) {
-                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
-                }
-            }
-
             return res.status(200).json({
                 message: "Invoice canceled successfully",
                 updatedInvoice,
-                quickBooks: {
-                    success: !!quickBooksCancelResult,
-                    result: quickBooksCancelResult,
-                    error: quickBooksCancelError
-                }
             });
 
         } catch (error) {
@@ -899,8 +776,7 @@ export class StripeController {
                             paymentMethodType: true,
                         }
 
-                    },
-                    InvoiceItems: true,
+                    }
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
@@ -929,11 +805,9 @@ export class StripeController {
                         }
                     }
 
+                    // Não mais sincronizar com Stripe - usar dados locais apenas
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
-                    return {
-                        ...invoice,
-                        lastSentAt: lastSend,
-                    };
+                    return { ...invoice, lastSentAt: lastSend };
                 })
             );
 
@@ -996,54 +870,21 @@ export class StripeController {
                 });
             }
 
-            console.log("Processando serviços e calculando valores para update...");
+            console.log("Processando serviços e calculando valores...");
             const servicesArray = Array.isArray(services) ? services : [];
-
-            // Buscar invoices pagos do projeto (excluindo o invoice sendo atualizado)
-            const paidInvoices = await prisma.invoice.findMany({
-                where: {
-                    projectId: existingInvoice.project.id,
-                    status: "paid",
-                    id: { not: invoiceId } // Excluir o invoice sendo atualizado
-                },
-                select: {
-                    totalAmount: true
-                }
-            });
-
-            const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
-            console.log(`Total já pago no projeto (update): $${totalPaidAmount}`);
-
-            // Calcular valor total original do projeto (sem coeficiente)
-            const originalProjectValue = servicesArray.reduce((sum, service) => {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                return sum + (service.total || (quantity * price));
-            }, 0);
-
-            // Calcular saldo restante após pagamentos
-            const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
-
-            // Aplicar coeficiente sobre o saldo restante
-            const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-            const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
-
             let calculatedTotalAmount = 0;
             const lineItems: any[] = [];
 
             const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-            // Processar serviços com nova lógica
+            // Processar serviços
             for (const service of servicesArray) {
                 const quantity = Number(service.quantity) || 0;
                 const price = Number(service.price) || 0;
-                const originalServiceAmount = service.total || (quantity * price);
+                const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
 
-                // Calcular proporção deste serviço no valor total original
-                const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-
-                // Aplicar a proporção ao valor da fatura com coeficiente
-                const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
+                const serviceAmount = service.total || (quantity * price);
+                const adjustedAmount = serviceAmount * validCoefficient;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
                     console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
@@ -1062,9 +903,9 @@ export class StripeController {
             }
 
             let newInvoiceType
-            if (existingInvoice.invoiceType === "custom") {
+            if(existingInvoice.invoiceType === "custom"){
                 newInvoiceType = "stripe";
-            } else {
+            }else{
                 newInvoiceType = existingInvoice.invoiceType;
             }
 
@@ -1090,15 +931,15 @@ export class StripeController {
                 where: { invoiceId: invoiceId }
             });
 
-            if (services && services.length > 0) {
+            if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
-                    data: services.map((item: any) => ({
+                    data: lineItems.map((item) => ({
                         invoiceId: invoiceId,
                         name: item.name,
                         description: item.description,
-                        quantity: Number(item.quantity),
-                        price: Number(item.price),
-                        totalAmount: Number(item.totalAmount),
+                        quantity: item.quantity,
+                        price: item.price,
+                        totalAmount: item.totalAmount,
                     }))
                 });
             }
@@ -1111,156 +952,9 @@ export class StripeController {
                 }
             });
 
-            // Tentar atualizar invoice no QuickBooks (não deve falhar o processo se der erro)
-            let quickBooksUpdateResult = null;
-            let quickBooksUpdateError = null;
-
-            try {
-                console.log("Tentando atualizar invoice no QuickBooks...");
-
-                // Verificar se o usuário tem uma conta QuickBooks conectada
-                const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-                    where: { user_id: userId },
-                });
-
-                // Verificar se o invoice original tinha referência do QuickBooks
-                if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
-                    // Preparar serviços para o formato esperado pelo QuickBooks
-                    const qbServices = services.map((service: any) => ({
-                        name: service.name || "Service",
-                        description: service.description || "",
-                        quantity: service.quantity || 1,
-                        price: service.price || 0,
-                        total: service.total || (service.quantity * service.price)
-                    }));
-
-                    // Usar o controller instanciado no constructor
-                    const qbController = this.quickBooksController;
-
-                    if (!qbController) {
-                        throw new Error("QuickBooksController is not initialized");
-                    }
-
-                    quickBooksUpdateResult = await qbController.updateInvoiceInternal({
-                        quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
-                        projectId: existingInvoice.project.id,
-                        description: description || `Updated Invoice for Project ${existingInvoice.project.id}`,
-                        dueDate: dueDate,
-                        userId: userId,
-                        coefficientPerfentage: coefficientPerfentage,
-                        services: qbServices,
-                        totalAmountTarget: totalAmount || calculatedTotalAmount, // Passar o valor total exato do banco local
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
-                    });
-
-                    console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
-
-                    // Adicionar evento na timeline sobre sucesso no QuickBooks
-                    await prisma.invoiceTimeline.create({
-                        data: {
-                            description: `QuickBooks invoice updated successfully (ID: ${quickBooksUpdateResult?.quickbooksId})`,
-                            invoice: {
-                                connect: { id: invoiceId }
-                            }
-                        }
-                    });
-                } else {
-                    if (!quickBooksAccount) {
-                        console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
-                    } else {
-                        console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
-
-                        // TENTAR DE CRIAÇÃO DE INVOICE NO QBO
-                        const qbServicesSource =
-                            Array.isArray(services) && services.length > 0
-                                ? services
-                                : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
-                                    name: ii.name || "Service",
-                                    description: ii.description || "",
-                                    quantity: Number(ii.quantity || 1),
-                                    price: Number(ii.price || 0),
-                                    total: Number(ii.totalAmount || 0),
-                                }));
-
-                        const qbServicesForCreate = qbServicesSource.map((s: any) => ({
-                            name: s.name || "Service",
-                            description: s.description || "",
-                            quantity: Number(s.quantity || 1),
-                            price: Number(s.price || 0),
-                            total: Number(
-                                s.total != null ? s.total : (Number(s.quantity || 0) * Number(s.price || 0))
-                            ),
-                        }));
-
-                        const qbController = this.quickBooksController;
-                        if (!qbController) throw new Error("QuickBooksController is not initialized");
-
-                        const createResult = await qbController.createInvoiceInternal({
-                            projectId: existingInvoice.project.id,
-                            description: description || `Invoice for Project ${existingInvoice.project.id}`,
-                            type_invoicebase: (existingInvoice as any).type_invoicebase, // se existir no modelo
-                            dueDate: dueDate,
-                            userId: userId,
-                            coefficientPerfentage: coefficientPerfentage,
-                            services: qbServicesForCreate,
-                            type_value: type_value,
-                            totalAmountTarget: (totalAmount ?? calculatedTotalAmount),
-                            calledFromStripe: true,
-                        });
-
-                        console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
-
-                        // Atualizar a fatura local com os identificadores do QuickBooks
-                        if (createResult?.quickbooksId) {
-                            await prisma.invoice.update({
-                                where: { id: invoiceId },
-                                data: {
-                                    idQuickbookContabio: createResult.quickbooksId,
-                                    docNumberQuickBooksContabio: createResult.docNumber ?? null,
-                                },
-                            });
-                        }
-
-                        // Timeline de sucesso
-                        await prisma.invoiceTimeline.create({
-                            data: {
-                                description: `QuickBooks invoice created successfully (ID: ${createResult?.quickbooksId}, DocNumber: ${createResult?.docNumber})`,
-                                invoice: { connect: { id: invoiceId } },
-                            },
-                        });
-
-                        // Para manter a estrutura do retorno
-                        quickBooksUpdateResult = createResult;
-
-                    }
-                }
-            } catch (qbError: any) {
-                console.error("Erro ao atualizar invoice no QuickBooks:", qbError.message);
-                quickBooksUpdateError = qbError.message;
-
-                // Adicionar evento na timeline sobre erro no QuickBooks
-                try {
-                    await prisma.invoiceTimeline.create({
-                        data: {
-                            description: `Failed to update QuickBooks invoice: ${qbError.message}`,
-                            invoice: {
-                                connect: { id: invoiceId }
-                            }
-                        }
-                    });
-                } catch (timelineError) {
-                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
-                }
-            }
-
             return res.status(200).json({
                 message: "Invoice updated successfully",
-                updatedInvoice: updatedInvoice,
-                quickBooks: {
-                    success: !!quickBooksUpdateResult,
-                    result: quickBooksUpdateResult,
-                    error: quickBooksUpdateError
-                }
+                updatedInvoice: updatedInvoice
             });
 
         } catch (err) {
