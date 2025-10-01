@@ -293,15 +293,15 @@ export class StripeController {
             console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Adicionar os InvoiceItems
-            if (lineItems && lineItems.length > 0) {
+            if (services && services.length > 0) {
                 await prisma.invoiceItem.createMany({
-                    data: lineItems.map((item) => ({
+                    data: services.map((item: any) => ({
                         invoiceId: newInvoice.id,
                         name: item.name,
                         description: item.description,
-                        quantity: item.quantity,
-                        price: item.price,
-                        totalAmount: item.totalAmount,
+                        quantity: Number(item.quantity),
+                        price: Number(item.price),
+                        totalAmount: Number(item.totalAmount),
                     })),
                 });
             }
@@ -850,15 +850,15 @@ export class StripeController {
                 where: { invoiceId: invoiceId }
             });
 
-            if (lineItems && lineItems.length > 0) {
+            if (services && services.length > 0) {
                 await prisma.invoiceItem.createMany({
-                    data: lineItems.map((item) => ({
+                    data: services.map((item: any) => ({
                         invoiceId: invoiceId,
                         name: item.name,
                         description: item.description,
-                        quantity: item.quantity,
-                        price: item.price,
-                        totalAmount: item.totalAmount,
+                        quantity: Number(item.quantity),
+                        price: Number(item.price),
+                        totalAmount: Number(item.totalAmount),
                     }))
                 });
             }
