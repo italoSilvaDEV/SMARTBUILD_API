@@ -219,6 +219,52 @@ export class CustomInvoiceController {
     }
   }
 
+  async statusViewInvoice(req: Request, res: Response) {
+    const {
+      invoiceId
+    } = req.params
+
+    if (!invoiceId) {
+      return res.status(400).json({
+        error: "Invoice ID is required"
+      });
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: invoiceId
+      }
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        error: "Invoice not found"
+      });
+    }
+
+    try {
+      const timeline = await prisma.invoiceTimeline.create({
+        data: {
+          description: "Invoice viewed",
+          invoice: {
+            connect: {
+              id: invoiceId
+            }
+          }
+        }
+      })
+
+      return res.status(200).json({
+        message: "Invoice viewed successfully",
+        timeline
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal Server Error"
+      });
+    }
+  }
+
   // enviar o pdf para o cliente atravez de email
   async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
