@@ -729,7 +729,7 @@ export class StripeController {
             // Buscar invoices relacionadas ao projeto
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
-                orderBy: { createdAt: "desc" },
+                orderBy: { externalInvoiceId: "desc" },
                 include: {
                     company: true, // Inclui a empresa para obter o stripeAccountId
                     InvoiceSendHistory: {
