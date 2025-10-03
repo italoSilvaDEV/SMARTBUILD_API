@@ -848,7 +848,7 @@ export class StripeController {
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
                 orderBy: {
-                    createdAt: "desc"
+                    externalInvoiceId: "desc"
                 },
                 include: {
                     company: true,
