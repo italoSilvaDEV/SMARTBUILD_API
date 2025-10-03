@@ -227,7 +227,7 @@ export class StripeController {
                 return sum + (service.total || (quantity * price));
             }, 0);
 
-            console.log(`Valor original do projeto: $${originalProjectValue}`);
+            console.log(`Valor original do projeto: $${originalProjectValue}`); 
 
             // Calcular saldo restante após pagamentos
             const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
@@ -338,15 +338,15 @@ export class StripeController {
             console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Adicionar os InvoiceItems
-            if (services && services.length > 0) {
+            if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
                     data: services.map((item: any) => ({
                         invoiceId: newInvoice.id,
                         name: item.name,
-                        description: item.description || "No additional description", // Usar descrição completa para a base local
-                        quantity: Number(item.quantity),
-                        price: Number(item.price),
-                        totalAmount: Number(item.totalAmount),
+                        description: item.originalDescription || "No additional description", // Usar descrição completa para a base local
+                        quantity: item.quantity,
+                        price: item.price,
+                        totalAmount: item.totalAmount,
                     })),
                 });
             }
