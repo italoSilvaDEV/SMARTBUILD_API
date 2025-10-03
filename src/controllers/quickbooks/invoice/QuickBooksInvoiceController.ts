@@ -173,11 +173,12 @@ export class QuickBooksInvoiceController {
           continue;
         }
 
-        const itemName = service?.name?.trim() || "Service";
+        const rawItemName = service?.name?.trim() || "Service";
+        const itemName = this.cleanServiceNameForQuickBooks(rawItemName);
         
-        // Validar se o nome do item não está vazio
+        // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
-          console.warn("Nome do serviço vazio ou inválido, ignorando:", service);
+          console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
           continue;
         }
 
@@ -278,7 +279,7 @@ export class QuickBooksInvoiceController {
           processedLineItems.push({
             DetailType: "SalesItemLineDetail",
             Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
-            Description: calc.service?.description || "",
+            Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
             SalesItemLineDetail: {
               ItemRef: { value: itemId, name: qboItemName },
               Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
@@ -476,7 +477,7 @@ export class QuickBooksInvoiceController {
               InvoiceItems: {
                 create: processedLineItems.map((item: any) => ({
                   name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
-                  description: item.Description,
+                  description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
                   quantity: item?.SalesItemLineDetail?.Qty || 1,
                   price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
                   totalAmount: item.Amount
@@ -702,11 +703,12 @@ export class QuickBooksInvoiceController {
           continue;
         }
 
-        const itemName = service?.name?.trim() || "Service";
+        const rawItemName = service?.name?.trim() || "Service";
+        const itemName = this.cleanServiceNameForQuickBooks(rawItemName);
         
-        // Validar se o nome do item não está vazio
+        // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
-          console.warn("Nome do serviço vazio ou inválido, ignorando:", service);
+          console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
           continue;
         }
 
@@ -807,7 +809,7 @@ export class QuickBooksInvoiceController {
           processedLineItems.push({
             DetailType: "SalesItemLineDetail",
             Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
-            Description: calc.service?.description || "",
+            Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
             SalesItemLineDetail: {
               ItemRef: { value: itemId, name: qboItemName },
               Qty: qtyForQBUpdate, // Sempre 1 para evitar limitação de arredondamento
@@ -929,7 +931,7 @@ export class QuickBooksInvoiceController {
             data: processedLineItems.map((item: any) => ({
               invoiceId: localInvoice.id,
               name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
-              description: item.Description,
+              description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
               quantity: item?.SalesItemLineDetail?.Qty || 1,
               price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
               totalAmount: item.Amount
@@ -1655,6 +1657,74 @@ export class QuickBooksInvoiceController {
     if (!Number.isFinite(n) || n <= 0) return 1;
     if (n > 1.5 && n <= 100) return n / 100; // 75 -> 0.75
     return n; // já é fator
+  }
+
+  // Função para limpar HTML e truncar texto para QuickBooks (limite: 4.000 caracteres)
+  cleanDescriptionForQuickBooks(htmlText: string): string {
+    if (!htmlText || typeof htmlText !== 'string') {
+      return "";
+    }
+
+    // Remover tags HTML mantendo o conteúdo
+    let cleanText = htmlText
+      // Converter quebras de linha HTML em quebras de linha normais
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<\/li>/gi, '\n')
+      // Remover todas as outras tags HTML
+      .replace(/<[^>]*>/g, '')
+      // Decodificar entidades HTML comuns
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      // Limpar espaços extras e quebras de linha múltiplas
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+
+    // Truncar para o limite do QuickBooks com margem de segurança (3.800 caracteres)
+    const maxLength = 3800;
+    if (cleanText.length > maxLength) {
+      cleanText = cleanText.substring(0, maxLength - 3) + "...";
+    }
+
+    return cleanText;
+  }
+
+  // Função para truncar nomes de serviços para QuickBooks (limite comum: 100 caracteres)
+  cleanServiceNameForQuickBooks(serviceName: string): string {
+    if (!serviceName || typeof serviceName !== 'string') {
+      return "Service";
+    }
+
+    // Limpar o nome removendo caracteres especiais problemáticos
+    let cleanName = serviceName
+      .trim()
+      // Remover caracteres que podem causar problemas na API
+      .replace(/[<>]/g, '')
+      .replace(/&/g, 'and')
+      .replace(/"/g, "'")
+      // Limpar espaços extras
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Truncar para o limite do QuickBooks com margem de segurança (95 caracteres)
+    const maxLength = 95;
+    if (cleanName.length > maxLength) {
+      cleanName = cleanName.substring(0, maxLength - 3) + "...";
+    }
+
+    // Se ficou vazio após limpeza, usar fallback
+    if (!cleanName || cleanName.length === 0) {
+      cleanName = "Service";
+    }
+
+    return cleanName;
   }
 
 } 

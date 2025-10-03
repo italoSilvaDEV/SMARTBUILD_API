@@ -264,7 +264,8 @@ export class StripeController {
 
                 lineItems.push({
                     name: service.name,
-                    description: createSafeDescription(service.name, service.description || "No additional description"),
+                    description: createSafeDescription(service.name, service.description || "No additional description"), // Para APIs externas
+                    originalDescription: service.description || "No additional description", // Para base local
                     quantity,
                     price,
                     totalAmount: adjustedAmount
@@ -342,7 +343,7 @@ export class StripeController {
                     data: services.map((item: any) => ({
                         invoiceId: newInvoice.id,
                         name: item.name,
-                        description: item.description,
+                        description: item.description || "No additional description", // Usar descrição completa para a base local
                         quantity: Number(item.quantity),
                         price: Number(item.price),
                         totalAmount: Number(item.totalAmount),
@@ -1054,7 +1055,8 @@ export class StripeController {
 
                 lineItems.push({
                     name: service.name,
-                    description: createSafeDescription(service.name, service.description || "No additional description"),
+                    description: createSafeDescription(service.name, service.description || "No additional description"), // Para APIs externas
+                    originalDescription: service.description || "No additional description", // Para base local
                     quantity,
                     price,
                     totalAmount: adjustedAmount
@@ -1090,15 +1092,15 @@ export class StripeController {
                 where: { invoiceId: invoiceId }
             });
 
-            if (services && services.length > 0) {
+            if (lineItems && lineItems.length > 0) {
                 await prisma.invoiceItem.createMany({
-                    data: services.map((item: any) => ({
+                    data: lineItems.map((item) => ({
                         invoiceId: invoiceId,
                         name: item.name,
-                        description: item.description,
-                        quantity: Number(item.quantity),
-                        price: Number(item.price),
-                        totalAmount: Number(item.totalAmount),
+                        description: item.originalDescription, // Usar descrição completa para a base local
+                        quantity: item.quantity,
+                        price: item.price,
+                        totalAmount: item.totalAmount,
                     }))
                 });
             }
