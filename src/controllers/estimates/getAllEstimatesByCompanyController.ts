@@ -135,7 +135,7 @@ export class GetAllEstimatesByCompanyController {
                     InvoicePaymentTimeLine: true,
                 },
                 orderBy: {
-                    date_creation: "desc"
+                    number: "desc"
                 }
             })
 

@@ -729,7 +729,7 @@ export class StripeController {
             // Buscar invoices relacionadas ao projeto
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
-                orderBy: { createdAt: "desc" },
+                orderBy: { externalInvoiceId: "desc" },
                 include: {
                     company: true, // Inclui a empresa para obter o stripeAccountId
                     InvoiceSendHistory: {
@@ -737,6 +737,9 @@ export class StripeController {
                     },
                     InvoiceItems: true, // Incluir os itens da fatura
                     PdfProject: true, // Incluir os PDFs relacionados
+                    InvoiceTimeline: {
+                        orderBy: { date_creation: "asc" }
+                    },
                     project: {
                         include: {
                             client: {
@@ -848,7 +851,7 @@ export class StripeController {
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
                 orderBy: {
-                    createdAt: "desc"
+                    externalInvoiceId: "desc"
                 },
                 include: {
                     company: true,
@@ -902,6 +905,11 @@ export class StripeController {
 
                     },
                     InvoiceItems: true,
+                    InvoiceTimeline: {
+                        orderBy: {
+                            date_creation: "asc"
+                        }
+                    },
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit

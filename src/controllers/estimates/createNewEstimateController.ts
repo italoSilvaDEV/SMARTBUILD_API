@@ -13,6 +13,7 @@ type payloadCreateEstimate = {
     idPdfProject: string;
     type_estimate: TypeEstimate;
     multi_emails: string;
+    date_creation?: string;
 }
 
 export class CreateNewEstimateController {
@@ -56,6 +57,7 @@ export class CreateNewEstimateController {
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
                         multi_emails: payloadCreateEstimate.multi_emails,
+                        date_creation: payloadCreateEstimate.date_creation ? new Date(payloadCreateEstimate.date_creation) : new Date(),
                         project: {
                             connect: {
                                 id: payloadCreateEstimate.projectId
