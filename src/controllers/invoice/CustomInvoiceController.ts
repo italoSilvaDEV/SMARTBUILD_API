@@ -22,7 +22,8 @@ export class CustomInvoiceController {
       totalAmount,
       estimateId,
       services,
-      multi_emails
+      multi_emails,
+      date_creation
     } = req.body
 
     try {
@@ -111,7 +112,8 @@ export class CustomInvoiceController {
             percentageCoefficient: coefficientPerfentage,
             type_invoicebase: type_invoicebase,
             estimateId: estimateId,
-            multi_emails: multi_emails
+            multi_emails: multi_emails,
+            createdAt: date_creation ? new Date(date_creation) : new Date()
           }
         });
 
