@@ -737,6 +737,7 @@ export class StripeController {
                     },
                     InvoiceItems: true, // Incluir os itens da fatura
                     PdfProject: true, // Incluir os PDFs relacionados
+                    InvoiceTimeline: true,
                     project: {
                         include: {
                             client: {
@@ -902,6 +903,7 @@ export class StripeController {
 
                     },
                     InvoiceItems: true,
+                    InvoiceTimeline: true,
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
