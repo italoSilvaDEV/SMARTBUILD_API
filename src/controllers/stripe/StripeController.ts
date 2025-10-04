@@ -366,67 +366,106 @@ export class StripeController {
             let quickBooksError = null;
 
             try {
-                console.log("Tentando criar invoice no QuickBooks...");
+                console.log("Verificando configuração do QuickBooks...");
 
-                // Verificar se o usuário tem uma conta QuickBooks conectada
-                const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-                    where: { user_id: userId },
+                // Verificar se a criação de invoices no QuickBooks está habilitada
+                const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
+                    where: {
+                        configType_companyId: {
+                            configType: 'INVOICE_CREATION',
+                            companyId: project.company_id!
+                        }
+                    }
                 });
 
-                if (quickBooksAccount) {
-                    // Preparar serviços para o formato esperado pelo QuickBooks
-                    const qbServices = services.map((service: any) => ({
-                        name: service.name || "Service",
-                        description: service.description || "",
-                        quantity: service.quantity || 1,
-                        price: service.price || 0,
-                        total: service.total || (service.quantity * service.price)
-                    }));
+                const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
+                console.log(`QuickBooks invoice creation enabled: ${isQuickBooksInvoiceCreationEnabled}`);
 
-                    // Usar o controller instanciado no constructor
-                    const qbController = this.quickBooksController;
-
-                    if (!qbController) {
-                        throw new Error("QuickBooksController is not initialized");
-                    }
-
-                    quickBooksResult = await qbController.createInvoiceInternal({
-                        projectId: project.id,
-                        description: description || `Invoice for Project ${project.id}`,
-                        type_invoicebase: type_invoicebase,
-                        dueDate: dueDate,
-                        userId: userId,
-                        coefficientPerfentage: coefficientPerfentage,
-                        services: qbServices,
-                        type_value: type_value,
-                        totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
-                    });
-
-                    console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
-
-                    // Atualizar o invoice Stripe com os dados do QuickBooks
-                    if (quickBooksResult?.quickbooksId) {
-                        await prisma.invoice.update({
-                            where: { id: newInvoice.id },
-                            data: {
-                                idQuickbookContabio: quickBooksResult.quickbooksId,
-                                docNumberQuickBooksContabio: quickBooksResult.docNumber
-                            }
-                        });
-                    }
-
-                    // Adicionar evento na timeline sobre sucesso no QuickBooks
+                if (!isQuickBooksInvoiceCreationEnabled) {
+                    console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks integration.");
+                    
+                    // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
                         data: {
-                            description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
+                            description: `QuickBooks invoice creation skipped (feature disabled in company settings)`,
                             invoice: {
                                 connect: { id: newInvoice.id }
                             }
                         }
                     });
                 } else {
-                    console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
+                    console.log("Tentando criar invoice no QuickBooks...");
+
+                    // Verificar se o usuário tem uma conta QuickBooks conectada
+                    const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+                        where: { user_id: userId },
+                    });
+
+                    if (quickBooksAccount) {
+                        // Preparar serviços para o formato esperado pelo QuickBooks
+                        const qbServices = services.map((service: any) => ({
+                            name: service.name || "Service",
+                            description: service.description || "",
+                            quantity: service.quantity || 1,
+                            price: service.price || 0,
+                            total: service.total || (service.quantity * service.price)
+                        }));
+
+                        // Usar o controller instanciado no constructor
+                        const qbController = this.quickBooksController;
+
+                        if (!qbController) {
+                            throw new Error("QuickBooksController is not initialized");
+                        }
+
+                        quickBooksResult = await qbController.createInvoiceInternal({
+                            projectId: project.id,
+                            description: description || `Invoice for Project ${project.id}`,
+                            type_invoicebase: type_invoicebase,
+                            dueDate: dueDate,
+                            userId: userId,
+                            coefficientPerfentage: coefficientPerfentage,
+                            services: qbServices,
+                            type_value: type_value,
+                            totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
+                            calledFromStripe: true // Indicar que foi chamado pelo Stripe
+                        });
+
+                        console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
+
+                        // Atualizar o invoice Stripe com os dados do QuickBooks
+                        if (quickBooksResult?.quickbooksId) {
+                            await prisma.invoice.update({
+                                where: { id: newInvoice.id },
+                                data: {
+                                    idQuickbookContabio: quickBooksResult.quickbooksId,
+                                    docNumberQuickBooksContabio: quickBooksResult.docNumber
+                                }
+                            });
+                        }
+
+                        // Adicionar evento na timeline sobre sucesso no QuickBooks
+                        await prisma.invoiceTimeline.create({
+                            data: {
+                                description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
+                                invoice: {
+                                    connect: { id: newInvoice.id }
+                                }
+                            }
+                        });
+                    } else {
+                        console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
+                        
+                        // Adicionar evento na timeline sobre conta não conectada
+                        await prisma.invoiceTimeline.create({
+                            data: {
+                                description: `QuickBooks invoice creation skipped (no QuickBooks account connected)`,
+                                invoice: {
+                                    connect: { id: newInvoice.id }
+                                }
+                            }
+                        });
+                    }
                 }
             } catch (qbError: any) {
                 console.error("Erro ao criar invoice no QuickBooks:", qbError.message);
@@ -1126,122 +1165,160 @@ export class StripeController {
             let quickBooksUpdateError = null;
 
             try {
-                console.log("Tentando atualizar invoice no QuickBooks...");
+                console.log("Verificando configuração do QuickBooks para update...");
 
-                // Verificar se o usuário tem uma conta QuickBooks conectada
-                const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-                    where: { user_id: userId },
+                // Verificar se a criação de invoices no QuickBooks está habilitada
+                const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
+                    where: {
+                        configType_companyId: {
+                            configType: 'INVOICE_CREATION',
+                            companyId: existingInvoice.project.company.id
+                        }
+                    }
                 });
 
-                // Verificar se o invoice original tinha referência do QuickBooks
-                if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
-                    // Preparar serviços para o formato esperado pelo QuickBooks
-                    const qbServices = services.map((service: any) => ({
-                        name: service.name || "Service",
-                        description: service.description || "",
-                        quantity: service.quantity || 1,
-                        price: service.price || 0,
-                        total: service.total || (service.quantity * service.price)
-                    }));
+                const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
+                console.log(`QuickBooks invoice creation enabled (update): ${isQuickBooksInvoiceCreationEnabled}`);
 
-                    // Usar o controller instanciado no constructor
-                    const qbController = this.quickBooksController;
-
-                    if (!qbController) {
-                        throw new Error("QuickBooksController is not initialized");
-                    }
-
-                    quickBooksUpdateResult = await qbController.updateInvoiceInternal({
-                        quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
-                        projectId: existingInvoice.project.id,
-                        description: description || `Updated Invoice for Project ${existingInvoice.project.id}`,
-                        dueDate: dueDate,
-                        userId: userId,
-                        coefficientPerfentage: coefficientPerfentage,
-                        services: qbServices,
-                        totalAmountTarget: totalAmount || calculatedTotalAmount, // Passar o valor total exato do banco local
-                        calledFromStripe: true // Indicar que foi chamado pelo Stripe
-                    });
-
-                    console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
-
-                    // Adicionar evento na timeline sobre sucesso no QuickBooks
+                if (!isQuickBooksInvoiceCreationEnabled) {
+                    console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks update.");
+                    
+                    // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
                         data: {
-                            description: `QuickBooks invoice updated successfully (ID: ${quickBooksUpdateResult?.quickbooksId})`,
+                            description: `QuickBooks invoice update skipped (feature disabled in company settings)`,
                             invoice: {
                                 connect: { id: invoiceId }
                             }
                         }
                     });
                 } else {
-                    if (!quickBooksAccount) {
-                        console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
-                    } else {
-                        console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
+                    console.log("Tentando atualizar invoice no QuickBooks...");
 
-                        // TENTAR DE CRIAÇÃO DE INVOICE NO QBO
-                        const qbServicesSource =
-                            Array.isArray(services) && services.length > 0
-                                ? services
-                                : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
-                                    name: ii.name || "Service",
-                                    description: ii.description || "",
-                                    quantity: Number(ii.quantity || 1),
-                                    price: Number(ii.price || 0),
-                                    total: Number(ii.totalAmount || 0),
-                                }));
+                    // Verificar se o usuário tem uma conta QuickBooks conectada
+                    const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+                        where: { user_id: userId },
+                    });
 
-                        const qbServicesForCreate = qbServicesSource.map((s: any) => ({
-                            name: s.name || "Service",
-                            description: s.description || "",
-                            quantity: Number(s.quantity || 1),
-                            price: Number(s.price || 0),
-                            total: Number(
-                                s.total != null ? s.total : (Number(s.quantity || 0) * Number(s.price || 0))
-                            ),
+                    // Verificar se o invoice original tinha referência do QuickBooks
+                    if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
+                        // Preparar serviços para o formato esperado pelo QuickBooks
+                        const qbServices = services.map((service: any) => ({
+                            name: service.name || "Service",
+                            description: service.description || "",
+                            quantity: service.quantity || 1,
+                            price: service.price || 0,
+                            total: service.total || (service.quantity * service.price)
                         }));
 
+                        // Usar o controller instanciado no constructor
                         const qbController = this.quickBooksController;
-                        if (!qbController) throw new Error("QuickBooksController is not initialized");
 
-                        const createResult = await qbController.createInvoiceInternal({
+                        if (!qbController) {
+                            throw new Error("QuickBooksController is not initialized");
+                        }
+
+                        quickBooksUpdateResult = await qbController.updateInvoiceInternal({
+                            quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
                             projectId: existingInvoice.project.id,
-                            description: description || `Invoice for Project ${existingInvoice.project.id}`,
-                            type_invoicebase: (existingInvoice as any).type_invoicebase, // se existir no modelo
+                            description: description || `Updated Invoice for Project ${existingInvoice.project.id}`,
                             dueDate: dueDate,
                             userId: userId,
                             coefficientPerfentage: coefficientPerfentage,
-                            services: qbServicesForCreate,
-                            type_value: type_value,
-                            totalAmountTarget: (totalAmount ?? calculatedTotalAmount),
-                            calledFromStripe: true,
+                            services: qbServices,
+                            totalAmountTarget: totalAmount || calculatedTotalAmount, // Passar o valor total exato do banco local
+                            calledFromStripe: true // Indicar que foi chamado pelo Stripe
                         });
 
-                        console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
+                        console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
 
-                        // Atualizar a fatura local com os identificadores do QuickBooks
-                        if (createResult?.quickbooksId) {
-                            await prisma.invoice.update({
-                                where: { id: invoiceId },
-                                data: {
-                                    idQuickbookContabio: createResult.quickbooksId,
-                                    docNumberQuickBooksContabio: createResult.docNumber ?? null,
-                                },
-                            });
-                        }
-
-                        // Timeline de sucesso
+                        // Adicionar evento na timeline sobre sucesso no QuickBooks
                         await prisma.invoiceTimeline.create({
                             data: {
-                                description: `QuickBooks invoice created successfully (ID: ${createResult?.quickbooksId}, DocNumber: ${createResult?.docNumber})`,
-                                invoice: { connect: { id: invoiceId } },
-                            },
+                                description: `QuickBooks invoice updated successfully (ID: ${quickBooksUpdateResult?.quickbooksId})`,
+                                invoice: {
+                                    connect: { id: invoiceId }
+                                }
+                            }
                         });
+                    } else {
+                        if (!quickBooksAccount) {
+                            console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
+                            
+                            // Adicionar evento na timeline sobre conta não conectada
+                            await prisma.invoiceTimeline.create({
+                                data: {
+                                    description: `QuickBooks invoice update skipped (no QuickBooks account connected)`,
+                                    invoice: {
+                                        connect: { id: invoiceId }
+                                    }
+                                }
+                            });
+                        } else {
+                            console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
 
-                        // Para manter a estrutura do retorno
-                        quickBooksUpdateResult = createResult;
+                            // TENTAR DE CRIAÇÃO DE INVOICE NO QBO
+                            const qbServicesSource =
+                                Array.isArray(services) && services.length > 0
+                                    ? services
+                                    : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
+                                        name: ii.name || "Service",
+                                        description: ii.description || "",
+                                        quantity: Number(ii.quantity || 1),
+                                        price: Number(ii.price || 0),
+                                        total: Number(ii.totalAmount || 0),
+                                    }));
 
+                            const qbServicesForCreate = qbServicesSource.map((s: any) => ({
+                                name: s.name || "Service",
+                                description: s.description || "",
+                                quantity: Number(s.quantity || 1),
+                                price: Number(s.price || 0),
+                                total: Number(
+                                    s.total != null ? s.total : (Number(s.quantity || 0) * Number(s.price || 0))
+                                ),
+                            }));
+
+                            const qbController = this.quickBooksController;
+                            if (!qbController) throw new Error("QuickBooksController is not initialized");
+
+                            const createResult = await qbController.createInvoiceInternal({
+                                projectId: existingInvoice.project.id,
+                                description: description || `Invoice for Project ${existingInvoice.project.id}`,
+                                type_invoicebase: (existingInvoice as any).type_invoicebase, // se existir no modelo
+                                dueDate: dueDate,
+                                userId: userId,
+                                coefficientPerfentage: coefficientPerfentage,
+                                services: qbServicesForCreate,
+                                type_value: type_value,
+                                totalAmountTarget: (totalAmount ?? calculatedTotalAmount),
+                                calledFromStripe: true,
+                            });
+
+                            console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
+
+                            // Atualizar a fatura local com os identificadores do QuickBooks
+                            if (createResult?.quickbooksId) {
+                                await prisma.invoice.update({
+                                    where: { id: invoiceId },
+                                    data: {
+                                        idQuickbookContabio: createResult.quickbooksId,
+                                        docNumberQuickBooksContabio: createResult.docNumber ?? null,
+                                    },
+                                });
+                            }
+
+                            // Timeline de sucesso
+                            await prisma.invoiceTimeline.create({
+                                data: {
+                                    description: `QuickBooks invoice created successfully (ID: ${createResult?.quickbooksId}, DocNumber: ${createResult?.docNumber})`,
+                                    invoice: { connect: { id: invoiceId } },
+                                },
+                            });
+
+                            // Para manter a estrutura do retorno
+                            quickBooksUpdateResult = createResult;
+                        }
                     }
                 }
             } catch (qbError: any) {

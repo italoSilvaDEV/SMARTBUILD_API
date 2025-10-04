@@ -133,6 +133,7 @@ model Company {
   SyncLog       SyncLog[]       @relation("synclog")
   SyncStatus    SyncStatus[]    @relation("SyncStatus")
   ContractTerms ContractTerms[]
+  QuickBooksConfig QuickBooksConfig[]
 }
 
 model ContractNotes {
@@ -1171,6 +1172,10 @@ enum ContractTermsType {
   termseconditions
 }
 
+enum QuickBooksConfigType {
+  INVOICE_CREATION
+}
+
 model ContractTerms {
   id String @id @default(uuid())
 
@@ -1185,4 +1190,20 @@ model ContractTerms {
 
   @@unique([contractTermsType, companyId])
   @@map("contract_terms")
+}
+
+model QuickBooksConfig {
+  id String @id @default(uuid())
+
+  configType QuickBooksConfigType
+  isActive   Boolean              @default(false)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([configType, companyId])
+  @@map("quickbooks_config")
 }

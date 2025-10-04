@@ -20,6 +20,7 @@ import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
+import { quickBooksConfigRoutes } from './quickBooksConfigRoutes'
 import { invoiceRoutes } from "./invoiceRoutes"
 import { customInvoiceRoutes } from "./customInvoiceRoutes"
 import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
@@ -67,6 +68,7 @@ router.use(stripeRoutes)
 router.use(paymentElementRoutes)
 router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
+router.use("/quickbooks-config", quickBooksConfigRoutes)
 router.use("/finance-dashboard", financeDashboard);
 router.use("/business-dashboard", businessDashboard);
 router.use(dashboardMasterRoutes);
