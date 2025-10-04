@@ -9,7 +9,7 @@ const openAiController = new OpenIAController();
 
 const audioUpload = multer(upload.upload("./public/tmp/audio"))
 
-openAiRoutes.post("/transcribe", checkToken, audioUpload.single("file"), openAiController.transcribeAudio);
+openAiRoutes.post("/transcription", checkToken, audioUpload.single("file"), openAiController.transcribeAudio);
 openAiRoutes.post("/description/generate", checkToken, openAiController.generateDescription);
 openAiRoutes.post("/description/increment", checkToken, openAiController.incrementDescription);
 
