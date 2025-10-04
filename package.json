@@ -6,11 +6,9 @@
     "dev:api": "nodemon --exec ts-node src/server.ts",
     "dev:worker": "nodemon --exec ts-node src/workers/quickbooks/quickbooksWorker.ts",
     "dev": "npm-run-all -p dev:api dev:worker",
-
     "build": "tsc",
     "start:worker": "node dist/workers/quickbooks/quickbooksWorker.js",
-    "start":  "node dist/server.js",
-
+    "start": "node dist/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -73,6 +71,7 @@
     "node-cron": "^3.0.3",
     "node-quickbooks": "^2.0.46",
     "nodemailer": "^6.9.13",
+    "openai": "^6.1.0",
     "pdf-lib": "^1.17.1",
     "sharp": "^0.33.4",
     "stripe": "^17.7.0",
