@@ -87,42 +87,19 @@ export class OpenIAController {
 
         if (!file) {
             return res.status(400).json({
-                error: "Audio file is required"
+                error: "Audio blob, model and response format are required"
             });
-        }
-
-        const mimeToExt: { [key: string]: string } = {
-            'audio/mpeg': '.mp3',
-            'audio/mp3': '.mp3',
-            'audio/wav': '.wav',
-            'audio/wave': '.wav',
-            'audio/x-wav': '.wav',
-            'audio/webm': '.webm',
-            'audio/ogg': '.ogg',
-            'audio/flac': '.flac',
-            'audio/m4a': '.m4a',
-            'audio/mp4': '.mp4',
-            'video/mp4': '.mp4',
-            'video/mpeg': '.mpeg',
-        };
-
-        let filePath = file.path;
-
-        if (!file.originalname.includes('.') && file.mimetype && mimeToExt[file.mimetype]) {
-            const newPath = file.path + mimeToExt[file.mimetype];
-            fs.renameSync(file.path, newPath);
-            filePath = newPath;
         }
 
         try {
             const response = await openAi.audio.transcriptions.create({
-                file: fs.createReadStream(filePath),
+                file: fs.createReadStream(file.path),
                 model: "whisper-1",
                 response_format: "text",
                 prompt: OpenIaPrompt.transcribeAudio()
             })
 
-            fs.unlink(filePath, (err) => {
+            fs.unlink(file.path, (err) => {
                 if (err) console.error("Error deleting temp file:", err);
             });
 
@@ -131,18 +108,9 @@ export class OpenIAController {
                     text: response,
                 }
             });
-        } catch (error: any) {
-            console.error("Transcription error:", error);
-            
-            if (filePath) {
-                fs.unlink(filePath, (err) => {
-                    if (err) console.error("Error deleting temp file after error:", err);
-                });
-            }
-
+        } catch (error) {
             return res.status(500).json({
-                error: "Internal server error",
-                details: error?.message || "Unknown error"
+                error: "Internal server error"
             });
         }
     }
