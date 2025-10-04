@@ -85,19 +85,27 @@ export class OpenIAController {
     async transcribeAudio(req: Request, res: Response) {
         const file = req.file
 
+        console.log("File received:", file);
+
         if (!file) {
             return res.status(400).json({
-                error: "Audio blob, model and response format are required"
+                error: "Audio file is required"
             });
         }
 
         try {
+            console.log("Starting transcription for file:", file.filename);
+            console.log("File path:", file.path);
+            console.log("OpenAI API Key configured:", !!process.env.OPENAI_KEY);
+
             const response = await openAi.audio.transcriptions.create({
                 file: fs.createReadStream(file.path),
                 model: "whisper-1",
                 response_format: "text",
                 prompt: OpenIaPrompt.transcribeAudio()
             })
+
+            console.log("Transcription successful");
 
             fs.unlink(file.path, (err) => {
                 if (err) console.error("Error deleting temp file:", err);
@@ -108,10 +116,21 @@ export class OpenIAController {
                     text: response,
                 }
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Transcription error:", error);
+            console.error("Error message:", error?.message);
+            console.error("Error response:", error?.response?.data);
+            
+            // Limpa o arquivo mesmo em caso de erro
+            if (file?.path) {
+                fs.unlink(file.path, (err) => {
+                    if (err) console.error("Error deleting temp file after error:", err);
+                });
+            }
+
             return res.status(500).json({
-                error: "Internal server error"
+                error: "Internal server error",
+                details: error?.message || "Unknown error"
             });
         }
     }
