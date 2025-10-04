@@ -85,29 +85,44 @@ export class OpenIAController {
     async transcribeAudio(req: Request, res: Response) {
         const file = req.file
 
-        console.log("File received:", file);
-
         if (!file) {
             return res.status(400).json({
                 error: "Audio file is required"
             });
         }
 
-        try {
-            console.log("Starting transcription for file:", file.filename);
-            console.log("File path:", file.path);
-            console.log("OpenAI API Key configured:", !!process.env.OPENAI_KEY);
+        const mimeToExt: { [key: string]: string } = {
+            'audio/mpeg': '.mp3',
+            'audio/mp3': '.mp3',
+            'audio/wav': '.wav',
+            'audio/wave': '.wav',
+            'audio/x-wav': '.wav',
+            'audio/webm': '.webm',
+            'audio/ogg': '.ogg',
+            'audio/flac': '.flac',
+            'audio/m4a': '.m4a',
+            'audio/mp4': '.mp4',
+            'video/mp4': '.mp4',
+            'video/mpeg': '.mpeg',
+        };
 
+        let filePath = file.path;
+
+        if (!file.originalname.includes('.') && file.mimetype && mimeToExt[file.mimetype]) {
+            const newPath = file.path + mimeToExt[file.mimetype];
+            fs.renameSync(file.path, newPath);
+            filePath = newPath;
+        }
+
+        try {
             const response = await openAi.audio.transcriptions.create({
-                file: fs.createReadStream(file.path),
+                file: fs.createReadStream(filePath),
                 model: "whisper-1",
                 response_format: "text",
                 prompt: OpenIaPrompt.transcribeAudio()
             })
 
-            console.log("Transcription successful");
-
-            fs.unlink(file.path, (err) => {
+            fs.unlink(filePath, (err) => {
                 if (err) console.error("Error deleting temp file:", err);
             });
 
@@ -118,12 +133,9 @@ export class OpenIAController {
             });
         } catch (error: any) {
             console.error("Transcription error:", error);
-            console.error("Error message:", error?.message);
-            console.error("Error response:", error?.response?.data);
             
-            // Limpa o arquivo mesmo em caso de erro
-            if (file?.path) {
-                fs.unlink(file.path, (err) => {
+            if (filePath) {
+                fs.unlink(filePath, (err) => {
                     if (err) console.error("Error deleting temp file after error:", err);
                 });
             }
