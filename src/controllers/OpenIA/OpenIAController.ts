@@ -109,6 +109,7 @@ export class OpenIAController {
                 }
             });
         } catch (error) {
+            console.error("Transcription error:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

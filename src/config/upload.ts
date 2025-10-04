@@ -7,6 +7,10 @@ export default {
     upload(folder: string) {
         const uploadPath = resolve(__dirname, "..", "..", folder);
 
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+
         return {
             storage: multer.diskStorage({
                 destination: resolve(__dirname, "..", "..", folder),
