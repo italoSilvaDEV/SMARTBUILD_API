@@ -32,7 +32,9 @@ export class OpenIAController {
             });
 
             return res.status(200).json({
-                text: response.choices[0].message.content
+                data: {
+                    text: response.choices[0].message.content
+                }
             });
         } catch (error) {
             console.error(error);
@@ -68,7 +70,9 @@ export class OpenIAController {
             });
 
             return res.status(200).json({
-                text: response.choices[0].message.content
+                data: {
+                    text: response.choices[0].message.content
+                }
             });
         } catch (error) {
             console.error(error);
@@ -100,7 +104,9 @@ export class OpenIAController {
             });
 
             return res.status(200).json({
-                text: response,
+                data: {
+                    text: response,
+                }
             });
         } catch (error) {
             return res.status(500).json({

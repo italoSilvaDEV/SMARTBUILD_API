@@ -3,11 +3,11 @@ export class OpenIaPrompt {
         return description.trim()
             ? `You are an expert construction project planner. The user has provided the following request/prompt for a service named "${serviceName}" : "${description}"
   
-        Please create a detailed, professional, step-by-step procedure based on this request. Focus only on the step-by-step tasks and procedures. DO NOT include titles, headers, or introductory phrases like "Step-by-Step Procedure for..." or similar. Start directly with the procedure content. Important: Respond in English using simple HTML tags for formatting (e.g., <p>, <ul>, <li>, <b>). Provide only the HTML content itself, without markdown, introductory phrases, or conversational filler.`
+            Please create a detailed, professional, step-by-step procedure based on this request. Focus only on the step-by-step tasks and procedures. DO NOT include titles, headers, or introductory phrases like "Step-by-Step Procedure for..." or similar. Start directly with the procedure content. Important: Respond in English using simple HTML tags for formatting (e.g., <p>, <ul>, <li>, <b>). Provide only the HTML content itself, without markdown, introductory phrases, or conversational filler.`
             : `You are an expert construction project planner. For a service with the name "${serviceName}", create a detailed, professional, step-by-step procedure of the tasks involved. Focus only on the step-by-step tasks and procedures. DO NOT include titles, headers, or introductory phrases like "Step-by-Step Procedure for..." or similar. Start directly with the procedure content. Important: Respond in English using simple HTML tags for formatting (e.g., <p>, <ul>, <li>, <b>). Provide only the HTML content itself, without markdown, introductory phrases, or conversational filler.`;
     }
 
-    static incrementDescription(serviceName: string, quantity: number, price: number, description: string) {
+    static incrementDescription(serviceName: string, quantity: string, price: string, description: string) {
         return `You are an expert construction project planner. I have a service description that needs to be enhanced and expanded. Please improve the following description by adding more professional details, technical specifications, safety considerations, and step-by-step procedures while maintaining the original intent.
 
         Service Details:
@@ -35,7 +35,7 @@ export class OpenIaPrompt {
             : `You are an expert construction project planner. For a service in the category "${categoryName}", with the name "${serviceName}", create a detailed, professional, step-by-step procedure of the tasks involved. Focus only on the step-by-step tasks and procedures. DO NOT include titles, headers, or introductory phrases like "Step-by-Step Procedure for..." or similar. Start directly with the procedure content. Important: Respond in English using simple HTML tags for formatting (e.g., <p>, <ul>, <li>, <b>). Provide only the HTML content itself, without markdown, introductory phrases, or conversational filler.`;
     }
 
-    static incrementDescriptionCategory(serviceName: string, description: string, categoryName: string, quantity: number, price: number) {
+    static incrementDescriptionCategory(serviceName: string, description: string, categoryName: string, quantity: string, price: string) {
         return `You are an expert construction project planner. I have a service description that needs to be enhanced and expanded. Please improve the following description by adding more professional details, technical specifications, safety considerations, and step-by-step procedures while maintaining the original intent. 
 
         Service Details:
@@ -64,8 +64,8 @@ export class OpenIaPrompt {
         type: string,
         serviceName?: string,
         description?: string,
-        quantity?: number,
-        price?: number,
+        quantity?: string,
+        price?: string,
         categoryName?: string
     ) {
         switch (type) {
