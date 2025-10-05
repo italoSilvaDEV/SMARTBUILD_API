@@ -1031,7 +1031,8 @@ export class CustomInvoiceController {
       type_value,
       services,
       totalAmount,
-      multi_emails
+      multi_emails,
+      date_creation
     } = req.body;
 
     try {
@@ -1080,6 +1081,7 @@ export class CustomInvoiceController {
             invoiceTypeStripe: null,
             multi_emails: multi_emails || existingInvoice.multi_emails,
             updatedAt: new Date(),
+            createdAt: date_creation ? new Date(date_creation) : existingInvoice.createdAt,
           },
           include: {
             InvoiceItems: true
