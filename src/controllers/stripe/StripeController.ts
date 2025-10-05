@@ -272,7 +272,7 @@ export class StripeController {
                 return sum + (service.total || (quantity * price));
             }, 0);
 
-            console.log(`Valor original do projeto: $${originalProjectValue}`); 
+            console.log(`Valor original do projeto: $${originalProjectValue}`);
 
             // Calcular saldo restante após pagamentos
             const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
@@ -428,7 +428,7 @@ export class StripeController {
 
                 if (!isQuickBooksInvoiceCreationEnabled) {
                     console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks integration.");
-                    
+
                     // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
                         data: {
@@ -500,7 +500,7 @@ export class StripeController {
                         });
                     } else {
                         console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
-                        
+
                         // Adicionar evento na timeline sobre conta não conectada
                         await prisma.invoiceTimeline.create({
                             data: {
@@ -1052,9 +1052,12 @@ export class StripeController {
                         }
                     }
 
+                    const avatarUrl = invoice.company?.avatar ? await getPresignedUrl(invoice.company.avatar) : null;
+
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
                     return {
                         ...invoice,
+                        avatar: avatarUrl,
                         lastSentAt: lastSend,
                     };
                 })
@@ -1257,7 +1260,7 @@ export class StripeController {
 
                 if (!isQuickBooksInvoiceCreationEnabled) {
                     console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks update.");
-                    
+
                     // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
                         data: {
@@ -1319,7 +1322,7 @@ export class StripeController {
                     } else {
                         if (!quickBooksAccount) {
                             console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
-                            
+
                             // Adicionar evento na timeline sobre conta não conectada
                             await prisma.invoiceTimeline.create({
                                 data: {
