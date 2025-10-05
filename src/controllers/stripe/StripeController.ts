@@ -14,6 +14,51 @@ type Estimate = {
     id: string;
 }
 
+function getDateRange(periodType: string) {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date | undefined;
+
+    switch (periodType) {
+        case "thisYear":
+            startDate = new Date(now.getFullYear(), 0, 1);
+            break;
+
+        case "thisQuarter":
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            break;
+
+        case "last3Months":
+            startDate = new Date();
+            startDate.setMonth(now.getMonth() - 3);
+            break;
+
+        case "lastMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+
+        case "thisMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+
+        case "last30Days":
+            startDate = new Date();
+            startDate.setDate(now.getDate() - 30);
+            break;
+
+        case "allPeriod":
+            startDate = new Date(2020, 0, 1);
+            break;
+
+        default:
+            startDate = new Date(now.getFullYear(), 0, 1);
+    }
+
+    return { startDate, endDate };
+}
+
 // Função auxiliar para garantir que a descrição completa não ultrapasse 500 caracteres
 function createSafeDescription(serviceName: string, description: string): string {
     const separator = " - ";
@@ -848,15 +893,42 @@ export class StripeController {
         const {
             searchTerm = "",
             page = 1,
-            itemsPerPage = 10
+            itemsPerPage = 10,
+            period = "allPeriod"
         } = req.query;
 
         try {
+            const validPeriods = [
+                "thisYear",
+                "thisQuarter",
+                "last3Months",
+                "lastMonth",
+                "thisMonth",
+                "last30Days",
+                "allPeriod"
+            ];
+
+            if (!validPeriods.includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const { startDate, endDate } = getDateRange(period as string);
+
+            const dateFilter: any = {};
+            if (period !== "allPeriod") {
+                dateFilter.gte = startDate;
+                if (endDate) {
+                    dateFilter.lte = endDate;
+                }
+            }
+
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
             const itemsLimit = Number(itemsPerPage);
             const search = typeof searchTerm === 'string' ? searchTerm : "";
 
-            const filtro = {
+            const filtro: any = {
                 companyId,
                 OR: [
                     { cancel_invoice_edit: false },
@@ -884,8 +956,11 @@ export class StripeController {
                         }
                     ]
                 }
-
             };
+
+            if (Object.keys(dateFilter).length > 0) {
+                filtro.createdAt = dateFilter;
+            }
 
             const invoices = await prisma.invoice.findMany({
                 where: filtro,
