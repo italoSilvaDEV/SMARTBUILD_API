@@ -22,7 +22,8 @@ export class CustomInvoiceController {
       totalAmount,
       estimateId,
       services,
-      multi_emails
+      multi_emails,
+      date_creation
     } = req.body
 
     try {
@@ -111,7 +112,8 @@ export class CustomInvoiceController {
             percentageCoefficient: coefficientPerfentage,
             type_invoicebase: type_invoicebase,
             estimateId: estimateId,
-            multi_emails: multi_emails
+            multi_emails: multi_emails,
+            createdAt: date_creation ? new Date(date_creation) : new Date()
           }
         });
 
@@ -214,6 +216,52 @@ export class CustomInvoiceController {
     } catch (error) {
       console.error("Error fetching custom invoices:", error);
       return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
+  async statusViewInvoice(req: Request, res: Response) {
+    const {
+      invoiceId
+    } = req.params
+
+    if (!invoiceId) {
+      return res.status(400).json({
+        error: "Invoice ID is required"
+      });
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: invoiceId
+      }
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        error: "Invoice not found"
+      });
+    }
+
+    try {
+      const timeline = await prisma.invoiceTimeline.create({
+        data: {
+          description: "Invoice viewed",
+          invoice: {
+            connect: {
+              id: invoiceId
+            }
+          }
+        }
+      })
+
+      return res.status(200).json({
+        message: "Invoice viewed successfully",
+        timeline
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal Server Error"
+      });
     }
   }
 
@@ -983,7 +1031,8 @@ export class CustomInvoiceController {
       type_value,
       services,
       totalAmount,
-      multi_emails
+      multi_emails,
+      date_creation
     } = req.body;
 
     try {
@@ -1032,6 +1081,7 @@ export class CustomInvoiceController {
             invoiceTypeStripe: null,
             multi_emails: multi_emails || existingInvoice.multi_emails,
             updatedAt: new Date(),
+            createdAt: date_creation ? new Date(date_creation) : existingInvoice.createdAt,
           },
           include: {
             InvoiceItems: true

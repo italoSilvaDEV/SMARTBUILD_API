@@ -6,6 +6,7 @@ type Fields = {
     terms?: string | null
     totalAmount?: number
     multi_emails?: string | null
+    date_creation?: string
 }
 
 export class UpdateEstimateFieldsController {
@@ -16,6 +17,7 @@ export class UpdateEstimateFieldsController {
             terms,
             totalAmount,
             multi_emails,
+            date_creation,
         } = req.body
 
         if (!estimateId) {
@@ -36,7 +38,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        if (description === null && terms === null && multi_emails === null) {
+        if (description === null && terms === null && multi_emails === null && date_creation === null) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -49,6 +51,10 @@ export class UpdateEstimateFieldsController {
                 campos.description = description
             } else if (description === "") {
                 campos.description = null
+            }
+
+            if (date_creation !== undefined && date_creation !== null) {
+                campos.date_creation = date_creation
             }
 
             if (terms !== undefined) {

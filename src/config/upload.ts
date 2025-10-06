@@ -1,9 +1,10 @@
 import multer from "multer";
-import {resolve} from "path"
+import { resolve } from "path"
 import crypto from "crypto"
+import fs from "fs"
 
 export default {
-    upload(folder: string){
+    upload(folder: string) {
         return {
             storage: multer.diskStorage({
                 destination: resolve(__dirname, "..", "..", folder),

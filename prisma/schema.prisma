@@ -133,6 +133,7 @@ model Company {
   SyncLog       SyncLog[]       @relation("synclog")
   SyncStatus    SyncStatus[]    @relation("SyncStatus")
   ContractTerms ContractTerms[]
+  QuickBooksConfig QuickBooksConfig[]
 }
 
 model ContractNotes {
@@ -635,11 +636,18 @@ model Invoice {
 
   // Campos específicos para QuickBooks
   externalDocNumber String?
+  idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
+  
+  // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
+  idQuickbookContabio          String? // ID do invoice no QuickBooks criado via Stripe
+  docNumberQuickBooksContabio  String? // Número do documento QuickBooks criado via Stripe
 
   // NOVOS CAMPOS PARA PAYMENT INTENT
   paymentMethodType        String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)
   totalAmountPaid          Decimal? // Valor total pago (inclui surcharge)
-  totalAmountWithSurcharge Decimal? // Valor original + surcharge
+  surchargePaymentLocal    Decimal? // Taxa local aplicada (diferença entre valor original e final)
+  surchargePaymentStripe   Decimal? // Taxa de processamento cobrada pelo Stripe
+  totalAmountWithSurcharge Decimal? // Valor total pago (com surcharge)
 
   // Relacionamento com Project e Company
   project   Project? @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
@@ -1164,6 +1172,10 @@ enum ContractTermsType {
   termseconditions
 }
 
+enum QuickBooksConfigType {
+  INVOICE_CREATION
+}
+
 model ContractTerms {
   id String @id @default(uuid())
 
@@ -1178,4 +1190,20 @@ model ContractTerms {
 
   @@unique([contractTermsType, companyId])
   @@map("contract_terms")
+}
+
+model QuickBooksConfig {
+  id String @id @default(uuid())
+
+  configType QuickBooksConfigType
+  isActive   Boolean              @default(false)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([configType, companyId])
+  @@map("quickbooks_config")
 }

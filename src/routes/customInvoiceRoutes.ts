@@ -23,12 +23,14 @@ customInvoiceRoutes.get("/custom/invoice/:invoiceId/pdf", checkToken, customInvo
 
 // Adicionar esta nova rota para enviar invoice para múltiplos destinatários
 customInvoiceRoutes.post(
-  "/custom/invoice/:invoiceId/send-multiple", 
-  checkToken, 
+  "/custom/invoice/:invoiceId/send-multiple",
+  checkToken,
   customInvoiceController.sendInvoiceMultiple.bind(customInvoiceController)
 );
 
 // Atualizar invoice personalizado
 customInvoiceRoutes.put("/custom/invoice/:invoiceId", checkToken, customInvoiceController.updateInvoice);
+
+customInvoiceRoutes.get("/custom/invoice/view/:invoiceId", checkToken, customInvoiceController.statusViewInvoice);
 
 export { customInvoiceRoutes }; 

@@ -20,6 +20,7 @@ import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
+import { quickBooksConfigRoutes } from './quickBooksConfigRoutes'
 import { invoiceRoutes } from "./invoiceRoutes"
 import { customInvoiceRoutes } from "./customInvoiceRoutes"
 import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
@@ -35,6 +36,7 @@ import { UploadImageController } from '../controllers/projects/UploadImageContro
 import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
 import { timeCardsRouts } from './timeCardsRoutes'
 import { contractTermRoutes } from './contractTermRoutes'
+import { openAiRoutes } from './openAiRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -67,6 +69,7 @@ router.use(stripeRoutes)
 router.use(paymentElementRoutes)
 router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
+router.use("/quickbooks-config", quickBooksConfigRoutes)
 router.use("/finance-dashboard", financeDashboard);
 router.use("/business-dashboard", businessDashboard);
 router.use(dashboardMasterRoutes);
@@ -83,6 +86,7 @@ router.use(permissionGroupRoutes)
 router.use(subscriptionRoutes)
 router.use("/timecards", timeCardsRouts)
 router.use("/contract-terms", contractTermRoutes)
+router.use("/openai", openAiRoutes)
 
 export { router }
 

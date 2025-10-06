@@ -42,6 +42,7 @@ export class GetAllEstimatesByCompanyController {
                     canceledAt: true,
                     canceledById: true,
                     terms: true,
+                    date_creation: true,
                     balanceDue: true,
                     type_estimate: true,
                     multi_emails: true,
@@ -131,10 +132,10 @@ export class GetAllEstimatesByCompanyController {
                             uri: true
                         }
                     },
-                    InvoicePaymentTimeLine: true
+                    InvoicePaymentTimeLine: true,
                 },
                 orderBy: {
-                    date_creation: "desc"
+                    number: "desc"
                 }
             })
 
