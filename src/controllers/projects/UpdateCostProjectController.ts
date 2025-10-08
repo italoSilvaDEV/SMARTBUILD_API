@@ -23,11 +23,12 @@ export class UpdateCostProjectController {
                     amout,
                     userId,
                     service_project_id,
-                    invoice_cost_project_id
+                    invoice_cost_project_id,
+                    cost_date
                 } = project;
 
                 if(!id){
-                    error.push("Material name is required!");
+                    error.push("Material name is required!"); 
                     continue;
                 }
                 if (!material_name) {
@@ -84,6 +85,11 @@ export class UpdateCostProjectController {
                     continue;
                 }
 
+                if (!cost_date) {
+                    error.push("Cost date is required!");
+                    continue;
+                }
+
 
                 await prisma.costProject.update({
                     where:{
@@ -96,7 +102,8 @@ export class UpdateCostProjectController {
                         amout: parseInt(amout),
                         userId,
                         serviceProjectId: service_project_id,
-                        invoice_cost_project_id: invoice_cost_project_id
+                        invoice_cost_project_id: invoice_cost_project_id,
+                        cost_date: new Date(cost_date)
                     },
                 });
             }

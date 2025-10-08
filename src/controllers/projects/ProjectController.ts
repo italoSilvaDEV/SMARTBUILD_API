@@ -564,13 +564,15 @@ export class ProjectController {
                 transaction_type: cost.transaction_type,
                 price: cost.price,
                 amout: cost.amout,
+                date_creation: cost.date_creation,
+                cost_date: cost.cost_date,
                 service_project_id: cost.ServiceProject?.id,
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
                 project_cost_invoice_exists: cost.invoiceCostProject?.project_cost_invoice_exists,
-                invoice_cost_project: await getPresignedUrl(
-                  String(cost.invoiceCostProject?.uri)
-                ),
+                invoice_cost_project: cost.invoiceCostProject?.uri 
+                  ? await getPresignedUrl(String(cost.invoiceCostProject.uri))
+                  : null,
               }))
             )
           )

@@ -500,6 +500,7 @@ model CostProject {
   material_name String
   price         Decimal
   amout         Int
+  cost_date     DateTime?
 
   transaction_type        String?
   userId                  String?
