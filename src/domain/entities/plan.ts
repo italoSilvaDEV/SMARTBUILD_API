@@ -1,6 +1,7 @@
 export enum ValidityType {
   FREE = 'FREE',
   MONTHLY = 'MONTHLY',
+  QUARTERLY = 'QUARTERLY',
   ANNUAL = 'ANNUAL',
   CUSTOM = 'CUSTOM',
   DAYS = 'DAYS'

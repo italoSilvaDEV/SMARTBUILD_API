@@ -4,7 +4,7 @@ import { ValidityType } from '../../domain/entities/plan';
 import Stripe from 'stripe';
 
 // Inicializar o cliente Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { 
   apiVersion: '2025-02-24.acacia', // Atualizado para a versão compatível com os tipos
 });
 
@@ -120,6 +120,8 @@ export class PlanController {
 
   async getAllPlans(req: Request, res: Response) {
     try {
+      const { grouped } = req.query;
+      
       const plans = await prisma.plan.findMany({
         include: {
           permissionGroup: true
@@ -143,6 +145,35 @@ export class PlanController {
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees
       }));
+
+      // Se solicitado agrupamento, organizar por grupos de permissão e periodicidade
+      if (grouped === 'true') {
+        const groupedPlans: { [key: string]: { [key: string]: any } } = {};
+        
+        formattedPlans.forEach(plan => {
+          const groupKey = plan.permissionGroup?.description || 'Unknown';
+          let validityKey = plan.validityType;
+          
+          // Mapear validityType para os tipos esperados pelo frontend
+          if (validityKey === 'MONTHLY' && plan.validityDuration === 3) {
+            validityKey = ValidityType.QUARTERLY;
+          }
+          
+          if (!groupedPlans[groupKey]) {
+            groupedPlans[groupKey] = {};
+          }
+          
+          groupedPlans[groupKey][validityKey] = plan;
+        });
+
+        // Organizar a resposta com estrutura mais limpa
+        const organizedPlans = {
+          groups: groupedPlans,
+          periods: ['MONTHLY', 'QUARTERLY', 'ANNUAL', 'FREE']
+        };
+
+        return res.status(200).json(organizedPlans);
+      }
       
       res.status(200).json(formattedPlans);
     } catch (error) {
