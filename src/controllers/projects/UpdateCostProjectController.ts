@@ -85,10 +85,10 @@ export class UpdateCostProjectController {
                     continue;
                 }
 
-                if (!cost_date) {
-                    error.push("Cost date is required!");
-                    continue;
-                }
+                // if (!cost_date) {
+                //     error.push("Cost date is required!");
+                //     continue;
+                // }
 
 
                 await prisma.costProject.update({
@@ -103,7 +103,7 @@ export class UpdateCostProjectController {
                         userId,
                         serviceProjectId: service_project_id,
                         invoice_cost_project_id: invoice_cost_project_id,
-                        cost_date: new Date(cost_date)
+                        cost_date: cost_date ? new Date(cost_date) : null,
                     },
                 });
             }
