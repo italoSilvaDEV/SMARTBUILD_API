@@ -97,6 +97,25 @@ export class PaymentElementController {
                 });
             }
 
+            // Verificar se existe um PaymentIntent cancelado para esta invoice
+            const existingCanceledPayment = await prisma.paymentIntentRecord.findFirst({
+                where: {
+                    invoiceId: invoice.id,
+                    status: 'canceled'
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            if (existingCanceledPayment) {
+                return res.status(400).json({
+                    error: "Payment was canceled",
+                    paymentIntentId: existingCanceledPayment.stripePaymentIntentId,
+                    status: "canceled",
+                    isCanceled: true,
+                    cancelReason: "Previous payment attempt was canceled"
+                });
+            }
+
             const stripeAccountId = company.stripeAccountId;
             console.log("Using Stripe Account:", stripeAccountId);
 
@@ -131,11 +150,14 @@ export class PaymentElementController {
             const baseAmount = Number(invoice.totalAmount);
             const currency = invoice.currency || 'usd';
 
-            // Verificar se já existe um PaymentIntent ativo para esta invoice
+            // Verificar se já existe um PaymentIntent ativo para esta invoice (excluindo cancelados)
             let existingPaymentIntent = await prisma.paymentIntentRecord.findFirst({
                 where: {
                     invoiceId: invoice.id,
-                    status: { in: ['requires_payment_method', 'requires_confirmation', 'succeeded'] }
+                    status: { 
+                        in: ['requires_payment_method', 'requires_confirmation'],
+                        notIn: ['canceled', 'succeeded']
+                    }
                 },
                 orderBy: { createdAt: 'desc' }
             });
