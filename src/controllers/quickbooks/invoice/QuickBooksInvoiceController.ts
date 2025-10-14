@@ -198,11 +198,11 @@ export class QuickBooksInvoiceController {
         // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
         if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
 
-        //  Aplicar coeficiente diretamente no valor do serviço
-        const serviceAmountWithCoefficient = originalServiceAmount * coef;
+        // Calcular proporção do serviço no valor total original do projeto
+        const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
         
-        // Calcular proporção baseada no valor COM coeficiente
-        const serviceProportion = invoiceAmountWithCoefficient > 0 ? serviceAmountWithCoefficient / invoiceAmountWithCoefficient : 0;
+        // Aplicar a proporção ao valor da fatura com coeficiente
+        const serviceAmountWithCoefficient = invoiceAmountWithCoefficient * serviceProportion;
 
         serviceCalculations.push({
           service,
@@ -728,11 +728,11 @@ export class QuickBooksInvoiceController {
         // Se não temos qty mas temos valor, assume 1 p/ fechar a conta
         if ((!qty || qty <= 0) && originalServiceAmount > 0) qty = 1;
 
-        // CORREÇÃO: Aplicar coeficiente diretamente no valor do serviço
-        const serviceAmountWithCoefficient = originalServiceAmount * coef;
+        // Calcular proporção do serviço no valor total original do projeto
+        const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
         
-        // Calcular proporção baseada no valor COM coeficiente
-        const serviceProportion = invoiceAmountWithCoefficient > 0 ? serviceAmountWithCoefficient / invoiceAmountWithCoefficient : 0;
+        // Aplicar a proporção ao valor da fatura com coeficiente
+        const serviceAmountWithCoefficient = invoiceAmountWithCoefficient * serviceProportion;
 
         serviceCalculationsUpdate.push({
           service,
