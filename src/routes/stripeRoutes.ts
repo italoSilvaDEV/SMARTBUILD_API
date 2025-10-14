@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { StripeController } from "../controllers/stripe/StripeController";
+import { StripeInvoicePaymentController } from "../controllers/stripe/StripeInvoicePaymentController";
 import { checkToken } from "../middlewares/checkToken";
 
 const stripeRoutes = Router();
 const stripeController = new StripeController();
+const stripeInvoicePaymentController = new StripeInvoicePaymentController();
 
 // Conectar Company ao Stripe
 stripeRoutes.get("/stripe/connect/:companyId", checkToken, stripeController.connectCompany.bind(stripeController));
@@ -28,5 +30,10 @@ stripeRoutes.post("/stripe/checkout-plan", stripeController.createCheckoutSessio
 
 // Nova rota para o portal do cliente
 stripeRoutes.post("/stripe/company/:companyId/customer-portal", checkToken, stripeController.createCustomerPortalSession.bind(stripeController));
+
+// Rotas para pagamentos manuais de invoices Stripe
+stripeRoutes.post("/stripe/invoices/:invoiceId/payment", checkToken, stripeInvoicePaymentController.createPayment.bind(stripeInvoicePaymentController));
+stripeRoutes.get("/stripe/invoices/:invoiceId/payment", checkToken, stripeInvoicePaymentController.getPayment.bind(stripeInvoicePaymentController));
+stripeRoutes.put("/stripe/invoices/:invoiceId/payment", checkToken, stripeInvoicePaymentController.updatePayment.bind(stripeInvoicePaymentController));
 
 export { stripeRoutes };
