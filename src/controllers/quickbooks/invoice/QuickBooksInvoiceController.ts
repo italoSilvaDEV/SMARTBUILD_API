@@ -411,9 +411,13 @@ export class QuickBooksInvoiceController {
           });
         });
 
+        console.log("DEBUG - Resposta bruta do createInvoice:", JSON.stringify(invoiceResult, null, 2));
+        
         // 2) Normalize o objeto retornado (alguns SDKs retornam { Invoice: {...} })
         const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
         const createdId = created?.Id;
+        console.log("DEBUG - createdId:", createdId);
+        console.log("DEBUG - created.DocNumber:", created?.DocNumber);
 
         // 3) Leia o invoice completo (garante Balance/TotalAmt/TxnStatus atualizados)
         const fetched = await new Promise((resolve, reject) => {
@@ -422,7 +426,32 @@ export class QuickBooksInvoiceController {
             resolve(data);
           });
         });
-        const inv = (fetched as any)?.Invoice ?? (fetched as any);
+        
+        console.log("DEBUG - Resposta bruta do getInvoice:", JSON.stringify(fetched, null, 2));
+        let inv = (fetched as any)?.Invoice ?? (fetched as any);
+        console.log("DEBUG - Primeira busca - inv.DocNumber:", inv?.DocNumber);
+        console.log("DEBUG - Primeira busca - inv.Id:", inv?.Id);
+        
+        // Se DocNumber não estiver disponível, tentar buscar novamente após um pequeno delay
+        if (!inv?.DocNumber) {
+          console.log("DEBUG - DocNumber não encontrado na primeira busca, tentando novamente...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2 segundos
+          
+          const refetched = await new Promise((resolve, reject) => {
+            qb.getInvoice(createdId, (err: any, data: any) => {
+              if (err) return reject(err);
+              resolve(data);
+            });
+          });
+          inv = (refetched as any)?.Invoice ?? (refetched as any);
+          console.log("DEBUG - Segunda busca - DocNumber:", inv?.DocNumber);
+        }
+
+        // DEBUG: Log do invoice completo retornado pelo QuickBooks
+        console.log("DEBUG - Invoice completo retornado pelo QB:", JSON.stringify(inv, null, 2));
+        console.log("DEBUG - inv.Id:", inv?.Id);
+        console.log("DEBUG - inv.DocNumber:", inv?.DocNumber);
+        console.log("DEBUG - inv.DocNumber tipo:", typeof inv?.DocNumber);
 
         // 4) Derive o status de pagamento
         function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
@@ -441,14 +470,21 @@ export class QuickBooksInvoiceController {
         // 5) Persistir no banco - comportamento baseado na origem da chamada
         if (calledFromStripe) {
           // Quando chamado pelo StripeController, retornar apenas IDs do QuickBooks
-          return {
+          // Se DocNumber não estiver disponível, usar o ID como fallback
+          const docNumber = inv.DocNumber || inv.Id;
+          console.log("DEBUG - Usando DocNumber:", docNumber, "Original DocNumber:", inv.DocNumber);
+          
+          const result = {
             success: true,
             message: "QuickBooks invoice created successfully",
             quickbooksId: inv.Id,
-            docNumber: inv.DocNumber,
+            docNumber: docNumber,
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
             status: deriveQboInvoicePaymentStatus(inv)
           };
+          
+          console.log("DEBUG - Resultado retornado para StripeController:", JSON.stringify(result, null, 2));
+          return result;
         } else {
           // Quando chamado diretamente (rota QuickBooks), persistir no banco local
           const newInvoice = await prisma.invoice.create({

@@ -476,23 +476,35 @@ export class StripeController {
                             calledFromStripe: true // Indicar que foi chamado pelo Stripe
                         });
 
-                        console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
+                        console.log("Invoice criado no QuickBooks com sucesso:", (quickBooksResult as any)?.quickbooksId);
+                        console.log("DEBUG - quickBooksResult completo:", JSON.stringify(quickBooksResult, null, 2));
+                        console.log("DEBUG - docNumber recebido:", (quickBooksResult as any)?.docNumber);
+                        console.log("DEBUG - docNumber tipo:", typeof (quickBooksResult as any)?.docNumber);
 
                         // Atualizar o invoice Stripe com os dados do QuickBooks
-                        if (quickBooksResult?.quickbooksId) {
+                        if ((quickBooksResult as any)?.quickbooksId) {
+                            const updateData: any = {
+                                idQuickbookContabio: (quickBooksResult as any).quickbooksId
+                            };
+                            
+                            // Só adicionar docNumber se ele existir e não for null/undefined
+                            if ((quickBooksResult as any).docNumber !== null && (quickBooksResult as any).docNumber !== undefined) {
+                                updateData.docNumberQuickBooksContabio = (quickBooksResult as any).docNumber;
+                                console.log("DEBUG - Salvando docNumber:", (quickBooksResult as any).docNumber);
+                            } else {
+                                console.log("DEBUG - docNumber é null/undefined, não salvando");
+                            }
+                            
                             await prisma.invoice.update({
                                 where: { id: newInvoice.id },
-                                data: {
-                                    idQuickbookContabio: quickBooksResult.quickbooksId,
-                                    docNumberQuickBooksContabio: quickBooksResult.docNumber
-                                }
+                                data: updateData
                             });
                         }
 
                         // Adicionar evento na timeline sobre sucesso no QuickBooks
                         await prisma.invoiceTimeline.create({
                             data: {
-                                description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
+                                description: `QuickBooks invoice created successfully (ID: ${(quickBooksResult as any)?.quickbooksId}, DocNumber: ${(quickBooksResult as any)?.docNumber})`,
                                 invoice: {
                                     connect: { id: newInvoice.id }
                                 }
@@ -1373,23 +1385,34 @@ export class StripeController {
                                 calledFromStripe: true,
                             });
 
-                            console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
+                        console.log("Invoice criado no QuickBooks com sucesso:", (createResult as any)?.quickbooksId);
+                        console.log("DEBUG - createResult completo:", JSON.stringify(createResult, null, 2));
+                        console.log("DEBUG - docNumber recebido (update):", (createResult as any)?.docNumber);
 
-                            // Atualizar a fatura local com os identificadores do QuickBooks
-                            if (createResult?.quickbooksId) {
-                                await prisma.invoice.update({
-                                    where: { id: invoiceId },
-                                    data: {
-                                        idQuickbookContabio: createResult.quickbooksId,
-                                        docNumberQuickBooksContabio: createResult.docNumber ?? null,
-                                    },
-                                });
+                        // Atualizar a fatura local com os identificadores do QuickBooks
+                        if ((createResult as any)?.quickbooksId) {
+                            const updateData: any = {
+                                idQuickbookContabio: (createResult as any).quickbooksId
+                            };
+                            
+                            // Só adicionar docNumber se ele existir e não for null/undefined
+                            if ((createResult as any).docNumber !== null && (createResult as any).docNumber !== undefined) {
+                                updateData.docNumberQuickBooksContabio = (createResult as any).docNumber;
+                                console.log("DEBUG - Salvando docNumber (update):", (createResult as any).docNumber);
+                            } else {
+                                console.log("DEBUG - docNumber é null/undefined (update), não salvando");
                             }
+                            
+                            await prisma.invoice.update({
+                                where: { id: invoiceId },
+                                data: updateData
+                            });
+                        }
 
                             // Timeline de sucesso
                             await prisma.invoiceTimeline.create({
                                 data: {
-                                    description: `QuickBooks invoice created successfully (ID: ${createResult?.quickbooksId}, DocNumber: ${createResult?.docNumber})`,
+                                    description: `QuickBooks invoice created successfully (ID: ${(createResult as any)?.quickbooksId}, DocNumber: ${(createResult as any)?.docNumber})`,
                                     invoice: { connect: { id: invoiceId } },
                                 },
                             });
