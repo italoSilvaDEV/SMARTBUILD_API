@@ -1,4 +1,4 @@
-import { Plan, ValidityType } from '../../../domain/entities/plan';
+import { Plan } from '../../../domain/entities/plan';
 import { PlanRepository } from '../../../domain/repositories/planRepository';
 import { prisma } from '../../../utils/prisma';
 import { PermissionGroup } from '../../../domain/entities/permissionGroup';
@@ -11,7 +11,7 @@ export class PrismaPlanRepository implements PlanRepository {
         description: planData.description,
         price: planData.price,
         features: planData.features,
-        validityType: planData.validityType,
+        validityType: planData.validityType as any,
         validityDuration: planData.validityDuration,
         permissionGroupId: planData.permissionGroupId
       }
@@ -23,7 +23,7 @@ export class PrismaPlanRepository implements PlanRepository {
       description: plan.description,
       price: plan.price?.toNumber() || null,
       features: plan.features,
-      validityType: plan.validityType as ValidityType,
+      validityType: plan.validityType as any,
       validityDuration: plan.validityDuration,
       permissionGroupId: plan.permissionGroupId,
       createdAt: plan.createdAt,
@@ -44,7 +44,7 @@ export class PrismaPlanRepository implements PlanRepository {
       description: plan.description,
       price: plan.price?.toNumber() || null,
       features: plan.features,
-      validityType: plan.validityType as ValidityType,
+      validityType: plan.validityType as any,
       validityDuration: plan.validityDuration,
       permissionGroupId: plan.permissionGroupId,
       permissionGroup: plan.permissionGroup,
@@ -66,7 +66,7 @@ export class PrismaPlanRepository implements PlanRepository {
       description: plan.description,
       price: plan.price?.toNumber() || null,
       features: plan.features,
-      validityType: plan.validityType as ValidityType,
+      validityType: plan.validityType as any,
       validityDuration: plan.validityDuration,
       permissionGroupId: plan.permissionGroupId,
       createdAt: plan.createdAt,
@@ -77,7 +77,7 @@ export class PrismaPlanRepository implements PlanRepository {
   async update(id: string, planData: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan | null> {
     const plan = await prisma.plan.update({
       where: { id },
-      data: planData
+      data: planData as any
     });
 
     return {
@@ -86,7 +86,7 @@ export class PrismaPlanRepository implements PlanRepository {
       description: plan.description,
       price: plan.price?.toNumber() || null,
       features: plan.features,
-      validityType: plan.validityType as ValidityType,
+      validityType: plan.validityType as any,
       validityDuration: plan.validityDuration,
       permissionGroupId: plan.permissionGroupId,
       createdAt: plan.createdAt,
