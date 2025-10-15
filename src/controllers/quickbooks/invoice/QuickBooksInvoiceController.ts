@@ -43,7 +43,7 @@ export class QuickBooksInvoiceController {
 
 
   // Método interno para criação de invoice sem req/res
-  async createInvoiceInternal(params: {
+  async createInvoiceInternal(params: { 
     projectId: string;
     description?: string;
     type_invoicebase?: string;
@@ -422,7 +422,10 @@ export class QuickBooksInvoiceController {
             resolve(data);
           });
         });
-        const inv = (fetched as any)?.Invoice ?? (fetched as any);
+        let inv = (fetched as any)?.Invoice ?? (fetched as any);
+        
+        // 4) Tentar obter DocNumber com retry robusto
+        inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
 
         // 4) Derive o status de pagamento
         function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
@@ -1725,6 +1728,85 @@ export class QuickBooksInvoiceController {
     }
 
     return cleanName;
+  }
+
+  // Função robusta para obter DocNumber com múltiplas estratégias
+  async fetchInvoiceWithRetryForDocNumber(qb: any, invoiceId: string, fallbackInvoice: any): Promise<any> {
+    console.log(`Tentando obter DocNumber para invoice ${invoiceId}...`);
+    
+    // Estratégia 1: Verificar se já temos DocNumber no fallback
+    if (fallbackInvoice?.DocNumber) {
+      console.log(`DocNumber já disponível: ${fallbackInvoice.DocNumber}`);
+      return fallbackInvoice;
+    }
+    
+    // Estratégia 2: Retry com delay progressivo (3 tentativas)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`Tentativa ${attempt}/3 para obter DocNumber...`);
+      
+      try {
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000)); // Delay progressivo: 2s, 4s, 6s
+        
+        const retried = await new Promise((resolve, reject) => {
+          qb.getInvoice(invoiceId, (err: any, data: any) => {
+            if (err) {
+              console.warn(`Erro na tentativa ${attempt}:`, err.message);
+              reject(err);
+            } else {
+              resolve(data);
+            }
+          });
+        });
+        
+        const inv = (retried as any)?.Invoice ?? (retried as any);
+        
+        if (inv?.DocNumber) {
+          console.log(`DocNumber obtido na tentativa ${attempt}: ${inv.DocNumber}`);
+          return inv;
+        }
+        
+        console.log(`Tentativa ${attempt}: DocNumber ainda não disponível`);
+        
+      } catch (error) {
+        console.warn(`Erro na tentativa ${attempt}:`, error);
+        // Continua para próxima tentativa
+      }
+    }
+    
+    // Estratégia 3: Tentar buscar por query como alternativa
+    try {
+      console.log("Tentando busca alternativa por query...");
+      const queryResult = await new Promise((resolve, reject) => {
+        qb.findInvoices([{ field: 'Id', value: invoiceId }], (err: any, data: any) => {
+          if (err) {
+            console.warn("Erro na busca por query:", err.message);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+      
+      const invoices = (queryResult as any)?.QueryResponse?.Invoice || [];
+      if (invoices.length > 0) {
+        const inv = invoices[0];
+        if (inv?.DocNumber) {
+          console.log(`DocNumber obtido via query: ${inv.DocNumber}`);
+          return inv;
+        }
+      }
+    } catch (queryError) {
+      console.warn("Erro na busca por query:", queryError);
+    }
+    
+    // Estratégia 4: Fallback final - usar ID como DocNumber
+    console.log("Usando ID como fallback para DocNumber");
+    const finalInvoice = {
+      ...fallbackInvoice,
+      DocNumber: fallbackInvoice?.Id || invoiceId
+    };
+    
+    return finalInvoice;
   }
 
 } 
