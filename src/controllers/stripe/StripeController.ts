@@ -457,7 +457,7 @@ export class StripeController {
                         }));
 
                         // Usar o controller instanciado no constructor
-                        const qbController = this.quickBooksController;
+                        const qbController = this.quickBooksController; 
 
                         if (!qbController) {
                             throw new Error("QuickBooksController is not initialized");
@@ -484,7 +484,7 @@ export class StripeController {
                                 where: { id: newInvoice.id },
                                 data: {
                                     idQuickbookContabio: quickBooksResult.quickbooksId,
-                                    docNumberQuickBooksContabio: quickBooksResult.docNumber
+                                    docNumberQuickBooksContabio: quickBooksResult.docNumber || null
                                 }
                             });
                         }
@@ -1381,7 +1381,7 @@ export class StripeController {
                                     where: { id: invoiceId },
                                     data: {
                                         idQuickbookContabio: createResult.quickbooksId,
-                                        docNumberQuickBooksContabio: createResult.docNumber ?? null,
+                                        docNumberQuickBooksContabio: createResult.docNumber || null,
                                     },
                                 });
                             }

@@ -2,10 +2,16 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
+import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 
 const stripe = stripeConfig.getClient();
 
 export class StripeInvoicePaymentController {
+  private quickBooksController: QuickBooksInvoiceController;
+
+  constructor() {
+    this.quickBooksController = new QuickBooksInvoiceController();
+  }
   async createPayment(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { paymentMethod, notes, amount } = req.body;
@@ -108,6 +114,10 @@ export class StripeInvoicePaymentController {
         });
       }
 
+      // Variável para armazenar resultado do QuickBooks
+      let quickBooksVoidResult = null;
+      let quickBooksVoidError = null;
+
       await prisma.$transaction(async (smartbuild) => {
         // Criar o pagamento manual
         const payment = await smartbuild.invoicePayment.create({
@@ -160,12 +170,95 @@ export class StripeInvoicePaymentController {
             }
           });
         }
+      });
 
-        return res.status(201).json({
-          message: "Payment recorded successfully",
-          payment,
-          cancelledPaymentIntentId
-        });
+      // Tentar deletar invoice no QuickBooks (não deve falhar o processo se der erro)
+      try {
+        console.log("Verificando se existe invoice no QuickBooks para deletar...");
+
+        // Verificar se o invoice tem referência do QuickBooks
+        if (invoice.idQuickbookContabio && invoice.user_id) {
+          console.log(`Tentando deletar invoice ${invoice.idQuickbookContabio} no QuickBooks...`);
+
+          // Verificar se o usuário tem uma conta QuickBooks conectada
+          const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+            where: { user_id: invoice.user_id },
+          });
+
+          if (quickBooksAccount) {
+            // Usar o controller instanciado no constructor
+            const qbController = this.quickBooksController;
+
+            if (!qbController) {
+              throw new Error("QuickBooksController is not initialized");
+            }
+
+            quickBooksVoidResult = await qbController.deleteInvoiceInternal({
+              quickBooksInvoiceId: invoice.idQuickbookContabio,
+              userId: invoice.user_id,
+              companyId: invoice.project.company.id,
+              calledFromStripe: true // Indicar que foi chamado pelo Stripe
+            });
+
+            console.log("Invoice deletado no QuickBooks com sucesso:", quickBooksVoidResult?.quickbooksId);
+
+            // Remover a referência do QuickBooks do invoice local
+            await prisma.invoice.update({
+              where: { id: invoiceId },
+              data: {
+                idQuickbookContabio: null,
+                docNumberQuickBooksContabio: null
+              }
+            });
+
+            // Adicionar evento na timeline sobre sucesso no QuickBooks
+            await prisma.invoiceTimeline.create({
+              data: {
+                description: `QuickBooks invoice deleted successfully (ID: ${quickBooksVoidResult?.quickbooksId}) - Manual payment recorded`,
+                invoice: {
+                  connect: { id: invoiceId }
+                }
+              }
+            });
+          } else {
+            console.log("Usuário não possui conta QuickBooks conectada. Pulando deleção no QB.");
+          }
+        } else {
+          console.log("Invoice não possui referência do QuickBooks. Pulando deleção no QB.");
+        }
+      } catch (qbError: any) {
+        console.error("Erro ao deletar invoice no QuickBooks:", qbError.message);
+        quickBooksVoidError = qbError.message;
+
+        // Adicionar evento na timeline sobre erro no QuickBooks
+        try {
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Failed to delete QuickBooks invoice: ${qbError.message}`,
+              invoice: {
+                connect: { id: invoiceId }
+              }
+            }
+          });
+        } catch (timelineError) {
+          console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+        }
+      }
+
+      // Buscar o pagamento recém-criado para retornar
+      const payment = await prisma.invoicePayment.findUnique({
+        where: { invoiceId }
+      });
+
+      return res.status(201).json({
+        message: "Payment recorded successfully",
+        payment,
+        cancelledPaymentIntentId,
+        quickBooks: {
+          success: !!quickBooksVoidResult,
+          result: quickBooksVoidResult,
+          error: quickBooksVoidError
+        }
       });
     } catch (error: any) {
       console.error("Error recording Stripe invoice payment:", error);

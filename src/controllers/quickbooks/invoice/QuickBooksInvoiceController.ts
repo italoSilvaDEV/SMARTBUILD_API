@@ -1473,6 +1473,147 @@ export class QuickBooksInvoiceController {
     }
   }
 
+  /**
+   * Deleta um invoice no QuickBooks (remoção permanente)
+   * @param quickBooksInvoiceId - ID do invoice no QuickBooks
+   * @param userId - ID do usuário
+   * @param companyId - ID da empresa
+   * @param calledFromStripe - Se foi chamado pelo StripeController
+   */
+  async deleteInvoiceInternal({
+    quickBooksInvoiceId,
+    userId,
+    companyId,
+    calledFromStripe = false
+  }: {
+    quickBooksInvoiceId: string;
+    userId: string;
+    companyId: string;
+    calledFromStripe?: boolean;
+  }) {
+    try {
+      console.log(`Iniciando deleção do invoice ${quickBooksInvoiceId} no QuickBooks...`);
+
+      // Obter cliente QuickBooks
+      const { qb } = await getQbClientWithAccountOrThrow(companyId, userId);
+
+      // Buscar a fatura atual para obter o SyncToken
+      console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
+      const currentInvoiceData = await new Promise((resolve, reject) => {
+        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao buscar fatura:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
+      
+      if (!currentInvoice || !currentInvoice.Id) {
+        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+      }
+
+      console.log(`Invoice encontrado para deleção. SyncToken: ${currentInvoice.SyncToken}`);
+
+      // Verificar se está paga (Balance = 0 e TotalAmt > 0)
+      const totalAmt = Number(currentInvoice.TotalAmt || 0);
+      const balance = Number(currentInvoice.Balance || 0);
+      if (totalAmt > 0 && balance === 0) {
+        throw new Error("Cannot delete a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      // Deletar a fatura no QuickBooks usando deleteInvoice do SDK
+      console.log("Deletando fatura no QuickBooks usando SDK...");
+      const deleteResult = await new Promise((resolve, reject) => {
+        qb.deleteInvoice(quickBooksInvoiceId, currentInvoice.SyncToken, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao deletar fatura:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      // Normalize o objeto retornado
+      const deleted = (deleteResult as any)?.Invoice ?? (deleteResult as any);
+      
+      console.log(`Invoice ${quickBooksInvoiceId} deletado com sucesso no QuickBooks`);
+
+      if (calledFromStripe) {
+        // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
+        return {
+          success: true,
+          message: "QuickBooks invoice deleted successfully",
+          quickbooksId: deleted?.Id || quickBooksInvoiceId,
+          status: "deleted"
+        };
+      } else {
+        // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
+        const localInvoice = await prisma.invoice.findFirst({
+          where: { 
+            OR: [
+              { externalInvoiceId: quickBooksInvoiceId },
+              { idQuickbookContabio: quickBooksInvoiceId }
+            ]
+          }
+        });
+
+        if (localInvoice) {
+          await prisma.invoice.update({
+            where: { id: localInvoice.id },
+            data: { 
+              idQuickbookContabio: null,
+              docNumberQuickBooksContabio: null,
+              updatedAt: new Date()
+            }
+          });
+        }
+
+        return {
+          success: true,
+          message: "QuickBooks invoice deleted successfully",
+          quickbooksId: deleted?.Id || quickBooksInvoiceId,
+          status: "deleted"
+        };
+      }
+
+    } catch (error: any) {
+      console.error("Erro detalhado ao deletar fatura no QuickBooks:", error);
+
+      // Verificar se é um erro de autorização usando nossa função mais robusta
+      if (shouldRequireReauthorization(error)) {
+        // Atualizar o status da conta para indicar que precisa de reautorização
+        try {
+          await prisma.quickBooksAccount.update({
+            where: { company_id: companyId },
+            data: {
+              needsReauthorization: true
+            }
+          });
+        } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
+        }
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        throw new Error("Cannot delete a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      if (error.message && error.message.includes("not found")) {
+        throw new Error("Invoice not found in QuickBooks (may have been already deleted)");
+      }
+
+      throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
   async cancelInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId } = req.body;
@@ -1730,140 +1871,28 @@ export class QuickBooksInvoiceController {
     return cleanName;
   }
 
-  // Função robusta para obter DocNumber com múltiplas estratégias
+  
+
+  /**
+   * Função para obter DocNumber
+   * 
+   * @param qb - Cliente QuickBooks
+   * @param invoiceId - ID do invoice
+   * @param fallbackInvoice - Invoice de fallback
+   * @returns Invoice com DocNumber ou null se não disponível
+   */
   async fetchInvoiceWithRetryForDocNumber(qb: any, invoiceId: string, fallbackInvoice: any): Promise<any> {
-    console.log(`Tentando obter DocNumber para invoice ${invoiceId}...`);
-    
-    // Debug: Verificar informações do cliente QuickBooks
-    console.log(`DEBUG - Cliente QB info:`, {
-      minorversion: qb?.minorversion,
-      useSandbox: qb?.useSandbox,
-      debug: qb?.debug
-    });
-    
-    // Estratégia 1: Verificar se já temos DocNumber no fallback
+    // Verificar se já temos DocNumber no fallback
     if (fallbackInvoice?.DocNumber) {
-      console.log(`DocNumber já disponível: ${fallbackInvoice.DocNumber}`);
+      console.log(`DocNumber disponível: ${fallbackInvoice.DocNumber}`);
       return fallbackInvoice;
     }
     
-    // Estratégia 2: Retry com delay progressivo (3 tentativas)
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      console.log(`Tentativa ${attempt}/3 para obter DocNumber...`);
-      
-      try {
-        await new Promise(resolve => setTimeout(resolve, attempt * 2000)); // Delay progressivo: 2s, 4s, 6s
-        
-        const retried = await new Promise((resolve, reject) => {
-          qb.getInvoice(invoiceId, (err: any, data: any) => {
-            if (err) {
-              console.warn(`Erro na tentativa ${attempt}:`, err.message);
-              reject(err);
-            } else {
-              resolve(data);
-            }
-          });
-        });
-        
-        console.log(`DEBUG - Resposta bruta da tentativa ${attempt}:`, JSON.stringify(retried, null, 2));
-        
-        const inv = (retried as any)?.Invoice ?? (retried as any);
-        console.log(`DEBUG - Invoice normalizado da tentativa ${attempt}:`, JSON.stringify(inv, null, 2));
-        console.log(`DEBUG - DocNumber da tentativa ${attempt}:`, inv?.DocNumber);
-        console.log(`DEBUG - Id da tentativa ${attempt}:`, inv?.Id);
-        
-        if (inv?.DocNumber) {
-          console.log(`DocNumber obtido na tentativa ${attempt}: ${inv.DocNumber}`);
-          return inv;
-        }
-        
-        console.log(`Tentativa ${attempt}: DocNumber ainda não disponível`);
-        
-      } catch (error) {
-        console.warn(`Erro na tentativa ${attempt}:`, error);
-        // Continua para próxima tentativa
-      }
-    }
+    console.log(`DocNumber não disponível para invoice ${invoiceId}.`);
+    console.log(`Isso é esperado quando a empresa tem "Custom transaction numbers" habilitado no QuickBooks.`);
     
-    // Estratégia 3: Tentar buscar por query como alternativa
-    try {
-      console.log("Tentando busca alternativa por query...");
-      const queryResult = await new Promise((resolve, reject) => {
-        qb.findInvoices([{ field: 'Id', value: invoiceId }], (err: any, data: any) => {
-          if (err) {
-            console.warn("Erro na busca por query:", err.message);
-            reject(err);
-          } else {
-            resolve(data);
-          }
-        });
-      });
-      
-      console.log(`DEBUG - Resposta bruta da query:`, JSON.stringify(queryResult, null, 2));
-      
-      const invoices = (queryResult as any)?.QueryResponse?.Invoice || [];
-      console.log(`DEBUG - Invoices encontrados na query:`, invoices.length);
-      
-      if (invoices.length > 0) {
-        const inv = invoices[0];
-        console.log(`DEBUG - Primeiro invoice da query:`, JSON.stringify(inv, null, 2));
-        console.log(`DEBUG - DocNumber da query:`, inv?.DocNumber);
-        console.log(`DEBUG - Id da query:`, inv?.Id);
-        
-        if (inv?.DocNumber) {
-          console.log(`DocNumber obtido via query: ${inv.DocNumber}`);
-          return inv;
-        }
-      }
-    } catch (queryError) {
-      console.warn("Erro na busca por query:", queryError);
-    }
-    
-    // Estratégia 3.5: Tentar buscar usando query SQL direta
-    try {
-      console.log("Tentando busca com query SQL direta...");
-      const sqlQuery = `SELECT * FROM Invoice WHERE Id = '${invoiceId}'`;
-      console.log(`DEBUG - SQL Query: ${sqlQuery}`);
-      
-      const sqlResult = await new Promise((resolve, reject) => {
-        qb.query(sqlQuery, (err: any, data: any) => {
-          if (err) {
-            console.warn("Erro na query SQL:", err.message);
-            reject(err);
-          } else {
-            resolve(data);
-          }
-        });
-      });
-      
-      console.log(`DEBUG - Resposta da query SQL:`, JSON.stringify(sqlResult, null, 2));
-      
-      const sqlInvoices = (sqlResult as any)?.QueryResponse?.Invoice || [];
-      console.log(`DEBUG - Invoices encontrados na query SQL:`, sqlInvoices.length);
-      
-      if (sqlInvoices.length > 0) {
-        const inv = sqlInvoices[0];
-        console.log(`DEBUG - Primeiro invoice da query SQL:`, JSON.stringify(inv, null, 2));
-        console.log(`DEBUG - DocNumber da query SQL:`, inv?.DocNumber);
-        console.log(`DEBUG - Id da query SQL:`, inv?.Id);
-        
-        if (inv?.DocNumber) {
-          console.log(`DocNumber obtido via query SQL: ${inv.DocNumber}`);
-          return inv;
-        }
-      }
-    } catch (sqlError) {
-      console.warn("Erro na query SQL:", sqlError);
-    }
-    
-    // Estratégia 4: Fallback final - usar ID como DocNumber
-    console.log("Usando ID como fallback para DocNumber");
-    const finalInvoice = {
-      ...fallbackInvoice,
-      DocNumber: fallbackInvoice?.Id || invoiceId
-    };
-    
-    return finalInvoice;
+    // Retornar o invoice sem DocNumber (será null)
+    return fallbackInvoice;
   }
 
 } 
