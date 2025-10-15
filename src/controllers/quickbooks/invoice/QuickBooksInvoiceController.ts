@@ -1734,6 +1734,13 @@ export class QuickBooksInvoiceController {
   async fetchInvoiceWithRetryForDocNumber(qb: any, invoiceId: string, fallbackInvoice: any): Promise<any> {
     console.log(`Tentando obter DocNumber para invoice ${invoiceId}...`);
     
+    // Debug: Verificar informações do cliente QuickBooks
+    console.log(`DEBUG - Cliente QB info:`, {
+      minorversion: qb?.minorversion,
+      useSandbox: qb?.useSandbox,
+      debug: qb?.debug
+    });
+    
     // Estratégia 1: Verificar se já temos DocNumber no fallback
     if (fallbackInvoice?.DocNumber) {
       console.log(`DocNumber já disponível: ${fallbackInvoice.DocNumber}`);
@@ -1758,7 +1765,12 @@ export class QuickBooksInvoiceController {
           });
         });
         
+        console.log(`DEBUG - Resposta bruta da tentativa ${attempt}:`, JSON.stringify(retried, null, 2));
+        
         const inv = (retried as any)?.Invoice ?? (retried as any);
+        console.log(`DEBUG - Invoice normalizado da tentativa ${attempt}:`, JSON.stringify(inv, null, 2));
+        console.log(`DEBUG - DocNumber da tentativa ${attempt}:`, inv?.DocNumber);
+        console.log(`DEBUG - Id da tentativa ${attempt}:`, inv?.Id);
         
         if (inv?.DocNumber) {
           console.log(`DocNumber obtido na tentativa ${attempt}: ${inv.DocNumber}`);
@@ -1787,9 +1799,17 @@ export class QuickBooksInvoiceController {
         });
       });
       
+      console.log(`DEBUG - Resposta bruta da query:`, JSON.stringify(queryResult, null, 2));
+      
       const invoices = (queryResult as any)?.QueryResponse?.Invoice || [];
+      console.log(`DEBUG - Invoices encontrados na query:`, invoices.length);
+      
       if (invoices.length > 0) {
         const inv = invoices[0];
+        console.log(`DEBUG - Primeiro invoice da query:`, JSON.stringify(inv, null, 2));
+        console.log(`DEBUG - DocNumber da query:`, inv?.DocNumber);
+        console.log(`DEBUG - Id da query:`, inv?.Id);
+        
         if (inv?.DocNumber) {
           console.log(`DocNumber obtido via query: ${inv.DocNumber}`);
           return inv;
@@ -1797,6 +1817,43 @@ export class QuickBooksInvoiceController {
       }
     } catch (queryError) {
       console.warn("Erro na busca por query:", queryError);
+    }
+    
+    // Estratégia 3.5: Tentar buscar usando query SQL direta
+    try {
+      console.log("Tentando busca com query SQL direta...");
+      const sqlQuery = `SELECT * FROM Invoice WHERE Id = '${invoiceId}'`;
+      console.log(`DEBUG - SQL Query: ${sqlQuery}`);
+      
+      const sqlResult = await new Promise((resolve, reject) => {
+        qb.query(sqlQuery, (err: any, data: any) => {
+          if (err) {
+            console.warn("Erro na query SQL:", err.message);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+      
+      console.log(`DEBUG - Resposta da query SQL:`, JSON.stringify(sqlResult, null, 2));
+      
+      const sqlInvoices = (sqlResult as any)?.QueryResponse?.Invoice || [];
+      console.log(`DEBUG - Invoices encontrados na query SQL:`, sqlInvoices.length);
+      
+      if (sqlInvoices.length > 0) {
+        const inv = sqlInvoices[0];
+        console.log(`DEBUG - Primeiro invoice da query SQL:`, JSON.stringify(inv, null, 2));
+        console.log(`DEBUG - DocNumber da query SQL:`, inv?.DocNumber);
+        console.log(`DEBUG - Id da query SQL:`, inv?.Id);
+        
+        if (inv?.DocNumber) {
+          console.log(`DocNumber obtido via query SQL: ${inv.DocNumber}`);
+          return inv;
+        }
+      }
+    } catch (sqlError) {
+      console.warn("Erro na query SQL:", sqlError);
     }
     
     // Estratégia 4: Fallback final - usar ID como DocNumber
