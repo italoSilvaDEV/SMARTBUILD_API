@@ -1495,7 +1495,7 @@ export class QuickBooksInvoiceController {
       console.log(`Iniciando deleção do invoice ${quickBooksInvoiceId} no QuickBooks...`);
 
       // Obter cliente QuickBooks
-      const { qb } = await getQbClientWithAccountOrThrow(companyId, userId);
+      const { qb } = await getQbClientWithAccountOrThrow(userId, companyId );
 
       // Buscar a fatura atual para obter o SyncToken
       console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);

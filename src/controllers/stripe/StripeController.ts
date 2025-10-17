@@ -443,7 +443,7 @@ export class StripeController {
 
                     // Verificar se o usuário tem uma conta QuickBooks conectada
                     const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-                        where: { user_id: userId },
+                        where: { company_id: project.company_id },
                     });
 
                     if (quickBooksAccount) {
@@ -695,7 +695,7 @@ export class StripeController {
 
                 // Verificar se o usuário tem uma conta QuickBooks conectada
                 const quickBooksAccount = invoice.user_id ? await prisma.quickBooksAccount.findFirst({
-                    where: { user_id: invoice.user_id },
+                    where: { company_id: invoice.project.company_id },
                 }) : null;
 
                 // Verificar se o invoice tinha referência do QuickBooks
@@ -1275,7 +1275,7 @@ export class StripeController {
 
                     // Verificar se o usuário tem uma conta QuickBooks conectada
                     const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-                        where: { user_id: userId },
+                        where: { company_id: existingInvoice.project.company_id },
                     });
 
                     // Verificar se o invoice original tinha referência do QuickBooks

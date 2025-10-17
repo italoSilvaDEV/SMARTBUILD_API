@@ -172,6 +172,9 @@ export class StripeInvoicePaymentController {
         }
       });
 
+      // TODO: Deletar invoice no QuickBooks quando pagamento manual for registrado
+      // FUNCIONALIDADE COMENTADA TEMPORARIAMENTE - DESCOMENTAR QUANDO NECESSÁRIO
+      /*
       // Tentar deletar invoice no QuickBooks (não deve falhar o processo se der erro)
       try {
         console.log("Verificando se existe invoice no QuickBooks para deletar...");
@@ -244,6 +247,7 @@ export class StripeInvoicePaymentController {
           console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
         }
       }
+      */
 
       // Buscar o pagamento recém-criado para retornar
       const payment = await prisma.invoicePayment.findUnique({
@@ -254,11 +258,11 @@ export class StripeInvoicePaymentController {
         message: "Payment recorded successfully",
         payment,
         cancelledPaymentIntentId,
-        quickBooks: {
-          success: !!quickBooksVoidResult,
-          result: quickBooksVoidResult,
-          error: quickBooksVoidError
-        }
+        // quickBooks: {
+        //   success: !!quickBooksVoidResult,
+        //   result: quickBooksVoidResult,
+        //   error: quickBooksVoidError
+        // }
       });
     } catch (error: any) {
       console.error("Error recording Stripe invoice payment:", error);
