@@ -647,7 +647,7 @@ export class StripeController {
                 return res.status(400).json({ error: "Invoice already canceled" });
             }
 
-            // Verificar se o invoice já foi pago
+            // Verificar se o invoice já foi pago 
             if (invoice.status === "paid") {
                 return res.status(400).json({ error: "Cannot cancel a paid invoice" });
             }
@@ -661,6 +661,64 @@ export class StripeController {
                     console.log("Invoice cancelado no Stripe também");
                 } catch (stripeError) {
                     console.warn("Erro ao cancelar no Stripe, continuando com cancelamento local:", stripeError);
+                }
+            }
+
+            // Cancelar PaymentIntents pendentes do tipo Payment Element
+            if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
+                try {
+                    console.log("Verificando PaymentIntents pendentes para cancelar...");
+
+                    // Buscar PaymentIntents que podem ser cancelados
+                    const pendingPaymentIntents = await prisma.paymentIntentRecord.findMany({
+                        where: {
+                            invoiceId: invoice.id,
+                            status: {
+                                in: ['requires_payment_method', 'requires_confirmation', 'requires_action', 'requires_capture']
+                            }
+                        }
+                    });
+
+                    if (pendingPaymentIntents.length > 0) {
+                        const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
+
+                        for (const paymentIntent of pendingPaymentIntents) {
+                            try {
+                                // Verificar status atual no Stripe antes de cancelar
+                                const stripePI = await stripe.paymentIntents.retrieve(
+                                    paymentIntent.stripePaymentIntentId,
+                                    { stripeAccount: stripeAccountId }
+                                );
+
+                                // Só cancelar se estiver em status que permite cancelamento
+                                const cancelableStatuses = ['requires_payment_method', 'requires_confirmation', 'requires_action', 'requires_capture'];
+                                if (cancelableStatuses.includes(stripePI.status)) {
+                                    await stripe.paymentIntents.cancel(
+                                        paymentIntent.stripePaymentIntentId,
+                                        { stripeAccount: stripeAccountId }
+                                    );
+
+                                    // Atualizar status no banco
+                                    await prisma.paymentIntentRecord.update({
+                                        where: { id: paymentIntent.id },
+                                        data: { status: 'canceled', updatedAt: new Date() }
+                                    });
+
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} cancelado com sucesso`);
+                                } else {
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} está em status ${stripePI.status} - não pode ser cancelado`);
+                                }
+                            } catch (piError: any) {
+                                console.warn(`Erro ao cancelar PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
+                                // Continua para o próximo PaymentIntent
+                            }
+                        }
+                    } else {
+                        console.log("Nenhum PaymentIntent pendente encontrado para cancelar");
+                    }
+                } catch (paymentIntentError) {
+                    console.warn("Erro ao processar cancelamento de PaymentIntents:", paymentIntentError);
+                    // Não falha o processo de cancelamento do invoice
                 }
             }
 
