@@ -16,10 +16,11 @@ export class CreateCostProjectController {
                     material_name,
                     transaction_type,
                     price,
-                    amout,
+                    amout, 
                     userId,
                     serviceProjectId,
-                    invoice_cost_project_id
+                    invoice_cost_project_id,
+                    cost_date
                 } = project;
 
                 if (!material_name) {
@@ -65,6 +66,11 @@ export class CreateCostProjectController {
                     continue;
                 }
 
+                // if (!cost_date) {
+                //     error.push("Cost date is required!");
+                //     continue;
+                // }
+
                 await prisma.costProject.create({
                     data: {
                         material_name,
@@ -73,7 +79,8 @@ export class CreateCostProjectController {
                         amout: parseInt(amout),
                         userId: userId ?? '',
                         serviceProjectId,
-                        invoice_cost_project_id: invoice_cost_project_id
+                        invoice_cost_project_id: invoice_cost_project_id,
+                        cost_date: cost_date ? new Date(cost_date) : null,
                         
                     },
                 });

@@ -43,7 +43,7 @@ export class QuickBooksInvoiceController {
 
 
   // Método interno para criação de invoice sem req/res
-  async createInvoiceInternal(params: {
+  async createInvoiceInternal(params: { 
     projectId: string;
     description?: string;
     type_invoicebase?: string;
@@ -422,7 +422,10 @@ export class QuickBooksInvoiceController {
             resolve(data);
           });
         });
-        const inv = (fetched as any)?.Invoice ?? (fetched as any);
+        let inv = (fetched as any)?.Invoice ?? (fetched as any);
+        
+        // 4) Tentar obter DocNumber com retry robusto
+        inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
 
         // 4) Derive o status de pagamento
         function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
@@ -1470,6 +1473,147 @@ export class QuickBooksInvoiceController {
     }
   }
 
+  /**
+   * Deleta um invoice no QuickBooks (remoção permanente)
+   * @param quickBooksInvoiceId - ID do invoice no QuickBooks
+   * @param userId - ID do usuário
+   * @param companyId - ID da empresa
+   * @param calledFromStripe - Se foi chamado pelo StripeController
+   */
+  async deleteInvoiceInternal({
+    quickBooksInvoiceId,
+    userId,
+    companyId,
+    calledFromStripe = false
+  }: {
+    quickBooksInvoiceId: string;
+    userId: string;
+    companyId: string;
+    calledFromStripe?: boolean;
+  }) {
+    try {
+      console.log(`Iniciando deleção do invoice ${quickBooksInvoiceId} no QuickBooks...`);
+
+      // Obter cliente QuickBooks
+      const { qb } = await getQbClientWithAccountOrThrow(userId, companyId );
+
+      // Buscar a fatura atual para obter o SyncToken
+      console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
+      const currentInvoiceData = await new Promise((resolve, reject) => {
+        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao buscar fatura:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
+      
+      if (!currentInvoice || !currentInvoice.Id) {
+        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+      }
+
+      console.log(`Invoice encontrado para deleção. SyncToken: ${currentInvoice.SyncToken}`);
+
+      // Verificar se está paga (Balance = 0 e TotalAmt > 0)
+      const totalAmt = Number(currentInvoice.TotalAmt || 0);
+      const balance = Number(currentInvoice.Balance || 0);
+      if (totalAmt > 0 && balance === 0) {
+        throw new Error("Cannot delete a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      // Deletar a fatura no QuickBooks usando deleteInvoice do SDK
+      console.log("Deletando fatura no QuickBooks usando SDK...");
+      const deleteResult = await new Promise((resolve, reject) => {
+        qb.deleteInvoice(quickBooksInvoiceId, currentInvoice.SyncToken, (err: any, data: any) => {
+          if (err) {
+            console.error("Erro ao deletar fatura:", err);
+            reject(err);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+
+      // Normalize o objeto retornado
+      const deleted = (deleteResult as any)?.Invoice ?? (deleteResult as any);
+      
+      console.log(`Invoice ${quickBooksInvoiceId} deletado com sucesso no QuickBooks`);
+
+      if (calledFromStripe) {
+        // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
+        return {
+          success: true,
+          message: "QuickBooks invoice deleted successfully",
+          quickbooksId: deleted?.Id || quickBooksInvoiceId,
+          status: "deleted"
+        };
+      } else {
+        // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
+        const localInvoice = await prisma.invoice.findFirst({
+          where: { 
+            OR: [
+              { externalInvoiceId: quickBooksInvoiceId },
+              { idQuickbookContabio: quickBooksInvoiceId }
+            ]
+          }
+        });
+
+        if (localInvoice) {
+          await prisma.invoice.update({
+            where: { id: localInvoice.id },
+            data: { 
+              idQuickbookContabio: null,
+              docNumberQuickBooksContabio: null,
+              updatedAt: new Date()
+            }
+          });
+        }
+
+        return {
+          success: true,
+          message: "QuickBooks invoice deleted successfully",
+          quickbooksId: deleted?.Id || quickBooksInvoiceId,
+          status: "deleted"
+        };
+      }
+
+    } catch (error: any) {
+      console.error("Erro detalhado ao deletar fatura no QuickBooks:", error);
+
+      // Verificar se é um erro de autorização usando nossa função mais robusta
+      if (shouldRequireReauthorization(error)) {
+        // Atualizar o status da conta para indicar que precisa de reautorização
+        try {
+          await prisma.quickBooksAccount.update({
+            where: { company_id: companyId },
+            data: {
+              needsReauthorization: true
+            }
+          });
+        } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
+        }
+
+        throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        throw new Error("Cannot delete a paid invoice. You may need to create a credit memo instead.");
+      }
+
+      if (error.message && error.message.includes("not found")) {
+        throw new Error("Invoice not found in QuickBooks (may have been already deleted)");
+      }
+
+      throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
   async cancelInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId } = req.body;
@@ -1725,6 +1869,30 @@ export class QuickBooksInvoiceController {
     }
 
     return cleanName;
+  }
+
+  
+
+  /**
+   * Função para obter DocNumber
+   * 
+   * @param qb - Cliente QuickBooks
+   * @param invoiceId - ID do invoice
+   * @param fallbackInvoice - Invoice de fallback
+   * @returns Invoice com DocNumber ou null se não disponível
+   */
+  async fetchInvoiceWithRetryForDocNumber(qb: any, invoiceId: string, fallbackInvoice: any): Promise<any> {
+    // Verificar se já temos DocNumber no fallback
+    if (fallbackInvoice?.DocNumber) {
+      console.log(`DocNumber disponível: ${fallbackInvoice.DocNumber}`);
+      return fallbackInvoice;
+    }
+    
+    console.log(`DocNumber não disponível para invoice ${invoiceId}.`);
+    console.log(`Isso é esperado quando a empresa tem "Custom transaction numbers" habilitado no QuickBooks.`);
+    
+    // Retornar o invoice sem DocNumber (será null)
+    return fallbackInvoice;
   }
 
 } 
