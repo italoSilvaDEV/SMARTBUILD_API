@@ -1693,5 +1693,41 @@ export class UserController {
       })
     }
   }
+
+  async getOnboardingStatus(req: Request, res: Response) {
+    const {
+      id
+    } = req.params
+
+    try {
+      if (!id) {
+        return res.status(400).json({
+          error: "ID is required"
+        })
+      }
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id
+        },
+        select: {
+          onBoardingCompleted: true
+        }
+      })
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found"
+        })
+      }
+      return res.status(200).json({
+        onBoardingCompleted: user.onBoardingCompleted
+      })
+    } catch (error) {
+      return res.status(500).json({
+        error: "Internal server error"
+      })
+    }
+  }
 }
 
