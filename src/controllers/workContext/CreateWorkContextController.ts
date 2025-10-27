@@ -20,11 +20,13 @@ export class CreateWorkContextController {
         complement,
         phone,
         location,
+        addressOffice,
         latitude,
         longitude,
         radius,
         notes,
-        isActive
+        isActive,
+        projectIds // Array de IDs dos projetos a serem vinculados
       } = req.body;
 
       // Required fields validation
@@ -80,6 +82,7 @@ export class CreateWorkContextController {
           complement: complement || null,
           phone: phone || null,
           location: location || null,
+          addressOffice: addressOffice || null,
           latitude: latitude || null,
           longitude: longitude || null,
           radius: radius || null,
@@ -92,7 +95,42 @@ export class CreateWorkContextController {
         },
       });
 
-      return res.status(201).json(workContext);
+      // Vincular projetos ao WorkContext se projectIds foi fornecido
+      if (projectIds && Array.isArray(projectIds) && projectIds.length > 0) {
+        console.log(`Vinculando ${projectIds.length} projeto(s) ao WorkContext ${workContext.id}`);
+        
+        await prisma.project.updateMany({
+          where: { 
+            id: { in: projectIds },
+            client_id: clientId // Ensure projects belong to the same client
+          },
+          data: { workContextId: workContext.id }
+        });
+        
+        console.log(` Projetos vinculados com sucesso ao WorkContext ${workContext.id}`);
+      }
+
+      // Fetch the complete work context with projects
+      const completeWorkContext = await prisma.workContext.findUnique({
+        where: { id: workContext.id },
+        include: {
+          client: true,
+          company: true,
+          projects: {
+            select: {
+              id: true,
+              contract_number: true,
+              status_project: true,
+              price: true,
+              location: true,
+              lat: true,
+              log: true,
+            },
+          },
+        },
+      });
+
+      return res.status(201).json(completeWorkContext);
     } catch (error: any) {
       console.error("Error creating WorkContext:", error);
       return res.status(500).json({ 

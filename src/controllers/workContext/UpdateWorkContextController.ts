@@ -19,11 +19,13 @@ export class UpdateWorkContextController {
         complement,
         phone,
         location,
+        addressOffice,
         latitude,
         longitude,
         radius,
         notes,
-        isActive
+        isActive,
+        projectIds // Array de IDs dos projetos a serem vinculados
       } = req.body;
 
       // Required field validation
@@ -61,11 +63,36 @@ export class UpdateWorkContextController {
       if (complement !== undefined) dataToUpdate.complement = complement;
       if (phone !== undefined) dataToUpdate.phone = phone;
       if (location !== undefined) dataToUpdate.location = location;
+      if (addressOffice !== undefined) dataToUpdate.addressOffice = addressOffice;
       if (latitude !== undefined) dataToUpdate.latitude = latitude;
       if (longitude !== undefined) dataToUpdate.longitude = longitude;
       if (radius !== undefined) dataToUpdate.radius = radius;
       if (notes !== undefined) dataToUpdate.notes = notes;
       if (isActive !== undefined) dataToUpdate.isActive = isActive;
+
+      // Handle project associations if projectIds is provided
+      if (projectIds !== undefined && Array.isArray(projectIds)) {
+        console.log(`Atualizando projetos do WorkContext ${id}. Projetos selecionados:`, projectIds);
+        
+        // Remove this work context from all projects first
+        await prisma.project.updateMany({
+          where: { workContextId: id },
+          data: { workContextId: null }
+        });
+        
+        // Add work context to selected projects
+        if (projectIds.length > 0) {
+          await prisma.project.updateMany({
+            where: { 
+              id: { in: projectIds },
+              client_id: workContextExists.clientId // Ensure projects belong to the same client
+            },
+            data: { workContextId: id }
+          });
+        }
+        
+        console.log(` Projetos atualizados com sucesso para o WorkContext ${id}`);
+      }
 
       // Update WorkContext
       const workContext = await prisma.workContext.update({

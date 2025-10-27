@@ -65,6 +65,21 @@ workContextRoutes.get(
   findWorkContextController.getByClientId
 );
 
+// GET: Buscar projetos sem WorkContext de um cliente específico
+workContextRoutes.get(
+  "/work-context/client/:clientId/projects-without-context",
+  checkToken,
+  findWorkContextController.getProjectsWithoutWorkContext
+);
+
+// GET: Buscar projetos disponíveis para um WorkContext específico (para edição)
+// Retorna projetos sem work context + projetos já vinculados a este work context
+workContextRoutes.get(
+  "/work-context/:workContextId/client/:clientId/available-projects",
+  checkToken,
+  findWorkContextController.getAvailableProjectsForWorkContext
+);
+
 // GET: Buscar WorkContexts por Empresa
 workContextRoutes.get(
   "/work-context/company/:companyId",

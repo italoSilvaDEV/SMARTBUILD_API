@@ -21,14 +21,14 @@ for (const envPath of envPaths) {
 }
 
 if (!envLoaded) {
-  console.warn('⚠️  Arquivo .env não encontrado. Tentando usar variáveis de ambiente do sistema...\n');
+  console.warn('  Arquivo .env não encontrado. Tentando usar variáveis de ambiente do sistema...\n');
   config(); // Tenta carregar do diretório atual como fallback
 }
 
 // Verificar se DATABASE_URL está disponível
 if (!process.env.DATABASE_URL) {
-  console.error('❌ DATABASE_URL não encontrada!');
-  console.error('\n📝 Crie um arquivo .env na raiz do projeto com:');
+  console.error(' DATABASE_URL não encontrada!');
+  console.error('\n Crie um arquivo .env na raiz do projeto com:');
   console.error('DATABASE_URL="mysql://usuario:senha@localhost:3306/nome_do_banco"\n');
   process.exit(1);
 }
@@ -52,7 +52,7 @@ interface ProjectGroup {
 }
 
 async function main() {
-  console.log('🚀 Iniciando backfill de WorkContext...\n');
+  console.log(' Iniciando backfill de WorkContext...\n');
 
   // ETAPA 1: BUSCAR PROJETOS E DADOS DOS CLIENTES
   // =============================================
@@ -87,7 +87,7 @@ async function main() {
     }
   });
 
-  console.log(`📊 Total de projetos encontrados: ${projects.length}\n`);
+  console.log(` Total de projetos encontrados: ${projects.length}\n`);
 
   // ETAPA 2: AGRUPAR PROJETOS POR CLIENTE
   // ======================================
@@ -124,7 +124,7 @@ async function main() {
     });
   }
 
-  console.log(`👥 Total de clientes únicos: ${projectsByClient.size}\n`);
+  console.log(` Total de clientes únicos: ${projectsByClient.size}\n`);
 
   // ETAPA 3: PROCESSAR CADA CLIENTE E CRIAR WORKCONTEXT
   // ====================================================
@@ -138,7 +138,7 @@ async function main() {
 
     // VALIDAÇÃO: Cliente precisa ter company_id (campo obrigatório no WorkContext)
     if (!group.companyId) {
-      console.log(`⚠️  Cliente "${group.clientName}" não possui company_id. Pulando...`);
+      console.log(`  Cliente "${group.clientName}" não possui company_id. Pulando...`);
       skippedNoCompany++;
       continue;
     }
@@ -154,7 +154,7 @@ async function main() {
     });
 
     if (existingContext) {
-      console.log(`⏭️  Cliente "${group.clientName}" já possui WorkContext. Pulando...`);
+      console.log(`⏭  Cliente "${group.clientName}" já possui WorkContext. Pulando...`);
       
       // GARANTIR VINCULAÇÃO DOS PROJETOS
       // =================================
@@ -209,7 +209,7 @@ async function main() {
           workContextData.latitude = parseFloat(firstProject.lat);
           workContextData.longitude = parseFloat(firstProject.log);
         } catch (e) {
-          console.warn(`⚠️  Erro ao converter lat/log para o cliente "${group.clientName}"`);
+          console.warn(`  Erro ao converter lat/log para o cliente "${group.clientName}"`);
         }
       }
 
@@ -222,13 +222,14 @@ async function main() {
       // COPIAR LOCATION (campo de texto livre)
       // =======================================
       if (firstProject.location) {
-        workContextData.location = firstProject.location;
+        // workContextData.location = firstProject.location;
+        workContextData.addressOffice = firstProject.location; // Copiar também para addressOffice
         workContextData.notes = `Localização migrada do projeto: ${firstProject.location}`;
       }
 
-      console.log(`✅ Cliente "${group.clientName}" com 1 projeto - criando WorkContext COM endereço`);
+      console.log(` Cliente "${group.clientName}" com 1 projeto - criando WorkContext COM endereço`);
     } else {
-      console.log(`✅ Cliente "${group.clientName}" com ${group.projectCount} projetos - criando WorkContext SEM endereço`);
+      console.log(` Cliente "${group.clientName}" com ${group.projectCount} projetos - criando WorkContext SEM endereço`);
     }
 
     // INSERIR NO BANCO (INSERT)
@@ -253,26 +254,26 @@ async function main() {
       }
     });
 
-    console.log(`   🔗 ${group.projectCount} projeto(s) vinculado(s) ao WorkContext\n`);
+    console.log(` ${group.projectCount} projeto(s) vinculado(s) ao WorkContext\n`);
   }
 
   // ETAPA 5: RESUMO FINAL
   // =====================
   // Exibe estatísticas sobre o que foi processado
   console.log('\n' + '='.repeat(60));
-  console.log('📋 RESUMO DO BACKFILL');
+  console.log(' RESUMO DO BACKFILL');
   console.log('='.repeat(60));
   console.log(`Total de clientes processados: ${processedClients}`);
   console.log(`WorkContexts criados: ${createdContexts}`);
   console.log(`WorkContexts já existentes (pulados): ${skippedContexts}`);
   console.log(`Clientes sem company_id (pulados): ${skippedNoCompany}`);
   console.log('='.repeat(60));
-  console.log('\n✨ Backfill concluído com sucesso!');
+  console.log('\n Backfill concluído com sucesso!');
 }
 
 main()
   .catch((e) => {
-    console.error('\n❌ Erro durante o backfill:');
+    console.error('\n Erro durante o backfill:');
     console.error(e);
     process.exit(1);
   })

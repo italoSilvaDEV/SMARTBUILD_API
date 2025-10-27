@@ -509,10 +509,11 @@ model WorkContext {
   complement     String?
   phone           String?
 
-  location  String?  @db.Text
-  latitude  Decimal? @db.Decimal(10, 7)
-  longitude Decimal? @db.Decimal(10, 7)
-  radius    Float?
+  location      String?  @db.Text
+  addressOffice String?  @db.Text
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
+  radius        Float?
 
   client   Client @relation(fields: [clientId], references: [id])
   clientId String
