@@ -82,5 +82,7 @@ userRoutes.post("/auth/by-company", async (req, res) => {
 
 userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, User.deleteUserCompany);
 
+userRoutes.put("/user/onboarding/complete/:id", checkToken, User.completeOnboardingStatus);
+
 
 export { userRoutes }
