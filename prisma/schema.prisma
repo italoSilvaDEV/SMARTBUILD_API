@@ -13,25 +13,26 @@ model Config {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  avatar          String?
-  name            String
-  email           String   @unique
-  document        String?
-  phone           String?
-  phone_emergency String?
-  zip_code        String?
-  city_and_state  String?
-  state           String?
-  number_road     String?
-  number_home     String?
-  neighborhood    String?
-  password        String
-  rules           Json
-  hourly_price    Float?
-  profession      String?
-  isDisabled      Boolean? @default(false)
-  isOverTime      Boolean? @default(false)
+  id                  String   @id @default(uuid())
+  avatar              String?
+  name                String
+  email               String   @unique
+  document            String?
+  phone               String?
+  phone_emergency     String?
+  zip_code            String?
+  city_and_state      String?
+  state               String?
+  number_road         String?
+  number_home         String?
+  neighborhood        String?
+  password            String
+  rules               Json
+  hourly_price        Float?
+  profession          String?
+  isDisabled          Boolean? @default(false)
+  isOverTime          Boolean? @default(false)
+  onBoardingCompleted Boolean? @default(true)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -130,9 +131,9 @@ model Company {
   SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
   QuickBooksAccount QuickBooksAccount?
 
-  SyncLog       SyncLog[]       @relation("synclog")
-  SyncStatus    SyncStatus[]    @relation("SyncStatus")
-  ContractTerms ContractTerms[]
+  SyncLog          SyncLog[]          @relation("synclog")
+  SyncStatus       SyncStatus[]       @relation("SyncStatus")
+  ContractTerms    ContractTerms[]
   QuickBooksConfig QuickBooksConfig[]
 }
 
@@ -496,7 +497,7 @@ model InvoiceCostProject {
 }
 
 model CostProject {
-  id            String  @id @default(uuid())
+  id            String    @id @default(uuid())
   material_name String
   price         Decimal
   amout         Int
@@ -638,10 +639,10 @@ model Invoice {
   // Campos específicos para QuickBooks
   externalDocNumber String?
   idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
-  
+
   // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
-  idQuickbookContabio          String? // ID do invoice no QuickBooks criado via Stripe
-  docNumberQuickBooksContabio  String? // Número do documento QuickBooks criado via Stripe
+  idQuickbookContabio         String? // ID do invoice no QuickBooks criado via Stripe
+  docNumberQuickBooksContabio String? // Número do documento QuickBooks criado via Stripe
 
   // NOVOS CAMPOS PARA PAYMENT INTENT
   paymentMethodType        String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)
