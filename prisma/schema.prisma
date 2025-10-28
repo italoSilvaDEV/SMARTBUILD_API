@@ -464,6 +464,7 @@ model Client {
   city_and_state   String?
   birth_date       String?
   location         String?   @db.Text
+  addressOffice    String?   @db.Text
   lat              String?
   log              String?
   radius           Float?

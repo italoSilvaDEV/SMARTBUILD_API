@@ -12,11 +12,12 @@ const createClientController = new CreateClientController();
 const updateClientController = new UpdateClientController();
 const listClientController = new ListClientController();
 const getClientFinancialDetailsController = new GetClientFinancialDetailsController();
-const getClientController = new GetClientController();
+const getClientController = new GetClientController(); 
 
 clientRoutes.post('/client', checkToken, createClientController.handle);//ok novo modelo
 clientRoutes.put('/client/:id', checkToken, updateClientController.handle); //ok novo modelo
 clientRoutes.get('/clients', checkToken, listClientController.handleNewClients); //ok novo modelo
+clientRoutes.get('/clients-with-work-contexts', checkToken, listClientController.handleClientsWithWorkContexts); // clientes com work contexts
 clientRoutes.get('/client/financial/:email', checkToken, getClientFinancialDetailsController.handle);
 clientRoutes.get('/client/:id', checkToken, getClientController.handle);
 
