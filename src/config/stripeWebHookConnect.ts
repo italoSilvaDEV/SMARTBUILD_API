@@ -19,6 +19,9 @@ export async function setupConnectWebhook() {
      // ACH é "delayed notification": acompanhar o período de compensação
      { event: "payment_intent.processing", name: "PI processing (connected)", connect: true },
 
+     // ACH microdeposits verification: quando o cliente precisa verificar a conta bancária
+     { event: "payment_intent.requires_action", name: "PI requires action - microdeposits (connected)", connect: true },
+
      // Opcional, mas recomendado para retornos bancários/chargebacks de débito
     { event: "charge.dispute.created", name: "Dispute created (connected)", connect: true },
     
