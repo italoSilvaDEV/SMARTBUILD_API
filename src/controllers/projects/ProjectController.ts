@@ -25,6 +25,7 @@ export interface INewProject {
   radius?: string;
   start_date?: string;
   deadline?: string;
+  work_context_id?: string;
 }
 
 export interface IClientData {
@@ -1192,6 +1193,7 @@ export class ProjectController {
           log: data.log,
           radius: data.radius ? Number(data.radius) : null,
           balanceDue: price,
+          workContextId: data.work_context_id || null,
         },
       });
 
@@ -1248,18 +1250,24 @@ export class ProjectController {
 
   async updateProject(req: Request, res: Response) {
     const { id } = req.params;
-    const { seller_user_id, price, status_project, client_id, autorId } =
+    const { seller_user_id, price, status_project, client_id, autorId, work_context_id } =
       req.body;
     try {
+      const updateData: any = {
+        seller_user_id,
+        price,
+        status_project,
+        client_id,
+        autorId,
+      };
+      
+      if (work_context_id !== undefined) {
+        updateData.workContextId = work_context_id || null;
+      }
+      
       const project = await prisma.project.update({
         where: { id },
-        data: {
-          seller_user_id,
-          price,
-          status_project,
-          client_id,
-          autorId,
-        },
+        data: updateData,
       });
       return res.json(project);
     } catch (error) {
