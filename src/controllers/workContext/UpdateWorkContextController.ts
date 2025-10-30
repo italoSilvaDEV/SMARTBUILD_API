@@ -123,5 +123,69 @@ export class UpdateWorkContextController {
       });
     }
   }
+
+  // Método para atualizar apenas o workContextId de um projeto
+  async updateProjectWorkContext(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+      const { work_context_id } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      // Verificar se o projeto existe
+      const projectExists = await prisma.project.findUnique({
+        where: { id: projectId },
+      });
+
+      if (!projectExists) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Se work_context_id foi fornecido, verificar se existe
+      if (work_context_id) {
+        const workContextExists = await prisma.workContext.findUnique({
+          where: { id: work_context_id },
+        });
+
+        if (!workContextExists) {
+          return res.status(404).json({ error: "Work context not found" });
+        }
+
+        // Verificar se o work context pertence ao mesmo cliente do projeto
+        if (workContextExists.clientId !== projectExists.client_id) {
+          return res.status(400).json({ 
+            error: "Work context does not belong to the same client as the project" 
+          });
+        }
+      }
+
+      // Atualizar o workContextId do projeto
+      const updatedProject = await prisma.project.update({
+        where: { id: projectId },
+        data: { 
+          workContextId: work_context_id || null 
+        },
+        include: {
+          client: true,
+          workContext: true,
+        }
+      });
+
+      console.log(`✅ Work context do projeto ${projectId} atualizado para: ${work_context_id || 'null'}`);
+
+      return res.json({
+        success: true,
+        message: "Project work context updated successfully",
+        project: updatedProject
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao atualizar work context do projeto:", error);
+      return res.status(500).json({ 
+        error: "Error updating project work context" 
+      });
+    }
+  }
 }
 

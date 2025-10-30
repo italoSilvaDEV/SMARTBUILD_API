@@ -63,6 +63,19 @@ export class GetAllEstimatesByCompanyController {
                                     city_and_state: true,
                                     date_creation: true,
                                     date_update: true,
+                                    workContexts: {
+                                        where: {
+                                            isActive: true
+                                        },
+                                        select: {
+                                            id: true,
+                                            Name: true,
+                                            Email: true,
+                                            phone: true,
+                                            addressOffice: true,
+                                            type: true
+                                        }
+                                    }
                                 }
                             },
                             workContext: {
@@ -152,22 +165,6 @@ export class GetAllEstimatesByCompanyController {
             })
 
             const estimatesWithPresignedUrls = await Promise.all(estimates.map(async (estimate) => {
-                // Buscar work contexts do cliente
-                const clientWorkContexts = estimate.project.client?.id ? await prisma.workContext.findMany({
-                    where: {
-                        clientId: estimate.project.client.id,
-                        isActive: true
-                    },
-                    select: {
-                        id: true,
-                        Name: true,
-                        Email: true,
-                        phone: true,
-                        addressOffice: true,
-                        type: true,
-                    }
-                }) : [];
-
                 const invoices = await prisma.invoice.findMany({
                     where: {
                         estimateId: estimate.id,
@@ -214,10 +211,6 @@ export class GetAllEstimatesByCompanyController {
                     amountPaid: Number(totalInvoices),
                     project: {
                         ...estimate.project,
-                        client: {
-                            ...estimate.project.client,
-                            workContexts: clientWorkContexts
-                        },
                         company: {
                             ...estimate.project.company,
                             avatar: urlCompanyAvatar

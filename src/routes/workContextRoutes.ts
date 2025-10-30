@@ -35,6 +35,13 @@ workContextRoutes.put(
   updateWorkContextController.handle
 );
 
+// PATCH: Atualizar apenas o workContextId de um projeto
+workContextRoutes.patch(
+  "/work-context/project/:projectId",
+  checkToken,
+  updateWorkContextController.updateProjectWorkContext
+);
+
 // ============================================================
 // ROTAS DE EXCLUSÃO
 // ============================================================
