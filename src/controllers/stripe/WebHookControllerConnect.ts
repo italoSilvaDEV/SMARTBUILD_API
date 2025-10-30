@@ -10,6 +10,8 @@ import { invoicePaymentProcessingCompany } from "../../templateEmail/invoicePaym
 import { invoicePaymentFailed } from "../../templateEmail/invoicePaymentFailed";
 import { invoicePaymentFailedCompany } from "../../templateEmail/invoicePaymentFailedCompany";
 import { invoicePaymentDisputedCompany } from "../../templateEmail/invoicePaymentDisputedCompany";
+import { invoicePaymentRequiresAction } from "../../templateEmail/invoicePaymentRequiresAction";
+import { invoicePaymentRequiresActionCompany } from "../../templateEmail/invoicePaymentRequiresActionCompany";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
@@ -109,6 +111,7 @@ export class StripeWebHookControllerConnect {
         this.sendPaymentProcessingEmails = this.sendPaymentProcessingEmails.bind(this);
         this.sendPaymentFailedEmails = this.sendPaymentFailedEmails.bind(this);
         this.sendPaymentDisputedEmails = this.sendPaymentDisputedEmails.bind(this);
+        this.sendPaymentRequiresActionEmails = this.sendPaymentRequiresActionEmails.bind(this);
     }
 
 
@@ -256,6 +259,65 @@ export class StripeWebHookControllerConnect {
                         await prisma.invoiceTimeline.create({
                             data: {
                                 description: `Payment is processing (ACH settlement window). Amount: ${(pi.amount / 100).toFixed(2)} ${pi.currency?.toUpperCase()}`,
+                                invoiceId: pr.invoice.id
+                            }
+                        });
+                    }
+                    break;
+                }
+
+                /* ------------------- Ação necessária (verificação de microdeposits) ------------------- */
+                case "payment_intent.requires_action": {
+                    const pi = event.data.object as Stripe.PaymentIntent;
+                    const pr = await findByPI(pi.id);
+                    
+                    if (pr?.invoice) {
+                        console.log("Payment requires action (microdeposit verification):", pi.id);
+                        
+                        // Atualizar status do PaymentIntentRecord
+                        await prisma.paymentIntentRecord.update({
+                            where: { stripePaymentIntentId: pi.id },
+                            data: { status: "requires_action", updatedAt: new Date() }
+                        });
+
+                        // Extrair informações da verificação de microdeposits
+                        const nextAction = pi.next_action;
+                        let verificationUrl = '';
+                        let arrivalDate = '';
+
+                        if (nextAction?.type === 'verify_with_microdeposits' && nextAction.verify_with_microdeposits) {
+                            verificationUrl = nextAction.verify_with_microdeposits.hosted_verification_url || '';
+                            
+                            // Converter arrival_date (timestamp) para data legível
+                            if (nextAction.verify_with_microdeposits.arrival_date) {
+                                const date = new Date(nextAction.verify_with_microdeposits.arrival_date * 1000);
+                                arrivalDate = date.toLocaleDateString('en-US', { 
+                                    month: 'long', 
+                                    day: 'numeric', 
+                                    year: 'numeric' 
+                                });
+                            }
+                        }
+
+                        console.log("Verification URL:", verificationUrl);
+                        console.log("Arrival Date:", arrivalDate);
+
+                        // Enviar emails de notificação sobre ação necessária
+                        try {
+                            await this.sendPaymentRequiresActionEmails(
+                                pr.invoice, 
+                                pi, 
+                                verificationUrl,
+                                arrivalDate
+                            );
+                        } catch (emailError: any) {
+                            console.error("Erro ao enviar emails de ação necessária:", emailError.message);
+                        }
+
+                        // Registrar na timeline
+                        await prisma.invoiceTimeline.create({
+                            data: {
+                                description: `Payment requires customer action: Bank account verification needed (microdeposits). Amount: ${(pi.amount / 100).toFixed(2)} ${pi.currency?.toUpperCase()}`,
                                 invoiceId: pr.invoice.id
                             }
                         });
@@ -1172,6 +1234,127 @@ export class StripeWebHookControllerConnect {
 
         } catch (error: any) {
             console.error("[PaymentDisputed] Erro geral ao enviar emails:", error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Enviar emails de notificação de ação necessária (verificação de microdeposits)
+     */
+    private async sendPaymentRequiresActionEmails(
+        invoiceData: any, 
+        paymentIntent: Stripe.PaymentIntent, 
+        verificationUrl: string,
+        arrivalDate: string
+    ) {
+        try {
+            console.log("Iniciando envio de emails de ação necessária");
+
+            // Configurar SMTP
+            const SMTP_CONFIG = require("../../config/smtp");
+            const transporter = nodemailer.createTransport({
+                host: SMTP_CONFIG.host,
+                port: SMTP_CONFIG.port,
+                secure: SMTP_CONFIG.port === 465,
+                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
+                tls: { rejectUnauthorized: false },
+            });
+
+            if (!invoiceData.company?.name) {
+                console.error("Nome da empresa não encontrado, cancelando envio de emails");
+                return;
+            }
+
+            const formattedAmount = `$${(paymentIntent.amount / 100).toFixed(2)}`;
+            const invoiceCode = invoiceData.externalInvoiceId || invoiceData.id;
+            const recipients = [];
+
+            // Email do cliente (com link de verificação)
+            if (invoiceData.project?.client?.email && invoiceData.project?.client?.name) {
+                const companyLogo = invoiceData.company?.avatar
+                    ? await getPresignedUrl(invoiceData.company.avatar)
+                    : '';
+
+                const clientTemplate = invoicePaymentRequiresAction(
+                    invoiceData.project.client.name,
+                    companyLogo,
+                    invoiceCode,
+                    formattedAmount,
+                    invoiceData.company.name,
+                    verificationUrl,
+                    arrivalDate,
+                    invoiceData.company?.phone || undefined,
+                    invoiceData.company?.email || undefined
+                );
+
+                recipients.push({
+                    email: invoiceData.project.client.email,
+                    name: invoiceData.project.client.name,
+                    template: clientTemplate,
+                    type: 'client'
+                });
+            }
+
+            // Email da empresa (notificação sobre ação necessária do cliente)
+            if (invoiceData.company?.email) {
+                const companyTemplate = invoicePaymentRequiresActionCompany(
+                    invoiceData.company.name,
+                    invoiceCode,
+                    formattedAmount,
+                    invoiceData.project?.client?.name || 'Client',
+                    arrivalDate,
+                    verificationUrl,
+                    invoiceData.project?.contract_number || undefined
+                );
+
+                recipients.push({
+                    email: invoiceData.company.email,
+                    name: invoiceData.company.name,
+                    template: companyTemplate,
+                    type: 'company'
+                });
+            }
+
+            console.log(`Enviando emails de ação necessária para ${recipients.length} destinatários`);
+
+            for (const recipient of recipients) {
+                try {
+                    const mailOptions = {
+                        from: SMTP_CONFIG.user,
+                        to: recipient.email,
+                        subject: recipient.type === 'company'
+                            ? `Customer Action Required - Invoice #${invoiceCode}`
+                            : `Action Required: Verify Your Bank Account - Invoice #${invoiceCode}`,
+                        html: recipient.template,
+                    };
+
+                    await transporter.sendMail(mailOptions);
+                    console.log(`Email de ação necessária (${recipient.type}) enviado para ${recipient.email}`);
+
+                    await prisma.invoiceEmailLog.create({
+                        data: {
+                            invoiceId: invoiceData.id,
+                            recipient: recipient.email,
+                            status: 'success'
+                        }
+                    });
+
+                } catch (emailError: any) {
+                    console.error(`Erro ao enviar email de ação necessária para ${recipient.email}:`, emailError.message);
+
+                    await prisma.invoiceEmailLog.create({
+                        data: {
+                            invoiceId: invoiceData.id,
+                            recipient: recipient.email,
+                            status: 'error',
+                            errorMessage: emailError.message
+                        }
+                    });
+                }
+            }
+
+        } catch (error: any) {
+            console.error("[PaymentRequiresAction] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
