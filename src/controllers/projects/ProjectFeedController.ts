@@ -32,12 +32,8 @@ export class ProjectFeedController {
                     type,
                     title,
                     description,
-                    latitude,
-                    longitude,
-                    address,
                     isPublic,
-                    authorId,
-                    deviceInfo
+                    authorId
                 } = request.body;
 
                 const files = request.files as Express.Multer.File[];
@@ -73,9 +69,6 @@ export class ProjectFeedController {
                         type,
                         title,
                         description,
-                        latitude: latitude ? parseFloat(latitude) : null,
-                        longitude: longitude ? parseFloat(longitude) : null,
-                        address,
                         isPublic: isPublic === 'true' || isPublic === true,
                         projectId,
                         authorId,
@@ -146,9 +139,6 @@ export class ProjectFeedController {
                                     height,
                                     originalFileName: file.originalname,
                                     mimeType: file.mimetype,
-                                    latitude: latitude ? parseFloat(latitude) : null,
-                                    longitude: longitude ? parseFloat(longitude) : null,
-                                    deviceInfo,
                                     projectFeedId: feedPost.id,
                                 }
                             });

@@ -1243,11 +1243,6 @@ model ProjectFeed {
   title       String?
   description String?         @db.Text
   
-  // Geolocalização automática
-  latitude    Float?
-  longitude   Float?
-  address     String?         @db.Text
-  
   // Metadados
   isPublic    Boolean         @default(false) // Permite compartilhar com clientes
   viewCount   Int             @default(0)
@@ -1286,9 +1281,6 @@ model ProjectMedia {
   
   // Metadados de captura
   capturedAt         DateTime  @default(now())
-  latitude           Float?
-  longitude          Float?
-  deviceInfo         String?   // Info do dispositivo que capturou
   
   // Relacionamentos
   projectFeed   ProjectFeed @relation(fields: [projectFeedId], references: [id], onDelete: Cascade)
