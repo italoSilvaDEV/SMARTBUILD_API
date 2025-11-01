@@ -130,10 +130,12 @@ model Company {
   SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
   QuickBooksAccount QuickBooksAccount?
 
-  SyncLog       SyncLog[]       @relation("synclog")
-  SyncStatus    SyncStatus[]    @relation("SyncStatus")
-  ContractTerms ContractTerms[]
+  SyncLog          SyncLog[]          @relation("synclog")
+  SyncStatus       SyncStatus[]       @relation("SyncStatus")
+  ContractTerms    ContractTerms[]
   QuickBooksConfig QuickBooksConfig[]
+
+  workContexts WorkContext[]
 }
 
 model ContractNotes {
@@ -344,6 +346,9 @@ model Project {
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
+  workContext   WorkContext? @relation(fields: [workContextId], references: [id])
+  workContextId String?
+
   radius                 Float?
   location               String?                  @db.Text
   log                    String?                  @db.VarChar(191)
@@ -352,6 +357,7 @@ model Project {
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
+  @@index([workContextId])
   @@map("project")
 }
 
@@ -458,6 +464,7 @@ model Client {
   city_and_state   String?
   birth_date       String?
   location         String?   @db.Text
+  addressOffice    String?   @db.Text
   lat              String?
   log              String?
   radius           Float?
@@ -474,9 +481,58 @@ model Client {
 
   idQuickbooks          String?
   QuickBooksCustomerRaw QuickBooksCustomerRaw[]
+  workContexts          WorkContext[]
 
   @@unique([idQuickbooks, company_id])
   @@unique([email, company_id])
+}
+
+enum ContextType {
+  COMPANY
+  PERSONAL
+}
+
+model WorkContext {
+  id String @id @default(uuid())
+
+  type  ContextType
+  label String? // 
+
+  Name String?
+  Email   String?
+  
+  street         String?
+  district       String?
+  zip_code       String?
+  city_and_state String?
+  state          String?
+  number         String?
+  complement     String?
+  phone           String?
+
+  location      String?  @db.Text
+  addressOffice String?  @db.Text
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
+  radius        Float?
+
+  client   Client @relation(fields: [clientId], references: [id])
+  clientId String
+
+  company   Company @relation(fields: [companyId], references: [id])
+  companyId String
+
+  notes    String? @db.Text
+  isActive Boolean @default(true)
+
+  projects  Project[]
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([clientId])
+  @@index([type])
+  @@map("work_context")
 }
 
 model InvoiceCostProject {
@@ -638,10 +694,10 @@ model Invoice {
   // Campos específicos para QuickBooks
   externalDocNumber String?
   idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
-  
+
   // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
-  idQuickbookContabio          String? // ID do invoice no QuickBooks criado via Stripe
-  docNumberQuickBooksContabio  String? // Número do documento QuickBooks criado via Stripe
+  idQuickbookContabio         String? // ID do invoice no QuickBooks criado via Stripe
+  docNumberQuickBooksContabio String? // Número do documento QuickBooks criado via Stripe
 
   // NOVOS CAMPOS PARA PAYMENT INTENT
   paymentMethodType        String? // Tipo do método de pagamento usado (card, us_bank_account, etc.)

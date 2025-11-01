@@ -14,6 +14,7 @@ type payloadCreateEstimate = {
     type_estimate: TypeEstimate;
     multi_emails: string;
     date_creation?: string;
+    workContextId?: string;
 }
 
 export class CreateNewEstimateController {
@@ -77,24 +78,38 @@ export class CreateNewEstimateController {
                         return total + Number(service.price) * Number(service.hours)
                     }, 0)
 
+                    const updateData: any = {
+                        price: totalPrice,
+                        balanceDue: totalPrice || 0
+                    };
+
+                    // Add workContextId if provided
+                    if (payloadCreateEstimate.workContextId) {
+                        updateData.workContextId = payloadCreateEstimate.workContextId;
+                    }
+
                     await smartbuild.project.update({
                         where: {
                             id: payloadCreateEstimate.projectId
                         },
-                        data: {
-                            price: totalPrice,
-                            balanceDue: totalPrice || 0
-                        },
+                        data: updateData,
                     })
                 } else {
+                    const updateData: any = {
+                        price: Number(payloadCreateEstimate.totalAmount),
+                        balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
+                    };
+
+                    // Add workContextId if provided
+                    if (payloadCreateEstimate.workContextId) {
+                        updateData.workContextId = payloadCreateEstimate.workContextId;
+                    }
+
                     await smartbuild.project.update({
                         where: {
                             id: payloadCreateEstimate.projectId
                         },
-                        data: {
-                            price: Number(payloadCreateEstimate.totalAmount),
-                            balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
-                        }
+                        data: updateData
                     })
                 }
 
