@@ -58,9 +58,34 @@ export class GetAllEstimatesByCompanyController {
                                     avatar: true,
                                     name: true,
                                     email: true,
+                                    phone: true,
+                                    addressOffice: true,
                                     city_and_state: true,
                                     date_creation: true,
                                     date_update: true,
+                                    workContexts: {
+                                        where: {
+                                            isActive: true
+                                        },
+                                        select: {
+                                            id: true,
+                                            Name: true,
+                                            Email: true,
+                                            phone: true,
+                                            addressOffice: true,
+                                            type: true
+                                        }
+                                    }
+                                }
+                            },
+                            workContext: {
+                                select: {
+                                    id: true,
+                                    Name: true,
+                                    Email: true,
+                                    phone: true,
+                                    addressOffice: true,
+                                    type: true,
                                 }
                             },
                             user: {

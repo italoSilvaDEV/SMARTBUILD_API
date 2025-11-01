@@ -211,7 +211,7 @@ export class ListClientController {
             // Formatar resposta
             const formattedClients = clientsQuery.map((
                 {
-                    id, name, email, phone, _count, location,
+                    id, name, email, phone, _count, location, addressOffice,
                     lat, log, birth_date, document, radius
                 }) => ({
                     id,
@@ -221,6 +221,7 @@ export class ListClientController {
                     birth_date,
                     document,
                     location,
+                    addressOffice,
                     lat,
                     log,
                     projects: _count.projects,
@@ -235,6 +236,80 @@ export class ListClientController {
             });
         } catch (error) {
             console.error("Error listing clients:", error);
+            if (error instanceof Error) {
+                return res.status(500).json({ error: error.message });
+            }
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    // Buscar clientes com work contexts
+    async handleClientsWithWorkContexts(req: Request, res: Response) {
+        try {
+            const { company_id, search = "" } = req.query;
+
+            if (!company_id) {
+                return res.status(400).json({ error: "Company ID is required" });
+            }
+
+            // Filtro de busca
+            const searchFilter: Prisma.ClientWhereInput = search
+                ? {
+                    OR: [
+                        { name: { contains: String(search) } },
+                        { email: { contains: String(search) } },
+                        { location: { contains: String(search) } },
+                    ],
+                }
+                : {};
+
+            // Buscar clientes com work contexts
+            const clientsQuery = await prisma.client.findMany({
+                where: {
+                    company_id: String(company_id),
+                    ...searchFilter,
+                },
+                orderBy: [{ name: "asc" }],
+                include: {
+                    workContexts: {
+                        where: {
+                            isActive: true,
+                        },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            _count: {
+                                select: { projects: true },
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Formatar resposta
+            const formattedClients = clientsQuery.map((client) => ({
+                id: client.id,
+                name: client.name,
+                email: client.email,
+                phone: client.phone,
+                addressOffice: client.addressOffice,
+                workContexts: client.workContexts.map((wc) => ({
+                    id: wc.id,
+                    type: wc.type,
+                    Name: wc.Name,
+                    Email: wc.Email,
+                    phone: wc.phone,
+                    addressOffice: wc.addressOffice,
+                    location: wc.location,
+                    projectsCount: wc._count.projects,
+                })),
+            }));
+
+            return res.json({
+                clients: formattedClients,
+                total: clientsQuery.length,
+            });
+        } catch (error) {
+            console.error("Error listing clients with work contexts:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }

@@ -14,6 +14,7 @@ export class CreateClientController {
         document,
         phone,
         location,
+        addressOffice,
         birth_date,
         lat,
         log,
@@ -23,6 +24,7 @@ export class CreateClientController {
         autorId,
         stripeCustomerId,
         company_id,
+        workContext, // New: work context data
       } = client;
 
       // Validações obrigatórias
@@ -62,6 +64,7 @@ export class CreateClientController {
           document,
           phone,
           location,
+          addressOffice,
           birth_date,
           lat,
           log,
@@ -74,6 +77,29 @@ export class CreateClientController {
         },
       });
 
+      // Create Work Context if provided
+      let createdWorkContext = null;
+      if (workContext && workContext.Name && workContext.Email) {
+        try {
+          createdWorkContext = await prisma.workContext.create({
+            data: {
+              clientId: result.id,
+              companyId: company_id,
+              type: workContext.type || "PERSONAL",
+              Name: workContext.Name,
+              Email: workContext.Email,
+              phone: workContext.phone || "",
+              addressOffice: workContext.addressOffice || "",
+              isActive: true,
+            },
+          });
+          console.log(`[WorkContext] Created work context ${createdWorkContext.id} for client ${result.id}`);
+        } catch (wcError) {
+          console.error("[WorkContext] Error creating work context:", wcError);
+          // Don't fail the client creation if work context fails
+        }
+      }
+
        
        
        if (autorId && company_id) {
@@ -84,7 +110,10 @@ export class CreateClientController {
          console.log(autorId, company_id);
        }
 
-      return res.json(result);
+      return res.json({
+        client: result,
+        workContext: createdWorkContext,
+      });
     } catch (error) {
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });

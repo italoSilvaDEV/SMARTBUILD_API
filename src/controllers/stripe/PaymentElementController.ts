@@ -97,6 +97,44 @@ export class PaymentElementController {
                 });
             }
 
+            // Verificar se existe um PaymentIntent em processamento (ACH)
+            const existingProcessingPayment = await prisma.paymentIntentRecord.findFirst({
+                where: {
+                    invoiceId: invoice.id,
+                    status: 'processing'
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            if (existingProcessingPayment) {
+                return res.status(400).json({
+                    error: "Payment is being processed",
+                    paymentIntentId: existingProcessingPayment.stripePaymentIntentId,
+                    status: "processing",
+                    isProcessing: true,
+                    message: "A bank transfer payment is currently being processed. Please wait 1-3 business days for completion."
+                });
+            }
+
+            // Verificar se existe um PaymentIntent que requer ação do cliente
+            const existingRequiresActionPayment = await prisma.paymentIntentRecord.findFirst({
+                where: {
+                    invoiceId: invoice.id,
+                    status: 'requires_action'
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            if (existingRequiresActionPayment) {
+                return res.status(400).json({
+                    error: "Payment requires customer action",
+                    paymentIntentId: existingRequiresActionPayment.stripePaymentIntentId,
+                    status: "requires_action",
+                    requiresAction: true,
+                    message: "A payment is pending customer verification (microdeposits). Please check your email for instructions."
+                });
+            }
+
             // Verificar se existe um PaymentIntent cancelado para esta invoice
             const existingCanceledPayment = await prisma.paymentIntentRecord.findFirst({
                 where: {
@@ -150,13 +188,14 @@ export class PaymentElementController {
             const baseAmount = Number(invoice.totalAmount);
             const currency = invoice.currency || 'usd';
 
-            // Verificar se já existe um PaymentIntent ativo para esta invoice (excluindo cancelados)
+            // Verificar se já existe um PaymentIntent que pode ser reutilizado
+            // Apenas 'requires_payment_method' e 'requires_confirmation' podem ser reutilizados
+            // Status como 'payment_failed' devem criar um novo PaymentIntent
             let existingPaymentIntent = await prisma.paymentIntentRecord.findFirst({
                 where: {
                     invoiceId: invoice.id,
                     status: { 
-                        in: ['requires_payment_method', 'requires_confirmation'],
-                        notIn: ['canceled', 'succeeded']
+                        in: ['requires_payment_method', 'requires_confirmation']
                     }
                 },
                 orderBy: { createdAt: 'desc' }
