@@ -37,6 +37,7 @@ import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
 import { timeCardsRouts } from './timeCardsRoutes'
 import { contractTermRoutes } from './contractTermRoutes'
 import { openAiRoutes } from './openAiRoutes'
+import { projectFeedRoutes } from './projectFeedRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -87,6 +88,7 @@ router.use(subscriptionRoutes)
 router.use("/timecards", timeCardsRouts)
 router.use("/contract-terms", contractTermRoutes)
 router.use("/openai", openAiRoutes)
+router.use("/api", projectFeedRoutes) // Project Feed routes
 
 export { router }
 

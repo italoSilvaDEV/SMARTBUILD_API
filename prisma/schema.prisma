@@ -70,6 +70,13 @@ model User {
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
   SyncStatus      SyncStatus[]      @relation("SyncStatus")
 
+  // Project Feed relacionamentos
+  projectFeeds         ProjectFeed[]
+  projectFeedComments  ProjectFeedComment[]
+  projectFeedReactions ProjectFeedReaction[]
+  projectQRCodes       ProjectQRCode[]
+  projectFeedShares    ProjectFeedShare[]
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -350,6 +357,11 @@ model Project {
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
+
+  // Project Feed relacionamentos
+  projectFeeds     ProjectFeed[]
+  projectQRCode    ProjectQRCode?
+  projectFeedShares ProjectFeedShare[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -1208,4 +1220,169 @@ model QuickBooksConfig {
 
   @@unique([configType, companyId])
   @@map("quickbooks_config")
+}
+
+// ===== PROJECT FEED MODELS (CompanyCam-like feature) =====
+
+enum ProjectFeedType {
+  PHOTO
+  VIDEO
+  NOTE
+  UPDATE
+  CHECKIN
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model ProjectFeed {
+  id          String          @id @default(uuid())
+  type        ProjectFeedType // Tipo do post no feed
+  title       String?
+  description String?         @db.Text
+  
+  // Geolocalização automática
+  latitude    Float?
+  longitude   Float?
+  address     String?         @db.Text
+  
+  // Metadados
+  isPublic    Boolean         @default(false) // Permite compartilhar com clientes
+  viewCount   Int             @default(0)
+  
+  // Relacionamentos
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+  
+  media        ProjectMedia[]
+  comments     ProjectFeedComment[]
+  reactions    ProjectFeedReaction[]
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([projectId])
+  @@index([authorId])
+  @@index([date_creation])
+  @@map("project_feed")
+}
+
+model ProjectMedia {
+  id                 String    @id @default(uuid())
+  url                String    // URL do arquivo no S3
+  thumbnailUrl       String?   // URL da thumbnail para vídeos
+  type               MediaType
+  fileSize           Int?      // Tamanho do arquivo em bytes
+  duration           Int?      // Duração em segundos (para vídeos)
+  width              Int?
+  height             Int?
+  originalFileName   String?
+  mimeType           String?
+  
+  // Metadados de captura
+  capturedAt         DateTime  @default(now())
+  latitude           Float?
+  longitude          Float?
+  deviceInfo         String?   // Info do dispositivo que capturou
+  
+  // Relacionamentos
+  projectFeed   ProjectFeed @relation(fields: [projectFeedId], references: [id], onDelete: Cascade)
+  projectFeedId String
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([projectFeedId])
+  @@map("project_media")
+}
+
+model ProjectFeedComment {
+  id      String  @id @default(uuid())
+  text    String  @db.Text
+  
+  // Relacionamentos
+  projectFeed   ProjectFeed @relation(fields: [projectFeedId], references: [id], onDelete: Cascade)
+  projectFeedId String
+  
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([projectFeedId])
+  @@map("project_feed_comment")
+}
+
+model ProjectFeedReaction {
+  id       String @id @default(uuid())
+  emoji    String // 👍 ❤️ 👏 etc
+  
+  // Relacionamentos
+  projectFeed   ProjectFeed @relation(fields: [projectFeedId], references: [id], onDelete: Cascade)
+  projectFeedId String
+  
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+  
+  date_creation DateTime @default(now())
+  
+  @@unique([projectFeedId, userId, emoji])
+  @@index([projectFeedId])
+  @@map("project_feed_reaction")
+}
+
+// QR Code para acesso rápido ao projeto via mobile
+model ProjectQRCode {
+  id            String   @id @default(uuid())
+  code          String   @unique // Código único para o QR
+  qrCodeUrl     String?  // URL da imagem do QR Code gerado
+  isActive      Boolean  @default(true)
+  scans         Int      @default(0)
+  lastScannedAt DateTime?
+  
+  // Relacionamentos
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @unique // Um QR Code por projeto
+  
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@map("project_qr_code")
+}
+
+// Registro de compartilhamento de feed/galeria
+model ProjectFeedShare {
+  id            String   @id @default(uuid())
+  shareToken    String   @unique // Token único para compartilhamento público
+  expiresAt     DateTime?
+  password      String?  // Senha opcional para proteger o link
+  allowDownload Boolean  @default(false)
+  views         Int      @default(0)
+  
+  // Filtros de compartilhamento
+  includeTypes  String?  // JSON array com tipos permitidos
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // Relacionamentos
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([shareToken])
+  @@map("project_feed_share")
 }

@@ -49,6 +49,7 @@
     "@prisma/client": "^5.15.0",
     "@types/mime-types": "^2.1.4",
     "@types/node-cron": "^3.0.11",
+    "@types/qrcode": "^1.5.6",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
@@ -73,6 +74,7 @@
     "nodemailer": "^6.9.13",
     "openai": "^6.1.0",
     "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
     "sharp": "^0.33.4",
     "stripe": "^17.7.0",
     "uuid": "^11.1.0"
