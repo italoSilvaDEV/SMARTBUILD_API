@@ -33,5 +33,12 @@ projectFeedRoutes.get(
     projectFeedController.getServiceFeed.bind(projectFeedController)
 );
 
+// Buscar feed de um funcionário específico (todos os projetos)
+projectFeedRoutes.get(
+    '/users/:userId/feed',
+    checkToken,
+    projectFeedController.getUserFeed.bind(projectFeedController)
+);
+
 export { projectFeedRoutes };
 

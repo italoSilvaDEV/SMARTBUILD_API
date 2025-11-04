@@ -263,6 +263,118 @@ curl -X GET 'http://localhost:3000/services/service-123/feed' \
 
 ---
 
+### 5. Listar Feed de um Funcionário (Todos os Projetos)
+
+**GET** `/users/:userId/feed`
+
+Lista todos os posts de um funcionário específico, agregando TODOS os projetos em que ele já trabalhou.
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Parâmetros
+- `userId` (URL) - ID do funcionário
+- `limit` (Query, opcional) - Limite de posts (padrão: 50)
+- `offset` (Query, opcional) - Offset para paginação (padrão: 0)
+
+#### Exemplo de Request
+```bash
+curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user-123",
+      "name": "João Silva",
+      "avatar": "https://presigned-url...",
+      "profession": "Eletricista"
+    },
+    "posts": [
+      {
+        "type": "post",
+        "id": "activity-123",
+        "text": "Instalação elétrica concluída",
+        "date_creation": "2024-11-04T10:30:00.000Z",
+        "serviceProject": {
+          "id": "service-123",
+          "name": "Elétrica"
+        },
+        "project": {
+          "id": "project-abc",
+          "status": "Em Andamento",
+          "client": {
+            "id": "client-1",
+            "name": "Cliente A"
+          }
+        },
+        "photos": [...]
+      },
+      {
+        "type": "post",
+        "id": "activity-456",
+        "text": "Pintura finalizada",
+        "date_creation": "2024-11-03T14:20:00.000Z",
+        "serviceProject": {
+          "id": "service-789",
+          "name": "Pintura"
+        },
+        "project": {
+          "id": "project-xyz",
+          "status": "Concluído",
+          "client": {
+            "id": "client-2",
+            "name": "Cliente B"
+          }
+        },
+        "photos": [...]
+      }
+    ],
+    "total": 25,
+    "limit": 20,
+    "offset": 0,
+    "statistics": {
+      "totalPosts": 25,
+      "totalPhotos": 48,
+      "projectsCount": 3,
+      "projects": [
+        {
+          "projectId": "project-abc",
+          "client": {
+            "id": "client-1",
+            "name": "Cliente A"
+          },
+          "postsCount": 15
+        },
+        {
+          "projectId": "project-xyz",
+          "client": {
+            "id": "client-2",
+            "name": "Cliente B"
+          },
+          "postsCount": 10
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Características Especiais
+- ✅ Agrega posts de **TODOS os projetos** do funcionário
+- ✅ Inclui informações do **projeto e cliente** em cada post
+- ✅ Retorna **estatísticas** (total de posts, fotos, projetos)
+- ✅ Mostra **distribuição de posts por projeto**
+- ✅ Ordenado por data (mais recente primeiro)
+
+---
+
 ## Fluxo de Uso
 
 ### Para Funcionários
@@ -294,6 +406,11 @@ curl -X GET 'http://localhost:3000/services/service-123/feed' \
 2. **Ver Feed de um Serviço** específico
    ```
    GET /services/:serviceProjectId/feed
+   ```
+
+3. **Ver Feed de um Funcionário** (todos os projetos)
+   ```
+   GET /users/:userId/feed
    ```
 
 ---

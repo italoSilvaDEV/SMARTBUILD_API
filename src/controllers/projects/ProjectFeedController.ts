@@ -578,7 +578,248 @@ export class ProjectFeedController {
 
         } catch (error) {
             console.error('Erro ao buscar feed do serviço:', error);
-            return response.status(500).json({
+            return response.status(500).json({ 
+                error: 'Erro interno do servidor',
+                details: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
+
+    /**
+     * Lista todos os posts de um funcionário específico
+     * Agregado de todos os projetos que ele já participou
+     */
+    async getUserFeed(request: Request, response: Response) {
+        try {
+            const { userId } = request.params;
+            const { limit = '50', offset = '0' } = request.query;
+
+            // Verifica se o usuário existe
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    name: true,
+                    avatar: true,
+                    profession: true
+                }
+            });
+
+            if (!user) {
+                return response.status(404).json({ 
+                    error: 'Usuário não encontrado' 
+                });
+            }
+
+            // Busca todas as activities criadas por esse usuário
+            const activities = await prisma.activities.findMany({
+                where: {
+                    authorId: userId
+                },
+                include: {
+                    ServiceProject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            projectId: true,
+                            Project: {
+                                select: {
+                                    id: true,
+                                    status_project: true,
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Busca todos os serviços em que o usuário já trabalhou
+            const userServiceProjects = await prisma.userServiceProject.findMany({
+                where: {
+                    user_id: userId
+                },
+                select: {
+                    service_project_id: true
+                }
+            });
+
+            const serviceProjectIds = userServiceProjects.map(usp => usp.service_project_id);
+
+            // Busca fotos marcadas como FEED_POST desses serviços
+            const feedPhotos = await prisma.galleryAfter.findMany({
+                where: {
+                    serviceProjectId: {
+                        in: serviceProjectIds
+                    },
+                    title: 'FEED_POST'
+                },
+                include: {
+                    ServiceProject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            projectId: true,
+                            Project: {
+                                select: {
+                                    id: true,
+                                    status_project: true,
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Agrupa fotos por serviço
+            const photosByService = feedPhotos.reduce((acc, photo) => {
+                if (!acc[photo.serviceProjectId]) {
+                    acc[photo.serviceProjectId] = [];
+                }
+                acc[photo.serviceProjectId].push(photo);
+                return acc;
+            }, {} as Record<string, typeof feedPhotos>);
+
+            // Cria posts combinados
+            const posts = [];
+
+            // Processa activities
+            for (const activity of activities) {
+                const activityTime = activity.date_creation.getTime();
+                const relatedPhotos = photosByService[activity.serviceProjectId || ''] || [];
+                
+                const nearbyPhotos = relatedPhotos.filter(photo => {
+                    const photoTime = photo.date_creation.getTime();
+                    const timeDiff = Math.abs(activityTime - photoTime);
+                    return timeDiff <= 5 * 60 * 1000; // 5 minutos
+                });
+
+                const photos = await Promise.all(
+                    nearbyPhotos.map(async (photo) => ({
+                        id: photo.id,
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }))
+                );
+
+                posts.push({
+                    type: 'post',
+                    id: activity.id,
+                    text: activity.text,
+                    date_creation: activity.date_creation,
+                    serviceProject: activity.ServiceProject ? {
+                        id: activity.ServiceProject.id,
+                        name: activity.ServiceProject.name
+                    } : null,
+                    project: activity.ServiceProject?.Project ? {
+                        id: activity.ServiceProject.Project.id,
+                        status: activity.ServiceProject.Project.status_project,
+                        client: activity.ServiceProject.Project.client
+                    } : null,
+                    photos: photos
+                });
+            }
+
+            // Processa fotos não associadas a activities
+            const allUsedPhotoIds = new Set(
+                posts.flatMap(post => post.photos.map((p: any) => p.id))
+            );
+
+            for (const [serviceProjectId, photos] of Object.entries(photosByService)) {
+                for (const photo of photos) {
+                    if (!allUsedPhotoIds.has(photo.id)) {
+                        posts.push({
+                            type: 'photo_only',
+                            id: photo.id,
+                            text: photo.description,
+                            date_creation: photo.date_creation,
+                            serviceProject: photo.ServiceProject ? {
+                                id: photo.ServiceProject.id,
+                                name: photo.ServiceProject.name
+                            } : null,
+                            project: photo.ServiceProject?.Project ? {
+                                id: photo.ServiceProject.Project.id,
+                                status: photo.ServiceProject.Project.status_project,
+                                client: photo.ServiceProject.Project.client
+                            } : null,
+                            photos: [{
+                                id: photo.id,
+                                url: await getPresignedUrl(photo.url),
+                                date_creation: photo.date_creation
+                            }]
+                        });
+                    }
+                }
+            }
+
+            // Ordena por data (mais recente primeiro)
+            posts.sort((a, b) => 
+                b.date_creation.getTime() - a.date_creation.getTime()
+            );
+
+            // Aplica paginação
+            const limitNum = parseInt(limit as string);
+            const offsetNum = parseInt(offset as string);
+            const paginatedPosts = posts.slice(offsetNum, offsetNum + limitNum);
+
+            // Agrupa posts por projeto para estatísticas
+            const projectStats = posts.reduce((acc, post) => {
+                if (post.project) {
+                    const projectId = post.project.id;
+                    if (!acc[projectId]) {
+                        acc[projectId] = {
+                            projectId: projectId,
+                            client: post.project.client,
+                            postsCount: 0
+                        };
+                    }
+                    acc[projectId].postsCount++;
+                }
+                return acc;
+            }, {} as Record<string, any>);
+
+            return response.status(200).json({
+                success: true,
+                data: {
+                    user: {
+                        id: user.id,
+                        name: user.name,
+                        avatar: user.avatar ? await getPresignedUrl(user.avatar) : null,
+                        profession: user.profession
+                    },
+                    posts: paginatedPosts,
+                    total: posts.length,
+                    limit: limitNum,
+                    offset: offsetNum,
+                    statistics: {
+                        totalPosts: posts.length,
+                        totalPhotos: posts.reduce((sum, post) => sum + post.photos.length, 0),
+                        projectsCount: Object.keys(projectStats).length,
+                        projects: Object.values(projectStats)
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Erro ao buscar feed do usuário:', error);
+            return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
             });
