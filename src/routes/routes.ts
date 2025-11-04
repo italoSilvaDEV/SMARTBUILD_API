@@ -38,6 +38,7 @@ import { timeCardsRouts } from './timeCardsRoutes'
 import { contractTermRoutes } from './contractTermRoutes'
 import { openAiRoutes } from './openAiRoutes'
 import { workContextRoutes } from './workContextRoutes'
+import { projectFeedRoutes } from './projectFeedRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -89,6 +90,7 @@ router.use("/timecards", timeCardsRouts)
 router.use("/contract-terms", contractTermRoutes)
 router.use("/openai", openAiRoutes)
 router.use(workContextRoutes)
+router.use(projectFeedRoutes)
 
 export { router }
 
