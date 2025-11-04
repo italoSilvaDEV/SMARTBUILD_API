@@ -714,10 +714,10 @@ export class ProjectFeedController {
 
             // Agrupa fotos por serviço
             const photosByService = feedPhotos.reduce((acc, photo) => {
-                if (!acc[photo.serviceProjectId]) {
-                    acc[photo.serviceProjectId] = [];
+                if (!acc[photo.serviceProjectId || '']) {
+                    acc[photo.serviceProjectId || ''] = [];
                 }
-                acc[photo.serviceProjectId].push(photo);
+                acc[photo.serviceProjectId || ''].push(photo);
                 return acc;
             }, {} as Record<string, typeof feedPhotos>);
 
