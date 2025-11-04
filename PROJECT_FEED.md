@@ -1269,5 +1269,33 @@ feed_notification (
 
 ---
 
+## 🐛 BUGS CORRIGIDOS
+
+### ✅ Bug #1: Campo `author` ausente em `GET /users/:userId/feed` (04/11/2025)
+
+**Problema:** Posts retornavam `author: null`, impedindo edição/deleção
+
+**Correção aplicada:**
+- Adicionado `include: { author }` na query de activities
+- Adicionado campo `author` com `id`, `name`, `avatar` na resposta
+- Menu de editar/deletar agora funciona corretamente
+
+**Status:** ✅ RESOLVIDO
+
+---
+
+### ✅ Bug #2: Campo `location` ausente em `GET /users/:userId/feed` (04/11/2025)
+
+**Problema:** Posts não exibiam localização do projeto
+
+**Correção aplicada:**
+- Adicionado `location`, `lat`, `log` no select do Project
+- Adicionado campo `location` com endereço e coordenadas na resposta
+- Localização agora é exibida corretamente nos cards
+
+**Status:** ✅ RESOLVIDO
+
+---
+
 **Desenvolvido com migrações mínimas - Máxima reutilização de estrutura** ✅
 

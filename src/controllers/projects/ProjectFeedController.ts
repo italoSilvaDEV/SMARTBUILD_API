@@ -964,6 +964,13 @@ export class ProjectFeedController {
                     authorId: userId
                 },
                 include: {
+                    author: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true
+                        }
+                    },
                     ServiceProject: {
                         select: {
                             id: true,
@@ -973,6 +980,9 @@ export class ProjectFeedController {
                                 select: {
                                     id: true,
                                     status_project: true,
+                                    location: true,
+                                    lat: true,
+                                    log: true,
                                     client: {
                                         select: {
                                             id: true,
@@ -1019,6 +1029,9 @@ export class ProjectFeedController {
                                 select: {
                                     id: true,
                                     status_project: true,
+                                    location: true,
+                                    lat: true,
+                                    log: true,
                                     client: {
                                         select: {
                                             id: true,
@@ -1099,6 +1112,13 @@ export class ProjectFeedController {
                     id: activity.id,
                     text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
                     date_creation: activity.date_creation,
+                    author: {
+                        id: activity.author?.id,
+                        name: activity.author?.name,
+                        avatar: activity.author?.avatar 
+                            ? await getPresignedUrl(activity.author.avatar)
+                            : null
+                    },
                     serviceProject: activity.ServiceProject ? {
                         id: activity.ServiceProject.id,
                         name: activity.ServiceProject.name
@@ -1107,6 +1127,13 @@ export class ProjectFeedController {
                         id: activity.ServiceProject.Project.id,
                         status: activity.ServiceProject.Project.status_project,
                         client: activity.ServiceProject.Project.client
+                    } : null,
+                    location: activity.ServiceProject?.Project ? {
+                        address: activity.ServiceProject.Project.location,
+                        coordinates: {
+                            lat: activity.ServiceProject.Project.lat ? parseFloat(activity.ServiceProject.Project.lat) : null,
+                            lng: activity.ServiceProject.Project.log ? parseFloat(activity.ServiceProject.Project.log) : null
+                        }
                     } : null,
                     photos: photos,
                     likesCount: likesMap[activity.id] || 0,
@@ -1123,6 +1150,7 @@ export class ProjectFeedController {
                     id: photo.id,
                     text: null,
                     date_creation: photo.date_creation,
+                    author: null, // Fotos antigas sem activity não têm autor
                     serviceProject: photo.ServiceProject ? {
                         id: photo.ServiceProject.id,
                         name: photo.ServiceProject.name
@@ -1132,11 +1160,20 @@ export class ProjectFeedController {
                         status: photo.ServiceProject.Project.status_project,
                         client: photo.ServiceProject.Project.client
                     } : null,
+                    location: photo.ServiceProject?.Project ? {
+                        address: photo.ServiceProject.Project.location,
+                        coordinates: {
+                            lat: photo.ServiceProject.Project.lat ? parseFloat(photo.ServiceProject.Project.lat) : null,
+                            lng: photo.ServiceProject.Project.log ? parseFloat(photo.ServiceProject.Project.log) : null
+                        }
+                    } : null,
                     photos: [{
                         id: photo.id,
                         url: await getPresignedUrl(photo.url),
                         date_creation: photo.date_creation
-                    }]
+                    }],
+                    likesCount: 0, // Fotos antigas sem activity não podem ter likes
+                    commentsCount: 0 // Fotos antigas sem activity não podem ter comentários
                 });
             }
 
