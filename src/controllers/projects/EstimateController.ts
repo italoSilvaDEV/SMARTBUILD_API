@@ -457,10 +457,21 @@ export class EstimateController {
         }
       });
 
+      let companyAvatar = null;
+      let userAvatar = null;
       // Generate presigned URLs for PDFs in all estimates and convert array to single object
       for (const estimate of estimates) {
+
+        if (estimate.project.company?.avatar) {
+          companyAvatar = await getPresignedUrl(estimate.project.company.avatar);
+        }
+        if (estimate.project.user?.avatar) {
+          userAvatar = await getPresignedUrl(estimate.project.user.avatar);
+        }
+
         if (estimate.PdfProject && estimate.PdfProject.length > 0) {
           const pdf = estimate.PdfProject[0];
+
           if (pdf.uri) {
             pdf.uri = await getPresignedUrl(pdf.uri);
           }
@@ -472,7 +483,11 @@ export class EstimateController {
         }
       }
 
-      return res.json(estimates);
+      return res.json({
+        ...estimates,
+        companyAvatar: companyAvatar,
+        userAvatar: userAvatar
+      });
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to fetch estimates" });
