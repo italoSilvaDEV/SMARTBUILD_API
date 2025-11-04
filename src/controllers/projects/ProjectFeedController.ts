@@ -8,18 +8,14 @@ import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 const upload = multer({ dest: './public/tmp/feed' });
 
 export class ProjectFeedController {
-    /**
-     * Cria um post no feed do projeto
-     * O funcionário deve estar em ponto ativo
-     */
     async createPost(request: Request, response: Response) {
         const uploadMultiple = upload.array('photos', 10);
 
         uploadMultiple(request, response, async (err) => {
             if (err) {
-                return response.status(400).json({ 
+                return response.status(400).json({
                     error: 'Erro no upload dos arquivos',
-                    details: err.message 
+                    details: err.message
                 });
             }
 
@@ -30,14 +26,14 @@ export class ProjectFeedController {
 
                 // Validações básicas
                 if (!userId) {
-                    return response.status(400).json({ 
-                        error: 'userId é obrigatório' 
+                    return response.status(400).json({
+                        error: 'userId é obrigatório'
                     });
                 }
 
                 if (!text && (!files || files.length === 0)) {
-                    return response.status(400).json({ 
-                        error: 'É necessário enviar texto ou fotos' 
+                    return response.status(400).json({
+                        error: 'É necessário enviar texto ou fotos'
                     });
                 }
 
@@ -48,24 +44,24 @@ export class ProjectFeedController {
                 });
 
                 if (!project) {
-                    return response.status(404).json({ 
-                        error: 'Projeto não encontrado' 
+                    return response.status(404).json({
+                        error: 'Projeto não encontrado'
                     });
                 }
 
                 // Verifica se o usuário existe
                 const user = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { 
-                        id: true, 
-                        name: true, 
-                        avatar: true 
+                    select: {
+                        id: true,
+                        name: true,
+                        avatar: true
                     }
                 });
 
                 if (!user) {
-                    return response.status(404).json({ 
-                        error: 'Usuário não encontrado' 
+                    return response.status(404).json({
+                        error: 'Usuário não encontrado'
                     });
                 }
 
@@ -94,8 +90,8 @@ export class ProjectFeedController {
                 });
 
                 if (!activeAttendance) {
-                    return response.status(400).json({ 
-                        error: 'Você precisa estar em ponto para criar um post no feed' 
+                    return response.status(400).json({
+                        error: 'Você precisa estar em ponto para criar um post no feed'
                     });
                 }
 
@@ -103,8 +99,8 @@ export class ProjectFeedController {
 
                 // Verifica se o serviço pertence ao projeto correto
                 if (serviceProject.projectId !== projectId) {
-                    return response.status(400).json({ 
-                        error: 'O seu ponto ativo não está vinculado a este projeto' 
+                    return response.status(400).json({
+                        error: 'O seu ponto ativo não está vinculado a este projeto'
                     });
                 }
 
@@ -135,7 +131,7 @@ export class ProjectFeedController {
                     for (const file of files) {
                         try {
                             const fileName = await uploadFileToS3(file, '');
-                            
+
                             const galleryPhoto = await prisma.galleryAfter.create({
                                 data: {
                                     serviceProjectId: serviceProject.id,
@@ -179,7 +175,7 @@ export class ProjectFeedController {
 
             } catch (error) {
                 console.error('Erro ao criar post no feed:', error);
-                return response.status(500).json({ 
+                return response.status(500).json({
                     error: 'Erro interno do servidor',
                     details: error instanceof Error ? error.message : 'Erro desconhecido'
                 });
@@ -203,8 +199,8 @@ export class ProjectFeedController {
             });
 
             if (!project) {
-                return response.status(404).json({ 
-                    error: 'Projeto não encontrado' 
+                return response.status(404).json({
+                    error: 'Projeto não encontrado'
                 });
             }
 
@@ -271,12 +267,11 @@ export class ProjectFeedController {
                 }
             });
 
-            // Agrupa fotos por serviço
             const photosByService = feedPhotos.reduce((acc, photo) => {
-                if (!acc[photo.serviceProjectId]) {
-                    acc[photo.serviceProjectId] = [];
+                if (!acc[photo.serviceProjectId || '']) {
+                    acc[photo.serviceProjectId || ''] = [];
                 }
-                acc[photo.serviceProjectId].push(photo);
+                acc[photo.serviceProjectId || ''].push(photo);
                 return acc;
             }, {} as Record<string, typeof feedPhotos>);
 
@@ -292,7 +287,7 @@ export class ProjectFeedController {
                 // Busca fotos próximas temporalmente (dentro de 5 minutos)
                 const activityTime = activity.date_creation.getTime();
                 const relatedPhotos = photosByService[activity.serviceProjectId || ''] || [];
-                
+
                 const nearbyPhotos = relatedPhotos.filter(photo => {
                     const photoTime = photo.date_creation.getTime();
                     const timeDiff = Math.abs(activityTime - photoTime);
@@ -315,7 +310,7 @@ export class ProjectFeedController {
                     author: {
                         id: activity.author?.id,
                         name: activity.author?.name,
-                        avatar: activity.author?.avatar 
+                        avatar: activity.author?.avatar
                             ? await getPresignedUrl(activity.author.avatar)
                             : null
                     },
@@ -331,7 +326,7 @@ export class ProjectFeedController {
 
             for (const [serviceProjectId, photos] of Object.entries(photosByService)) {
                 const serviceProject = serviceProjects.find(sp => sp.id === serviceProjectId);
-                
+
                 for (const photo of photos) {
                     if (!allUsedPhotoIds.has(photo.id)) {
                         posts.push({
@@ -352,7 +347,7 @@ export class ProjectFeedController {
             }
 
             // Ordena por data (mais recente primeiro)
-            posts.sort((a, b) => 
+            posts.sort((a, b) =>
                 b.date_creation.getTime() - a.date_creation.getTime()
             );
 
@@ -373,7 +368,7 @@ export class ProjectFeedController {
 
         } catch (error) {
             console.error('Erro ao buscar feed do projeto:', error);
-            return response.status(500).json({ 
+            return response.status(500).json({
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
             });
@@ -389,8 +384,8 @@ export class ProjectFeedController {
             const { type } = request.body; // 'activity' ou 'photo'
 
             if (!type || !['activity', 'photo'].includes(type)) {
-                return response.status(400).json({ 
-                    error: 'Tipo inválido. Use "activity" ou "photo"' 
+                return response.status(400).json({
+                    error: 'Tipo inválido. Use "activity" ou "photo"'
                 });
             }
 
@@ -400,8 +395,8 @@ export class ProjectFeedController {
                 });
 
                 if (!activity) {
-                    return response.status(404).json({ 
-                        error: 'Activity não encontrada' 
+                    return response.status(404).json({
+                        error: 'Activity não encontrada'
                     });
                 }
 
@@ -409,9 +404,9 @@ export class ProjectFeedController {
                     where: { id: postId }
                 });
 
-                return response.status(200).json({ 
+                return response.status(200).json({
                     success: true,
-                    message: 'Post deletado com sucesso' 
+                    message: 'Post deletado com sucesso'
                 });
             }
 
@@ -421,8 +416,8 @@ export class ProjectFeedController {
                 });
 
                 if (!photo) {
-                    return response.status(404).json({ 
-                        error: 'Foto não encontrada' 
+                    return response.status(404).json({
+                        error: 'Foto não encontrada'
                     });
                 }
 
@@ -434,15 +429,15 @@ export class ProjectFeedController {
                     where: { id: postId }
                 });
 
-                return response.status(200).json({ 
+                return response.status(200).json({
                     success: true,
-                    message: 'Foto deletada com sucesso' 
+                    message: 'Foto deletada com sucesso'
                 });
             }
 
         } catch (error) {
             console.error('Erro ao deletar post:', error);
-            return response.status(500).json({ 
+            return response.status(500).json({
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
             });
@@ -467,8 +462,8 @@ export class ProjectFeedController {
             });
 
             if (!serviceProject) {
-                return response.status(404).json({ 
-                    error: 'Serviço não encontrado' 
+                return response.status(404).json({
+                    error: 'Serviço não encontrado'
                 });
             }
 
@@ -507,7 +502,7 @@ export class ProjectFeedController {
             // Processa activities
             for (const activity of activities) {
                 const activityTime = activity.date_creation.getTime();
-                
+
                 const nearbyPhotos = feedPhotos.filter(photo => {
                     const photoTime = photo.date_creation.getTime();
                     const timeDiff = Math.abs(activityTime - photoTime);
@@ -530,7 +525,7 @@ export class ProjectFeedController {
                     author: {
                         id: activity.author?.id,
                         name: activity.author?.name,
-                        avatar: activity.author?.avatar 
+                        avatar: activity.author?.avatar
                             ? await getPresignedUrl(activity.author.avatar)
                             : null
                     },
@@ -568,7 +563,7 @@ export class ProjectFeedController {
                 }
             }
 
-            posts.sort((a, b) => 
+            posts.sort((a, b) =>
                 b.date_creation.getTime() - a.date_creation.getTime()
             );
 
@@ -583,7 +578,7 @@ export class ProjectFeedController {
 
         } catch (error) {
             console.error('Erro ao buscar feed do serviço:', error);
-            return response.status(500).json({ 
+            return response.status(500).json({
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
             });
