@@ -177,13 +177,7 @@ export class ListClientController {
                 include: {
                     _count: {
                         select: { 
-                            projects: {
-                                where: {
-                                    status_project: {
-                                        notIn: ["Pending", "Accepted"]
-                                    }
-                                }
-                            }
+                            projects: true
                         },
                     },
                 },
