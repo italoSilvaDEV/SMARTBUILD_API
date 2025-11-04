@@ -70,6 +70,12 @@ model User {
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
   SyncStatus      SyncStatus[]      @relation("SyncStatus")
 
+  // Relacionamentos do Feed
+  FeedComments             FeedComment[]      @relation("FeedComments")
+  FeedLikes                FeedLike[]         @relation("FeedLikes")
+  FeedNotifications        FeedNotification[] @relation("FeedNotifications")
+  FeedNotificationActors   FeedNotification[] @relation("FeedNotificationActors")
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -279,6 +285,74 @@ model Activities {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+
+  // Novos relacionamentos para feed
+  comments      FeedComment[]
+  likes         FeedLike[]
+  notifications FeedNotification[]
+}
+
+model FeedComment {
+  id   String @id @default(uuid())
+  text String @db.Text
+
+  activity   Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  author   User   @relation("FeedComments", fields: [authorId], references: [id])
+  authorId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([activityId])
+  @@index([authorId])
+  @@map("feed_comment")
+}
+
+model FeedLike {
+  id String @id @default(uuid())
+
+  activity   Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  user   User   @relation("FeedLikes", fields: [userId], references: [id])
+  userId String
+
+  date_creation DateTime @default(now())
+
+  @@unique([activityId, userId]) // Um usuário só pode dar 1 like por post
+  @@index([activityId])
+  @@index([userId])
+  @@map("feed_like")
+}
+
+model FeedNotification {
+  id String @id @default(uuid())
+
+  type        String // "comment", "like", "mention"
+  message     String @db.Text
+  isRead      Boolean @default(false)
+  relatedLink String? // Link para o post/comentário
+
+  // Destinatário da notificação
+  user   User   @relation("FeedNotifications", fields: [userId], references: [id])
+  userId String
+
+  // Quem gerou a notificação (quem comentou/curtiu)
+  actor   User?   @relation("FeedNotificationActors", fields: [actorId], references: [id])
+  actorId String?
+
+  // Post relacionado
+  activity   Activities? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String?
+
+  date_creation DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([activityId])
+  @@map("feed_notification")
 }
 
 model ImgServiceProject {

@@ -147,19 +147,50 @@ curl -X POST 'http://localhost:3000/projects/service-xyz-789/feed' \
 
 Lista todos os posts do feed do projeto (agregado de todos os serviços).
 
+**✨ Novo:** Agora inclui **endereço, filtros, ordenação e paginação melhorada**!
+
 #### Headers
 ```
 Authorization: Bearer {token}
 ```
 
 #### Parâmetros
-- `projectId` (URL) - ID do projeto
+
+**Paginação:**
 - `limit` (Query, opcional) - Limite de posts (padrão: 50)
 - `offset` (Query, opcional) - Offset para paginação (padrão: 0)
 
+**Filtros:**
+- `serviceProjectId` (Query, opcional) - Filtrar por serviço específico
+- `startDate` (Query, opcional) - Data inicial (ISO 8601: `2024-11-01T00:00:00Z`)
+- `endDate` (Query, opcional) - Data final (ISO 8601: `2024-11-30T23:59:59Z`)
+- `hasPhotos` (Query, opcional) - `true` (apenas com fotos) | `false` (apenas sem fotos)
+- `authorId` (Query, opcional) - Filtrar por autor específico
+
+**Ordenação:**
+- `sortBy` (Query, opcional) - `date` (padrão) | `photos` (por quantidade de fotos)
+- `order` (Query, opcional) - `desc` (padrão) | `asc`
+
 #### Exemplo de Request
+
+**Simples:**
 ```bash
 curl -X GET 'http://localhost:3000/projects/abc-123/feed?limit=20&offset=0' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+**Com Filtros:**
+```bash
+# Posts com fotos da última semana
+curl -X GET 'http://localhost:3000/projects/abc-123/feed?hasPhotos=true&startDate=2024-11-01T00:00:00Z&sortBy=photos&order=desc' \
+  -H 'Authorization: Bearer seu-token'
+
+# Posts de um funcionário específico
+curl -X GET 'http://localhost:3000/projects/abc-123/feed?authorId=user-123' \
+  -H 'Authorization: Bearer seu-token'
+
+# Posts de um serviço específico
+curl -X GET 'http://localhost:3000/projects/abc-123/feed?serviceProjectId=service-456' \
   -H 'Authorization: Bearer seu-token'
 ```
 
@@ -182,6 +213,13 @@ curl -X GET 'http://localhost:3000/projects/abc-123/feed?limit=20&offset=0' \
         "serviceProject": {
           "id": "service-123",
           "name": "Instalação Elétrica"
+        },
+        "location": {
+          "address": "Rua Exemplo, 123 - Cidade, Estado",
+          "coordinates": {
+            "lat": -23.550520,
+            "lng": -46.633308
+          }
         },
         "photos": [
           {
@@ -210,9 +248,24 @@ curl -X GET 'http://localhost:3000/projects/abc-123/feed?limit=20&offset=0' \
         ]
       }
     ],
-    "total": 15,
-    "limit": 20,
-    "offset": 0
+    "pagination": {
+      "total": 15,
+      "limit": 20,
+      "offset": 0,
+      "currentPage": 1,
+      "totalPages": 1,
+      "hasMore": false,
+      "nextOffset": null
+    },
+    "filters": {
+      "serviceProjectId": null,
+      "startDate": null,
+      "endDate": null,
+      "hasPhotos": null,
+      "authorId": null,
+      "sortBy": "date",
+      "order": "desc"
+    }
   }
 }
 ```
@@ -301,7 +354,98 @@ curl -X GET 'http://localhost:3000/services/service-123/feed' \
 
 ---
 
-### 5. Listar Feed de um Funcionário (Todos os Projetos)
+### 5. Editar Post do Feed
+
+**PUT** `/feed/:postId`
+
+Edita o texto de um post do feed.
+
+#### Headers
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+#### Parâmetros
+- `postId` (URL) - ID do post (activity)
+
+#### Body (JSON)
+```json
+{
+  "text": "Texto atualizado do post"
+}
+```
+
+#### Exemplo de Request
+```bash
+curl -X PUT 'http://localhost:3000/feed/activity-123' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Texto corrigido do post"}'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "id": "activity-123",
+    "text": "Texto corrigido do post",
+    "date_creation": "2024-11-04T10:30:00.000Z",
+    "date_update": "2024-11-04T11:45:00.000Z",
+    "author": {
+      "id": "user-123",
+      "name": "João Silva",
+      "avatar": "https://presigned-url..."
+    }
+  }
+}
+```
+
+#### Erros Possíveis
+- **400** - Texto é obrigatório
+- **404** - Post não encontrado
+
+---
+
+### 6. Deletar Foto Individual
+
+**DELETE** `/feed/photos/:photoId`
+
+Deleta uma foto específica sem deletar o post inteiro.
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Parâmetros
+- `photoId` (URL) - ID da foto
+
+#### Exemplo de Request
+```bash
+curl -X DELETE 'http://localhost:3000/feed/photos/photo-123' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "message": "Foto deletada com sucesso",
+  "activityId": "activity-123"
+}
+```
+
+**Nota:** O campo `activityId` permite que o frontend atualize o post automaticamente.
+
+#### Erros Possíveis
+- **400** - Esta foto não pertence ao feed
+- **404** - Foto não encontrada
+
+---
+
+### 7. Listar Feed de um Funcionário (Todos os Projetos)
 
 **GET** `/users/:userId/feed`
 
@@ -378,27 +522,61 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
     "limit": 20,
     "offset": 0,
     "statistics": {
-      "totalPosts": 25,
-      "totalPhotos": 48,
-      "projectsCount": 3,
-      "projects": [
-        {
+      "overview": {
+        "totalPosts": 25,
+        "totalPhotos": 48,
+        "postsWithPhotos": 20,
+        "postsWithoutPhotos": 5,
+        "averagePhotosPerPost": 1.92
+      },
+      "temporal": {
+        "postsThisWeek": 5,
+        "postsThisMonth": 20,
+        "averagePostsPerDay": 0.67
+      },
+      "projects": {
+        "projectsCount": 3,
+        "mostActiveProject": {
           "projectId": "project-abc",
           "client": {
             "id": "client-1",
             "name": "Cliente A"
           },
-          "postsCount": 15
+          "postsCount": 15,
+          "photosCount": 30
         },
-        {
-          "projectId": "project-xyz",
-          "client": {
-            "id": "client-2",
-            "name": "Cliente B"
+        "allProjects": [
+          {
+            "projectId": "project-abc",
+            "client": {
+              "id": "client-1",
+              "name": "Cliente A"
+            },
+            "postsCount": 15,
+            "photosCount": 30
           },
-          "postsCount": 10
-        }
-      ]
+          {
+            "projectId": "project-xyz",
+            "client": {
+              "id": "client-2",
+              "name": "Cliente B"
+            },
+            "postsCount": 10,
+            "photosCount": 18
+          }
+        ]
+      },
+      "topPosts": {
+        "byPhotos": [
+          {
+            "id": "post-1",
+            "text": "Finalização completa",
+            "photosCount": 8,
+            "date_creation": "2024-11-03T14:20:00.000Z",
+            "project": { ... }
+          }
+        ]
+      }
     }
   }
 }
@@ -407,8 +585,11 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
 #### Características Especiais
 - ✅ Agrega posts de **TODOS os projetos** do funcionário
 - ✅ Inclui informações do **projeto e cliente** em cada post
-- ✅ Retorna **estatísticas** (total de posts, fotos, projetos)
-- ✅ Mostra **distribuição de posts por projeto**
+- ✅ **Estatísticas detalhadas**:
+  - Visão geral (posts, fotos, médias)
+  - Temporal (esta semana, este mês, média diária)
+  - Por projeto (mais ativo, distribuição)
+  - Top posts (por quantidade de fotos)
 - ✅ Ordenado por data (mais recente primeiro)
 
 ---
@@ -510,6 +691,36 @@ GalleryAfter {
 ### React/React Native
 
 ```javascript
+// Editar post
+const editPost = async (postId, newText) => {
+  const response = await fetch(
+    `${API_URL}/feed/${postId}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: newText })
+    }
+  );
+  return response.json();
+};
+
+// Deletar foto individual
+const deletePhoto = async (photoId) => {
+  const response = await fetch(
+    `${API_URL}/feed/photos/${photoId}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      }
+    }
+  );
+  return response.json();
+};
+
 // Criar post no feed (flexível - aceita projectId OU serviceProjectId)
 const createFeedPost = async (id, userId, text, photos) => {
   const formData = new FormData();
@@ -554,10 +765,35 @@ const handlePostFromServiceScreen = async () => {
   );
 };
 
-// Listar feed
-const getFeed = async (projectId, limit = 50, offset = 0) => {
+// Listar feed com filtros
+const getFeed = async (projectId, options = {}) => {
+  const {
+    limit = 50,
+    offset = 0,
+    serviceProjectId,
+    startDate,
+    endDate,
+    hasPhotos,
+    authorId,
+    sortBy = 'date',
+    order = 'desc'
+  } = options;
+
+  const params = new URLSearchParams({
+    limit: limit.toString(),
+    offset: offset.toString(),
+    sortBy,
+    order
+  });
+
+  if (serviceProjectId) params.append('serviceProjectId', serviceProjectId);
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  if (hasPhotos !== undefined) params.append('hasPhotos', hasPhotos.toString());
+  if (authorId) params.append('authorId', authorId);
+
   const response = await fetch(
-    `${API_URL}/projects/${projectId}/feed?limit=${limit}&offset=${offset}`,
+    `${API_URL}/projects/${projectId}/feed?${params}`,
     {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -567,6 +803,11 @@ const getFeed = async (projectId, limit = 50, offset = 0) => {
 
   return response.json();
 };
+
+// Exemplos de uso
+await getFeed('project-123', { hasPhotos: true, sortBy: 'photos' });
+await getFeed('project-123', { authorId: 'user-456', limit: 10 });
+await getFeed('project-123', { startDate: '2024-11-01T00:00:00Z' });
 ```
 
 ---
@@ -610,16 +851,423 @@ const getFeed = async (projectId, limit = 50, offset = 0) => {
 
 ---
 
-## Próximas Melhorias Sugeridas
+## 🎯 FUNCIONALIDADES SOCIAIS (Implementado)
 
-- [ ] Adicionar reações/likes aos posts
-- [ ] Adicionar comentários nos posts
-- [ ] Notificações push quando há novo post
-- [ ] Filtros por data, autor ou serviço
-- [ ] Export do feed em PDF
-- [ ] Análise de produtividade baseada nos posts
+### ✅ Sistema de Comentários
+
+#### **POST /feed/:postId/comments**
+Criar comentário em um post
+
+**Request Body:**
+```json
+{
+  "text": "Ótimo trabalho!",
+  "userId": "uuid-do-usuario"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "comment-uuid",
+    "text": "Ótimo trabalho!",
+    "date_creation": "2024-11-04T10:30:00Z",
+    "author": {
+      "id": "user-uuid",
+      "name": "João Silva",
+      "avatar": "https://presigned-url..."
+    }
+  }
+}
+```
+
+**Notificação:** ✉️ O autor do post recebe notificação
 
 ---
 
-**Desenvolvido sem migrações - Reutilizando estrutura existente** ✅
+#### **GET /feed/:postId/comments**
+Listar comentários de um post
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "comments": [
+      {
+        "id": "comment-uuid",
+        "text": "Ótimo trabalho!",
+        "date_creation": "2024-11-04T10:30:00Z",
+        "date_update": "2024-11-04T10:30:00Z",
+        "author": {
+          "id": "user-uuid",
+          "name": "João Silva",
+          "avatar": "https://presigned-url..."
+        }
+      }
+    ],
+    "total": 5
+  }
+}
+```
+
+---
+
+#### **DELETE /feed/comments/:commentId**
+Deletar comentário (somente o autor)
+
+**Request Body:**
+```json
+{
+  "userId": "uuid-do-autor"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Comentário deletado com sucesso"
+}
+```
+
+---
+
+### ❤️ Sistema de Likes
+
+#### **POST /feed/:postId/like**
+Dar like em um post
+
+**Request Body:**
+```json
+{
+  "userId": "uuid-do-usuario"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "likeId": "like-uuid",
+    "totalLikes": 12
+  }
+}
+```
+
+**Notificação:** ✉️ O autor do post recebe notificação
+
+---
+
+#### **DELETE /feed/:postId/like**
+Remover like de um post
+
+**Request Body:**
+```json
+{
+  "userId": "uuid-do-usuario"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Like removido com sucesso",
+  "data": {
+    "totalLikes": 11
+  }
+}
+```
+
+---
+
+#### **GET /feed/:postId/likes**
+Listar usuários que curtiram o post
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "likes": [
+      {
+        "id": "like-uuid",
+        "date_creation": "2024-11-04T10:30:00Z",
+        "user": {
+          "id": "user-uuid",
+          "name": "Maria Santos",
+          "avatar": "https://presigned-url..."
+        }
+      }
+    ],
+    "total": 12
+  }
+}
+```
+
+---
+
+### 🔔 Sistema de Notificações
+
+#### **GET /users/:userId/notifications**
+Listar notificações do usuário
+
+**Query Parameters:**
+- `unreadOnly` (opcional): "true" | "false" (padrão: "false")
+- `limit` (opcional): número (padrão: 50)
+- `offset` (opcional): número (padrão: 0)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "notifications": [
+      {
+        "id": "notif-uuid",
+        "type": "comment",
+        "message": "João Silva comentou no seu post",
+        "isRead": false,
+        "relatedLink": "/feed/post-uuid",
+        "date_creation": "2024-11-04T10:30:00Z",
+        "actor": {
+          "id": "user-uuid",
+          "name": "João Silva",
+          "avatar": "https://presigned-url..."
+        },
+        "activity": {
+          "id": "post-uuid",
+          "text": "Acabamos a instalação elétrica"
+        }
+      }
+    ],
+    "total": 10,
+    "unreadCount": 3
+  }
+}
+```
+
+**Tipos de notificação:**
+- `comment`: Alguém comentou no seu post
+- `like`: Alguém curtiu seu post
+- `mention`: Alguém te mencionou (futuro)
+
+---
+
+#### **PATCH /notifications/:notificationId/read**
+Marcar notificação como lida
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Notificação marcada como lida"
+}
+```
+
+---
+
+#### **PATCH /users/:userId/notifications/read-all**
+Marcar todas notificações como lidas
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Todas notificações marcadas como lidas"
+}
+```
+
+---
+
+## 📊 Contadores Adicionados aos Posts
+
+Todos os endpoints que retornam posts (`GET /projects/:projectId/feed`, `GET /services/:serviceProjectId/feed`, `GET /users/:userId/feed`) agora incluem:
+
+```json
+{
+  "id": "post-uuid",
+  "text": "Acabamos a instalação elétrica!",
+  "photos": [...],
+  "author": {...},
+  "likesCount": 12,      // ✨ NOVO
+  "commentsCount": 5,    // ✨ NOVO
+  "date_creation": "..."
+}
+```
+
+---
+
+## 🎨 Exemplo de Integração no Frontend
+
+### Exibir post com interações
+
+```jsx
+function FeedPost({ post }) {
+  return (
+    <div className="feed-post">
+      <div className="post-header">
+        <img src={post.author.avatar} />
+        <span>{post.author.name}</span>
+      </div>
+      
+      <div className="post-content">
+        <p>{post.text}</p>
+        {post.photos.map(photo => (
+          <img key={photo.id} src={photo.url} />
+        ))}
+      </div>
+      
+      <div className="post-actions">
+        <button onClick={() => likePost(post.id)}>
+          ❤️ {post.likesCount}
+        </button>
+        <button onClick={() => showComments(post.id)}>
+          💬 {post.commentsCount}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+### Sistema de comentários
+
+```javascript
+// Criar comentário
+async function addComment(postId, text) {
+  const response = await fetch(`/feed/${postId}/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      text: text,
+      userId: currentUser.id
+    })
+  });
+  
+  const data = await response.json();
+  // Atualiza UI com o novo comentário
+  updateCommentsList(data.data);
+}
+
+// Carregar comentários
+async function loadComments(postId) {
+  const response = await fetch(`/feed/${postId}/comments`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  
+  const data = await response.json();
+  renderComments(data.data.comments);
+}
+```
+
+### Sistema de likes
+
+```javascript
+// Dar/remover like (toggle)
+async function toggleLike(postId, hasLiked) {
+  const method = hasLiked ? 'DELETE' : 'POST';
+  
+  const response = await fetch(`/feed/${postId}/like`, {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ userId: currentUser.id })
+  });
+  
+  const data = await response.json();
+  // Atualiza contador de likes
+  updateLikesCount(postId, data.data.totalLikes);
+}
+```
+
+### Sistema de notificações
+
+```javascript
+// Carregar notificações não lidas
+async function loadNotifications() {
+  const response = await fetch(
+    `/users/${currentUser.id}/notifications?unreadOnly=true`, 
+    {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }
+  );
+  
+  const data = await response.json();
+  
+  // Exibe badge com contador
+  updateNotificationBadge(data.data.unreadCount);
+  
+  // Renderiza lista de notificações
+  renderNotifications(data.data.notifications);
+}
+
+// Marcar como lida ao clicar
+async function markAsRead(notificationId) {
+  await fetch(`/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  
+  // Remove da lista ou marca visualmente
+  updateNotificationUI(notificationId);
+}
+
+// Polling periódico para novas notificações
+setInterval(loadNotifications, 30000); // A cada 30 segundos
+```
+
+---
+
+## 📋 RECURSOS AVANÇADOS (Futuro)
+
+- [ ] Menções a outros usuários (@usuario)
+- [ ] Hashtags e categorização
+- [ ] Export do feed em PDF
+- [ ] Análise de produtividade baseada nos posts
+- [ ] Notificações em tempo real (WebSocket)
+- [ ] Reações diversas (👍👏🔥 etc)
+- [ ] Editar comentários
+- [ ] Responder comentários (threads)
+
+---
+
+## 🗄️ Estrutura do Banco de Dados
+
+### Novas Tabelas (Migration incluída)
+
+```sql
+-- Comentários
+feed_comment (
+  id, text, activityId, authorId, 
+  date_creation, date_update
+)
+
+-- Likes
+feed_like (
+  id, activityId, userId, date_creation
+  UNIQUE(activityId, userId) -- 1 like por usuário
+)
+
+-- Notificações
+feed_notification (
+  id, type, message, isRead, relatedLink,
+  userId, actorId, activityId, date_creation
+)
+```
+
+**Migration:** `20251104144400_add_feed_comments_likes_notifications`
+
+---
+
+**Desenvolvido com migrações mínimas - Máxima reutilização de estrutura** ✅
 
