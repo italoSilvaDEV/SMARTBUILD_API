@@ -369,6 +369,65 @@ export class EstimateController {
         },
         include: {
           serviceProjects: true,
+          project: {
+            select: {
+              id: true,
+              status_project: true,
+              autorId: true,
+              location: true,
+              client: {
+                select: {
+                  id: true,
+                  avatar: true,
+                  name: true,
+                  email: true,
+                  city_and_state: true,
+                  date_creation: true,
+                  date_update: true,
+                }
+              },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true
+                }
+              },
+              serviceProject: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  hours: true,
+                  price: true,
+                  status: true
+                }
+              },
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  address: true,
+                  district: true,
+                  numberHouse: true,
+                  avatar: true,
+                  complement: true,
+                  webSiteUrl: true,
+                  NotesContrac: {
+                    select: {
+                      id: true,
+                      notes: true,
+                      updatedAt: true,
+                      createdAt: true
+                    }
+                  }
+                }
+              }
+            },
+          },
           PdfProject: {
             orderBy: {
               date_creation: 'desc'
