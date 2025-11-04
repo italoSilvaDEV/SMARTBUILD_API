@@ -99,7 +99,7 @@ export class CreateServiceEstimateController {
                     }
                 })
 
-                if (estimate.type_estimate === "estimateProject") {
+                {/*if (estimate.type_estimate === "estimateProject") {
                     await smartbuild.serviceProject.create({
                         data: {
                             projectId: estimate.projectId,
@@ -113,7 +113,7 @@ export class CreateServiceEstimateController {
                             deadline
                         }
                     })
-                }
+                }*/}
 
                 return res.status(201).json({
                     message: "Service created successfully",
