@@ -128,26 +128,26 @@ export class ProjectFeedController {
                     });
                 }
 
-                // Cria a activity com o texto (se houver)
-                let activity = null;
-                if (text && text.trim()) {
-                    activity = await prisma.activities.create({
-                        data: {
-                            text: text.trim(),
-                            authorId: userId,
-                            serviceProjectId: serviceProject.id
-                        },
-                        include: {
-                            author: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    avatar: true
-                                }
+                // SEMPRE cria uma activity (post), mesmo que seja só fotos
+                // Isso garante que cada post seja independente e não agrupe com posts antigos
+                const postText = text && text.trim() ? text.trim() : '📷'; // Usa emoji se só tiver fotos
+                
+                const activity = await prisma.activities.create({
+                    data: {
+                        text: postText,
+                        authorId: userId,
+                        serviceProjectId: serviceProject.id
+                    },
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                name: true,
+                                avatar: true
                             }
                         }
-                    });
-                }
+                    }
+                });
 
                 // Faz upload das fotos e salva na galeria
                 const photos = [];
@@ -161,7 +161,7 @@ export class ProjectFeedController {
                                     serviceProjectId: serviceProject.id,
                                     url: fileName,
                                     title: 'FEED_POST',
-                                    description: text || null
+                                    description: activity.id // Vincula a foto ao post específico
                                 }
                             });
 
@@ -179,16 +179,16 @@ export class ProjectFeedController {
                 return response.status(201).json({
                     success: true,
                     data: {
-                        activity: activity ? {
+                        activity: {
                             id: activity.id,
-                            text: activity.text,
+                            text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
                             date_creation: activity.date_creation,
                             author: {
                                 id: activity.author?.id,
                                 name: activity.author?.name,
                                 avatar: activity.author?.avatar ? await getPresignedUrl(activity.author.avatar) : null
                             }
-                        } : null,
+                        },
                         photos: photos,
                         serviceProject: {
                             id: serviceProject.id,
@@ -291,15 +291,17 @@ export class ProjectFeedController {
                 }
             });
 
-            const photosByService = feedPhotos.reduce((acc, photo) => {
-                if (!acc[photo.serviceProjectId || '']) {
-                    acc[photo.serviceProjectId || ''] = [];
+            // Agrupa fotos por activity.id (armazenado no campo description)
+            const photosByActivityId = feedPhotos.reduce((acc, photo) => {
+                const activityId = photo.description || 'unlinked';
+                if (!acc[activityId]) {
+                    acc[activityId] = [];
                 }
-                acc[photo.serviceProjectId || ''].push(photo);
+                acc[activityId].push(photo);
                 return acc;
             }, {} as Record<string, typeof feedPhotos>);
 
-            // Cria posts combinados (activities + fotos do mesmo horário próximo)
+            // Cria posts combinados (activities + suas fotos vinculadas)
             const posts = [];
 
             // Processa activities
@@ -308,18 +310,11 @@ export class ProjectFeedController {
                     sp => sp.id === activity.serviceProjectId
                 );
 
-                // Busca fotos próximas temporalmente (dentro de 5 minutos)
-                const activityTime = activity.date_creation.getTime();
-                const relatedPhotos = photosByService[activity.serviceProjectId || ''] || [];
-
-                const nearbyPhotos = relatedPhotos.filter(photo => {
-                    const photoTime = photo.date_creation.getTime();
-                    const timeDiff = Math.abs(activityTime - photoTime);
-                    return timeDiff <= 5 * 60 * 1000; // 5 minutos
-                });
-
+                // Busca fotos vinculadas diretamente a este post (pelo activity.id)
+                const linkedPhotos = photosByActivityId[activity.id] || [];
+                
                 const photos = await Promise.all(
-                    nearbyPhotos.map(async (photo) => ({
+                    linkedPhotos.map(async (photo) => ({
                         id: photo.id,
                         url: await getPresignedUrl(photo.url),
                         date_creation: photo.date_creation
@@ -329,12 +324,12 @@ export class ProjectFeedController {
                 posts.push({
                     type: 'post',
                     id: activity.id,
-                    text: activity.text,
+                    text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
                     date_creation: activity.date_creation,
                     author: {
                         id: activity.author?.id,
                         name: activity.author?.name,
-                        avatar: activity.author?.avatar
+                        avatar: activity.author?.avatar 
                             ? await getPresignedUrl(activity.author.avatar)
                             : null
                     },
@@ -343,31 +338,31 @@ export class ProjectFeedController {
                 });
             }
 
-            // Processa fotos que não foram associadas a nenhuma activity
+            // Processa fotos antigas que não têm activity vinculada (legado)
+            const unlinkedPhotos = photosByActivityId['unlinked'] || [];
             const allUsedPhotoIds = new Set(
                 posts.flatMap(post => post.photos.map((p: any) => p.id))
             );
 
-            for (const [serviceProjectId, photos] of Object.entries(photosByService)) {
-                const serviceProject = serviceProjects.find(sp => sp.id === serviceProjectId);
-
-                for (const photo of photos) {
-                    if (!allUsedPhotoIds.has(photo.id)) {
-                        posts.push({
-                            type: 'photo_only',
-                            id: photo.id,
-                            text: photo.description,
-                            date_creation: photo.date_creation,
-                            author: null,
-                            serviceProject: serviceProject || null,
-                            photos: [{
-                                id: photo.id,
-                                url: await getPresignedUrl(photo.url),
-                                date_creation: photo.date_creation
-                            }]
-                        });
-                    }
-                }
+            // Adiciona fotos antigas não vinculadas como posts separados (compatibilidade)
+            for (const photo of unlinkedPhotos) {
+                const serviceProject = serviceProjects.find(
+                    sp => sp.id === photo.serviceProjectId
+                );
+                
+                posts.push({
+                    type: 'photo_only',
+                    id: photo.id,
+                    text: null,
+                    date_creation: photo.date_creation,
+                    author: null,
+                    serviceProject: serviceProject || null,
+                    photos: [{
+                        id: photo.id,
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }]
+                });
             }
 
             // Ordena por data (mais recente primeiro)
@@ -521,20 +516,25 @@ export class ProjectFeedController {
                 }
             });
 
+            // Agrupa fotos por activity.id (armazenado no campo description)
+            const photosByActivityId = feedPhotos.reduce((acc, photo) => {
+                const activityId = photo.description || 'unlinked';
+                if (!acc[activityId]) {
+                    acc[activityId] = [];
+                }
+                acc[activityId].push(photo);
+                return acc;
+            }, {} as Record<string, typeof feedPhotos>);
+
             const posts = [];
 
             // Processa activities
             for (const activity of activities) {
-                const activityTime = activity.date_creation.getTime();
-
-                const nearbyPhotos = feedPhotos.filter(photo => {
-                    const photoTime = photo.date_creation.getTime();
-                    const timeDiff = Math.abs(activityTime - photoTime);
-                    return timeDiff <= 5 * 60 * 1000;
-                });
-
+                // Busca fotos vinculadas diretamente a este post (pelo activity.id)
+                const linkedPhotos = photosByActivityId[activity.id] || [];
+                
                 const photos = await Promise.all(
-                    nearbyPhotos.map(async (photo) => ({
+                    linkedPhotos.map(async (photo) => ({
                         id: photo.id,
                         url: await getPresignedUrl(photo.url),
                         date_creation: photo.date_creation
@@ -544,12 +544,12 @@ export class ProjectFeedController {
                 posts.push({
                     type: 'post',
                     id: activity.id,
-                    text: activity.text,
+                    text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
                     date_creation: activity.date_creation,
                     author: {
                         id: activity.author?.id,
                         name: activity.author?.name,
-                        avatar: activity.author?.avatar
+                        avatar: activity.author?.avatar 
                             ? await getPresignedUrl(activity.author.avatar)
                             : null
                     },
@@ -561,30 +561,26 @@ export class ProjectFeedController {
                 });
             }
 
-            // Fotos não associadas
-            const allUsedPhotoIds = new Set(
-                posts.flatMap(post => post.photos.map((p: any) => p.id))
-            );
-
-            for (const photo of feedPhotos) {
-                if (!allUsedPhotoIds.has(photo.id)) {
-                    posts.push({
-                        type: 'photo_only',
+            // Processa fotos antigas que não têm activity vinculada (compatibilidade com dados antigos)
+            const unlinkedPhotos = photosByActivityId['unlinked'] || [];
+            
+            for (const photo of unlinkedPhotos) {
+                posts.push({
+                    type: 'photo_only',
+                    id: photo.id,
+                    text: null,
+                    date_creation: photo.date_creation,
+                    author: null,
+                    serviceProject: {
+                        id: serviceProject.id,
+                        name: serviceProject.name
+                    },
+                    photos: [{
                         id: photo.id,
-                        text: photo.description,
-                        date_creation: photo.date_creation,
-                        author: null,
-                        serviceProject: {
-                            id: serviceProject.id,
-                            name: serviceProject.name
-                        },
-                        photos: [{
-                            id: photo.id,
-                            url: await getPresignedUrl(photo.url),
-                            date_creation: photo.date_creation
-                        }]
-                    });
-                }
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }]
+                });
             }
 
             posts.sort((a, b) =>
@@ -712,12 +708,13 @@ export class ProjectFeedController {
                 }
             });
 
-            // Agrupa fotos por serviço
-            const photosByService = feedPhotos.reduce((acc, photo) => {
-                if (!acc[photo.serviceProjectId || '']) {
-                    acc[photo.serviceProjectId || ''] = [];
+            // Agrupa fotos por activity.id (armazenado no campo description)
+            const photosByActivityId = feedPhotos.reduce((acc, photo) => {
+                const activityId = photo.description || 'unlinked';
+                if (!acc[activityId]) {
+                    acc[activityId] = [];
                 }
-                acc[photo.serviceProjectId || ''].push(photo);
+                acc[activityId].push(photo);
                 return acc;
             }, {} as Record<string, typeof feedPhotos>);
 
@@ -726,17 +723,11 @@ export class ProjectFeedController {
 
             // Processa activities
             for (const activity of activities) {
-                const activityTime = activity.date_creation.getTime();
-                const relatedPhotos = photosByService[activity.serviceProjectId || ''] || [];
+                // Busca fotos vinculadas diretamente a este post (pelo activity.id)
+                const linkedPhotos = photosByActivityId[activity.id] || [];
                 
-                const nearbyPhotos = relatedPhotos.filter(photo => {
-                    const photoTime = photo.date_creation.getTime();
-                    const timeDiff = Math.abs(activityTime - photoTime);
-                    return timeDiff <= 5 * 60 * 1000; // 5 minutos
-                });
-
                 const photos = await Promise.all(
-                    nearbyPhotos.map(async (photo) => ({
+                    linkedPhotos.map(async (photo) => ({
                         id: photo.id,
                         url: await getPresignedUrl(photo.url),
                         date_creation: photo.date_creation
@@ -746,7 +737,7 @@ export class ProjectFeedController {
                 posts.push({
                     type: 'post',
                     id: activity.id,
-                    text: activity.text,
+                    text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
                     date_creation: activity.date_creation,
                     serviceProject: activity.ServiceProject ? {
                         id: activity.ServiceProject.id,
@@ -761,36 +752,30 @@ export class ProjectFeedController {
                 });
             }
 
-            // Processa fotos não associadas a activities
-            const allUsedPhotoIds = new Set(
-                posts.flatMap(post => post.photos.map((p: any) => p.id))
-            );
-
-            for (const [serviceProjectId, photos] of Object.entries(photosByService)) {
-                for (const photo of photos) {
-                    if (!allUsedPhotoIds.has(photo.id)) {
-                        posts.push({
-                            type: 'photo_only',
-                            id: photo.id,
-                            text: photo.description,
-                            date_creation: photo.date_creation,
-                            serviceProject: photo.ServiceProject ? {
-                                id: photo.ServiceProject.id,
-                                name: photo.ServiceProject.name
-                            } : null,
-                            project: photo.ServiceProject?.Project ? {
-                                id: photo.ServiceProject.Project.id,
-                                status: photo.ServiceProject.Project.status_project,
-                                client: photo.ServiceProject.Project.client
-                            } : null,
-                            photos: [{
-                                id: photo.id,
-                                url: await getPresignedUrl(photo.url),
-                                date_creation: photo.date_creation
-                            }]
-                        });
-                    }
-                }
+            // Processa fotos antigas que não têm activity vinculada (compatibilidade com dados antigos)
+            const unlinkedPhotos = photosByActivityId['unlinked'] || [];
+            
+            for (const photo of unlinkedPhotos) {
+                posts.push({
+                    type: 'photo_only',
+                    id: photo.id,
+                    text: null,
+                    date_creation: photo.date_creation,
+                    serviceProject: photo.ServiceProject ? {
+                        id: photo.ServiceProject.id,
+                        name: photo.ServiceProject.name
+                    } : null,
+                    project: photo.ServiceProject?.Project ? {
+                        id: photo.ServiceProject.Project.id,
+                        status: photo.ServiceProject.Project.status_project,
+                        client: photo.ServiceProject.Project.client
+                    } : null,
+                    photos: [{
+                        id: photo.id,
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }]
+                });
             }
 
             // Ordena por data (mais recente primeiro)
