@@ -24,11 +24,37 @@ Esta implementação **NÃO requer migrações** pois reutiliza tabelas existent
 
 ## Endpoints
 
+### 💡 Flexibilidade do Endpoint de Criar Post
+
+O endpoint de criar post foi projetado para ser **super flexível**:
+
+```
+POST /projects/:id/feed
+```
+
+O parâmetro `:id` aceita **DOIS tipos de identificadores**:
+
+| Cenário | ID usado | Resultado |
+|---------|----------|-----------|
+| **Tela do Projeto** | `projectId` | ✅ Funciona direto |
+| **Tela do Serviço** | `serviceProjectId` | ✅ Sistema encontra o projeto automaticamente |
+
+**Por que isso é útil?**
+- Frontend pode chamar o mesmo endpoint de qualquer tela
+- Não precisa buscar o projectId quando está na tela do serviço
+- Menos requisições HTTP necessárias
+
+---
+
 ### 1. Criar Post no Feed
 
-**POST** `/projects/:projectId/feed`
+**POST** `/projects/:id/feed`
 
 Cria um post no feed do projeto. O funcionário deve estar em ponto ativo.
+
+**✨ Flexibilidade:** O parâmetro `:id` aceita tanto `projectId` quanto `serviceProjectId`!
+- Se passar o ID do projeto → funciona direto
+- Se passar o ID do serviço → o sistema encontra o projeto automaticamente
 
 #### Headers
 ```
@@ -37,7 +63,7 @@ Content-Type: multipart/form-data
 ```
 
 #### Parâmetros
-- `projectId` (URL) - ID do projeto
+- `id` (URL) - ID do projeto **OU** ID do serviço
 
 #### Body (multipart/form-data)
 ```
@@ -49,8 +75,20 @@ photos: File[] (opcional, máx 10) - Fotos do post
 **Nota:** É obrigatório enviar pelo menos `text` OU `photos`.
 
 #### Exemplo de Request (cURL)
+
+**Usando projectId:**
 ```bash
-curl -X POST 'http://localhost:3000/projects/abc-123/feed' \
+curl -X POST 'http://localhost:3000/projects/project-abc-123/feed' \
+  -H 'Authorization: Bearer seu-token' \
+  -F 'userId=user-123' \
+  -F 'text=Progresso do dia - instalação elétrica concluída' \
+  -F 'photos=@foto1.jpg' \
+  -F 'photos=@foto2.jpg'
+```
+
+**Usando serviceProjectId (também funciona!):**
+```bash
+curl -X POST 'http://localhost:3000/projects/service-xyz-789/feed' \
   -H 'Authorization: Bearer seu-token' \
   -F 'userId=user-123' \
   -F 'text=Progresso do dia - instalação elétrica concluída' \
@@ -98,7 +136,7 @@ curl -X POST 'http://localhost:3000/projects/abc-123/feed' \
 - **400** - É necessário enviar texto ou fotos
 - **400** - Você precisa estar em ponto para criar um post no feed
 - **400** - O seu ponto ativo não está vinculado a este projeto
-- **404** - Projeto não encontrado
+- **404** - Projeto ou serviço não encontrado
 - **404** - Usuário não encontrado
 
 ---
@@ -472,8 +510,8 @@ GalleryAfter {
 ### React/React Native
 
 ```javascript
-// Criar post no feed
-const createFeedPost = async (projectId, userId, text, photos) => {
+// Criar post no feed (flexível - aceita projectId OU serviceProjectId)
+const createFeedPost = async (id, userId, text, photos) => {
   const formData = new FormData();
   formData.append('userId', userId);
   formData.append('text', text);
@@ -483,7 +521,7 @@ const createFeedPost = async (projectId, userId, text, photos) => {
   });
 
   const response = await fetch(
-    `${API_URL}/projects/${projectId}/feed`,
+    `${API_URL}/projects/${id}/feed`,
     {
       method: 'POST',
       headers: {
@@ -494,6 +532,26 @@ const createFeedPost = async (projectId, userId, text, photos) => {
   );
 
   return response.json();
+};
+
+// Exemplo 1: Criando post na tela do PROJETO
+const handlePostFromProjectScreen = async () => {
+  await createFeedPost(
+    currentProject.id,  // ← projectId
+    currentUser.id,
+    'Progresso do dia!',
+    selectedPhotos
+  );
+};
+
+// Exemplo 2: Criando post na tela do SERVIÇO
+const handlePostFromServiceScreen = async () => {
+  await createFeedPost(
+    currentService.id,  // ← serviceProjectId (também funciona!)
+    currentUser.id,
+    'Serviço concluído!',
+    selectedPhotos
+  );
 };
 
 // Listar feed

@@ -6,8 +6,9 @@ const projectFeedController = new ProjectFeedController();
 const projectFeedRoutes = Router();
 
 // Criar post no feed (texto + fotos)
+// Aceita tanto projectId quanto serviceProjectId
 projectFeedRoutes.post(
-    '/projects/:projectId/feed',
+    '/projects/:id/feed',
     checkToken,
     projectFeedController.createPost.bind(projectFeedController)
 );

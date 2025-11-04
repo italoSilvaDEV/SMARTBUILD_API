@@ -20,7 +20,7 @@ export class ProjectFeedController {
             }
 
             try {
-                const { projectId } = request.params;
+                const { id } = request.params; // Aceita projectId OU serviceProjectId
                 const { text, userId } = request.body;
                 const files = request.files as Express.Multer.File[];
 
@@ -37,15 +37,39 @@ export class ProjectFeedController {
                     });
                 }
 
-                // Verifica se o projeto existe
-                const project = await prisma.project.findUnique({
-                    where: { id: projectId },
+                // Tenta encontrar como project primeiro
+                let project = await prisma.project.findUnique({
+                    where: { id: id },
                     select: { id: true, status_project: true }
                 });
 
+                let projectId = id;
+
+                // Se não encontrar, tenta como serviceProject
+                if (!project) {
+                    const serviceProject = await prisma.serviceProject.findUnique({
+                        where: { id: id },
+                        select: {
+                            id: true,
+                            projectId: true,
+                            Project: {
+                                select: {
+                                    id: true,
+                                    status_project: true
+                                }
+                            }
+                        }
+                    });
+
+                    if (serviceProject?.Project) {
+                        project = serviceProject.Project;
+                        projectId = serviceProject.projectId!;
+                    }
+                }
+
                 if (!project) {
                     return response.status(404).json({
-                        error: 'Projeto não encontrado'
+                        error: 'Projeto ou serviço não encontrado'
                     });
                 }
 
