@@ -293,7 +293,7 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error('❌ Erro ao gerar descrição:', error);
+            console.error(error);
             return res.status(500).json({
                 error: "Internal server error",
                 message: error instanceof Error ? error.message : 'Erro desconhecido'
