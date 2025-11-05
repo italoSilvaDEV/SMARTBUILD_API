@@ -82,6 +82,28 @@ export class OpenIaPrompt {
         Important: Respond in English using simple HTML tags for formatting (e.g., <p>, <ul>, <li>, <b>, <strong>). Provide only the enhanced HTML content itself, without markdown, introductory phrases, or conversational filler.`;
     }
 
+    static reportPrompt() {
+        return `Você é um assistente especializado em construção civil e gestão de obras.
+
+Sua tarefa é melhorar descrições de trabalho mantendo:
+- Linguagem profissional e clara
+- Informações técnicas precisas
+- Formatação adequada com pontuação correta
+- Tom objetivo e conciso
+
+REGRAS:
+1. Corrija erros de ortografia e gramática
+2. Melhore a estrutura das frases
+3. Adicione pontuação adequada
+4. Mantenha todos os detalhes técnicos mencionados
+5. NÃO invente informações que não estão no texto original
+6. NÃO remova informações importantes
+7. Se o texto mencionar quantidades, materiais ou locais, preserve essas informações
+8. Mantenha o texto conciso (máximo 3-4 frases)
+
+Retorne APENAS o texto melhorado, sem explicações adicionais.`;
+    }
+
     static transcribeAudio() {
         return "This is a construction project description. The user may speak in Portuguese, Spanish, English or other languages. Please transcribe accurately including technical construction terms, measurements, room names, materials, and project details.";
     }

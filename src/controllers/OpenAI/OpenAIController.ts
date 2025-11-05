@@ -27,26 +27,6 @@ const GPT_CONFIG = {
     MAX_TEXT_LENGTH: 5000
 } as const;
 
-const SYSTEM_PROMPT = `Você é um assistente especializado em construção civil e gestão de obras.
-
-Sua tarefa é melhorar descrições de trabalho mantendo:
-- Linguagem profissional e clara
-- Informações técnicas precisas
-- Formatação adequada com pontuação correta
-- Tom objetivo e conciso
-
-REGRAS:
-1. Corrija erros de ortografia e gramática
-2. Melhore a estrutura das frases
-3. Adicione pontuação adequada
-4. Mantenha todos os detalhes técnicos mencionados
-5. NÃO invente informações que não estão no texto original
-6. NÃO remova informações importantes
-7. Se o texto mencionar quantidades, materiais ou locais, preserve essas informações
-8. Mantenha o texto conciso (máximo 3-4 frases)
-
-Retorne APENAS o texto melhorado, sem explicações adicionais.`;
-
 export class OpenAIController {
     private validateAudioFile(file: Express.Multer.File): { valid: boolean; error?: string } {
         const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
@@ -86,7 +66,7 @@ export class OpenAIController {
             temperature: GPT_CONFIG.TEMPERATURE,
             max_tokens: GPT_CONFIG.MAX_TOKENS,
             messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'system', content: OpenIaPrompt.reportPrompt() },
                 { role: 'user', content: text }
             ]
         });
