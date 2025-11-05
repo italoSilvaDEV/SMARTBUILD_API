@@ -1297,5 +1297,368 @@ feed_notification (
 
 ---
 
+## 🤖 INTEGRAÇÃO COM OPENAI (Whisper + GPT)
+
+### 📋 Configuração
+
+**Variável de Ambiente:**
+```bash
+OPENAI_KEY="sk-proj-your-key-here"
+```
+
+**Pacote Instalado:**
+```bash
+npm install openai
+```
+
+---
+
+### 🎤 1. TRANSCREVER ÁUDIO (Whisper)
+
+**Endpoint:** `POST /ai/transcribe`
+
+**Descrição:** Transcreve áudio em texto usando o modelo Whisper da OpenAI.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+Content-Type: multipart/form-data
+```
+
+**Body (Form-Data):**
+- `audio` (file) - Arquivo de áudio
+
+**Formatos Suportados:**
+- `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`
+- Tamanho máximo: **25MB**
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "text": "Hoje realizamos a concretagem da fundação do bloco A. Foram utilizados 15 metros cúbicos de concreto usinado.",
+    "language": "pt",
+    "duration": null,
+    "model": "gpt-4o-mini-transcribe"
+  }
+}
+```
+
+**Erros:**
+
+| Status | Error | Descrição |
+|--------|-------|-----------|
+| 400 | Nenhum arquivo de áudio fornecido | Campo `audio` não foi enviado |
+| 400 | Formato de áudio não suportado | Formato do arquivo inválido |
+| 400 | Arquivo muito grande | Arquivo excede 25MB |
+| 500 | Erro ao transcrever áudio | Erro na API da OpenAI |
+
+**Exemplo (JavaScript):**
+```javascript
+const formData = new FormData();
+formData.append('audio', audioBlob, 'recording.webm');
+
+const response = await fetch('/ai/transcribe', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`
+  },
+  body: formData
+});
+
+const { data } = await response.json();
+console.log('Texto transcrito:', data.text);
+```
+
+---
+
+### ✨ 2. MELHORAR DESCRIÇÃO (GPT)
+
+**Endpoint:** `POST /ai/enhance-description`
+
+**Descrição:** Melhora e formata texto usando GPT-4o, corrigindo erros e ajustando para contexto de construção civil.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+**Body (JSON):**
+```json
+{
+  "text": "fiz a concretagem hj, usamo uns 15 metro cubico de concreto mais ou menos"
+}
+```
+
+**Validações:**
+- Campo `text` obrigatório (string)
+- Texto não pode estar vazio
+- Máximo 5000 caracteres
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "original": "fiz a concretagem hj, usamo uns 15 metro cubico de concreto mais ou menos",
+    "enhanced": "Realizei a concretagem hoje. Foram utilizados aproximadamente 15 metros cúbicos de concreto.",
+    "model": "gpt-4.1-nano",
+    "tokensUsed": 87
+  }
+}
+```
+
+**Comportamento do GPT:**
+- ✅ Corrige ortografia e gramática
+- ✅ Melhora estrutura das frases
+- ✅ Adiciona pontuação adequada
+- ✅ Mantém detalhes técnicos (quantidades, materiais, locais)
+- ✅ Linguagem profissional e concisa
+- ❌ NÃO inventa informações
+- ❌ NÃO remove informações importantes
+
+**Erros:**
+
+| Status | Error | Descrição |
+|--------|-------|-----------|
+| 400 | Campo "text" é obrigatório | Campo `text` não foi enviado |
+| 400 | Texto não pode estar vazio | String vazia |
+| 400 | Texto muito longo | Mais de 5000 caracteres |
+| 500 | Erro ao melhorar descrição | Erro na API da OpenAI |
+
+**Exemplo (JavaScript):**
+```javascript
+const response = await fetch('/ai/enhance-description', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    text: userInput
+  })
+});
+
+const { data } = await response.json();
+console.log('Original:', data.original);
+console.log('Melhorado:', data.enhanced);
+```
+
+---
+
+### 🎤✨ 3. TRANSCREVER E MELHORAR (Combinado)
+
+**Endpoint:** `POST /ai/transcribe-and-enhance`
+
+**Descrição:** Transcreve áudio E melhora o texto em uma única chamada (mais eficiente).
+
+**Headers:**
+```
+Authorization: Bearer {token}
+Content-Type: multipart/form-data
+```
+
+**Body (Form-Data):**
+- `audio` (file) - Arquivo de áudio
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "transcribed": "fiz a concretagem hj, usamo uns 15 metro cubico de concreto mais ou menos",
+    "enhanced": "Realizei a concretagem hoje. Foram utilizados aproximadamente 15 metros cúbicos de concreto.",
+    "models": {
+      "transcription": "gpt-4o-mini-transcribe",
+      "enhancement": "gpt-4.1-nano"
+    },
+    "tokensUsed": 87
+  }
+}
+```
+
+**Vantagens:**
+- ⚡ Mais rápido (1 requisição ao invés de 2)
+- 💰 Mais eficiente em tokens
+- 🎯 Ideal para fluxo completo: gravação → transcrição → formatação
+
+**Exemplo (JavaScript):**
+```javascript
+const formData = new FormData();
+formData.append('audio', audioBlob, 'recording.webm');
+
+const response = await fetch('/ai/transcribe-and-enhance', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`
+  },
+  body: formData
+});
+
+const { data } = await response.json();
+console.log('Transcrito:', data.transcribed);
+console.log('Melhorado:', data.enhanced);
+
+// Usar o texto melhorado no campo de descrição
+postDescriptionField.value = data.enhanced;
+```
+
+---
+
+## 📱 INTEGRAÇÃO FRONTEND - IA no Feed
+
+### Fluxo Recomendado
+
+**1. Botão de Microfone (Transcrição):**
+```javascript
+// Gravar áudio
+const mediaRecorder = new MediaRecorder(stream);
+const audioChunks = [];
+
+mediaRecorder.ondataavailable = (event) => {
+  audioChunks.push(event.data);
+};
+
+mediaRecorder.onstop = async () => {
+  const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+  
+  // Transcrever
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  
+  const response = await fetch('/ai/transcribe', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  
+  const { data } = await response.json();
+  
+  // Preencher campo de texto
+  document.getElementById('postDescription').value = data.text;
+};
+
+// Iniciar gravação
+mediaRecorder.start();
+```
+
+**2. Botão de IA (Melhorar Texto):**
+```javascript
+async function enhanceDescription() {
+  const textField = document.getElementById('postDescription');
+  const originalText = textField.value;
+  
+  if (!originalText.trim()) {
+    alert('Digite ou transcreva um texto primeiro');
+    return;
+  }
+  
+  // Mostrar loading
+  const enhanceButton = document.getElementById('enhanceButton');
+  enhanceButton.disabled = true;
+  enhanceButton.innerHTML = '✨ Melhorando...';
+  
+  try {
+    const response = await fetch('/ai/enhance-description', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text: originalText })
+    });
+    
+    const { data } = await response.json();
+    
+    // Atualizar campo com texto melhorado
+    textField.value = data.enhanced;
+    
+    // Feedback visual
+    showSuccessMessage('Descrição melhorada! ✨');
+    
+  } catch (error) {
+    console.error(error);
+    showErrorMessage('Erro ao melhorar descrição');
+  } finally {
+    enhanceButton.disabled = false;
+    enhanceButton.innerHTML = '✨ Melhorar com IA';
+  }
+}
+```
+
+**3. Fluxo Combinado (Recomendado):**
+```javascript
+// Um único botão que grava + transcreve + melhora
+async function recordAndEnhance() {
+  // 1. Gravar áudio
+  const audioBlob = await recordAudio();
+  
+  // 2. Transcrever E melhorar
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  
+  const response = await fetch('/ai/transcribe-and-enhance', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  
+  const { data } = await response.json();
+  
+  // 3. Preencher campo com texto JÁ melhorado
+  document.getElementById('postDescription').value = data.enhanced;
+  
+  // Mostrar preview do original (opcional)
+  showToast(`Transcrito: "${data.transcribed}"`);
+}
+```
+
+---
+
+
+## 🔒 SEGURANÇA
+
+### API Key Management
+**❌ NÃO FAZER:**
+```javascript
+// NUNCA expor a API key no frontend
+const openai = new OpenAI({ apiKey: 'sk-proj-...' });
+```
+
+**✅ CORRETO:**
+```javascript
+// Backend faz proxy das requisições
+// Frontend só chama /ai/transcribe e /ai/enhance-description
+```
+
+**Implementação Atual:**
+- ✅ API key configurada no backend via variável de ambiente
+- ✅ Endpoints protegidos com `checkToken` middleware
+- ✅ Frontend não tem acesso direto à OpenAI
+
+---
+
+## 📊 MONITORAMENTO
+
+### Logs do Console
+```javascript
+// Backend registra todas as chamadas
+console.log('🎤 Transcrevendo áudio:', { size, format });
+console.log('✅ Transcrição concluída:', { textLength, preview });
+console.log('✨ Melhorando descrição:', { originalLength });
+console.log('✅ Descrição melhorada:', { tokensUsed });
+```
+
+### Métricas Recomendadas
+- Número de transcrições/dia
+- Número de melhorias/dia
+- Tokens utilizados/dia
+- Tempo médio de resposta
+- Taxa de erro
+
+---
+
 **Desenvolvido com migrações mínimas - Máxima reutilização de estrutura** ✅
 
