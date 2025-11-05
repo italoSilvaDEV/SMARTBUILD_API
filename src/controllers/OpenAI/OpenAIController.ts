@@ -1,146 +1,31 @@
 import { Request, Response } from 'express';
 import OpenAI from 'openai';
-import { upload } from '../../config/upload';
+import multer from 'multer';
 
-// Inicializa cliente OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_KEY || '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'
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 }
 });
 
-export class OpenAIController {
-    /**
-     * 🎤 Transcreve áudio usando Whisper
-     * POST /ai/transcribe
-     * 
-     * @param request - Multipart form-data com campo 'audio' (arquivo de áudio)
-     * @param response - JSON com texto transcrito
-     */
-    async transcribe(request: Request, response: Response) {
-        const uploadSingle = upload.single('audio');
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_KEY
+});
 
-        uploadSingle(request, response, async (err) => {
-            if (err) {
-                return response.status(400).json({ 
-                    error: 'Erro ao fazer upload do áudio',
-                    details: err.message 
-                });
-            }
+const AUDIO_CONFIG = {
+    MAX_SIZE: 25 * 1024 * 1024,
+    VALID_EXTENSIONS: ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'],
+    MODEL: 'whisper-1',
+    LANGUAGE: 'pt'
+} as const;
 
-            try {
-                const file = request.file;
+const GPT_CONFIG = {
+    MODEL: 'gpt-4o-mini',
+    TEMPERATURE: 0.3,
+    MAX_TOKENS: 500,
+    MAX_TEXT_LENGTH: 5000
+} as const;
 
-                if (!file) {
-                    return response.status(400).json({ 
-                        error: 'Nenhum arquivo de áudio fornecido' 
-                    });
-                }
-
-                // Valida formato do arquivo
-                const allowedFormats = ['audio/mp3', 'audio/mp4', 'audio/mpeg', 'audio/mpga', 'audio/m4a', 'audio/wav', 'audio/webm'];
-                const fileExtension = file.originalname.split('.').pop()?.toLowerCase();
-                const validExtensions = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'];
-
-                if (!validExtensions.includes(fileExtension || '')) {
-                    return response.status(400).json({ 
-                        error: 'Formato de áudio não suportado',
-                        supportedFormats: validExtensions
-                    });
-                }
-
-                // Valida tamanho (máximo 25MB)
-                const maxSize = 25 * 1024 * 1024; // 25MB em bytes
-                if (file.size > maxSize) {
-                    return response.status(400).json({ 
-                        error: 'Arquivo muito grande',
-                        maxSize: '25MB',
-                        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
-                    });
-                }
-
-                console.log('🎤 Transcrevendo áudio:', {
-                    originalName: file.originalname,
-                    size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-                    mimetype: file.mimetype
-                });
-
-                // Transcreve usando Whisper (modelo gpt-4o-mini-transcribe para melhor qualidade)
-                const transcription = await openai.audio.transcriptions.create({
-                    file: file.buffer as any, // O buffer do arquivo
-                    model: 'gpt-4o-mini-transcribe',
-                    response_format: 'text',
-                    language: 'pt', // Português
-                    prompt: 'O áudio contém uma descrição de trabalho em construção civil. Inclua pontuação adequada.'
-                });
-
-                const transcribedText = typeof transcription === 'string' 
-                    ? transcription 
-                    : transcription.text;
-
-                console.log('✅ Transcrição concluída:', {
-                    textLength: transcribedText.length,
-                    preview: transcribedText.substring(0, 100)
-                });
-
-                return response.status(200).json({
-                    success: true,
-                    data: {
-                        text: transcribedText,
-                        language: 'pt',
-                        duration: null, // Whisper não retorna duração
-                        model: 'gpt-4o-mini-transcribe'
-                    }
-                });
-
-            } catch (error: any) {
-                console.error('❌ Erro ao transcrever áudio:', error);
-                
-                return response.status(500).json({
-                    error: 'Erro ao transcrever áudio',
-                    message: error.message || 'Erro desconhecido',
-                    details: error.response?.data || null
-                });
-            }
-        });
-    }
-
-    /**
-     * ✨ Melhora descrição usando GPT
-     * POST /ai/enhance-description
-     * 
-     * @param request - Body: { text: string }
-     * @param response - JSON com texto melhorado
-     */
-    async enhanceDescription(request: Request, response: Response) {
-        try {
-            const { text } = request.body;
-
-            // Validações
-            if (!text || typeof text !== 'string') {
-                return response.status(400).json({ 
-                    error: 'Campo "text" é obrigatório e deve ser uma string' 
-                });
-            }
-
-            if (text.trim().length === 0) {
-                return response.status(400).json({ 
-                    error: 'Texto não pode estar vazio' 
-                });
-            }
-
-            if (text.length > 5000) {
-                return response.status(400).json({ 
-                    error: 'Texto muito longo (máximo 5000 caracteres)',
-                    currentLength: text.length
-                });
-            }
-
-            console.log('✨ Melhorando descrição:', {
-                originalLength: text.length,
-                preview: text.substring(0, 100)
-            });
-
-            // Prompt otimizado para descrições de construção civil
-            const systemPrompt = `Você é um assistente especializado em construção civil e gestão de obras.
+const SYSTEM_PROMPT = `Você é um assistente especializado em construção civil e gestão de obras.
 
 Sua tarefa é melhorar descrições de trabalho mantendo:
 - Linguagem profissional e clara
@@ -160,144 +45,206 @@ REGRAS:
 
 Retorne APENAS o texto melhorado, sem explicações adicionais.`;
 
-            const completion = await openai.chat.completions.create({
-                model: 'gpt-4.1-nano',
-                temperature: 0.3, // Baixa temperatura para respostas mais consistentes
-                max_tokens: 500,
-                messages: [
-                    {
-                        role: 'system',
-                        content: systemPrompt
-                    },
-                    {
-                        role: 'user',
-                        content: text
+export class OpenAIController {
+    private validateAudioFile(file: Express.Multer.File): { valid: boolean; error?: string } {
+        const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
+
+        if (!AUDIO_CONFIG.VALID_EXTENSIONS.includes(fileExtension as any)) {
+            return {
+                valid: false,
+                error: `Formato de áudio não suportado. Formatos válidos: ${AUDIO_CONFIG.VALID_EXTENSIONS.join(', ')}`
+            };
+        }
+
+        if (file.size > AUDIO_CONFIG.MAX_SIZE) {
+            return {
+                valid: false,
+                error: `Arquivo muito grande. Tamanho máximo: 25MB. Seu arquivo: ${(file.size / 1024 / 1024).toFixed(2)}MB`
+            };
+        }
+
+        return { valid: true };
+    }
+
+    private async transcribeAudio(file: Express.Multer.File): Promise<string> {
+
+        const transcription = await openai.audio.transcriptions.create({
+            file: new File([file.buffer as any], file.originalname, { type: file.mimetype }),
+            model: AUDIO_CONFIG.MODEL,
+            language: AUDIO_CONFIG.LANGUAGE,
+            prompt: 'O áudio contém uma descrição de trabalho em construção civil. Inclua pontuação adequada.'
+        });
+
+        return transcription.text;
+    }
+
+    private async enhanceText(text: string): Promise<{ enhanced: string; tokensUsed: number }> {
+        const completion = await openai.chat.completions.create({
+            model: GPT_CONFIG.MODEL,
+            temperature: GPT_CONFIG.TEMPERATURE,
+            max_tokens: GPT_CONFIG.MAX_TOKENS,
+            messages: [
+                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'user', content: text }
+            ]
+        });
+
+        const enhanced = completion.choices[0]?.message?.content || text;
+        const tokensUsed = completion.usage?.total_tokens || 0;
+
+        return { enhanced, tokensUsed };
+    }
+
+    async transcribe(request: Request, response: Response): Promise<Response> {
+        const uploadSingle = upload.single('audio');
+
+        return new Promise((resolve) => {
+            uploadSingle(request, response, async (err: any) => {
+                if (err) {
+                    return resolve(response.status(400).json({
+                        error: 'Erro ao fazer upload do áudio',
+                        details: err.message
+                    }));
+                }
+
+                try {
+                    const file = request.file;
+
+                    if (!file) {
+                        return resolve(response.status(400).json({
+                            error: 'Nenhum arquivo de áudio fornecido'
+                        }));
                     }
-                ]
-            });
 
-            const enhancedText = completion.choices[0]?.message?.content || text;
+                    const validation = this.validateAudioFile(file);
+                    if (!validation.valid) {
+                        return resolve(response.status(400).json({
+                            error: validation.error
+                        }));
+                    }
 
-            console.log('✅ Descrição melhorada:', {
-                originalLength: text.length,
-                enhancedLength: enhancedText.length,
-                tokensUsed: completion.usage?.total_tokens
+                    const text = await this.transcribeAudio(file);
+
+                    return resolve(response.status(200).json({
+                        success: true,
+                        data: {
+                            text,
+                            language: AUDIO_CONFIG.LANGUAGE,
+                            model: AUDIO_CONFIG.MODEL
+                        }
+                    }));
+
+                } catch (error: any) {
+                    console.error('❌ Erro ao transcrever áudio:', error);
+
+                    return resolve(response.status(500).json({
+                        error: 'Erro ao transcrever áudio',
+                        message: error.message || 'Erro desconhecido'
+                    }));
+                }
             });
+        });
+    }
+
+    async enhanceDescription(request: Request, response: Response): Promise<Response> {
+        try {
+            const { text } = request.body;
+
+            if (!text || typeof text !== 'string') {
+                return response.status(400).json({
+                    error: 'Campo "text" é obrigatório e deve ser uma string'
+                });
+            }
+
+            if (text.trim().length === 0) {
+                return response.status(400).json({
+                    error: 'Texto não pode estar vazio'
+                });
+            }
+
+            if (text.length > GPT_CONFIG.MAX_TEXT_LENGTH) {
+                return response.status(400).json({
+                    error: `Texto muito longo. Máximo: ${GPT_CONFIG.MAX_TEXT_LENGTH} caracteres`,
+                    currentLength: text.length
+                });
+            }
+
+            const { enhanced, tokensUsed } = await this.enhanceText(text);
 
             return response.status(200).json({
                 success: true,
                 data: {
                     original: text,
-                    enhanced: enhancedText,
-                    model: 'gpt-4.1-nano',
-                    tokensUsed: completion.usage?.total_tokens || 0
+                    enhanced,
+                    model: GPT_CONFIG.MODEL,
+                    tokensUsed
                 }
             });
 
         } catch (error: any) {
             console.error('❌ Erro ao melhorar descrição:', error);
-            
+
             return response.status(500).json({
                 error: 'Erro ao melhorar descrição',
-                message: error.message || 'Erro desconhecido',
-                details: error.response?.data || null
+                message: error.message || 'Erro desconhecido'
             });
         }
     }
 
-    /**
-     * 🎤✨ Transcreve E melhora em uma única chamada (mais eficiente)
-     * POST /ai/transcribe-and-enhance
-     * 
-     * @param request - Multipart form-data com campo 'audio'
-     * @param response - JSON com texto transcrito E melhorado
-     */
-    async transcribeAndEnhance(request: Request, response: Response) {
+    async transcribeAndEnhance(request: Request, response: Response): Promise<Response> {
         const uploadSingle = upload.single('audio');
 
-        uploadSingle(request, response, async (err) => {
-            if (err) {
-                return response.status(400).json({ 
-                    error: 'Erro ao fazer upload do áudio',
-                    details: err.message 
-                });
-            }
-
-            try {
-                const file = request.file;
-
-                if (!file) {
-                    return response.status(400).json({ 
-                        error: 'Nenhum arquivo de áudio fornecido' 
-                    });
+        return new Promise((resolve) => {
+            uploadSingle(request, response, async (err: any) => {
+                if (err) {
+                    return resolve(response.status(400).json({
+                        error: 'Erro ao fazer upload do áudio',
+                        details: err.message
+                    }));
                 }
 
-                console.log('🎤✨ Transcrevendo e melhorando áudio...');
+                try {
+                    const file = request.file;
 
-                // Passo 1: Transcrever
-                const transcription = await openai.audio.transcriptions.create({
-                    file: file.buffer as any,
-                    model: 'gpt-4o-mini-transcribe',
-                    response_format: 'text',
-                    language: 'pt',
-                    prompt: 'O áudio contém uma descrição de trabalho em construção civil.'
-                });
-
-                const transcribedText = typeof transcription === 'string' 
-                    ? transcription 
-                    : transcription.text;
-
-                console.log('✅ Transcrição concluída');
-
-                // Passo 2: Melhorar
-                const systemPrompt = `Você é um assistente especializado em construção civil e gestão de obras.
-
-Melhore a descrição mantendo linguagem profissional, corrigindo erros, e preservando todos os detalhes técnicos.
-Retorne APENAS o texto melhorado, sem explicações.`;
-
-                const completion = await openai.chat.completions.create({
-                    model: 'gpt-4.1-nano',
-                    temperature: 0.3,
-                    max_tokens: 500,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: systemPrompt
-                        },
-                        {
-                            role: 'user',
-                            content: transcribedText
-                        }
-                    ]
-                });
-
-                const enhancedText = completion.choices[0]?.message?.content || transcribedText;
-
-                console.log('✅ Descrição melhorada');
-
-                return response.status(200).json({
-                    success: true,
-                    data: {
-                        transcribed: transcribedText,
-                        enhanced: enhancedText,
-                        models: {
-                            transcription: 'gpt-4o-mini-transcribe',
-                            enhancement: 'gpt-4.1-nano'
-                        },
-                        tokensUsed: completion.usage?.total_tokens || 0
+                    if (!file) {
+                        return resolve(response.status(400).json({
+                            error: 'Nenhum arquivo de áudio fornecido'
+                        }));
                     }
-                });
 
-            } catch (error: any) {
-                console.error('❌ Erro ao processar áudio:', error);
-                
-                return response.status(500).json({
-                    error: 'Erro ao processar áudio',
-                    message: error.message || 'Erro desconhecido',
-                    details: error.response?.data || null
-                });
-            }
+                    const validation = this.validateAudioFile(file);
+                    if (!validation.valid) {
+                        return resolve(response.status(400).json({
+                            error: validation.error
+                        }));
+                    }
+
+                    const transcribed = await this.transcribeAudio(file);
+
+                    const { enhanced, tokensUsed } = await this.enhanceText(transcribed);
+
+                    return resolve(response.status(200).json({
+                        success: true,
+                        data: {
+                            transcribed,
+                            enhanced,
+                            models: {
+                                transcription: AUDIO_CONFIG.MODEL,
+                                enhancement: GPT_CONFIG.MODEL
+                            },
+                            tokensUsed
+                        }
+                    }));
+
+                } catch (error: any) {
+                    console.error('❌ Erro ao processar áudio:', error);
+
+                    return resolve(response.status(500).json({
+                        error: 'Erro ao processar áudio',
+                        message: error.message || 'Erro desconhecido'
+                    }));
+                }
+            });
         });
     }
 }
-
