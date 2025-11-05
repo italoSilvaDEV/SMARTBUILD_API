@@ -263,12 +263,23 @@ export class OpenAIController {
             });
         }
 
+        if (categoryName !== undefined && !categoryName) {
+            return res.status(400).json({
+                error: "Category name cannot be empty when provided"
+            });
+        }
+
         try {
             const response = await openai.chat.completions.create({
                 model: "gpt-4.1-nano",
                 messages: [{
                     role: "user",
-                    content: OpenIaPrompt.switch(categoryName ? "generateDescriptionCategory" : "generateDescription", serviceName, description, categoryName)
+                    content: OpenIaPrompt.switch(
+                        categoryName ? "generateDescriptionCategory" : "generateDescription",
+                        serviceName,
+                        description,
+                        categoryName
+                    )
                 }],
                 temperature: 0.7,
             });
@@ -301,12 +312,25 @@ export class OpenAIController {
             });
         }
 
+        if (categoryName !== undefined && !categoryName) {
+            return res.status(400).json({
+                error: "Category name cannot be empty when provided"
+            });
+        }
+
         try {
             const response = await openai.chat.completions.create({
                 model: "gpt-4.1-nano",
                 messages: [{
                     role: "user",
-                    content: OpenIaPrompt.switch(categoryName ? "incrementDescriptionCategory" : "incrementDescription", serviceName, quantity, price, description, categoryName)
+                    content: OpenIaPrompt.switch(
+                        categoryName ? "incrementDescriptionCategory" : "incrementDescription",
+                        serviceName,
+                        description,
+                        quantity,
+                        price,
+                        categoryName
+                    )
                 }],
                 temperature: 0.7,
             });
