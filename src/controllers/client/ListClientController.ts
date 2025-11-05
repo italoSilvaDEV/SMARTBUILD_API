@@ -167,7 +167,7 @@ export class ListClientController {
                 }
                 : {};
 
-            // Buscar clientes
+            // Buscar clientes com projetos e invoices
             const clientsQuery = await prisma.client.findMany({
                 where: {
                     company_id: String(company_id),
@@ -177,15 +177,20 @@ export class ListClientController {
                 include: {
                     _count: {
                         select: { 
-                            projects: {
-                                where: {
-                                    status_project: {
-                                        notIn: ["Pending", "Accepted"]
-                                    }
-                                }
-                            }
+                            projects: true
                         },
                     },
+                    projects: {
+                        include: {
+                            invoices: {
+                                select: {
+                                    totalAmount: true,
+                                    status: true,
+                                    dueDate: true,
+                                }
+                            }
+                        }
+                    }
                 },
             });
 
@@ -208,12 +213,38 @@ export class ListClientController {
                 },
             });
 
-            // Formatar resposta
-            const formattedClients = clientsQuery.map((
-                {
+            // Formatar resposta com dados de invoices
+            const formattedClients = clientsQuery.map((client) => {
+                const {
                     id, name, email, phone, _count, location, addressOffice,
-                    lat, log, birth_date, document, radius
-                }) => ({
+                    lat, log, birth_date, document, radius, projects
+                } = client;
+
+                // Calcular estatísticas de invoices
+                const currentDate = new Date();
+                let totalRevenue = 0;
+                let totalPaid = 0;
+                let totalNotDueYet = 0;
+                let totalOverdue = 0;
+
+                projects.forEach(project => {
+                    project.invoices.forEach(invoice => {
+                        const amount = Number(invoice.totalAmount || 0);
+                        
+                        if (invoice.status === 'paid') {
+                            totalPaid += amount;
+                            totalRevenue += amount;
+                        } else if (invoice.dueDate && new Date(invoice.dueDate) < currentDate) {
+                            totalOverdue += amount;
+                            totalRevenue += amount;
+                        } else {
+                            totalNotDueYet += amount;
+                            totalRevenue += amount;
+                        }
+                    });
+                });
+
+                return {
                     id,
                     name,
                     email,
@@ -226,7 +257,12 @@ export class ListClientController {
                     log,
                     projects: _count.projects,
                     radius,
-                }));
+                    totalRevenue: Number(totalRevenue.toFixed(2)),
+                    totalPaid: Number(totalPaid.toFixed(2)),
+                    totalNotDueYet: Number(totalNotDueYet.toFixed(2)),
+                    totalOverdue: Number(totalOverdue.toFixed(2)),
+                };
+            });
 
             return res.json({
                 total: totalCount,
