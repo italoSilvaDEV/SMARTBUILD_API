@@ -249,6 +249,7 @@ export class ProjectFeedController {
                 select: {
                     id: true,
                     name: true,
+                    projectId: true,
                     Project: {
                         select: {
                             id: true,
