@@ -263,6 +263,7 @@ export class OpenAIController {
             });
         }
 
+
         if (categoryName !== undefined && !categoryName) {
             return res.status(400).json({
                 error: "Category name cannot be empty when provided"
@@ -278,6 +279,8 @@ export class OpenAIController {
                         categoryName ? "generateDescriptionCategory" : "generateDescription",
                         serviceName,
                         description,
+                        undefined,
+                        undefined,
                         categoryName
                     )
                 }],
@@ -290,9 +293,10 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error(error);
+            console.error('❌ Erro ao gerar descrição:', error);
             return res.status(500).json({
-                error: "Internal server error"
+                error: "Internal server error",
+                message: error instanceof Error ? error.message : 'Erro desconhecido'
             });
         }
     }
