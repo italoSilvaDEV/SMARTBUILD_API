@@ -192,7 +192,8 @@ export class ProjectFeedController {
                         photos: photos,
                         serviceProject: {
                             id: serviceProject.id,
-                            name: serviceProject.name
+                            name: serviceProject.name,
+                            projectId: serviceProject.projectId
                         }
                     }
                 });
@@ -412,7 +413,8 @@ export class ProjectFeedController {
                     },
                     serviceProject: serviceProject ? {
                         id: serviceProject.id,
-                        name: serviceProject.name
+                        name: serviceProject.name,
+                        projectId: serviceProject.projectId
                     } : null,
                     location: serviceProject?.Project ? {
                         address: serviceProject.Project.location,
@@ -447,7 +449,8 @@ export class ProjectFeedController {
                     author: null,
                     serviceProject: serviceProject ? {
                         id: serviceProject.id,
-                        name: serviceProject.name
+                        name: serviceProject.name,
+                        projectId: serviceProject.projectId
                     } : null,
                     location: serviceProject?.Project ? {
                         address: serviceProject.Project.location,
@@ -880,7 +883,8 @@ export class ProjectFeedController {
                     },
                     serviceProject: {
                         id: serviceProject.id,
-                        name: serviceProject.name
+                        name: serviceProject.name,
+                        projectId: serviceProject.projectId
                     },
                     photos: photos,
                     likesCount: likesMap[activity.id] || 0,
@@ -900,7 +904,8 @@ export class ProjectFeedController {
                     author: null,
                     serviceProject: {
                         id: serviceProject.id,
-                        name: serviceProject.name
+                        name: serviceProject.name,
+                        projectId: serviceProject.projectId
                     },
                     photos: [{
                         id: photo.id,
@@ -1121,7 +1126,8 @@ export class ProjectFeedController {
                     },
                     serviceProject: activity.ServiceProject ? {
                         id: activity.ServiceProject.id,
-                        name: activity.ServiceProject.name
+                        name: activity.ServiceProject.name,
+                        projectId: activity.ServiceProject.projectId
                     } : null,
                     project: activity.ServiceProject?.Project ? {
                         id: activity.ServiceProject.Project.id,
@@ -1153,7 +1159,8 @@ export class ProjectFeedController {
                     author: null, // Fotos antigas sem activity não têm autor
                     serviceProject: photo.ServiceProject ? {
                         id: photo.ServiceProject.id,
-                        name: photo.ServiceProject.name
+                        name: photo.ServiceProject.name,
+                        projectId: photo.ServiceProject.projectId
                     } : null,
                     project: photo.ServiceProject?.Project ? {
                         id: photo.ServiceProject.Project.id,

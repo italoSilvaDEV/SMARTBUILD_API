@@ -125,7 +125,8 @@ curl -X POST 'http://localhost:3000/projects/service-xyz-789/feed' \
     ],
     "serviceProject": {
       "id": "service-123",
-      "name": "Instalação Elétrica"
+      "name": "Instalação Elétrica",
+      "projectId": "project-456"
     }
   }
 }
@@ -237,7 +238,8 @@ curl -X GET 'http://localhost:3000/projects/abc-123/feed?serviceProjectId=servic
         "author": null,
         "serviceProject": {
           "id": "service-456",
-          "name": "Pintura"
+          "name": "Pintura",
+          "projectId": "project-123"
         },
         "photos": [
           {
@@ -505,7 +507,8 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
         "date_creation": "2024-11-03T14:20:00.000Z",
         "serviceProject": {
           "id": "service-789",
-          "name": "Pintura"
+          "name": "Pintura",
+          "projectId": "project-123"
         },
         "project": {
           "id": "project-xyz",
@@ -1292,6 +1295,47 @@ feed_notification (
 - Adicionado `location`, `lat`, `log` no select do Project
 - Adicionado campo `location` com endereço e coordenadas na resposta
 - Localização agora é exibida corretamente nos cards
+
+**Status:** ✅ RESOLVIDO
+
+---
+
+### ✅ Bug #3: Campo `projectId` ausente em `serviceProject` (04/11/2025)
+
+**Problema:** Objeto `serviceProject` não incluía o campo `projectId`, impedindo navegação para o projeto
+
+**Resposta anterior (incorreta):**
+```json
+{
+  "serviceProject": {
+    "id": "63450e2a-8310-49ed-8776-a19054297ddb",
+    "name": "TIJOLO"
+  }
+}
+```
+
+**Resposta corrigida:**
+```json
+{
+  "serviceProject": {
+    "id": "63450e2a-8310-49ed-8776-a19054297ddb",
+    "name": "TIJOLO",
+    "projectId": "xxx-xxx-xxx"
+  }
+}
+```
+
+**Correção aplicada:**
+- ✅ Adicionado campo `projectId` em `serviceProject` em **todos os endpoints**:
+  - `POST /projects/:id/feed` (createPost)
+  - `GET /projects/:projectId/feed` (getFeed)
+  - `GET /services/:serviceProjectId/feed` (getServiceFeed)
+  - `GET /users/:userId/feed` (getUserFeed)
+
+**Impacto:**
+- ✅ Botão "View Project" agora aparece e funciona
+- ✅ Frontend pode navegar do post para o projeto
+- ✅ Consistência em todas as respostas da API
 
 **Status:** ✅ RESOLVIDO
 
