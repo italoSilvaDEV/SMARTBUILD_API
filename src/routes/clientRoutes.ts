@@ -5,6 +5,7 @@ import { ListClientController } from '../controllers/client/ListClientController
 import { GetClientFinancialDetailsController } from '../controllers/client/GetClientFinancialDetailsController';
 import { ClientDashboardController } from '../controllers/client/ClientDashboardController';
 import { MergeClientController } from '../controllers/client/MergeClientController';
+import { DeleteClientController } from '../controllers/client/DeleteClientController';
 import { checkToken } from '../middlewares/checkToken';
 import { GetClientController } from '../controllers/client/getClientController';
 
@@ -17,9 +18,11 @@ const getClientFinancialDetailsController = new GetClientFinancialDetailsControl
 const getClientController = new GetClientController();
 const clientDashboardController = new ClientDashboardController();
 const mergeClientController = new MergeClientController();
+const deleteClientController = new DeleteClientController();
 
 clientRoutes.post('/client', checkToken, createClientController.handle);//ok novo modelo
 clientRoutes.put('/client/:id', checkToken, updateClientController.handle); //ok novo modelo
+clientRoutes.delete('/client/:id', checkToken, deleteClientController.handle); // Delete client
 clientRoutes.get('/clients', checkToken, listClientController.handleNewClients); //ok novo modelo
 clientRoutes.get('/clients-with-work-contexts', checkToken, listClientController.handleClientsWithWorkContexts); // clientes com work contexts
 clientRoutes.get('/client/financial/:email', checkToken, getClientFinancialDetailsController.handle);
