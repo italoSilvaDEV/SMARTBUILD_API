@@ -2,6 +2,93 @@ import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { getQbClientWithAccountOrThrow } from '../quickbooks/util/QuickBooksClientUtil';
 
+// Função auxiliar para merge no QuickBooks (fora da classe para evitar problemas com 'this')
+async function mergeQuickBooksCustomers(
+    companyId: string,
+    sourceQBId: string,
+    targetQBId: string,
+    userId: string
+): Promise<{ success: boolean; error?: string; warning?: string }> {
+    try {
+        // Obter cliente QuickBooks com método robusto (mesmo usado em invoices)
+        const { qb } = await getQbClientWithAccountOrThrow(userId, companyId);
+
+        console.log(`[QB Merge] Starting QB customer merge: ${sourceQBId} -> ${targetQBId}`);
+
+        // QuickBooks Merge: Inactivate source customer (if possible)
+        return new Promise((resolve) => {
+            // 1. Fetch source customer
+            qb.getCustomer(sourceQBId, (err: any, sourceCustomer: any) => {
+                if (err) {
+                    console.error('[QB Merge] Error fetching source customer from QuickBooks:', err);
+                    resolve({ success: false, error: 'Failed to fetch source customer from QuickBooks' });
+                    return;
+                }
+
+                console.log(`[QB Merge] Source customer found: ${sourceCustomer.DisplayName}`);
+                
+                const balance = Number(sourceCustomer.Balance || 0);
+                console.log(`[QB Merge] Customer balance: $${balance}`);
+
+                // 2. Prepare merge note
+                const mergeNote = `MERGED INTO Customer ${targetQBId} on ${new Date().toISOString()}`;
+                sourceCustomer.Notes = sourceCustomer.Notes 
+                    ? `${sourceCustomer.Notes}\n\n${mergeNote}`
+                    : mergeNote;
+
+                // 3. Check if can inactivate (balance = 0)
+                if (balance === 0) {
+                    // Can inactivate: no pending balance
+                    sourceCustomer.Active = false;
+                    console.log(`[QB Merge] Inactivating customer (balance = 0)`);
+                } else {
+                    // Cannot inactivate: has pending balance
+                    // Keep active but add note
+                    sourceCustomer.Active = true;
+                    console.log(`[QB Merge] WARNING: Customer kept ACTIVE (balance = $${balance})`);
+                    console.log(`[QB Merge] QuickBooks doesn't allow inactivating customers with pending balance`);
+                }
+                
+                // 4. Update customer in QuickBooks
+                qb.updateCustomer(sourceCustomer, (updateErr: any, updatedCustomer: any) => {
+                    if (updateErr) {
+                        console.error('[QB Merge] Error updating source customer in QuickBooks:', updateErr);
+                        
+                        // Check if it's a balance error
+                        const errorMsg = JSON.stringify(updateErr);
+                        if (errorMsg.includes('6220') || errorMsg.includes('balance')) {
+                            resolve({ 
+                                success: true, 
+                                warning: `Customer cannot be inactivated in QuickBooks due to pending balance of $${balance}. Merge note has been added.` 
+                            });
+                        } else {
+                            resolve({ success: false, error: 'Failed to update source customer in QuickBooks' });
+                        }
+                        return;
+                    }
+
+                    if (balance === 0) {
+                        console.log(`[QB Merge] Source customer successfully inactivated: ${sourceQBId}`);
+                        resolve({ success: true });
+                    } else {
+                        console.log(`[QB Merge] Source customer updated (kept active due to balance): ${sourceQBId}`);
+                        resolve({ 
+                            success: true, 
+                            warning: `Customer kept active in QuickBooks due to pending balance of $${balance}. Merge note has been added.` 
+                        });
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        console.error("[QB Merge] Error in mergeQuickBooksCustomers:", error);
+        return { 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+    }
+}
+
 export class MergeClientController {
     // Preview dos dados de um cliente para o merge
     async getClientMergePreview(req: Request, res: Response) {
@@ -202,7 +289,7 @@ export class MergeClientController {
                 warnings.push({
                     type: 'QUICKBOOKS_CONFLICT',
                     severity: 'HIGH',
-                    message: 'Ambos os clientes possuem IDs diferentes do QuickBooks. O merge será realizado também no QuickBooks.',
+                    message: 'Both clients have different QuickBooks IDs. The merge will also be performed in QuickBooks.',
                     details: {
                         sourceQBId: sourceClient.idQuickbooks,
                         targetQBId: targetClient.idQuickbooks
@@ -212,7 +299,7 @@ export class MergeClientController {
                 warnings.push({
                     type: 'QUICKBOOKS_SOURCE_ONLY',
                     severity: 'MEDIUM',
-                    message: 'Apenas o cliente de origem possui ID do QuickBooks. Ele será transferido para o cliente de destino.',
+                    message: 'Only the source client has a QuickBooks ID. It will be transferred to the target client.',
                     details: {
                         sourceQBId: sourceClient.idQuickbooks
                     }
@@ -221,7 +308,7 @@ export class MergeClientController {
                 warnings.push({
                     type: 'QUICKBOOKS_TARGET_ONLY',
                     severity: 'LOW',
-                    message: 'Apenas o cliente de destino possui ID do QuickBooks. Nenhuma ação adicional necessária no QuickBooks.',
+                    message: 'Only the target client has a QuickBooks ID. No additional action needed in QuickBooks.',
                     details: {
                         targetQBId: targetClient.idQuickbooks
                     }
@@ -382,12 +469,14 @@ export class MergeClientController {
                 maxWait: 5000
             });
 
-            // 7. Tentar merge no QuickBooks (assíncrono, não bloqueia)
+            // 7. Tentar merge no QuickBooks (após a transação ser concluída)
             if (result.sourceClient.idQuickbooks && result.targetClient.idQuickbooks && 
                 result.sourceClient.idQuickbooks !== result.targetClient.idQuickbooks) {
                 
+                console.log('[Client Merge] Starting QuickBooks merge...');
                 try {
-                    const qbMergeResult = await this.mergeQuickBooksCustomers(
+                    // Use independent helper function (doesn't depend on 'this')
+                    const qbMergeResult = await mergeQuickBooksCustomers(
                         String(company_id),
                         result.sourceClient.idQuickbooks,
                         result.targetClient.idQuickbooks,
@@ -398,11 +487,20 @@ export class MergeClientController {
                     
                     if (!qbMergeResult.success) {
                         result.stats.quickbooksError = qbMergeResult.error || 'Unknown error';
+                        console.error('[Client Merge] QuickBooks merge failed:', qbMergeResult.error);
+                    } else if (qbMergeResult.warning) {
+                        // Success with warning (customer kept active due to balance)
+                        result.stats.quickbooksError = qbMergeResult.warning;
+                        console.log('[Client Merge] QuickBooks merge completed with warning:', qbMergeResult.warning);
+                    } else {
+                        console.log('[Client Merge] QuickBooks merge completed successfully');
                     }
                 } catch (qbError) {
-                    console.error("QuickBooks merge error:", qbError);
+                    console.error("[Client Merge] QuickBooks merge error:", qbError);
                     result.stats.quickbooksError = qbError instanceof Error ? qbError.message : 'QuickBooks merge failed';
                 }
+            } else {
+                console.log('[Client Merge] QuickBooks merge not necessary (IDs are equal or non-existent)');
             }
 
             return res.json(result);
@@ -411,59 +509,6 @@ export class MergeClientController {
             return res.status(500).json({ 
                 error: error instanceof Error ? error.message : "Internal server error" 
             });
-        }
-    }
-
-    // Merge no QuickBooks
-    private async mergeQuickBooksCustomers(
-        companyId: string,
-        sourceQBId: string,
-        targetQBId: string,
-        userId: string
-    ): Promise<{ success: boolean; error?: string }> {
-        try {
-            // Obter cliente QuickBooks com método robusto (mesmo usado em invoices)
-            const { qb } = await getQbClientWithAccountOrThrow(userId, companyId);
-
-            console.log(`[QB Merge] Iniciando merge de clientes QB: ${sourceQBId} -> ${targetQBId}`);
-
-            // Merge no QuickBooks: Inativar source customer
-            return new Promise((resolve) => {
-                // 1. Buscar o customer de origem
-                qb.getCustomer(sourceQBId, (err: any, sourceCustomer: any) => {
-                    if (err) {
-                        console.error('[QB Merge] Error fetching source customer from QuickBooks:', err);
-                        resolve({ success: false, error: 'Failed to fetch source customer from QuickBooks' });
-                        return;
-                    }
-
-                    console.log(`[QB Merge] Source customer encontrado: ${sourceCustomer.DisplayName}`);
-
-                    // 2. Inativar o customer de origem e adicionar nota
-                    sourceCustomer.Active = false;
-                    sourceCustomer.Notes = sourceCustomer.Notes 
-                        ? `${sourceCustomer.Notes}\n\nMERGED INTO Customer ${targetQBId} on ${new Date().toISOString()}`
-                        : `MERGED INTO Customer ${targetQBId} on ${new Date().toISOString()}`;
-                    
-                    // 3. Atualizar customer no QuickBooks
-                    qb.updateCustomer(sourceCustomer, (updateErr: any, updatedCustomer: any) => {
-                        if (updateErr) {
-                            console.error('[QB Merge] Error updating source customer in QuickBooks:', updateErr);
-                            resolve({ success: false, error: 'Failed to inactivate source customer in QuickBooks' });
-                            return;
-                        }
-
-                        console.log(`[QB Merge] Source customer inativado com sucesso: ${sourceQBId}`);
-                        resolve({ success: true });
-                    });
-                });
-            });
-        } catch (error) {
-            console.error("[QB Merge] Error in mergeQuickBooksCustomers:", error);
-            return { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
-            };
         }
     }
 }
