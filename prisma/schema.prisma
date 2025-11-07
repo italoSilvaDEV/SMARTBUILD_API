@@ -76,6 +76,9 @@ model User {
   FeedNotifications        FeedNotification[] @relation("FeedNotifications")
   FeedNotificationActors   FeedNotification[] @relation("FeedNotificationActors")
 
+  ProjectFiles  ProjectFiles[]
+  ProjectPastes ProjectPastes[]
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -143,6 +146,9 @@ model Company {
   QuickBooksConfig QuickBooksConfig[]
 
   workContexts WorkContext[]
+
+  ProjectFiles  ProjectFiles[]
+  ProjectPastes ProjectPastes[]
 }
 
 model ContractNotes {
@@ -1338,4 +1344,46 @@ model QuickBooksConfig {
 
   @@unique([configType, companyId])
   @@map("quickbooks_config")
+}
+
+model ProjectFiles {
+  id String @id @default(uuid())
+
+  file String
+
+  name String? @db.Text
+  description String? @db.Text
+
+  pasteId String?
+  paste ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)
+
+  userAuthorId String
+  userAuthor User @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update DateTime @updatedAt
+
+  @@map("project_files")
+}
+
+model ProjectPastes {
+  id String @id @default(uuid())
+
+  name String @db.Text
+
+  files ProjectFiles[]
+
+  userAuthorId String
+  userAuthor User @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update DateTime @updatedAt
+
+  @@map("project_pastes")
 }
