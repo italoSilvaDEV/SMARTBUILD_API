@@ -22,8 +22,8 @@ const AUDIO_CONFIG = {
 
 const GPT_CONFIG = {
     MODEL: 'gpt-4o-mini',
-    TEMPERATURE: 0.5,
-    MAX_TOKENS: 2000,
+    TEMPERATURE: 0.4,
+    MAX_TOKENS: 800,
     MAX_TEXT_LENGTH: 5000
 } as const;
 
