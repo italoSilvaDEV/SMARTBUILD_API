@@ -21,7 +21,7 @@ export class ProjectFeedController {
 
             try {
                 const { id } = request.params; // Aceita projectId OU serviceProjectId
-                const { text, userId } = request.body;
+                const { text, userId, serviceProjectId } = request.body;
                 const files = request.files as Express.Multer.File[];
 
                 // Validações básicas
@@ -34,42 +34,6 @@ export class ProjectFeedController {
                 if (!text && (!files || files.length === 0)) {
                     return response.status(400).json({
                         error: 'É necessário enviar texto ou fotos'
-                    });
-                }
-
-                // Tenta encontrar como project primeiro
-                let project = await prisma.project.findUnique({
-                    where: { id: id },
-                    select: { id: true, status_project: true }
-                });
-
-                let projectId = id;
-
-                // Se não encontrar, tenta como serviceProject
-                if (!project) {
-                    const serviceProject = await prisma.serviceProject.findUnique({
-                        where: { id: id },
-                        select: {
-                            id: true,
-                            projectId: true,
-                            Project: {
-                                select: {
-                                    id: true,
-                                    status_project: true
-                                }
-                            }
-                        }
-                    });
-
-                    if (serviceProject?.Project) {
-                        project = serviceProject.Project;
-                        projectId = serviceProject.projectId!;
-                    }
-                }
-
-                if (!project) {
-                    return response.status(404).json({
-                        error: 'Projeto ou serviço não encontrado'
                     });
                 }
 
@@ -89,43 +53,49 @@ export class ProjectFeedController {
                     });
                 }
 
-                // Verifica se o usuário está em ponto ativo
-                const activeAttendance = await prisma.userAttendance.findFirst({
-                    where: {
-                        user_id: userId,
-                        check_out_time: null
-                    },
-                    include: {
-                        UserServiceProject: {
-                            include: {
-                                service_project: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        projectId: true
-                                    }
-                                }
+                // Determina o serviceProjectId a ser usado
+                let targetServiceProjectId = serviceProjectId || id;
+
+                // Busca o serviço e valida
+                const serviceProject = await prisma.serviceProject.findUnique({
+                    where: { id: targetServiceProjectId },
+                    select: {
+                        id: true,
+                        name: true,
+                        projectId: true,
+                        Project: {
+                            select: {
+                                id: true,
+                                status_project: true
                             }
                         }
-                    },
-                    orderBy: {
-                        check_in_time: 'desc'
                     }
                 });
 
-                if (!activeAttendance) {
-                    return response.status(400).json({
-                        error: 'Você precisa estar em ponto para criar um post no feed'
+                if (!serviceProject) {
+                    return response.status(404).json({
+                        error: 'Serviço não encontrado. Especifique um serviceProjectId válido'
                     });
                 }
 
-                const serviceProject = activeAttendance.UserServiceProject.service_project;
-
-                // Verifica se o serviço pertence ao projeto correto
-                if (serviceProject.projectId !== projectId) {
-                    return response.status(400).json({
-                        error: 'O seu ponto ativo não está vinculado a este projeto'
+                if (!serviceProject.Project) {
+                    return response.status(404).json({
+                        error: 'Projeto associado ao serviço não encontrado'
                     });
+                }
+
+                // Se o ID passado na URL for um projectId, valida se o serviço pertence a ele
+                if (id !== targetServiceProjectId) {
+                    const project = await prisma.project.findUnique({
+                        where: { id: id },
+                        select: { id: true }
+                    });
+
+                    if (project && serviceProject.projectId !== id) {
+                        return response.status(400).json({
+                            error: 'O serviço especificado não pertence a este projeto'
+                        });
+                    }
                 }
 
                 // SEMPRE cria uma activity (post), mesmo que seja só fotos

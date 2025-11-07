@@ -426,6 +426,7 @@ export class UserServiceProjectController {
 
       // Formatação do resultado
       const formattedResult = {
+        projectId: serviceProject.projectId || null,
         description: serviceProject.description,
         status: serviceProject.status || null,
         address: serviceProject.Project?.client?.location || null,
