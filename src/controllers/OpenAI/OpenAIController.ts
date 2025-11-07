@@ -22,8 +22,8 @@ const AUDIO_CONFIG = {
 
 const GPT_CONFIG = {
     MODEL: 'gpt-4o-mini',
-    TEMPERATURE: 0.3,
-    MAX_TOKENS: 500,
+    TEMPERATURE: 0.5,
+    MAX_TOKENS: 2000,
     MAX_TEXT_LENGTH: 5000
 } as const;
 
@@ -53,8 +53,7 @@ export class OpenAIController {
         const transcription = await openai.audio.transcriptions.create({
             file: new File([file.buffer as any], file.originalname, { type: file.mimetype }),
             model: AUDIO_CONFIG.MODEL,
-            language: AUDIO_CONFIG.LANGUAGE,
-            prompt: 'O áudio contém uma descrição de trabalho em construção civil. Inclua pontuação adequada.'
+            prompt: 'Construction work report: transcribe all technical terms, measurements, quantities, materials, equipment, locations, names, dates, and details. Add proper punctuation.'
         });
 
         return transcription.text;
