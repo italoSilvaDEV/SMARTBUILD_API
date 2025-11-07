@@ -50,11 +50,11 @@ O parâmetro `:id` aceita **DOIS tipos de identificadores**:
 
 **POST** `/projects/:id/feed`
 
-Cria um post no feed do projeto. O funcionário deve estar em ponto ativo.
+Cria um post no feed do projeto.
 
 **✨ Flexibilidade:** O parâmetro `:id` aceita tanto `projectId` quanto `serviceProjectId`!
-- Se passar o ID do projeto → funciona direto
-- Se passar o ID do serviço → o sistema encontra o projeto automaticamente
+- Se passar o ID do projeto → deve enviar `serviceProjectId` no body
+- Se passar o ID do serviço → usa automaticamente esse serviço
 
 #### Headers
 ```
@@ -68,6 +68,7 @@ Content-Type: multipart/form-data
 #### Body (multipart/form-data)
 ```
 userId: string (obrigatório) - ID do funcionário
+serviceProjectId: string (opcional se :id for serviceProjectId) - ID do serviço
 text: string (opcional) - Texto do post
 photos: File[] (opcional, máx 10) - Fotos do post
 ```
@@ -76,17 +77,18 @@ photos: File[] (opcional, máx 10) - Fotos do post
 
 #### Exemplo de Request (cURL)
 
-**Usando projectId:**
+**Usando projectId (precisa especificar o serviço):**
 ```bash
 curl -X POST 'http://localhost:3000/projects/project-abc-123/feed' \
   -H 'Authorization: Bearer seu-token' \
   -F 'userId=user-123' \
+  -F 'serviceProjectId=service-xyz-789' \
   -F 'text=Progresso do dia - instalação elétrica concluída' \
   -F 'photos=@foto1.jpg' \
   -F 'photos=@foto2.jpg'
 ```
 
-**Usando serviceProjectId (também funciona!):**
+**Usando serviceProjectId direto na URL (mais simples!):**
 ```bash
 curl -X POST 'http://localhost:3000/projects/service-xyz-789/feed' \
   -H 'Authorization: Bearer seu-token' \
@@ -135,9 +137,8 @@ curl -X POST 'http://localhost:3000/projects/service-xyz-789/feed' \
 #### Erros Possíveis
 - **400** - userId é obrigatório
 - **400** - É necessário enviar texto ou fotos
-- **400** - Você precisa estar em ponto para criar um post no feed
-- **400** - O seu ponto ativo não está vinculado a este projeto
-- **404** - Projeto ou serviço não encontrado
+- **400** - O serviço especificado não pertence a este projeto
+- **404** - Serviço não encontrado. Especifique um serviceProjectId válido
 - **404** - Usuário não encontrado
 
 ---
@@ -601,22 +602,18 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
 
 ### Para Funcionários
 
-1. **Fazer Check-in** em um serviço do projeto
+1. **Criar Post no Feed** a qualquer momento
    ```
-   POST /check-in
+   POST /projects/:serviceProjectId/feed
    ```
-
-2. **Criar Post no Feed** enquanto estiver trabalhando
+   
+   Ou especificando o serviço:
    ```
    POST /projects/:projectId/feed
+   Body: { serviceProjectId: "...", ... }
    ```
 
-3. **Continuar trabalhando** e criando posts conforme necessário
-
-4. **Fazer Check-out** ao final do dia
-   ```
-   POST /check-out/:id
-   ```
+2. **Continuar criando posts** conforme necessário
 
 ### Para Gestores/Visualização
 
@@ -641,11 +638,11 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
 
 ### Validações
 
-1. ✅ Funcionário **deve estar em ponto ativo** para criar post
-2. ✅ O ponto ativo deve estar vinculado ao projeto correto
+1. ✅ Funcionário **não precisa estar em ponto** para criar post
+2. ✅ É obrigatório especificar o serviço (serviceProjectId)
 3. ✅ É obrigatório enviar texto OU fotos (ou ambos)
 4. ✅ Máximo de 10 fotos por post
-5. ✅ Fotos são automaticamente vinculadas ao serviço em que o funcionário está trabalhando
+5. ✅ Fotos são automaticamente vinculadas ao serviço especificado
 
 ### Agrupamento Inteligente
 
@@ -724,10 +721,11 @@ const deletePhoto = async (photoId) => {
   return response.json();
 };
 
-// Criar post no feed (flexível - aceita projectId OU serviceProjectId)
-const createFeedPost = async (id, userId, text, photos) => {
+// Criar post no feed
+const createFeedPost = async (userId, serviceProjectId, text, photos) => {
   const formData = new FormData();
   formData.append('userId', userId);
+  formData.append('serviceProjectId', serviceProjectId);
   formData.append('text', text);
   
   photos.forEach(photo => {
@@ -735,7 +733,7 @@ const createFeedPost = async (id, userId, text, photos) => {
   });
 
   const response = await fetch(
-    `${API_URL}/projects/${id}/feed`,
+    `${API_URL}/projects/${serviceProjectId}/feed`,
     {
       method: 'POST',
       headers: {
@@ -748,21 +746,21 @@ const createFeedPost = async (id, userId, text, photos) => {
   return response.json();
 };
 
-// Exemplo 1: Criando post na tela do PROJETO
-const handlePostFromProjectScreen = async () => {
+// Exemplo 1: Criando post na tela do PROJETO (precisa passar o serviço)
+const handlePostFromProjectScreen = async (selectedServiceId) => {
   await createFeedPost(
-    currentProject.id,  // ← projectId
     currentUser.id,
+    selectedServiceId,  // ← serviceProjectId selecionado
     'Progresso do dia!',
     selectedPhotos
   );
 };
 
-// Exemplo 2: Criando post na tela do SERVIÇO
+// Exemplo 2: Criando post na tela do SERVIÇO (mais simples)
 const handlePostFromServiceScreen = async () => {
   await createFeedPost(
-    currentService.id,  // ← serviceProjectId (também funciona!)
     currentUser.id,
+    currentService.id,  // ← serviceProjectId
     'Serviço concluído!',
     selectedPhotos
   );
@@ -833,20 +831,20 @@ await getFeed('project-123', { startDate: '2024-11-01T00:00:00Z' });
 
 ### Segurança
 - Todas as rotas requerem autenticação (`checkToken`)
-- Validação de usuário e projeto em todas as operações
-- Verificação de ponto ativo antes de criar post
+- Validação de usuário, serviço e projeto em todas as operações
+- Validação que o serviço pertence ao projeto correto
 
 ---
 
 ## Troubleshooting
 
-### "Você precisa estar em ponto para criar um post no feed"
-**Causa:** Funcionário não está com check-in ativo
-**Solução:** Fazer check-in em um serviço antes de criar o post
+### "Serviço não encontrado. Especifique um serviceProjectId válido"
+**Causa:** O serviceProjectId fornecido não existe ou está incorreto
+**Solução:** Verificar se o ID do serviço está correto
 
-### "O seu ponto ativo não está vinculado a este projeto"
-**Causa:** Funcionário está em ponto em um projeto diferente
-**Solução:** Verificar se o projectId está correto ou fazer check-in no serviço correto
+### "O serviço especificado não pertence a este projeto"
+**Causa:** Tentando vincular um post a um serviço que não faz parte do projeto
+**Solução:** Verificar se o serviceProjectId corresponde a um serviço desse projeto
 
 ### Fotos não aparecem no feed
 **Causa:** Erro no upload para S3 ou permissões
