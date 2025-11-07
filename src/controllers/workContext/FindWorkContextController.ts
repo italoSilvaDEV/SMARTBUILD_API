@@ -43,6 +43,12 @@ export class FindWorkContextController {
               log: true,
               radius: true,
               date_creation: true,
+              serviceProject: {
+                select: {
+                  hours: true,
+                  price: true,
+                }
+              },
             },
             orderBy: {
               date_creation: 'desc',
@@ -55,7 +61,25 @@ export class FindWorkContextController {
         return res.status(404).json({ error: "Work context not found" });
       }
 
-      return res.json(workContext);
+      // Calculate real project prices (services or fallback to price)
+      const processedWorkContext = {
+        ...workContext,
+        projects: workContext.projects.map(project => {
+          // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+          const calculatedPrice = project.serviceProject.length > 0
+            ? project.serviceProject.reduce((sum, service) => {
+                return sum + (Number(service.hours || 0) * Number(service.price || 0));
+              }, 0)
+            : Number(project.price || 0);
+          
+          return {
+            ...project,
+            price: calculatedPrice,
+          };
+        })
+      };
+
+      return res.json(processedWorkContext);
     } catch (error: any) {
       console.error("Error fetching WorkContext:", error);
       return res.status(500).json({ 
@@ -100,6 +124,12 @@ export class FindWorkContextController {
                   date_creation: true,
                   amountPaid: true,
                   balanceDue: true,
+                  serviceProject: {
+                    select: {
+                      hours: true,
+                      price: true,
+                    }
+                  },
                 },
                 orderBy: {
                   date_creation: 'desc',
@@ -124,18 +154,50 @@ export class FindWorkContextController {
         }),
         prisma.project.findMany({
           where: { client_id: clientId },
-          select: { price: true }
+          select: { 
+            price: true,
+            serviceProject: {
+              select: {
+                hours: true,
+                price: true,
+              }
+            }
+          }
         })
       ]);
 
-      // Calculate total amount from ALL projects
-      const totalAmount = allProjects.reduce(
-        (sum, p) => sum + Number(p.price || 0), 
-        0
-      );
+      // Calculate total amount from ALL projects (services or fallback to price)
+      const totalAmount = allProjects.reduce((sum, project) => {
+        // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+        const projectValue = project.serviceProject.length > 0
+          ? project.serviceProject.reduce((serviceSum, service) => {
+              return serviceSum + (Number(service.hours || 0) * Number(service.price || 0));
+            }, 0)
+          : Number(project.price || 0);
+        return sum + projectValue;
+      }, 0);
+
+      // Process workContexts to calculate real project prices (services or fallback to price)
+      const processedWorkContexts = client.workContexts.map(wc => ({
+        ...wc,
+        projects: wc.projects.map(project => {
+          // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+          const calculatedPrice = project.serviceProject.length > 0
+            ? project.serviceProject.reduce((sum, service) => {
+                return sum + (Number(service.hours || 0) * Number(service.price || 0));
+              }, 0)
+            : Number(project.price || 0);
+          
+          return {
+            ...project,
+            price: calculatedPrice, // Override price with calculated value
+          };
+        })
+      }));
 
       const response = {
         ...client,
+        workContexts: processedWorkContexts,
         statistics: {
           totalWorkContexts: client.workContexts.length,
           totalProjects: totalProjects,
@@ -195,6 +257,12 @@ export class FindWorkContextController {
               status_project: true,
               price: true,
               date_creation: true,
+              serviceProject: {
+                select: {
+                  hours: true,
+                  price: true,
+                }
+              },
             },
           },
           _count: {
@@ -208,9 +276,27 @@ export class FindWorkContextController {
         },
       });
 
+      // Calculate real project prices for all work contexts (services or fallback to price)
+      const processedWorkContexts = workContexts.map(wc => ({
+        ...wc,
+        projects: wc.projects.map(project => {
+          // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+          const calculatedPrice = project.serviceProject.length > 0
+            ? project.serviceProject.reduce((sum, service) => {
+                return sum + (Number(service.hours || 0) * Number(service.price || 0));
+              }, 0)
+            : Number(project.price || 0);
+          
+          return {
+            ...project,
+            price: calculatedPrice,
+          };
+        })
+      }));
+
       return res.json({
-        total: workContexts.length,
-        workContexts: workContexts,
+        total: processedWorkContexts.length,
+        workContexts: processedWorkContexts,
       });
     } catch (error: any) {
       console.error("Error fetching WorkContexts by company:", error);
@@ -375,17 +461,38 @@ export class FindWorkContextController {
           deadline: true,
           location: true,
           date_creation: true,
+          serviceProject: {
+            select: {
+              hours: true,
+              price: true,
+            }
+          },
         },
         orderBy: {
           date_creation: 'desc',
         },
       });
 
-      console.log(`Encontrados ${projects.length} projetos sem work context`);
+      // Calculate real project prices (services or fallback to price)
+      const processedProjects = projects.map(project => {
+        // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+        const calculatedPrice = project.serviceProject.length > 0
+          ? project.serviceProject.reduce((sum, service) => {
+              return sum + (Number(service.hours || 0) * Number(service.price || 0));
+            }, 0)
+          : Number(project.price || 0);
+        
+        return {
+          ...project,
+          price: calculatedPrice,
+        };
+      });
+
+      console.log(`Encontrados ${processedProjects.length} projetos sem work context`);
 
       return res.status(200).json({
-        total: projects.length,
-        projects,
+        total: processedProjects.length,
+        projects: processedProjects,
       });
     } catch (error) {
       console.error("Erro ao buscar projetos sem work context:", error);
@@ -430,22 +537,43 @@ export class FindWorkContextController {
           location: true,
           date_creation: true,
           workContextId: true,
+          serviceProject: {
+            select: {
+              hours: true,
+              price: true,
+            }
+          },
         },
         orderBy: {
           date_creation: 'desc',
         },
       });
 
+      // Calculate real project prices (services or fallback to price)
+      const processedProjects = projects.map(project => {
+        // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+        const calculatedPrice = project.serviceProject.length > 0
+          ? project.serviceProject.reduce((sum, service) => {
+              return sum + (Number(service.hours || 0) * Number(service.price || 0));
+            }, 0)
+          : Number(project.price || 0);
+        
+        return {
+          ...project,
+          price: calculatedPrice,
+        };
+      });
+
       // Separate projects into those already selected and those available
-      const selectedProjectIds = projects
+      const selectedProjectIds = processedProjects
         .filter(p => p.workContextId === workContextId)
         .map(p => p.id);
 
-      console.log(`Encontrados ${projects.length} projetos disponíveis (${selectedProjectIds.length} já vinculados)`);
+      console.log(`Encontrados ${processedProjects.length} projetos disponíveis (${selectedProjectIds.length} já vinculados)`);
 
       return res.status(200).json({
-        total: projects.length,
-        projects,
+        total: processedProjects.length,
+        projects: processedProjects,
         selectedProjectIds,
       });
     } catch (error) {
