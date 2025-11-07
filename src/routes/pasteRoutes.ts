@@ -6,6 +6,8 @@ import { GetPastesController } from "../controllers/Pastes/getPastesController";
 import { GetPasteController } from "../controllers/Pastes/getPasteController";
 import { UpdatePasteController } from "../controllers/Pastes/updatePasteController";
 import { DeletePasteController } from "../controllers/Pastes/deletePasteController";
+import multer from "multer";
+import uploadConfig from "../config/upload";
 
 const pasteRoutes = Router();
 const createPasteController = new CreatePasteController();
@@ -14,8 +16,10 @@ const getPasteController = new GetPasteController();
 const updatePasteController = new UpdatePasteController();
 const deletePasteController = new DeletePasteController();
 
+const uploadPaste = multer(uploadConfig.upload("./public/tmp/pastes"));
 
-pasteRoutes.post('/pastes', checkToken, createPasteController.handle);
+
+pasteRoutes.post('/pastes', checkToken, uploadPaste.single("file"), createPasteController.handle);
 pasteRoutes.get('/pastes/:companyId', checkToken, getPastesController.handle);
 pasteRoutes.get('/pastes/:id', checkToken, getPasteController.handle);
 pasteRoutes.put('/pastes/rename', checkToken, updatePasteController.handle);

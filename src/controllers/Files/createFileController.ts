@@ -12,9 +12,7 @@ export class CreateFileController {
             companyId
         } = req.body
 
-        const {
-            filename
-        } = req.file
+        const filename = req.file
 
         if (!filename) {
             return res.status(400).json({

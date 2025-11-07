@@ -29,6 +29,8 @@ import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
 import { estimateRoutes } from './estimateRoutes'
 import { isMultiCompanyEnabled } from '../helpers/featureToggle'
 import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
+import fileRoutes from './fileRoutes'
+import pasteRoutes from './pasteRoutes'
 import { checkToken } from '../middlewares/checkToken'
 import multer from 'multer'
 import uploadConfig from "../config/upload";
@@ -81,6 +83,8 @@ router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
 router.use("/estimate", estimateRoutes);
 router.use(fildsPdfProjectRoutes);
+router.use(fileRoutes);
+router.use(pasteRoutes);
 // Novas rotas para planos e permissões
 router.use(planRoutes)
 router.use(permissionRoutes)

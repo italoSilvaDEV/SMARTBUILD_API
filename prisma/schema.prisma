@@ -71,10 +71,10 @@ model User {
   SyncStatus      SyncStatus[]      @relation("SyncStatus")
 
   // Relacionamentos do Feed
-  FeedComments             FeedComment[]      @relation("FeedComments")
-  FeedLikes                FeedLike[]         @relation("FeedLikes")
-  FeedNotifications        FeedNotification[] @relation("FeedNotifications")
-  FeedNotificationActors   FeedNotification[] @relation("FeedNotificationActors")
+  FeedComments           FeedComment[]      @relation("FeedComments")
+  FeedLikes              FeedLike[]         @relation("FeedLikes")
+  FeedNotifications      FeedNotification[] @relation("FeedNotifications")
+  FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
 
   ProjectFiles  ProjectFiles[]
   ProjectPastes ProjectPastes[]
@@ -281,7 +281,7 @@ model ServiceProject {
 
 model Activities {
   id   String @id @default(uuid())
-  text String
+  text String @db.Text
 
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
@@ -337,7 +337,7 @@ model FeedNotification {
   id String @id @default(uuid())
 
   type        String // "comment", "like", "mention"
-  message     String @db.Text
+  message     String  @db.Text
   isRead      Boolean @default(false)
   relatedLink String? // Link para o post/comentário
 
@@ -579,9 +579,9 @@ model WorkContext {
   type  ContextType
   label String? // 
 
-  Name String?
-  Email   String?
-  
+  Name  String?
+  Email String?
+
   street         String?
   district       String?
   zip_code       String?
@@ -589,7 +589,7 @@ model WorkContext {
   state          String?
   number         String?
   complement     String?
-  phone           String?
+  phone          String?
 
   location      String?  @db.Text
   addressOffice String?  @db.Text
@@ -606,10 +606,10 @@ model WorkContext {
   notes    String? @db.Text
   isActive Boolean @default(true)
 
-  projects  Project[]
-  
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([type])
@@ -1351,20 +1351,20 @@ model ProjectFiles {
 
   file String
 
-  name String? @db.Text
+  name        String? @db.Text
   description String? @db.Text
 
   pasteId String?
-  paste ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)
+  paste   ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)
 
   userAuthorId String
-  userAuthor User @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
-  date_update DateTime @updatedAt
+  date_update   DateTime @updatedAt
 
   @@map("project_files")
 }
@@ -1377,13 +1377,13 @@ model ProjectPastes {
   files ProjectFiles[]
 
   userAuthorId String
-  userAuthor User @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
-  date_update DateTime @updatedAt
+  date_update   DateTime @updatedAt
 
   @@map("project_pastes")
 }
