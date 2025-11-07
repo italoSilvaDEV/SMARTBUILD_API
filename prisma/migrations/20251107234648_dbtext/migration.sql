@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `activities` MODIFY `text` TEXT NOT NULL;
+ALTER TABLE `Activities` MODIFY `text` TEXT NOT NULL;
