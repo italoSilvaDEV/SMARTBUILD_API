@@ -257,18 +257,110 @@ async function main() {
     console.log(` ${group.projectCount} projeto(s) vinculado(s) ao WorkContext\n`);
   }
 
-  // ETAPA 5: RESUMO FINAL
+  // ETAPA 5: PROCESSAR CLIENTES SEM PROJETOS
+  // =========================================
+  console.log('\n' + '='.repeat(60));
+  console.log(' PROCESSANDO CLIENTES SEM PROJETOS');
+  console.log('='.repeat(60) + '\n');
+
+  // Buscar TODOS os clientes (incluindo os que não têm projetos)
+  const allClients = await prisma.client.findMany({
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      company_id: true
+    }
+  });
+
+  console.log(` Total de clientes no sistema: ${allClients.length}`);
+  console.log(` Clientes com projetos já processados: ${processedClients}\n`);
+
+  let clientsWithoutProjects = 0;
+  let contextCreatedForClientsWithoutProjects = 0;
+  let skippedNoCompanyWithoutProjects = 0;
+  let skippedExistingContextWithoutProjects = 0;
+
+  for (const client of allClients) {
+    // Verificar se este cliente já foi processado (tem projetos)
+    if (projectsByClient.has(client.id)) {
+      continue; // Já foi processado na etapa anterior
+    }
+
+    clientsWithoutProjects++;
+
+    // VALIDAÇÃO: Cliente precisa ter company_id
+    if (!client.company_id) {
+      console.log(`  Cliente "${client.name}" sem projetos não possui company_id. Pulando...`);
+      skippedNoCompanyWithoutProjects++;
+      continue;
+    }
+
+    // VERIFICAR SE JÁ EXISTE WORKCONTEXT
+    const existingContext = await prisma.workContext.findFirst({
+      where: {
+        clientId: client.id
+      }
+    });
+
+    if (existingContext) {
+      console.log(`⏭  Cliente "${client.name}" sem projetos já possui WorkContext. Pulando...`);
+      skippedExistingContextWithoutProjects++;
+      continue;
+    }
+
+    // CRIAR WORKCONTEXT BÁSICO PARA CLIENTE SEM PROJETOS
+    const workContextData: any = {
+      clientId: client.id,
+      companyId: client.company_id,
+      type: 'PERSONAL',
+      label: null,
+      isActive: true,
+      
+      // Copiar dados básicos do cliente
+      Name: client.name,
+      Email: client.email,
+      phone: client.phone,
+      
+      // Adicionar nota indicando que foi criado para cliente sem projetos
+      notes: 'WorkContext criado automaticamente para cliente sem projetos durante migração'
+    };
+
+    // Criar o WorkContext
+    await prisma.workContext.create({
+      data: workContextData
+    });
+
+    contextCreatedForClientsWithoutProjects++;
+    console.log(` Cliente "${client.name}" SEM projetos - WorkContext criado com dados básicos`);
+  }
+
+  // ETAPA 6: RESUMO FINAL
   // =====================
   // Exibe estatísticas sobre o que foi processado
   console.log('\n' + '='.repeat(60));
   console.log(' RESUMO DO BACKFILL');
   console.log('='.repeat(60));
-  console.log(`Total de clientes processados: ${processedClients}`);
-  console.log(`WorkContexts criados: ${createdContexts}`);
-  console.log(`WorkContexts já existentes (pulados): ${skippedContexts}`);
-  console.log(`Clientes sem company_id (pulados): ${skippedNoCompany}`);
+  console.log('\n📊 CLIENTES COM PROJETOS:');
+  console.log(`  • Clientes processados: ${processedClients}`);
+  console.log(`  • WorkContexts criados: ${createdContexts}`);
+  console.log(`  • WorkContexts já existentes (pulados): ${skippedContexts}`);
+  console.log(`  • Clientes sem company_id (pulados): ${skippedNoCompany}`);
+  
+  console.log('\n📊 CLIENTES SEM PROJETOS:');
+  console.log(`  • Clientes encontrados: ${clientsWithoutProjects}`);
+  console.log(`  • WorkContexts criados: ${contextCreatedForClientsWithoutProjects}`);
+  console.log(`  • WorkContexts já existentes (pulados): ${skippedExistingContextWithoutProjects}`);
+  console.log(`  • Clientes sem company_id (pulados): ${skippedNoCompanyWithoutProjects}`);
+  
+  console.log('\n📈 TOTAIS:');
+  console.log(`  • Total de clientes no sistema: ${allClients.length}`);
+  console.log(`  • Total de WorkContexts criados: ${createdContexts + contextCreatedForClientsWithoutProjects}`);
+  console.log(`  • Total de WorkContexts já existentes: ${skippedContexts + skippedExistingContextWithoutProjects}`);
+  
   console.log('='.repeat(60));
-  console.log('\n Backfill concluído com sucesso!');
+  console.log('\n✅ Backfill concluído com sucesso!');
 }
 
 main()

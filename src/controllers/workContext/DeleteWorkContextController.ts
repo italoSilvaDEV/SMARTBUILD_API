@@ -24,6 +24,17 @@ export class DeleteWorkContextController {
         return res.status(404).json({ error: "Work context not found" });
       }
 
+      // Check if client has only one work context
+      const clientWorkContextsCount = await prisma.workContext.count({
+        where: { clientId: workContextExists.clientId },
+      });
+
+      if (clientWorkContextsCount <= 1) {
+        return res.status(400).json({ 
+          error: "Cannot delete the last work context. Every client must have at least one work context." 
+        });
+      }
+
       // If there are linked projects, remove the work context reference from them
       // This makes them "orphan" projects that can be linked to another work context later
       if (workContextExists.projects.length > 0) {
