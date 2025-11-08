@@ -15,9 +15,10 @@ CREATE TABLE `project_files` (
     `description` TEXT NULL,
     `pasteId` VARCHAR(191) NULL,
     `userAuthorId` VARCHAR(191) NOT NULL,
-    `companyId` VARCHAR(191) NOT NULL,
+    `projectId` VARCHAR(191) NOT NULL,
     `date_creation` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `date_update` DATETIME(3) NOT NULL,
+    `companyId` VARCHAR(191) NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -27,9 +28,10 @@ CREATE TABLE `project_pastes` (
     `id` VARCHAR(191) NOT NULL,
     `name` TEXT NOT NULL,
     `userAuthorId` VARCHAR(191) NOT NULL,
-    `companyId` VARCHAR(191) NOT NULL,
+    `projectId` VARCHAR(191) NOT NULL,
     `date_creation` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `date_update` DATETIME(3) NOT NULL,
+    `companyId` VARCHAR(191) NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -50,10 +52,16 @@ ALTER TABLE `project_files` ADD CONSTRAINT `project_files_pasteId_fkey` FOREIGN 
 ALTER TABLE `project_files` ADD CONSTRAINT `project_files_userAuthorId_fkey` FOREIGN KEY (`userAuthorId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `project_files` ADD CONSTRAINT `project_files_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `project_files` ADD CONSTRAINT `project_files_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `project_files` ADD CONSTRAINT `project_files_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `project_pastes` ADD CONSTRAINT `project_pastes_userAuthorId_fkey` FOREIGN KEY (`userAuthorId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `project_pastes` ADD CONSTRAINT `project_pastes_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `project_pastes` ADD CONSTRAINT `project_pastes_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `project_pastes` ADD CONSTRAINT `project_pastes_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

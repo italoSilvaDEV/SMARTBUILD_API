@@ -5,26 +5,26 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 export class GetFilesController {
     async handle(req: Request, res: Response) {
         const {
-            companyId,
+            projectId,
             userId
         } = req.params
 
-        if (!companyId || !userId) {
+        if (!projectId || !userId) {
             return res.status(400).json({
-                error: "companyId and userId are required"
+                error: "projectId and userId are required"
             })
         }
 
         try {
-            const companyExists = await prisma.company.findUnique({
+            const projectExists = await prisma.project.findUnique({
                 where: {
-                    id: companyId
+                    id: projectId
                 }
             })
 
-            if (!companyExists) {
+            if (!projectExists) {
                 return res.status(404).json({
-                    error: "Company not found"
+                    error: "Project not found"
                 })
             }
 
@@ -42,7 +42,7 @@ export class GetFilesController {
 
             const files = await prisma.projectFiles.findMany({
                 where: {
-                    companyId: companyId,
+                    projectId: projectId,
                     userAuthorId: userId
                 }
             })

@@ -435,6 +435,8 @@ model Project {
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
+  projectFiles           ProjectFiles[]
+  projectPastes          ProjectPastes[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -1360,11 +1362,13 @@ model ProjectFiles {
   userAuthorId String
   userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
 
   @@map("project_files")
 }
@@ -1379,11 +1383,13 @@ model ProjectPastes {
   userAuthorId String
   userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
 
   @@map("project_pastes")
 }

@@ -6,12 +6,13 @@ export class CreatePasteController {
         const {
             name,
             userId,
+            projectId,
             companyId
         } = req.body
 
-        if (!name || !userId || !companyId) {
+        if (!name || !userId || !projectId || !companyId) {
             return res.status(400).json({
-                error: "Name, userId and companyId are required"
+                error: "Name, userId, projectId and companyId are required"
             });
         }
 
@@ -39,11 +40,24 @@ export class CreatePasteController {
             })
         }
 
+        const project = await prisma.project.findUnique({
+            where: {
+                id: projectId
+            }
+        })
+
+        if (!project) {
+            return res.status(404).json({
+                error: "Project not found"
+            })
+        }
+
         try {
             const newPaste = await prisma.projectPastes.create({
                 data: {
                     name,
                     userAuthorId: userId,
+                    projectId: projectId,
                     companyId: companyId
                 }
             })

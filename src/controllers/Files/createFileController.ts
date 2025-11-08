@@ -9,6 +9,7 @@ export class CreateFileController {
             description,
             pasteId,
             userId,
+            projectId,
             companyId
         } = req.body
 
@@ -20,9 +21,9 @@ export class CreateFileController {
             })
         }
 
-        if (!userId || !companyId) {
+        if (!userId || !projectId || !companyId) {
             return res.status(400).json({
-                error: "userId and companyId are required"
+                error: "userId, projectId and companyId are required"
             })
         }
 
@@ -52,6 +53,18 @@ export class CreateFileController {
             })
         }
 
+        const project = await prisma.project.findUnique({
+            where: {
+                id: projectId
+            }
+        })
+
+        if (!project) {
+            return res.status(404).json({
+                error: "Project not found"
+            })
+        }
+
         const company = await prisma.company.findUnique({
             where: {
                 id: companyId
@@ -74,6 +87,7 @@ export class CreateFileController {
                     description: description,
                     pasteId: pasteId,
                     userAuthorId: userId,
+                    projectId: projectId,
                     companyId: companyId
                 }
             })

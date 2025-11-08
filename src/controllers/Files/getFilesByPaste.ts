@@ -7,12 +7,12 @@ export class GetFilesController {
         const {
             pasteId,
             userId,
-            companyId
+            projectId
         } = req.params
 
-        if (!pasteId || !userId || !companyId) {
+        if (!pasteId || !userId || !projectId) {
             return res.status(400).json({
-                error: "pasteId, userId and companyId are required"
+                error: "pasteId, userId and projectId are required"
             })
         }
 
@@ -41,22 +41,22 @@ export class GetFilesController {
                 })
             }
 
-            const company = await prisma.company.findUnique({
+            const project = await prisma.project.findUnique({
                 where: {
-                    id: companyId
+                    id: projectId
                 }
             })
 
-            if (!company) {
+            if (!project) {
                 return res.status(404).json({
-                    error: "Company not found"
+                    error: "Project not found"
                 })
             }
 
             const files = await prisma.projectFiles.findMany({
                 where: {
                     pasteId: pasteId,
-                    companyId: companyId,
+                    projectId: projectId,
                     userAuthorId: userId
                 }
             })

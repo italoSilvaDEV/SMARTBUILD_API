@@ -4,31 +4,31 @@ import { prisma } from "../../utils/prisma";
 export class GetPastesController {
     async handle(req: Request, res: Response) {
         const {
-            companyId
+            projectId
         } = req.params;
 
-        if (!companyId) {
+        if (!projectId) {
             return res.status(400).json({
-                error: "Company ID is required"
+                error: "Project ID is required"
             })
         }
 
         try {
-            const company = await prisma.company.findUnique({
+            const project = await prisma.project.findUnique({
                 where: {
-                    id: companyId
+                    id: projectId
                 }
             })
 
-            if (!company) {
+            if (!project) {
                 return res.status(404).json({
-                    error: "Company not found"
+                    error: "Project not found"
                 })
             }
 
             const pastes = await prisma.projectPastes.findMany({
                 where: {
-                    companyId: companyId
+                    projectId: projectId
                 }
             })
 
