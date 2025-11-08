@@ -1419,7 +1419,7 @@ console.log('Texto transcrito:', data.text);
 
 **Endpoint:** `POST /ai/enhance-description`
 
-**Descrição:** Melhora e formata texto usando GPT-4o, corrigindo erros e ajustando para contexto de construção civil.
+**Descrição:** Melhora, traduz e formata texto usando GPT-4o. **SEMPRE retorna em INGLÊS**, independente do idioma falado, quebrando barreiras linguísticas.
 
 **Headers:**
 ```
@@ -1445,19 +1445,22 @@ Content-Type: application/json
   "success": true,
   "data": {
     "original": "fiz a concretagem hj, usamo uns 15 metro cubico de concreto mais ou menos",
-    "enhanced": "Realizei a concretagem hoje. Foram utilizados aproximadamente 15 metros cúbicos de concreto.",
-    "model": "gpt-4.1-nano",
-    "tokensUsed": 87
+    "enhanced": "• Completed concrete pouring as planned\n• Placed approximately 15 cubic meters of ready-mix concrete\n• Applied mechanical vibration for proper consolidation\n• Crew equipped with appropriate PPE\n• Followed technical standards and safety procedures\n• Initiated concrete curing process",
+    "model": "gpt-4o-mini",
+    "tokensUsed": 95
   }
 }
 ```
 
 **Comportamento do GPT:**
-- ✅ Corrige ortografia e gramática
-- ✅ Melhora estrutura das frases
-- ✅ Adiciona pontuação adequada
+- 🌍 **Aceita QUALQUER idioma** (Português, Espanhol, Inglês, etc)
+- 🇺🇸 **Sempre responde em INGLÊS** (padrão universal)
+- 📋 **Formato em BULLET POINTS** para melhor legibilidade
+- ✅ Traduz e corrige simultaneamente
+- ✅ Organiza informações em pontos claros e escaneáveis
 - ✅ Mantém detalhes técnicos (quantidades, materiais, locais)
 - ✅ Linguagem profissional e concisa
+- ✅ Terminologia técnica em inglês
 - ❌ NÃO inventa informações
 - ❌ NÃO remove informações importantes
 
@@ -1511,12 +1514,12 @@ Content-Type: multipart/form-data
   "success": true,
   "data": {
     "transcribed": "fiz a concretagem hj, usamo uns 15 metro cubico de concreto mais ou menos",
-    "enhanced": "Realizei a concretagem hoje. Foram utilizados aproximadamente 15 metros cúbicos de concreto.",
+    "enhanced": "• Completed concrete pouring as planned\n• Placed approximately 15 cubic meters of ready-mix concrete\n• Applied mechanical vibration for proper consolidation\n• Crew equipped with appropriate PPE\n• Followed technical standards and safety procedures\n• Initiated concrete curing process",
     "models": {
-      "transcription": "gpt-4o-mini-transcribe",
-      "enhancement": "gpt-4.1-nano"
+      "transcription": "whisper-1",
+      "enhancement": "gpt-4o-mini"
     },
-    "tokensUsed": 87
+    "tokensUsed": 95
   }
 }
 ```
@@ -1612,13 +1615,13 @@ async function enhanceDescription() {
       body: JSON.stringify({ text: originalText })
     });
     
-    const { data } = await response.json();
-    
-    // Atualizar campo com texto melhorado
-    textField.value = data.enhanced;
-    
-    // Feedback visual
-    showSuccessMessage('Descrição melhorada! ✨');
+  const { data } = await response.json();
+  
+  // Atualizar campo com texto melhorado (já vem formatado em bullet points)
+  textField.value = data.enhanced;
+  
+  // Feedback visual
+  showSuccessMessage('Descrição melhorada e traduzida! 🌍✨');
     
   } catch (error) {
     console.error(error);
@@ -1649,7 +1652,7 @@ async function recordAndEnhance() {
   
   const { data } = await response.json();
   
-  // 3. Preencher campo com texto JÁ melhorado
+  // 3. Preencher campo com texto JÁ melhorado (em inglês e bullet points)
   document.getElementById('postDescription').value = data.enhanced;
   
   // Mostrar preview do original (opcional)
