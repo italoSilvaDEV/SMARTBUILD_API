@@ -75,6 +75,7 @@ model User {
   FeedLikes              FeedLike[]         @relation("FeedLikes")
   FeedNotifications      FeedNotification[] @relation("FeedNotifications")
   FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
+  PublicFeedLinks        PublicFeedLink[]   @relation("PublicFeedLinkCreators")
 
   ProjectFiles  ProjectFiles[]
   ProjectPastes ProjectPastes[]
@@ -361,6 +362,33 @@ model FeedNotification {
   @@map("feed_notification")
 }
 
+// Links públicos para compartilhar feed de projeto com clientes
+model PublicFeedLink {
+  id      String  @id @default(uuid())
+  token   String  @unique @db.VarChar(255) // Token único para acesso público
+  
+  // Relacionamento com projeto
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  
+  // Quem criou o link
+  creator   User   @relation("PublicFeedLinkCreators", fields: [createdBy], references: [id])
+  createdBy String
+  
+  // Status e configurações
+  isActive      Boolean   @default(true)
+  expiresAt     DateTime? // Opcional: data de expiração
+  accessCount   Int       @default(0) // Contador de acessos
+  lastAccessAt  DateTime? // Último acesso
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([token])
+  @@index([projectId])
+  @@index([isActive])
+}
+
 model ImgServiceProject {
   id               String          @id @default(uuid())
   uri              String          @unique
@@ -437,6 +465,7 @@ model Project {
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
   projectFiles           ProjectFiles[]
   projectPastes          ProjectPastes[]
+  PublicFeedLinks        PublicFeedLink[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")

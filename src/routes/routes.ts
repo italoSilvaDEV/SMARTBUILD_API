@@ -41,6 +41,7 @@ import { contractTermRoutes } from './contractTermRoutes'
 import { openAiRoutes } from './openAiRoutes'
 import { workContextRoutes } from './workContextRoutes'
 import { projectFeedRoutes } from './projectFeedRoutes'
+import { publicFeedLinkRoutes } from './publicFeedLinkRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -95,6 +96,7 @@ router.use("/contract-terms", contractTermRoutes)
 router.use("/openai", openAiRoutes)
 router.use(workContextRoutes)
 router.use(projectFeedRoutes)
+router.use(publicFeedLinkRoutes)
 
 export { router }
 

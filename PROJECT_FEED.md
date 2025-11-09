@@ -2062,3 +2062,541 @@ function AdminDashboard() {
 ```
 
 ---
+
+## 🔗 LINKS PÚBLICOS - Compartilhar Feed com Clientes
+
+### Visão Geral
+
+Os **Links Públicos** permitem que administradores e vendedores compartilhem o feed de um projeto com clientes **sem necessidade de login**. É ideal para manter clientes atualizados sobre o progresso do projeto.
+
+### 🎯 Caso de Uso
+
+1. Admin/vendedor acessa a aba "Reports" de um projeto
+2. Clica em "Share Link" ou "Gerar Link Público"
+3. Sistema gera um link único com token
+4. Admin envia link para o cliente
+5. Cliente acessa o link (sem login) e vê apenas o feed daquele projeto
+
+**Exemplo de Link Gerado:**
+```
+https://smartbuild.codelabsusa.com/public/feed/abc123xyz789token
+```
+
+### 🔐 Segurança
+
+**O que o Cliente PODE ver:**
+- ✅ Posts do feed (texto + fotos)
+- ✅ Nome do projeto/cliente
+- ✅ Nome dos funcionários que postaram
+- ✅ Datas dos posts
+- ✅ Localização dos posts
+- ✅ Contadores de likes/comentários
+
+**O que o Cliente NÃO PODE ver:**
+- ❌ Valores/orçamentos
+- ❌ Informações financeiras
+- ❌ Dados de outros projetos
+- ❌ Botões de editar/deletar
+- ❌ Informações internas da empresa
+
+---
+
+### 9. Criar Link Público
+
+**POST** `/projects/:projectId/public-link`
+
+Cria um link público único para compartilhar o feed de um projeto com clientes.
+
+#### Headers
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+#### Parâmetros
+- `projectId` (URL) - ID do projeto
+
+#### Body (JSON - Opcional)
+```json
+{
+  "expiresIn": 30  // Dias até expirar (opcional)
+}
+```
+
+#### Exemplo de Request
+```bash
+# Link sem expiração
+curl -X POST 'http://localhost:3000/projects/abc-123/public-link' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json'
+
+# Link com expiração de 30 dias
+curl -X POST 'http://localhost:3000/projects/abc-123/public-link' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"expiresIn": 30}'
+```
+
+#### Resposta de Sucesso (201)
+```json
+{
+  "success": true,
+  "data": {
+    "id": "link-uuid",
+    "token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "projectId": "project-abc-123",
+    "url": "https://smartbuild.codelabsusa.com/public/feed/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "expiresAt": "2025-12-09T00:00:00Z",
+    "createdAt": "2025-11-09T15:30:00Z"
+  }
+}
+```
+
+#### Resposta se Já Existe Link Ativo (200)
+```json
+{
+  "success": true,
+  "message": "Link público já existe para este projeto",
+  "data": {
+    "id": "link-uuid",
+    "token": "existing-token",
+    "projectId": "project-abc-123",
+    "url": "https://smartbuild.codelabsusa.com/public/feed/existing-token",
+    "expiresAt": null,
+    "createdAt": "2025-11-01T10:00:00Z",
+    "isActive": true,
+    "accessCount": 47
+  }
+}
+```
+
+**Nota:** Se já existe um link ativo para o projeto, o sistema retorna o link existente ao invés de criar um novo.
+
+#### Erros Possíveis
+- **400** - userId é obrigatório
+- **404** - Projeto não encontrado
+
+---
+
+### 10. Acessar Feed via Link Público
+
+**GET** `/public/feed/:token`
+
+Permite acesso público ao feed de um projeto através de um token único. **Não requer autenticação.**
+
+#### Parâmetros
+- `token` (URL) - Token único do link público
+
+#### Query Parameters
+- `limit` (opcional) - Limite de posts (padrão: 50)
+- `offset` (opcional) - Offset para paginação (padrão: 0)
+- `sortBy` (opcional) - `date` (padrão)
+- `order` (opcional) - `desc` (padrão) | `asc`
+
+#### Exemplo de Request
+```bash
+# Acesso simples (sem autenticação)
+curl -X GET 'https://smartbuild.codelabsusa.com/public/feed/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'
+
+# Com paginação
+curl -X GET 'https://smartbuild.codelabsusa.com/public/feed/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6?limit=20&offset=0'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "project": {
+      "id": "project-abc-123",
+      "clientName": "Nome do Cliente",
+      "address": "Rua Exemplo, 123 - São Paulo, SP"
+    },
+    "posts": [
+      {
+        "id": "activity-123",
+        "text": "Concretagem finalizada com sucesso",
+        "date_creation": "2025-11-09T14:30:00Z",
+        "author": {
+          "id": "user-123",
+          "name": "João Silva",
+          "avatar": "https://presigned-url..."
+        },
+        "serviceProject": {
+          "name": "Estrutura"
+        },
+        "location": {
+          "address": "Rua Exemplo, 123 - São Paulo, SP",
+          "coordinates": {
+            "lat": -23.550520,
+            "lng": -46.633308
+          }
+        },
+        "photos": [
+          {
+            "id": "photo-1",
+            "url": "https://presigned-url...",
+            "date_creation": "2025-11-09T14:30:00Z"
+          }
+        ],
+        "likesCount": 5,
+        "commentsCount": 2
+      }
+    ],
+    "pagination": {
+      "total": 40,
+      "limit": 50,
+      "offset": 0,
+      "hasMore": false
+    }
+  }
+}
+```
+
+#### Comportamento
+- ✅ Incrementa automaticamente o contador de acessos (`accessCount`)
+- ✅ Atualiza a data do último acesso (`lastAccessAt`)
+- ✅ Valida se o link está ativo
+- ✅ Valida se o link não expirou
+
+#### Erros Possíveis
+- **404** - Link expired or invalid (token não encontrado)
+- **403** - Link expired or invalid (link desativado ou expirado)
+
+---
+
+### 11. Listar Links de um Projeto
+
+**GET** `/projects/:projectId/public-links`
+
+Lista todos os links públicos criados para um projeto (ativos e inativos).
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Parâmetros
+- `projectId` (URL) - ID do projeto
+
+#### Exemplo de Request
+```bash
+curl -X GET 'http://localhost:3000/projects/abc-123/public-links' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "link-1",
+      "token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+      "url": "https://smartbuild.codelabsusa.com/public/feed/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+      "isActive": true,
+      "expiresAt": "2025-12-09T00:00:00Z",
+      "createdAt": "2025-11-09T15:30:00Z",
+      "accessCount": 47,
+      "lastAccessAt": "2025-11-09T18:45:00Z",
+      "createdBy": {
+        "id": "user-123",
+        "name": "Admin Name"
+      }
+    },
+    {
+      "id": "link-2",
+      "token": "old-token-xyz",
+      "url": "https://smartbuild.codelabsusa.com/public/feed/old-token-xyz",
+      "isActive": false,
+      "expiresAt": null,
+      "createdAt": "2025-10-01T10:00:00Z",
+      "accessCount": 152,
+      "lastAccessAt": "2025-11-08T12:30:00Z",
+      "createdBy": {
+        "id": "user-456",
+        "name": "Seller Name"
+      }
+    }
+  ]
+}
+```
+
+#### Erros Possíveis
+- **404** - Projeto não encontrado
+
+---
+
+### 12. Desativar Link Público
+
+**DELETE** `/public-links/:linkId`
+
+Desativa um link público. **Não deleta** do banco de dados, apenas marca como inativo.
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Parâmetros
+- `linkId` (URL) - ID do link público
+
+#### Exemplo de Request
+```bash
+curl -X DELETE 'http://localhost:3000/public-links/link-uuid' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "message": "Public link deactivated"
+}
+```
+
+**Importante:** O histórico de acessos é mantido para fins de auditoria.
+
+#### Erros Possíveis
+- **404** - Link não encontrado
+
+---
+
+### 13. Reativar Link Público
+
+**PATCH** `/public-links/:linkId/activate`
+
+Reativa um link público que foi desativado.
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Parâmetros
+- `linkId` (URL) - ID do link público
+
+#### Exemplo de Request
+```bash
+curl -X PATCH 'http://localhost:3000/public-links/link-uuid/activate' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "id": "link-uuid",
+    "isActive": true
+  }
+}
+```
+
+#### Erros Possíveis
+- **400** - Não é possível reativar um link expirado
+- **404** - Link não encontrado
+
+---
+
+## 📱 Integração Frontend - Links Públicos
+
+### Exemplo Completo (React)
+
+```javascript
+// 1. Botão "Share Link" na página de Reports
+import { Share2, Copy, ExternalLink } from 'lucide-react';
+
+function ProjectReportsTab({ projectId }) {
+  const [publicLink, setPublicLink] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const handleGenerateLink = async () => {
+    setLoading(true);
+    
+    try {
+      const response = await fetch(`/projects/${projectId}/public-link`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expiresIn: 30 })
+      });
+
+      const { data } = await response.json();
+      setPublicLink(data);
+      setShowModal(true);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={handleGenerateLink} disabled={loading}>
+        <Share2 size={16} />
+        {loading ? 'Gerando...' : 'Share Link'}
+      </button>
+
+      {showModal && (
+        <PublicLinkModal 
+          link={publicLink} 
+          onClose={() => setShowModal(false)} 
+        />
+      )}
+    </>
+  );
+}
+
+// 2. Modal de gerenciamento
+function PublicLinkModal({ link, onClose }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(link.url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDeactivate = async () => {
+    const response = await fetch(`/public-links/${link.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (response.ok) {
+      alert('Link desativado!');
+      onClose();
+    }
+  };
+
+  return (
+    <div className="modal">
+      <h2>Link Público do Projeto</h2>
+      
+      <div className="link-box">
+        <input type="text" value={link.url} readOnly />
+        <button onClick={handleCopy}>
+          {copied ? 'Copiado!' : 'Copiar'}
+        </button>
+      </div>
+
+      <div className="stats">
+        <p>📊 Acessos: {link.accessCount || 0}</p>
+        {link.expiresAt && (
+          <p>📅 Expira em: {new Date(link.expiresAt).toLocaleDateString()}</p>
+        )}
+      </div>
+
+      <button onClick={() => window.open(link.url, '_blank')}>
+        <ExternalLink size={16} />
+        Visualizar
+      </button>
+      
+      <button onClick={handleDeactivate}>Desativar</button>
+      <button onClick={onClose}>Fechar</button>
+    </div>
+  );
+}
+
+// 3. Página pública (SEM autenticação)
+// Rota: /public/feed/:token
+function PublicFeedPage() {
+  const { token } = useParams();
+  const [feed, setFeed] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadPublicFeed();
+  }, [token]);
+
+  const loadPublicFeed = async () => {
+    try {
+      const response = await fetch(`/public/feed/${token}?limit=50`);
+      
+      if (!response.ok) throw new Error('Link inválido ou expirado');
+
+      const { data } = await response.json();
+      setFeed(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div>Carregando...</div>;
+  if (error) return <div>Erro: {error}</div>;
+
+  return (
+    <div className="public-feed-page">
+      <header>
+        <img src="/logo.png" alt="Logo" />
+      </header>
+
+      <div className="project-info">
+        <h1>{feed.project.clientName}</h1>
+        <p>📍 {feed.project.address}</p>
+      </div>
+
+      <div className="feed">
+        {feed.posts.map(post => (
+          <div key={post.id} className="post-card">
+            <div className="post-header">
+              <img src={post.author?.avatar} alt={post.author?.name} />
+              <div>
+                <strong>{post.author?.name}</strong>
+                <p>{post.serviceProject?.name}</p>
+                <small>{new Date(post.date_creation).toLocaleString()}</small>
+              </div>
+            </div>
+
+            <p>{post.text}</p>
+
+            {post.photos.length > 0 && (
+              <div className="photos">
+                {post.photos.map(photo => (
+                  <img key={photo.id} src={photo.url} alt="Post" />
+                ))}
+              </div>
+            )}
+
+            <div className="stats">
+              <span>❤️ {post.likesCount}</span>
+              <span>💬 {post.commentsCount}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <footer>
+        <p>Powered by SmartBuild</p>
+      </footer>
+    </div>
+  );
+}
+```
+
+---
+
+## ⚡ Melhorias Futuras (Opcional)
+
+### Fase 2:
+- [ ] QR Code para o link público
+- [ ] Notificações por email quando houver novo post
+- [ ] Filtros públicos (por data, serviço)
+- [ ] Analytics de visualizações por post
+- [ ] Múltiplos links por projeto
+
+### Fase 3:
+- [ ] Comentários públicos (permitir cliente comentar)
+- [ ] Dashboard de estatísticas de acesso
+- [ ] Limitar quantidade de acessos
+- [ ] Senha opcional para o link
+
+---
