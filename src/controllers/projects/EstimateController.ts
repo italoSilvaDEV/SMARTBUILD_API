@@ -401,7 +401,8 @@ export class EstimateController {
                   description: true,
                   hours: true,
                   price: true,
-                  status: true
+                  status: true,
+                  estimateServiceId: true
                 }
               },
               company: {

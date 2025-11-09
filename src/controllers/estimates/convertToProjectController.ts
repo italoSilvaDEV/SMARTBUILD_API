@@ -78,7 +78,8 @@ export class ConvertToProjectController {
                             price: service.price || 0,
                             id_service: service.id_service || null,
                             projectId: estimate.projectId,
-                            company_id: estimate.project.company_id
+                            company_id: estimate.project.company_id,
+                            estimateServiceId: service.id
                         }))
                     })
                 }
