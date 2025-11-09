@@ -909,6 +909,281 @@ export class ProjectFeedController {
     }
 
     /**
+     * Lista TODOS os posts de TODOS os projetos (Dashboard Administrativo)
+     * Ordenado do mais recente para o mais antigo
+     */
+    async getAllFeed(request: Request, response: Response) {
+        try {
+            const { 
+                limit = '50', 
+                offset = '0',
+                // Filtros opcionais
+                projectId,
+                userId,
+                startDate,
+                endDate,
+                hasPhotos,
+                sortBy = 'date',
+                order = 'desc'
+            } = request.query;
+
+            // Monta filtros dinâmicos
+            const activityFilters: any = {};
+
+            // Filtro por projeto específico
+            if (projectId && typeof projectId === 'string') {
+                const serviceProjects = await prisma.serviceProject.findMany({
+                    where: { projectId: projectId },
+                    select: { id: true }
+                });
+                activityFilters.serviceProjectId = {
+                    in: serviceProjects.map(sp => sp.id)
+                };
+            }
+
+            // Filtro por autor
+            if (userId && typeof userId === 'string') {
+                activityFilters.authorId = userId;
+            }
+
+            // Filtro por data
+            if (startDate || endDate) {
+                activityFilters.date_creation = {};
+                if (startDate && typeof startDate === 'string') {
+                    activityFilters.date_creation.gte = new Date(startDate);
+                }
+                if (endDate && typeof endDate === 'string') {
+                    activityFilters.date_creation.lte = new Date(endDate);
+                }
+            }
+
+            // Busca TODAS as activities (ou filtradas)
+            const activities = await prisma.activities.findMany({
+                where: activityFilters,
+                include: {
+                    author: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true
+                        }
+                    },
+                    ServiceProject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            projectId: true,
+                            Project: {
+                                select: {
+                                    id: true,
+                                    status_project: true,
+                                    location: true,
+                                    lat: true,
+                                    log: true,
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Busca IDs de todos os serviços para buscar fotos
+            const serviceProjectIds = [
+                ...new Set(activities.map(a => a.serviceProjectId).filter(Boolean) as string[])
+            ];
+
+            // Busca fotos marcadas como FEED_POST
+            const feedPhotos = await prisma.galleryAfter.findMany({
+                where: {
+                    serviceProjectId: {
+                        in: serviceProjectIds
+                    },
+                    title: 'FEED_POST'
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Agrupa fotos por activity.id
+            const photosByActivityId = feedPhotos.reduce((acc, photo) => {
+                const activityId = photo.description || 'unlinked';
+                if (!acc[activityId]) {
+                    acc[activityId] = [];
+                }
+                acc[activityId].push(photo);
+                return acc;
+            }, {} as Record<string, typeof feedPhotos>);
+
+            // Busca contadores de likes e comentários
+            const activityIds = activities.map(a => a.id);
+            
+            const likesCount = await prisma.feedLike.groupBy({
+                by: ['activityId'],
+                where: {
+                    activityId: { in: activityIds }
+                },
+                _count: {
+                    activityId: true
+                }
+            });
+
+            const commentsCount = await prisma.feedComment.groupBy({
+                by: ['activityId'],
+                where: {
+                    activityId: { in: activityIds }
+                },
+                _count: {
+                    activityId: true
+                }
+            });
+
+            const likesMap = likesCount.reduce((acc, item) => {
+                acc[item.activityId] = item._count.activityId;
+                return acc;
+            }, {} as Record<string, number>);
+
+            const commentsMap = commentsCount.reduce((acc, item) => {
+                acc[item.activityId] = item._count.activityId;
+                return acc;
+            }, {} as Record<string, number>);
+
+            // Cria posts combinados
+            const posts = [];
+
+            for (const activity of activities) {
+                const linkedPhotos = photosByActivityId[activity.id] || [];
+                
+                const photos = await Promise.all(
+                    linkedPhotos.map(async (photo) => ({
+                        id: photo.id,
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }))
+                );
+
+                posts.push({
+                    type: 'post',
+                    id: activity.id,
+                    text: activity.text === '📷' ? null : activity.text,
+                    date_creation: activity.date_creation,
+                    author: {
+                        id: activity.author?.id,
+                        name: activity.author?.name,
+                        avatar: activity.author?.avatar 
+                            ? await getPresignedUrl(activity.author.avatar)
+                            : null
+                    },
+                    serviceProject: activity.ServiceProject ? {
+                        id: activity.ServiceProject.id,
+                        name: activity.ServiceProject.name,
+                        projectId: activity.ServiceProject.projectId
+                    } : null,
+                    project: activity.ServiceProject?.Project ? {
+                        id: activity.ServiceProject.Project.id,
+                        status: activity.ServiceProject.Project.status_project,
+                        client: activity.ServiceProject.Project.client
+                    } : null,
+                    location: activity.ServiceProject?.Project ? {
+                        address: activity.ServiceProject.Project.location,
+                        coordinates: {
+                            lat: activity.ServiceProject.Project.lat ? parseFloat(activity.ServiceProject.Project.lat) : null,
+                            lng: activity.ServiceProject.Project.log ? parseFloat(activity.ServiceProject.Project.log) : null
+                        }
+                    } : null,
+                    photos: photos,
+                    likesCount: likesMap[activity.id] || 0,
+                    commentsCount: commentsMap[activity.id] || 0
+                });
+            }
+
+            // Aplica filtro de hasPhotos
+            let filteredPosts = posts;
+            if (hasPhotos === 'true') {
+                filteredPosts = posts.filter(post => post.photos && post.photos.length > 0);
+            } else if (hasPhotos === 'false') {
+                filteredPosts = posts.filter(post => !post.photos || post.photos.length === 0);
+            }
+
+            // Ordena os posts
+            const orderMultiplier = order === 'asc' ? 1 : -1;
+            
+            filteredPosts.sort((a, b) => {
+                if (sortBy === 'photos') {
+                    const aPhotos = a.photos?.length || 0;
+                    const bPhotos = b.photos?.length || 0;
+                    return (bPhotos - aPhotos) * orderMultiplier;
+                } else {
+                    return (b.date_creation.getTime() - a.date_creation.getTime()) * orderMultiplier;
+                }
+            });
+
+            // Aplica paginação
+            const limitNum = parseInt(limit as string);
+            const offsetNum = parseInt(offset as string);
+            const totalPosts = filteredPosts.length;
+            const totalPages = Math.ceil(totalPosts / limitNum);
+            const currentPage = Math.floor(offsetNum / limitNum) + 1;
+            const hasMore = offsetNum + limitNum < totalPosts;
+            const nextOffset = hasMore ? offsetNum + limitNum : null;
+
+            const paginatedPosts = filteredPosts.slice(offsetNum, offsetNum + limitNum);
+
+            // Estatísticas gerais
+            const uniqueProjects = new Set(posts.map(p => p.project?.id).filter(Boolean));
+            const uniqueAuthors = new Set(posts.map(p => p.author?.id).filter(Boolean));
+            const totalPhotos = posts.reduce((sum, post) => sum + post.photos.length, 0);
+
+            return response.status(200).json({
+                success: true,
+                data: {
+                    posts: paginatedPosts,
+                    pagination: {
+                        total: totalPosts,
+                        limit: limitNum,
+                        offset: offsetNum,
+                        currentPage: currentPage,
+                        totalPages: totalPages,
+                        hasMore: hasMore,
+                        nextOffset: nextOffset
+                    },
+                    filters: {
+                        projectId: projectId || null,
+                        userId: userId || null,
+                        startDate: startDate || null,
+                        endDate: endDate || null,
+                        hasPhotos: hasPhotos || null,
+                        sortBy: sortBy,
+                        order: order
+                    },
+                    statistics: {
+                        totalProjects: uniqueProjects.size,
+                        totalAuthors: uniqueAuthors.size,
+                        totalPhotos: totalPhotos,
+                        averagePhotosPerPost: posts.length > 0 ? (totalPhotos / posts.length).toFixed(2) : 0
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Erro ao buscar feed geral:', error);
+            return response.status(500).json({ 
+                error: 'Erro interno do servidor',
+                details: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
+
+    /**
      * Lista todos os posts de um funcionário específico
      * Agregado de todos os projetos que ele já participou
      */

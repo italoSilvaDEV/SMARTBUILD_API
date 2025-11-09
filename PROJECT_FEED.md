@@ -1707,3 +1707,358 @@ console.log('✅ Descrição melhorada:', { tokensUsed });
 
 **Desenvolvido com migrações mínimas - Máxima reutilização de estrutura** ✅
 
+---
+
+## 8. Listar Feed Geral - Todos os Projetos (Dashboard Administrativo)
+
+**GET** `/feed/all`
+
+Lista **TODOS os posts de TODOS os projetos de TODOS os funcionários** - ideal para dashboard administrativo/gerencial para acompanhamento geral.
+
+**✨ Características:**
+- 📊 Visão geral de toda a atividade da empresa
+- 🔍 Filtros opcionais por projeto, funcionário, data
+- 📈 Estatísticas agregadas (projetos ativos, autores, fotos)
+- 📅 Ordenado do mais recente para o mais antigo (padrão)
+- ⚡ Paginação eficiente
+
+#### Headers
+```
+Authorization: Bearer {token}
+```
+
+#### Query Parameters
+
+**Paginação:**
+- `limit` (opcional) - Limite de posts por página (padrão: 50)
+- `offset` (opcional) - Offset para paginação (padrão: 0)
+
+**Filtros:**
+- `projectId` (opcional) - Filtrar por projeto específico
+- `userId` (opcional) - Filtrar por autor específico
+- `startDate` (opcional) - Data inicial (ISO 8601: `2024-11-01T00:00:00Z`)
+- `endDate` (opcional) - Data final (ISO 8601: `2024-11-30T23:59:59Z`)
+- `hasPhotos` (opcional) - `true` (apenas com fotos) | `false` (apenas sem fotos)
+
+**Ordenação:**
+- `sortBy` (opcional) - `date` (padrão) | `photos` (por quantidade de fotos)
+- `order` (opcional) - `desc` (padrão - mais recente primeiro) | `asc`
+
+#### Exemplo de Request
+
+**Simples (todos os posts):**
+```bash
+curl -X GET 'http://localhost:3000/feed/all?limit=50&offset=0' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+**Com Filtros:**
+```bash
+# Posts da última semana com fotos
+curl -X GET 'http://localhost:3000/feed/all?hasPhotos=true&startDate=2024-11-01T00:00:00Z&sortBy=photos&order=desc' \
+  -H 'Authorization: Bearer seu-token'
+
+# Posts de um projeto específico
+curl -X GET 'http://localhost:3000/feed/all?projectId=project-abc-123' \
+  -H 'Authorization: Bearer seu-token'
+
+# Posts de um funcionário específico
+curl -X GET 'http://localhost:3000/feed/all?userId=user-456' \
+  -H 'Authorization: Bearer seu-token'
+
+# Posts do último mês ordenados por mais fotos
+curl -X GET 'http://localhost:3000/feed/all?startDate=2024-10-01T00:00:00Z&sortBy=photos&order=desc&limit=100' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "posts": [
+      {
+        "type": "post",
+        "id": "activity-123",
+        "text": "Concretagem da laje finalizada com sucesso",
+        "date_creation": "2024-11-09T14:30:00.000Z",
+        "author": {
+          "id": "user-123",
+          "name": "João Silva",
+          "avatar": "https://presigned-url..."
+        },
+        "serviceProject": {
+          "id": "service-456",
+          "name": "Estrutura",
+          "projectId": "project-abc"
+        },
+        "project": {
+          "id": "project-abc",
+          "status": "Em Andamento",
+          "client": {
+            "id": "client-1",
+            "name": "Cliente A Ltda"
+          }
+        },
+        "location": {
+          "address": "Rua Exemplo, 123 - São Paulo, SP",
+          "coordinates": {
+            "lat": -23.550520,
+            "lng": -46.633308
+          }
+        },
+        "photos": [
+          {
+            "id": "photo-1",
+            "url": "https://presigned-url...",
+            "date_creation": "2024-11-09T14:30:00.000Z"
+          }
+        ],
+        "likesCount": 5,
+        "commentsCount": 2
+      },
+      {
+        "type": "post",
+        "id": "activity-456",
+        "text": "Instalação elétrica do 2º andar concluída",
+        "date_creation": "2024-11-09T10:15:00.000Z",
+        "author": {
+          "id": "user-789",
+          "name": "Maria Santos",
+          "avatar": "https://presigned-url..."
+        },
+        "serviceProject": {
+          "id": "service-789",
+          "name": "Elétrica",
+          "projectId": "project-xyz"
+        },
+        "project": {
+          "id": "project-xyz",
+          "status": "Em Andamento",
+          "client": {
+            "id": "client-2",
+            "name": "Cliente B S.A."
+          }
+        },
+        "location": {
+          "address": "Av. Principal, 456 - Rio de Janeiro, RJ",
+          "coordinates": {
+            "lat": -22.906847,
+            "lng": -43.172896
+          }
+        },
+        "photos": [],
+        "likesCount": 3,
+        "commentsCount": 1
+      }
+    ],
+    "pagination": {
+      "total": 150,
+      "limit": 50,
+      "offset": 0,
+      "currentPage": 1,
+      "totalPages": 3,
+      "hasMore": true,
+      "nextOffset": 50
+    },
+    "filters": {
+      "projectId": null,
+      "userId": null,
+      "startDate": null,
+      "endDate": null,
+      "hasPhotos": null,
+      "sortBy": "date",
+      "order": "desc"
+    },
+    "statistics": {
+      "totalProjects": 12,
+      "totalAuthors": 8,
+      "totalPhotos": 245,
+      "averagePhotosPerPost": "1.63"
+    }
+  }
+}
+```
+
+#### Campos da Resposta
+
+**Post Object:**
+- `type`: Tipo do post (`"post"` ou `"photo_only"`)
+- `id`: ID único do post
+- `text`: Texto do post (null se for apenas foto)
+- `date_creation`: Data de criação
+- `author`: Informações do autor (id, nome, avatar)
+- `serviceProject`: Serviço relacionado (id, nome, projectId)
+- `project`: Projeto relacionado (id, status, cliente)
+- `location`: Localização do projeto (endereço e coordenadas)
+- `photos`: Array de fotos vinculadas
+- `likesCount`: Quantidade de likes
+- `commentsCount`: Quantidade de comentários
+
+**Statistics Object:**
+- `totalProjects`: Quantidade total de projetos com posts
+- `totalAuthors`: Quantidade total de funcionários que postaram
+- `totalPhotos`: Quantidade total de fotos em todos os posts
+- `averagePhotosPerPost`: Média de fotos por post
+
+#### Casos de Uso
+
+**1. Dashboard Administrativo Geral:**
+```javascript
+// Ver últimos posts de todos os projetos
+const response = await fetch('/feed/all?limit=20&offset=0');
+```
+
+**2. Relatório de Atividade Semanal:**
+```javascript
+// Posts da última semana
+const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+const response = await fetch(`/feed/all?startDate=${oneWeekAgo}&sortBy=date&order=desc`);
+```
+
+**3. Monitorar Projeto Específico:**
+```javascript
+// Posts de um projeto específico
+const response = await fetch('/feed/all?projectId=project-abc-123');
+```
+
+**4. Avaliar Performance de Funcionário:**
+```javascript
+// Todos os posts de um funcionário
+const response = await fetch('/feed/all?userId=user-123&sortBy=photos&order=desc');
+```
+
+**5. Galeria de Fotos da Empresa:**
+```javascript
+// Apenas posts com fotos, ordenados por quantidade
+const response = await fetch('/feed/all?hasPhotos=true&sortBy=photos&order=desc&limit=100');
+```
+
+#### Diferenças das Outras Rotas
+
+| Rota | Escopo | Uso |
+|------|--------|-----|
+| **`GET /feed/all`** | **TODOS os projetos** | Dashboard administrativo geral |
+| `GET /projects/:id/feed` | UM projeto específico | Ver progresso de um projeto |
+| `GET /services/:id/feed` | UM serviço específico | Ver posts de um serviço |
+| `GET /users/:id/feed` | UM funcionário (todos projetos dele) | Perfil/histórico do funcionário |
+
+#### Vantagens
+
+✅ **Visão holística** - Veja tudo que está acontecendo na empresa  
+✅ **Filtros flexíveis** - Combine múltiplos filtros conforme necessário  
+✅ **Estatísticas integradas** - Métricas úteis para gestores  
+✅ **Performance otimizada** - Paginação eficiente para grandes volumes  
+✅ **Dados ricos** - Inclui projeto, cliente, localização em cada post  
+
+#### Exemplo Frontend (React)
+
+```javascript
+import { useState, useEffect } from 'react';
+
+function AdminDashboard() {
+  const [feed, setFeed] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({
+    limit: 50,
+    offset: 0,
+    sortBy: 'date',
+    order: 'desc'
+  });
+
+  const loadAllFeed = async () => {
+    setLoading(true);
+    
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`/feed/all?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const { data } = await response.json();
+    
+    setFeed(data.posts);
+    setStats(data.statistics);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadAllFeed();
+  }, [filters]);
+
+  return (
+    <div className="admin-dashboard">
+      <div className="statistics">
+        <div className="stat-card">
+          <h3>Projetos Ativos</h3>
+          <p>{stats?.totalProjects}</p>
+        </div>
+        <div className="stat-card">
+          <h3>Funcionários Ativos</h3>
+          <p>{stats?.totalAuthors}</p>
+        </div>
+        <div className="stat-card">
+          <h3>Total de Fotos</h3>
+          <p>{stats?.totalPhotos}</p>
+        </div>
+      </div>
+
+      <div className="filters">
+        <select onChange={(e) => setFilters({...filters, sortBy: e.target.value})}>
+          <option value="date">Mais Recentes</option>
+          <option value="photos">Mais Fotos</option>
+        </select>
+        
+        <label>
+          <input 
+            type="checkbox" 
+            onChange={(e) => setFilters({
+              ...filters, 
+              hasPhotos: e.target.checked ? 'true' : null
+            })}
+          />
+          Apenas com fotos
+        </label>
+      </div>
+
+      <div className="feed">
+        {feed.map(post => (
+          <div key={post.id} className="feed-card">
+            <div className="post-header">
+              <img src={post.author?.avatar} alt={post.author?.name} />
+              <div>
+                <strong>{post.author?.name}</strong>
+                <p>{post.project?.client?.name} - {post.serviceProject?.name}</p>
+                <small>{new Date(post.date_creation).toLocaleString()}</small>
+              </div>
+            </div>
+
+            <div className="post-content">
+              <p>{post.text}</p>
+              {post.photos.length > 0 && (
+                <div className="photos-grid">
+                  {post.photos.map(photo => (
+                    <img key={photo.id} src={photo.url} alt="Post" />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="post-actions">
+              <span>❤️ {post.likesCount}</span>
+              <span>💬 {post.commentsCount}</span>
+              <a href={`/projects/${post.project?.id}`}>Ver Projeto →</a>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {loading && <div className="loading">Carregando...</div>}
+    </div>
+  );
+}
+```
+
+---

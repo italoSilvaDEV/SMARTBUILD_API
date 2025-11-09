@@ -5,6 +5,17 @@ import { checkToken } from '../middlewares/checkToken';
 const projectFeedController = new ProjectFeedController();
 const projectFeedRoutes = Router();
 
+// ==================== FEED GLOBAL (ADMIN) ====================
+
+// Listar TODOS os posts de TODOS os projetos (Dashboard Administrativo)
+projectFeedRoutes.get(
+    '/feed/all',
+    checkToken,
+    projectFeedController.getAllFeed.bind(projectFeedController)
+);
+
+// ==================== FEED POR PROJETO/SERVIÇO/USUÁRIO ====================
+
 // Criar post no feed (texto + fotos)
 // Aceita tanto projectId quanto serviceProjectId
 projectFeedRoutes.post(
