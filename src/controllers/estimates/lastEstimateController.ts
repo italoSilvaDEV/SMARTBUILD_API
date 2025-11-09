@@ -44,6 +44,9 @@ export class LastEstimateController {
                 where: {
                     projectId: projectId
                 },
+                include: {
+                    serviceProjects: true
+                },
                 orderBy: {
                     date_creation: "desc"
                 }
