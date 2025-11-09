@@ -277,6 +277,9 @@ model ServiceProject {
   company            Company?             @relation(fields: [company_id], references: [id])
   company_id         String?
   TimeLine           TimeLine[]
+
+  estimateServiceId String?                 @unique
+  estimateService   EstimateServiceProject? @relation(fields: [estimateServiceId], references: [id])
 }
 
 model Activities {
@@ -966,8 +969,9 @@ model EstimateServiceProject {
   start_date String?
   deadline   String?
 
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  date_creation  DateTime        @default(now())
+  date_update    DateTime        @updatedAt
+  serviceProject ServiceProject?
 }
 
 model Permissions {
