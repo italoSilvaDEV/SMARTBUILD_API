@@ -831,31 +831,106 @@ export class EstimateController {
       const { id } = req.params;
       const { cancellationReason } = req.body;
       const payload = returnPayLoad(req)
-      const userId = payload?.id; // Assuming you have user info in the request from checkToken middleware
+      const userId = payload?.id;
 
-      if (!userId) return res.status(401).json({ error: "Failed to cancel estimate" });
-      const estimate = await prisma.estimate.update({
-        where: { id },
-        data: {
-          status: "canceled",
-          canceledAt: new Date(),
-          canceledById: userId,
-          cancellationReason,
-          date_update: new Date()
+      if (!userId) {
+        return res.status(401).json({
+          error: "Failed to cancel estimate"
+        });
+      }
+
+      const estimateExists = await prisma.estimate.findUnique({
+        where: {
+          id: id
+        },
+        select: {
+          status: true,
+          serviceProjects: true
         }
-      });
-      await prisma.project.findUnique({
-        where: { id: estimate.projectId },
-        include: {
-          client: true
-        }
-      });
+      })
 
+      if (!estimateExists) {
+        return res.status(404).json({
+          error: "Estimate not found"
+        })
+      }
 
-      // Usar a função utilitária
-      await EstimateController.addTimelineEvent(estimate.id, "Canceled");
+      if (estimateExists.status === "approved") {
+        await prisma.$transaction(async (smartbuild) => {
+          for (const estimateServiceProject of estimateExists.serviceProjects) {
+            const serviceProject = await smartbuild.serviceProject.findFirst({
+              where: {
+                estimateServiceId: estimateServiceProject.id
+              }
+            })
 
-      return res.json(estimate);
+            if (serviceProject) {
+              await smartbuild.serviceProject.delete({
+                where: {
+                  id: serviceProject.id
+                }
+              })
+            }
+          }
+
+          const estimate = await smartbuild.estimate.update({
+            where: { id },
+            data: {
+              status: "canceled",
+              canceledAt: new Date(),
+              canceledById: userId,
+              cancellationReason,
+              date_update: new Date()
+            }
+          });
+
+          await smartbuild.estimateTimeline.create({
+            data: {
+              estimate: {
+                connect: {
+                  id: estimate.id
+                }
+              },
+              description: "Canceled",
+              date_creation: new Date()
+            }
+          });
+
+          return res.status(200).json({
+            message: "Estimate canceled successfully"
+          })
+        })
+      } else {
+        await prisma.$transaction(async (smartbuild) => {
+          const estimate = await smartbuild.estimate.update({
+            where: { id },
+            data: {
+              status: "canceled",
+              canceledAt: new Date(),
+              canceledById: userId,
+              cancellationReason,
+              date_update: new Date()
+            }
+          });
+
+          await smartbuild.estimateTimeline.create({
+            data: {
+              estimate: {
+                connect: {
+                  id: estimate.id
+                }
+              },
+              description: "Canceled",
+              date_creation: new Date()
+            }
+          });
+
+          return res.status(200).json({
+            message: "Estimate canceled successfully"
+          })
+        })
+
+      }
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to cancel estimate" });
