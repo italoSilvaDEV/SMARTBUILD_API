@@ -637,6 +637,7 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
+          serviceProjects: true,
           project: {
             include: {
               client: true,
@@ -650,7 +651,21 @@ export class EstimateController {
         return res.status(404).json({ error: "Estimate not found" });
       }
 
-      // Atualizar o estimate com a signature
+      if (estimate.serviceProjects.length > 0) {
+        await prisma.serviceProject.createMany({
+          data: estimate.serviceProjects.map((service) => ({
+            name: service.name,
+            description: service.description || "",
+            hours: service.hours || 0,
+            price: service.price || 0,
+            id_service: service.id_service || null,
+            projectId: estimate.projectId,
+            company_id: estimate.project.company_id,
+            estimateServiceId: service.id
+          }))
+        })
+      }
+
       const estimateUpdated = await prisma.estimate.update({
         where: { id },
         data: {
