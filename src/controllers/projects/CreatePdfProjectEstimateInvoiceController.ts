@@ -111,7 +111,8 @@ export class CreatePdfProjectEstimateInvoiceController {
                     estimate_id,
                     invoice_id,
                     project_id,
-                    type_pdf
+                    type_pdf,
+                    templateNumber
                 } = req.body;
 
                 const file = req.file;
@@ -186,6 +187,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                         project_id: project_id || null,
                         estimate_id: estimate_id || null,
                         invoice_id: invoice_id || null,
+                        templateNumber: templateNumber || 1,
                     },
                     select: {
                         id: true,
