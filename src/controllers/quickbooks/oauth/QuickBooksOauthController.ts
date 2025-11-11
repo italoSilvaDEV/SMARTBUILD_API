@@ -321,6 +321,16 @@ export class QuickBooksController {
         });
       }
 
+      // Se a conta está desabilitada (usuário desconectou), retorna como não conectado
+      if (account.isDisabled) {
+        return res.status(200).json({
+          isConnected: false,
+          needsReauthorization: false,
+          accountInfo: null,
+          message: "QuickBooks account is disabled"
+        });
+      }
+
       // Se já marcado para reautorizar
       if (account.needsReauthorization) {
         return res.status(200).json({
