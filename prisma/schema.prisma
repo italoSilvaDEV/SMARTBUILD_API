@@ -150,6 +150,7 @@ model Company {
 
   ProjectFiles  ProjectFiles[]
   ProjectPastes ProjectPastes[]
+  Subcontractors Subcontractor[]
 }
 
 model ContractNotes {
@@ -690,6 +691,22 @@ model CostProject {
   @@map("cost_project")
 }
 
+model Subcontractor {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  phone         String?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  workedHours Workedhours[]
+
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?
+
+  @@map("subcontractors")
+}
+
 model Workedhours {
   id String @id @default(uuid())
 
@@ -707,6 +724,9 @@ model Workedhours {
 
   project    Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   project_id String?
+
+  subcontractor    Subcontractor? @relation(fields: [subcontractor_id], references: [id])
+  subcontractor_id String?
 
   @@map("worked_hours")
 }

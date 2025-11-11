@@ -10,6 +10,7 @@ interface CreateWorkedHoursRequest {
   hourly_price: number; // Recebido como número do front-end
   start_date?: string; // Opcional
   end_date?: string; // Opcional
+  subcontractor_id?: string; // Opcional
 }
 
 export class CreateWorkedHoursController {
@@ -21,7 +22,8 @@ export class CreateWorkedHoursController {
         amount_of_hours,
         hourly_price,
         start_date,
-        end_date
+        end_date,
+        subcontractor_id
 
       } = req.body as CreateWorkedHoursRequest;
 
@@ -49,14 +51,14 @@ export class CreateWorkedHoursController {
       }
 
       if (error.length > 0) {
-        return res.status(400).json({ error });
+        return res.status(400).json({ error }); 
       }
 
       const data: any = {
         name_user,
         hourly_price,
         amount_of_hours: amount_of_hours ? parseFloat(amount_of_hours) : null,
-        start_date: start_date ? new Date(start_date).toISOString() : null, // Corrigido aqui
+        start_date: start_date ? new Date(start_date).toISOString() : null,
         end_date: end_date ? new Date(end_date).toISOString() : null,
         project: {
           connect: {
@@ -64,6 +66,14 @@ export class CreateWorkedHoursController {
           },
         },
       };
+
+      if (subcontractor_id) {
+        data.subcontractor = {
+          connect: {
+            id: subcontractor_id,
+          },
+        };
+      }
 
       await prisma.workedhours.create({
         data,
