@@ -167,7 +167,7 @@ export class ListClientController {
                 }
                 : {};
 
-            // Buscar clientes
+            // Buscar clientes com projetos, serviços e invoices
             const clientsQuery = await prisma.client.findMany({
                 where: {
                     company_id: String(company_id),
@@ -177,15 +177,27 @@ export class ListClientController {
                 include: {
                     _count: {
                         select: { 
-                            projects: {
-                                where: {
-                                    status_project: {
-                                        notIn: ["Pending", "Accepted"]
-                                    }
-                                }
-                            }
+                            projects: true
                         },
                     },
+                    projects: {
+                        select: {
+                            price: true,
+                            serviceProject: {
+                                select: {
+                                    hours: true,
+                                    price: true,
+                                }
+                            },
+                            invoices: {
+                                select: {
+                                    totalAmount: true,
+                                    status: true,
+                                    dueDate: true,
+                                }
+                            }
+                        }
+                    }
                 },
             });
 
@@ -208,12 +220,45 @@ export class ListClientController {
                 },
             });
 
-            // Formatar resposta
-            const formattedClients = clientsQuery.map((
-                {
+            // Formatar resposta com dados de projetos e invoices
+            const formattedClients = clientsQuery.map((client) => {
+                const {
                     id, name, email, phone, _count, location, addressOffice,
-                    lat, log, birth_date, document, radius
-                }) => ({
+                    lat, log, birth_date, document, radius, projects
+                } = client;
+
+                // Calcular totalRevenue com base nos serviços dos projetos
+                const currentDate = new Date();
+                let totalRevenue = 0;
+                let totalPaid = 0;
+                let totalNotDueYet = 0;
+                let totalOverdue = 0;
+
+                // Total Revenue = soma dos valores dos projetos (serviços ou price)
+                projects.forEach(project => {
+                    // Se tiver serviços, calcular pela soma. Caso contrário, usar project.price
+                    const projectValue = project.serviceProject.length > 0
+                        ? project.serviceProject.reduce((sum, service) => {
+                            return sum + (Number(service.hours || 0) * Number(service.price || 0));
+                          }, 0)
+                        : Number(project.price || 0);
+                    totalRevenue += projectValue;
+
+                    // Calcular estatísticas de invoices para cada projeto
+                    project.invoices.forEach(invoice => {
+                        const amount = Number(invoice.totalAmount || 0);
+                        
+                        if (invoice.status === 'paid') {
+                            totalPaid += amount;
+                        } else if (invoice.dueDate && new Date(invoice.dueDate) < currentDate) {
+                            totalOverdue += amount;
+                        } else {
+                            totalNotDueYet += amount;
+                        }
+                    });
+                });
+
+                return {
                     id,
                     name,
                     email,
@@ -226,7 +271,12 @@ export class ListClientController {
                     log,
                     projects: _count.projects,
                     radius,
-                }));
+                    totalRevenue: Number(totalRevenue.toFixed(2)),
+                    totalPaid: Number(totalPaid.toFixed(2)),
+                    totalNotDueYet: Number(totalNotDueYet.toFixed(2)),
+                    totalOverdue: Number(totalOverdue.toFixed(2)),
+                };
+            });
 
             return res.json({
                 total: totalCount,

@@ -369,6 +369,66 @@ export class EstimateController {
         },
         include: {
           serviceProjects: true,
+          project: {
+            select: {
+              id: true,
+              status_project: true,
+              autorId: true,
+              location: true,
+              client: {
+                select: {
+                  id: true,
+                  avatar: true,
+                  name: true,
+                  email: true,
+                  city_and_state: true,
+                  date_creation: true,
+                  date_update: true,
+                }
+              },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true
+                }
+              },
+              serviceProject: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  hours: true,
+                  price: true,
+                  status: true,
+                  estimateServiceId: true
+                }
+              },
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  address: true,
+                  district: true,
+                  numberHouse: true,
+                  avatar: true,
+                  complement: true,
+                  webSiteUrl: true,
+                  NotesContrac: {
+                    select: {
+                      id: true,
+                      notes: true,
+                      updatedAt: true,
+                      createdAt: true
+                    }
+                  }
+                }
+              }
+            },
+          },
           PdfProject: {
             orderBy: {
               date_creation: 'desc'
@@ -400,8 +460,10 @@ export class EstimateController {
 
       // Generate presigned URLs for PDFs in all estimates and convert array to single object
       for (const estimate of estimates) {
+
         if (estimate.PdfProject && estimate.PdfProject.length > 0) {
           const pdf = estimate.PdfProject[0];
+
           if (pdf.uri) {
             pdf.uri = await getPresignedUrl(pdf.uri);
           }
@@ -410,6 +472,16 @@ export class EstimateController {
         } else {
           // Set to null if no PDF found
           (estimate as any).PdfProject = null;
+        }
+
+        if (estimate.project.company?.avatar) {
+          estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
+        }
+        if (estimate.project.user?.avatar) {
+          estimate.project.user.avatar = await getPresignedUrl(estimate.project.user.avatar);
+        }
+        if (estimate.project.client?.avatar) {
+          estimate.project.client.avatar = await getPresignedUrl(estimate.project.client.avatar);
         }
       }
 
@@ -565,6 +637,7 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
+          serviceProjects: true,
           project: {
             include: {
               client: true,
@@ -578,7 +651,21 @@ export class EstimateController {
         return res.status(404).json({ error: "Estimate not found" });
       }
 
-      // Atualizar o estimate com a signature
+      if (estimate.serviceProjects.length > 0) {
+        await prisma.serviceProject.createMany({
+          data: estimate.serviceProjects.map((service) => ({
+            name: service.name,
+            description: service.description || "",
+            hours: service.hours || 0,
+            price: service.price || 0,
+            id_service: service.id_service || null,
+            projectId: estimate.projectId,
+            company_id: estimate.project.company_id,
+            estimateServiceId: service.id
+          }))
+        })
+      }
+
       const estimateUpdated = await prisma.estimate.update({
         where: { id },
         data: {
@@ -759,31 +846,106 @@ export class EstimateController {
       const { id } = req.params;
       const { cancellationReason } = req.body;
       const payload = returnPayLoad(req)
-      const userId = payload?.id; // Assuming you have user info in the request from checkToken middleware
+      const userId = payload?.id;
 
-      if (!userId) return res.status(401).json({ error: "Failed to cancel estimate" });
-      const estimate = await prisma.estimate.update({
-        where: { id },
-        data: {
-          status: "canceled",
-          canceledAt: new Date(),
-          canceledById: userId,
-          cancellationReason,
-          date_update: new Date()
+      if (!userId) {
+        return res.status(401).json({
+          error: "Failed to cancel estimate"
+        });
+      }
+
+      const estimateExists = await prisma.estimate.findUnique({
+        where: {
+          id: id
+        },
+        select: {
+          status: true,
+          serviceProjects: true
         }
-      });
-      await prisma.project.findUnique({
-        where: { id: estimate.projectId },
-        include: {
-          client: true
-        }
-      });
+      })
 
+      if (!estimateExists) {
+        return res.status(404).json({
+          error: "Estimate not found"
+        })
+      }
 
-      // Usar a função utilitária
-      await EstimateController.addTimelineEvent(estimate.id, "Canceled");
+      if (estimateExists.status === "approved") {
+        await prisma.$transaction(async (smartbuild) => {
+          for (const estimateServiceProject of estimateExists.serviceProjects) {
+            const serviceProject = await smartbuild.serviceProject.findFirst({
+              where: {
+                estimateServiceId: estimateServiceProject.id
+              }
+            })
 
-      return res.json(estimate);
+            if (serviceProject) {
+              await smartbuild.serviceProject.delete({
+                where: {
+                  id: serviceProject.id
+                }
+              })
+            }
+          }
+
+          const estimate = await smartbuild.estimate.update({
+            where: { id },
+            data: {
+              status: "canceled",
+              canceledAt: new Date(),
+              canceledById: userId,
+              cancellationReason,
+              date_update: new Date()
+            }
+          });
+
+          await smartbuild.estimateTimeline.create({
+            data: {
+              estimate: {
+                connect: {
+                  id: estimate.id
+                }
+              },
+              description: "Canceled",
+              date_creation: new Date()
+            }
+          });
+
+          return res.status(200).json({
+            message: "Estimate canceled successfully"
+          })
+        })
+      } else {
+        await prisma.$transaction(async (smartbuild) => {
+          const estimate = await smartbuild.estimate.update({
+            where: { id },
+            data: {
+              status: "canceled",
+              canceledAt: new Date(),
+              canceledById: userId,
+              cancellationReason,
+              date_update: new Date()
+            }
+          });
+
+          await smartbuild.estimateTimeline.create({
+            data: {
+              estimate: {
+                connect: {
+                  id: estimate.id
+                }
+              },
+              description: "Canceled",
+              date_creation: new Date()
+            }
+          });
+
+          return res.status(200).json({
+            message: "Estimate canceled successfully"
+          })
+        })
+
+      }
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to cancel estimate" });

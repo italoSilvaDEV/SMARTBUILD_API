@@ -84,7 +84,8 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
-                        company_id: company.id
+                        company_id: company.id,
+                        onBoardingCompleted: false
                     },
                 });
                 await prisma.userCompany.create({
@@ -106,7 +107,8 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
-                        company_id: company.id
+                        company_id: company.id,
+                        onBoardingCompleted: false
                     },
                 });
             }

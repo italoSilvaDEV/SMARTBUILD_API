@@ -181,6 +181,7 @@ export class ProjectController {
               name: true,
               description: true,
               hours: true,
+              estimateServiceId: true,
               price: true,
               stages: true,
               UserServiceProject: {

@@ -71,7 +71,7 @@
     "node-cron": "^3.0.3",
     "node-quickbooks": "^2.0.46",
     "nodemailer": "^6.9.13",
-    "openai": "^6.1.0",
+    "openai": "^6.8.0",
     "pdf-lib": "^1.17.1",
     "sharp": "^0.33.4",
     "stripe": "^17.7.0",

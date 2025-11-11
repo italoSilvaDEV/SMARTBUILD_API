@@ -13,25 +13,26 @@ model Config {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  avatar          String?
-  name            String
-  email           String   @unique
-  document        String?
-  phone           String?
-  phone_emergency String?
-  zip_code        String?
-  city_and_state  String?
-  state           String?
-  number_road     String?
-  number_home     String?
-  neighborhood    String?
-  password        String
-  rules           Json
-  hourly_price    Float?
-  profession      String?
-  isDisabled      Boolean? @default(false)
-  isOverTime      Boolean? @default(false)
+  id                  String   @id @default(uuid())
+  avatar              String?
+  name                String
+  email               String   @unique
+  document            String?
+  phone               String?
+  phone_emergency     String?
+  zip_code            String?
+  city_and_state      String?
+  state               String?
+  number_road         String?
+  number_home         String?
+  neighborhood        String?
+  password            String
+  rules               Json
+  hourly_price        Float?
+  profession          String?
+  isDisabled          Boolean? @default(false)
+  isOverTime          Boolean? @default(false)
+  onBoardingCompleted Boolean? @default(true)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -68,6 +69,16 @@ model User {
 
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
   SyncStatus      SyncStatus[]      @relation("SyncStatus")
+
+  // Relacionamentos do Feed
+  FeedComments           FeedComment[]      @relation("FeedComments")
+  FeedLikes              FeedLike[]         @relation("FeedLikes")
+  FeedNotifications      FeedNotification[] @relation("FeedNotifications")
+  FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
+  PublicFeedLinks        PublicFeedLink[]   @relation("PublicFeedLinkCreators")
+
+  ProjectFiles  ProjectFiles[]
+  ProjectPastes ProjectPastes[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -136,6 +147,9 @@ model Company {
   QuickBooksConfig QuickBooksConfig[]
 
   workContexts WorkContext[]
+
+  ProjectFiles  ProjectFiles[]
+  ProjectPastes ProjectPastes[]
 }
 
 model ContractNotes {
@@ -264,11 +278,14 @@ model ServiceProject {
   company            Company?             @relation(fields: [company_id], references: [id])
   company_id         String?
   TimeLine           TimeLine[]
+
+  estimateServiceId String?                 @unique
+  estimateService   EstimateServiceProject? @relation(fields: [estimateServiceId], references: [id])
 }
 
 model Activities {
   id   String @id @default(uuid())
-  text String
+  text String @db.Text
 
   ServiceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
   serviceProjectId String?
@@ -278,6 +295,101 @@ model Activities {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+
+  // Novos relacionamentos para feed
+  comments      FeedComment[]
+  likes         FeedLike[]
+  notifications FeedNotification[]
+}
+
+model FeedComment {
+  id   String @id @default(uuid())
+  text String @db.Text
+
+  activity   Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  author   User   @relation("FeedComments", fields: [authorId], references: [id])
+  authorId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([activityId])
+  @@index([authorId])
+  @@map("feed_comment")
+}
+
+model FeedLike {
+  id String @id @default(uuid())
+
+  activity   Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  user   User   @relation("FeedLikes", fields: [userId], references: [id])
+  userId String
+
+  date_creation DateTime @default(now())
+
+  @@unique([activityId, userId]) // Um usuário só pode dar 1 like por post
+  @@index([activityId])
+  @@index([userId])
+  @@map("feed_like")
+}
+
+model FeedNotification {
+  id String @id @default(uuid())
+
+  type        String // "comment", "like", "mention"
+  message     String  @db.Text
+  isRead      Boolean @default(false)
+  relatedLink String? // Link para o post/comentário
+
+  // Destinatário da notificação
+  user   User   @relation("FeedNotifications", fields: [userId], references: [id])
+  userId String
+
+  // Quem gerou a notificação (quem comentou/curtiu)
+  actor   User?   @relation("FeedNotificationActors", fields: [actorId], references: [id])
+  actorId String?
+
+  // Post relacionado
+  activity   Activities? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String?
+
+  date_creation DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([activityId])
+  @@map("feed_notification")
+}
+
+// Links públicos para compartilhar feed de projeto com clientes
+model PublicFeedLink {
+  id      String  @id @default(uuid())
+  token   String  @unique @db.VarChar(255) // Token único para acesso público
+  
+  // Relacionamento com projeto
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  
+  // Quem criou o link
+  creator   User   @relation("PublicFeedLinkCreators", fields: [createdBy], references: [id])
+  createdBy String
+  
+  // Status e configurações
+  isActive      Boolean   @default(true)
+  expiresAt     DateTime? // Opcional: data de expiração
+  accessCount   Int       @default(0) // Contador de acessos
+  lastAccessAt  DateTime? // Último acesso
+  
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  @@index([token])
+  @@index([projectId])
+  @@index([isActive])
 }
 
 model ImgServiceProject {
@@ -354,6 +466,9 @@ model Project {
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
+  projectFiles           ProjectFiles[]
+  projectPastes          ProjectPastes[]
+  PublicFeedLinks        PublicFeedLink[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -498,9 +613,9 @@ model WorkContext {
   type  ContextType
   label String? // 
 
-  Name String?
-  Email   String?
-  
+  Name  String?
+  Email String?
+
   street         String?
   district       String?
   zip_code       String?
@@ -508,7 +623,7 @@ model WorkContext {
   state          String?
   number         String?
   complement     String?
-  phone           String?
+  phone          String?
 
   location      String?  @db.Text
   addressOffice String?  @db.Text
@@ -525,10 +640,10 @@ model WorkContext {
   notes    String? @db.Text
   isActive Boolean @default(true)
 
-  projects  Project[]
-  
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([type])
@@ -552,7 +667,7 @@ model InvoiceCostProject {
 }
 
 model CostProject {
-  id            String  @id @default(uuid())
+  id            String    @id @default(uuid())
   material_name String
   price         Decimal
   amout         Int
@@ -883,8 +998,9 @@ model EstimateServiceProject {
   start_date String?
   deadline   String?
 
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  date_creation  DateTime        @default(now())
+  date_update    DateTime        @updatedAt
+  serviceProject ServiceProject?
 }
 
 model Permissions {
@@ -1263,4 +1379,50 @@ model QuickBooksConfig {
 
   @@unique([configType, companyId])
   @@map("quickbooks_config")
+}
+
+model ProjectFiles {
+  id String @id @default(uuid())
+
+  file String
+
+  name        String? @db.Text
+  description String? @db.Text
+
+  pasteId String?
+  paste   ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)
+
+  userAuthorId String
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
+
+  @@map("project_files")
+}
+
+model ProjectPastes {
+  id String @id @default(uuid())
+
+  name String @db.Text
+
+  files ProjectFiles[]
+
+  userAuthorId String
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
+
+  @@map("project_pastes")
 }

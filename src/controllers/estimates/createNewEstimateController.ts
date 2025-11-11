@@ -15,6 +15,7 @@ type payloadCreateEstimate = {
     multi_emails: string;
     date_creation?: string;
     workContextId?: string;
+    cancelEstimates?: boolean
 }
 
 export class CreateNewEstimateController {
@@ -46,6 +47,44 @@ export class CreateNewEstimateController {
 
         try {
             await prisma.$transaction(async (smartbuild) => {
+                if (payloadCreateEstimate.cancelEstimates) {
+                    const estimates = await smartbuild.estimate.findMany({
+                        where: {
+                            projectId: payloadCreateEstimate.projectId
+                        },
+                        include: {
+                            serviceProjects: true
+                        }
+                    })
+
+                    for (const estimate of estimates) {
+                        for (const estimateServiceProject of estimate.serviceProjects) {
+                            const serviceProject = await smartbuild.serviceProject.findFirst({
+                                where: {
+                                    estimateServiceId: estimateServiceProject.id
+                                }
+                            })
+
+                            if (serviceProject) {
+                                await smartbuild.serviceProject.delete({
+                                    where: {
+                                        id: serviceProject.id
+                                    }
+                                })
+                            }
+                        }
+                    }
+
+                    await smartbuild.estimate.updateMany({
+                        where: {
+                            projectId: payloadCreateEstimate.projectId
+                        },
+                        data: {
+                            status: "canceled"
+                        }
+                    })
+                }
+
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
                         number: payloadCreateEstimate.preGeneratedNumber,
@@ -68,22 +107,8 @@ export class CreateNewEstimateController {
                 })
 
                 if (createEstimate.type_estimate === "estimateProject") {
-                    const servicesExist = await smartbuild.serviceProject.findMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        }
-                    })
+                    const updateData: any = {}
 
-                    const totalPrice = servicesExist.reduce((total, service) => {
-                        return total + Number(service.price) * Number(service.hours)
-                    }, 0)
-
-                    const updateData: any = {
-                        price: totalPrice,
-                        balanceDue: totalPrice || 0
-                    };
-
-                    // Add workContextId if provided
                     if (payloadCreateEstimate.workContextId) {
                         updateData.workContextId = payloadCreateEstimate.workContextId;
                     }
@@ -100,7 +125,6 @@ export class CreateNewEstimateController {
                         balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
                     };
 
-                    // Add workContextId if provided
                     if (payloadCreateEstimate.workContextId) {
                         updateData.workContextId = payloadCreateEstimate.workContextId;
                     }
