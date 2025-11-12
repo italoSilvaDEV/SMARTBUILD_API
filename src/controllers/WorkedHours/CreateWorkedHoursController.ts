@@ -11,6 +11,8 @@ interface CreateWorkedHoursRequest {
   start_date?: string; // Opcional
   end_date?: string; // Opcional
   subcontractor_id?: string; // Opcional
+  description?: string; // Opcional
+  payment_date?: string; // Opcional
 }
 
 export class CreateWorkedHoursController {
@@ -23,7 +25,9 @@ export class CreateWorkedHoursController {
         hourly_price,
         start_date,
         end_date,
-        subcontractor_id
+        subcontractor_id,
+        description,
+        payment_date
 
       } = req.body as CreateWorkedHoursRequest;
 
@@ -60,6 +64,8 @@ export class CreateWorkedHoursController {
         amount_of_hours: amount_of_hours ? parseFloat(amount_of_hours) : null,
         start_date: start_date ? new Date(start_date).toISOString() : null,
         end_date: end_date ? new Date(end_date).toISOString() : null,
+        description: description?.trim() || null,
+        payment_date: payment_date ? new Date(payment_date).toISOString() : null,
         project: {
           connect: {
             id: project_id,

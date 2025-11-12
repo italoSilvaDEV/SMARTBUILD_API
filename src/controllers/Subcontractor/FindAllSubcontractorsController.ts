@@ -73,6 +73,7 @@ export class FindAllSubcontractorsController {
           name: subcontractor.name,
           email: subcontractor.email,
           phone: subcontractor.phone,
+          address: subcontractor.address,
           date_creation: subcontractor.date_creation,
           totalSpent: totalSpent,
           projectsCount: projectsCount

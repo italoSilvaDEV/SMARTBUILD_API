@@ -696,6 +696,7 @@ model Subcontractor {
   name          String
   email         String   @unique
   phone         String?
+  address       String?
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
@@ -718,6 +719,9 @@ model Workedhours {
 
   amount_of_hours Decimal?
   hourly_price    Decimal
+
+  description   String?
+  payment_date  DateTime?
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt

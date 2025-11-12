@@ -199,6 +199,8 @@ export class FindWorkedHoursProjectController {
                     date_creation: true,
                     start_date: true,
                     end_date: true,
+                    description: true,
+                    payment_date: true,
                     subcontractor: {
                         select: {
                             id: true,

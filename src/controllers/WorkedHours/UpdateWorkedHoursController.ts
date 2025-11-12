@@ -10,6 +10,8 @@ export class UpdateWorkedHoursController {
       hourly_price,
       start_date,
       end_date,
+      description,
+      payment_date,
     } = request.body;
 
     // Função de validação
@@ -48,6 +50,8 @@ export class UpdateWorkedHoursController {
           hourly_price,
           start_date,
           end_date,
+          description: description?.trim() || null,
+          payment_date: payment_date ? new Date(payment_date).toISOString() : null,
         }
       });
 

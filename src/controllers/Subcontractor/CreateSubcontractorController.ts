@@ -7,6 +7,7 @@ interface CreateSubcontractorRequest {
   name: string;
   email: string;
   phone?: string;
+  address?: string;
   company_id: string;
 }
 
@@ -17,6 +18,7 @@ export class CreateSubcontractorController {
         name,
         email,
         phone,
+        address,
         company_id
       } = req.body as CreateSubcontractorRequest;
 
@@ -63,6 +65,7 @@ export class CreateSubcontractorController {
           name: name.trim(),
           email: email.toLowerCase().trim(),
           phone: phone?.trim() || null,
+          address: address?.trim() || null,
           company: {
             connect: {
               id: company_id

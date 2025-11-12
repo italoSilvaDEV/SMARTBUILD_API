@@ -8,6 +8,7 @@ interface UpdateSubcontractorRequest {
   name?: string;
   email?: string;
   phone?: string;
+  address?: string;
   company_id: string;
 }
 
@@ -19,6 +20,7 @@ export class UpdateSubcontractorController {
         name,
         email,
         phone,
+        address,
         company_id
       } = req.body as UpdateSubcontractorRequest;
 
@@ -90,6 +92,7 @@ export class UpdateSubcontractorController {
       if (name !== undefined) updateData.name = name.trim();
       if (email !== undefined) updateData.email = email.toLowerCase().trim();
       if (phone !== undefined) updateData.phone = phone?.trim() || null;
+      if (address !== undefined) updateData.address = address?.trim() || null;
 
       const updatedSubcontractor = await prisma.subcontractor.update({
         where: { id: id },
