@@ -142,8 +142,13 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
             const logoWidth = originalWidth * scaleFactor;
             const logoHeight = originalHeight * scaleFactor;
 
+            // Calcular posição do logo alinhado à direita com margem de 50
+            const pageWidth = 600;
+            const marginRight = 50;
+            const logoX = pageWidth - logoWidth - marginRight;
+
             page.drawImage(logoImage, {
-                x: 420,
+                x: logoX,
                 y: 700,
                 width: logoWidth,
                 height: logoHeight,

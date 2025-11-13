@@ -454,7 +454,7 @@ export class EstimateController {
           },
         },
         orderBy: {
-          number: 'desc'
+          date_creation: 'desc'
         }
       });
 

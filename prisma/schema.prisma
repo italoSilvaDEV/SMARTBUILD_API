@@ -150,6 +150,7 @@ model Company {
 
   ProjectFiles  ProjectFiles[]
   ProjectPastes ProjectPastes[]
+  Subcontractors Subcontractor[]
 }
 
 model ContractNotes {
@@ -367,26 +368,26 @@ model FeedNotification {
 
 // Links públicos para compartilhar feed de projeto com clientes
 model PublicFeedLink {
-  id      String  @id @default(uuid())
-  token   String  @unique @db.VarChar(255) // Token único para acesso público
-  
+  id    String @id @default(uuid())
+  token String @unique @db.VarChar(255) // Token único para acesso público
+
   // Relacionamento com projeto
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
-  
+
   // Quem criou o link
   creator   User   @relation("PublicFeedLinkCreators", fields: [createdBy], references: [id])
   createdBy String
-  
+
   // Status e configurações
-  isActive      Boolean   @default(true)
-  expiresAt     DateTime? // Opcional: data de expiração
-  accessCount   Int       @default(0) // Contador de acessos
-  lastAccessAt  DateTime? // Último acesso
-  
+  isActive     Boolean   @default(true)
+  expiresAt    DateTime? // Opcional: data de expiração
+  accessCount  Int       @default(0) // Contador de acessos
+  lastAccessAt DateTime? // Último acesso
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
-  
+
   @@index([token])
   @@index([projectId])
   @@index([isActive])
@@ -529,6 +530,8 @@ model PdfProject {
 
   project    Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   project_id String?
+
+  templateNumber Int? @default(1)
 
   // vinculo com estimate
   estimate    Estimate? @relation(fields: [estimate_id], references: [id], onDelete: Cascade)
@@ -690,6 +693,23 @@ model CostProject {
   @@map("cost_project")
 }
 
+model Subcontractor {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  phone         String?
+  address       String?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  workedHours Workedhours[]
+
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?
+
+  @@map("subcontractors")
+}
+
 model Workedhours {
   id String @id @default(uuid())
 
@@ -702,11 +722,17 @@ model Workedhours {
   amount_of_hours Decimal?
   hourly_price    Decimal
 
+  description   String?
+  payment_date  DateTime?
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
   project    Project? @relation(fields: [project_id], references: [id], onDelete: Cascade)
   project_id String?
+
+  subcontractor    Subcontractor? @relation(fields: [subcontractor_id], references: [id])
+  subcontractor_id String?
 
   @@map("worked_hours")
 }

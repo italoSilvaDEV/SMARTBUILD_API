@@ -111,7 +111,8 @@ export class CreatePdfProjectEstimateInvoiceController {
                     estimate_id,
                     invoice_id,
                     project_id,
-                    type_pdf
+                    type_pdf,
+                    templateNumber
                 } = req.body;
 
                 const file = req.file;
@@ -177,6 +178,8 @@ export class CreatePdfProjectEstimateInvoiceController {
                     Promise.resolve()
                 ]);
 
+                const templateNumberInt = parseInt(templateNumber || '1');
+
                 // Criar o registro no banco
                 const result = await prisma.pdfProject.create({
                     data: {
@@ -186,6 +189,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                         project_id: project_id || null,
                         estimate_id: estimate_id || null,
                         invoice_id: invoice_id || null,
+                        templateNumber: templateNumberInt,
                     },
                     select: {
                         id: true,
