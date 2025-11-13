@@ -1,5 +1,5 @@
 -- DropForeignKey
-ALTER TABLE `PublicFeedLink` DROP FOREIGN KEY `PublicFeedLink_createdBy_fkey`;
+-- ALTER TABLE `PublicFeedLink` DROP FOREIGN KEY `PublicFeedLink_createdBy_fkey`;
 
 -- AlterTable
 ALTER TABLE `worked_hours` ADD COLUMN `subcontractor_id` VARCHAR(191) NULL;
@@ -19,7 +19,7 @@ CREATE TABLE `subcontractors` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- AddForeignKey
-ALTER TABLE `PublicFeedLink` ADD CONSTRAINT `PublicFeedLink_createdBy_fkey` FOREIGN KEY (`createdBy`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+-- ALTER TABLE `PublicFeedLink` ADD CONSTRAINT `PublicFeedLink_createdBy_fkey` FOREIGN KEY (`createdBy`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `subcontractors` ADD CONSTRAINT `subcontractors_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `Company`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
