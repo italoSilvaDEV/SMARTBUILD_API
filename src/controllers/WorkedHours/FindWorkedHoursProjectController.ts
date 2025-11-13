@@ -49,7 +49,15 @@ export class FindWorkedHoursProjectController {
                     hourly_price: true,
                     date_creation: true,
                     start_date: true,
-                    end_date: true
+                    end_date: true,
+                    subcontractor: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            phone: true,
+                        }
+                    }
                 },
                 skip: pageNumber * 20,
                 take: 20,
@@ -165,7 +173,7 @@ export class FindWorkedHoursProjectController {
             const dateEnd = new Date(date_final);
             dateEnd.setUTCHours(23, 59, 59, 999);
             if (date_initial && date_final) {
-                filtro.start_date = {
+                filtro.start_date = { 
                     gte: dateStart.toISOString(),
                     lte: dateEnd.toISOString(),
                 };
@@ -190,7 +198,17 @@ export class FindWorkedHoursProjectController {
                     hourly_price: true,
                     date_creation: true,
                     start_date: true,
-                    end_date: true
+                    end_date: true,
+                    description: true,
+                    payment_date: true,
+                    subcontractor: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            phone: true,
+                        }
+                    }
                 },
                 orderBy: {
                     date_creation: "desc"

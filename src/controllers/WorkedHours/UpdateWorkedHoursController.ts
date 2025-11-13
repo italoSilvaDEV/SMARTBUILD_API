@@ -10,7 +10,10 @@ export class UpdateWorkedHoursController {
       hourly_price,
       start_date,
       end_date,
-    } = request.body;
+      description,
+      payment_date,
+      subcontractor_id,
+    } = request.body; 
 
     // Função de validação
     function validateWorkedHoursData(data: any): string | null {
@@ -40,15 +43,35 @@ export class UpdateWorkedHoursController {
         return response.status(404).json({ error: "Worked hours record not found!" });
       }
 
+      // Preparar dados base para atualização
+      const updateData: any = {
+        name_user,
+        amount_of_hours: parseFloat(amount_of_hours) || null,
+        hourly_price,
+        start_date,
+        end_date,
+        description: description?.trim() || null,
+        payment_date: payment_date ? new Date(payment_date).toISOString() : null,
+      };
+
+      // Tratar atualização do subcontractor
+      if (subcontractor_id) {
+        // Se tem subcontractor_id, conectar ao subcontractor
+        updateData.subcontractor = {
+          connect: {
+            id: subcontractor_id,
+          },
+        };
+      } else if (subcontractor_id === null || subcontractor_id === "") {
+        // Se explicitamente passou null ou string vazia, desconectar
+        updateData.subcontractor = {
+          disconnect: true,
+        };
+      }
+
       await prisma.workedhours.update({
         where: { id },
-        data: {
-          name_user,
-          amount_of_hours: parseFloat(amount_of_hours) || null,
-          hourly_price,
-          start_date,
-          end_date,
-        }
+        data: updateData,
       });
 
       return response.json({ message: "Worked hours record updated successfully" });

@@ -5,6 +5,7 @@ import { catalogRoutes } from './catalogRoutes'
 import { projectRoutes } from './projectRoutes'
 import { clientRoutes } from './clientRoutes'
 import { workedRours } from './workedHours'
+import { subcontractorRoutes } from './subcontractor'
 import { serviceStageRoutes } from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
@@ -68,6 +69,7 @@ router.use(catalogRoutes)
 router.use(projectRoutes)
 router.use(clientRoutes)
 router.use(workedRours)
+router.use(subcontractorRoutes)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
