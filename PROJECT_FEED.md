@@ -2584,6 +2584,428 @@ function PublicFeedPage() {
 
 ---
 
+## 🔗 LINKS PÚBLICOS MULTI-PROJETO
+
+### Visão Geral
+
+Além de criar links para um projeto individual, o sistema também suporta **links públicos para múltiplos projetos**. Isso permite que administradores compartilhem o feed agregado de vários projetos em um único link.
+
+### 🎯 Caso de Uso
+
+- Admin seleciona múltiplos projetos no dashboard
+- Sistema gera um único link que mostra posts de todos os projetos selecionados
+- Cliente acessa e vê feed agregado de todos os projetos
+
+---
+
+### 14. Criar Link Público Multi-Projeto
+
+**POST** `/feed/public-link/multi-project`
+
+Cria um link público único para compartilhar o feed de múltiplos projetos.
+
+#### Headers
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+#### Body (JSON)
+```json
+{
+  "userId": "uuid-do-usuario",
+  "projectIds": ["project-id-1", "project-id-2", "project-id-3"],
+  "expiresIn": 30  // Dias até expirar (opcional)
+}
+```
+
+#### Validações
+- ✅ `userId` é obrigatório
+- ✅ `projectIds` deve ser um array com pelo menos um projeto
+- ✅ Todos os `projectIds` devem existir no banco
+- ✅ `expiresIn` deve ser um número positivo (se fornecido)
+
+#### Exemplo de Request
+```bash
+# Link multi-projeto com expiração de 30 dias
+curl -X POST 'http://localhost:3000/feed/public-link/multi-project' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "userId": "user-abc-123",
+    "projectIds": [
+      "project-id-1",
+      "project-id-2",
+      "project-id-3"
+    ],
+    "expiresIn": 30
+  }'
+```
+
+#### Resposta de Sucesso (201)
+```json
+{
+  "success": true,
+  "data": {
+    "id": "link-uuid",
+    "token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "projectIds": [
+      "project-id-1",
+      "project-id-2",
+      "project-id-3"
+    ],
+    "url": "https://smartbuild.codelabsusa.com/public/feed/multi/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "expiresAt": "2025-12-09T00:00:00Z",
+    "createdAt": "2025-11-10T15:30:00Z",
+    "isActive": true
+  }
+}
+```
+
+#### Erros Possíveis
+- **400** - userId é obrigatório
+- **400** - projectIds é obrigatório e deve conter pelo menos um projeto
+- **404** - Um ou mais projetos não foram encontrados
+
+---
+
+### 15. Acessar Feed Multi-Projeto via Link Público
+
+**GET** `/public/feed/multi/:token`
+
+Acessa o feed agregado de múltiplos projetos através de um token único. **Não requer autenticação.**
+
+#### Parâmetros
+- `token` (URL) - Token único do link público multi-projeto
+
+#### Query Parameters
+- `limit` (opcional) - Limite de posts (padrão: 50)
+- `offset` (opcional) - Offset para paginação (padrão: 0)
+- `sortBy` (opcional) - `date` (padrão)
+- `order` (opcional) - `desc` (padrão) | `asc`
+
+#### Exemplo de Request
+```bash
+# Acesso simples (sem autenticação)
+curl -X GET 'https://smartbuild.codelabsusa.com/public/feed/multi/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'
+
+# Com paginação
+curl -X GET 'https://smartbuild.codelabsusa.com/public/feed/multi/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6?limit=20&offset=0'
+```
+
+#### Resposta de Sucesso (200)
+```json
+{
+  "success": true,
+  "data": {
+    "projects": [
+      {
+        "id": "project-id-1",
+        "clientName": "Cliente A",
+        "address": "Rua Exemplo, 123"
+      },
+      {
+        "id": "project-id-2",
+        "clientName": "Cliente B",
+        "address": "Av. Principal, 456"
+      },
+      {
+        "id": "project-id-3",
+        "clientName": "Cliente C",
+        "address": "Rua Secundária, 789"
+      }
+    ],
+    "posts": [
+      {
+        "id": "activity-123",
+        "text": "Concretagem finalizada",
+        "date_creation": "2025-11-10T14:30:00Z",
+        "author": {
+          "id": "user-123",
+          "name": "João Silva",
+          "avatar": "https://presigned-url..."
+        },
+        "serviceProject": {
+          "name": "Estrutura"
+        },
+        "project": {
+          "id": "project-id-1",
+          "clientName": "Cliente A"
+        },
+        "location": {
+          "address": "Rua Exemplo, 123",
+          "coordinates": {
+            "lat": -23.550520,
+            "lng": -46.633308
+          }
+        },
+        "photos": [
+          {
+            "id": "photo-1",
+            "url": "https://presigned-url...",
+            "date_creation": "2025-11-10T14:30:00Z"
+          }
+        ],
+        "likesCount": 5,
+        "commentsCount": 2
+      },
+      {
+        "id": "activity-456",
+        "text": "Instalação elétrica concluída",
+        "date_creation": "2025-11-10T10:15:00Z",
+        "author": {
+          "id": "user-789",
+          "name": "Maria Santos",
+          "avatar": "https://presigned-url..."
+        },
+        "serviceProject": {
+          "name": "Elétrica"
+        },
+        "project": {
+          "id": "project-id-2",
+          "clientName": "Cliente B"
+        },
+        "location": {
+          "address": "Av. Principal, 456",
+          "coordinates": {
+            "lat": -22.906847,
+            "lng": -43.172896
+          }
+        },
+        "photos": [],
+        "likesCount": 3,
+        "commentsCount": 1
+      }
+    ],
+    "pagination": {
+      "total": 45,
+      "limit": 50,
+      "offset": 0,
+      "hasMore": false
+    }
+  }
+}
+```
+
+#### Comportamento
+- ✅ Agrega posts de TODOS os projetos vinculados ao link
+- ✅ Ordena posts por data (mais recente primeiro)
+- ✅ Incrementa automaticamente o contador de acessos (`accessCount`)
+- ✅ Atualiza a data do último acesso (`lastAccessAt`)
+- ✅ Valida se o link está ativo
+- ✅ Valida se o link não expirou
+- ✅ Inclui informações de todos os projetos na resposta
+
+#### Erros Possíveis
+- **404** - Link expired or invalid (token não encontrado)
+- **403** - Link expired or invalid (link desativado ou expirado)
+- **404** - Nenhum projeto vinculado a este link
+
+---
+
+## 📱 Integração Frontend - Multi-Projeto
+
+### Exemplo Completo (React)
+
+```javascript
+// 1. Selecionar múltiplos projetos e gerar link
+function MultiProjectLinkGenerator() {
+  const [selectedProjects, setSelectedProjects] = useState([]);
+  const [publicLink, setPublicLink] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerateMultiLink = async () => {
+    if (selectedProjects.length === 0) {
+      alert('Selecione pelo menos um projeto');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch('/feed/public-link/multi-project', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          projectIds: selectedProjects.map(p => p.id),
+          expiresIn: 30
+        })
+      });
+
+      const { data } = await response.json();
+      setPublicLink(data);
+      
+      // Mostrar modal com link
+      showLinkModal(data);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao gerar link multi-projeto');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="multi-project-selector">
+      <h3>Selecionar Projetos para Compartilhar</h3>
+      
+      <div className="project-list">
+        {projects.map(project => (
+          <label key={project.id} className="project-checkbox">
+            <input
+              type="checkbox"
+              checked={selectedProjects.includes(project)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedProjects([...selectedProjects, project]);
+                } else {
+                  setSelectedProjects(
+                    selectedProjects.filter(p => p.id !== project.id)
+                  );
+                }
+              }}
+            />
+            {project.client.name} - {project.location}
+          </label>
+        ))}
+      </div>
+
+      <button 
+        onClick={handleGenerateMultiLink}
+        disabled={loading || selectedProjects.length === 0}
+      >
+        {loading ? 'Gerando...' : `Gerar Link (${selectedProjects.length} projetos)`}
+      </button>
+    </div>
+  );
+}
+
+// 2. Página pública multi-projeto
+function PublicMultiProjectFeedPage() {
+  const { token } = useParams();
+  const [feed, setFeed] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadMultiProjectFeed();
+  }, [token]);
+
+  const loadMultiProjectFeed = async () => {
+    try {
+      const response = await fetch(`/public/feed/multi/${token}?limit=50`);
+      
+      if (!response.ok) throw new Error('Link inválido ou expirado');
+
+      const { data } = await response.json();
+      setFeed(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div>Carregando...</div>;
+  if (error) return <div>Erro: {error}</div>;
+
+  return (
+    <div className="public-multi-feed-page">
+      <header>
+        <img src="/logo.png" alt="Logo" />
+        <h1>Acompanhamento de Projetos</h1>
+      </header>
+
+      <div className="projects-info">
+        <h2>Projetos Incluídos ({feed.projects.length})</h2>
+        <div className="projects-grid">
+          {feed.projects.map(project => (
+            <div key={project.id} className="project-card">
+              <h3>{project.clientName}</h3>
+              <p>📍 {project.address}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="feed">
+        <h2>Atividades Recentes</h2>
+        {feed.posts.map(post => (
+          <div key={post.id} className="post-card">
+            <div className="post-header">
+              <img src={post.author?.avatar} alt={post.author?.name} />
+              <div>
+                <strong>{post.author?.name}</strong>
+                <p>{post.project?.clientName} - {post.serviceProject?.name}</p>
+                <small>{new Date(post.date_creation).toLocaleString()}</small>
+              </div>
+            </div>
+
+            <p>{post.text}</p>
+
+            {post.photos.length > 0 && (
+              <div className="photos">
+                {post.photos.map(photo => (
+                  <img key={photo.id} src={photo.url} alt="Post" />
+                ))}
+              </div>
+            )}
+
+            <div className="stats">
+              <span>❤️ {post.likesCount}</span>
+              <span>💬 {post.commentsCount}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <footer>
+        <p>Powered by SmartBuild</p>
+      </footer>
+    </div>
+  );
+}
+```
+
+---
+
+## 🗄️ Estrutura do Banco de Dados (Multi-Projeto)
+
+### Nova Tabela: PublicFeedLinkProject
+
+Tabela de relacionamento N:N entre `PublicFeedLink` e `Project`:
+
+```sql
+CREATE TABLE `PublicFeedLinkProject` (
+    `id` VARCHAR(191) NOT NULL,
+    `publicFeedLinkId` VARCHAR(191) NOT NULL,
+    `projectId` VARCHAR(191) NOT NULL,
+    `date_creation` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `PublicFeedLinkProject_publicFeedLinkId_projectId_key`(`publicFeedLinkId`, `projectId`),
+    INDEX `PublicFeedLinkProject_publicFeedLinkId_idx`(`publicFeedLinkId`),
+    INDEX `PublicFeedLinkProject_projectId_idx`(`projectId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**Relacionamentos:**
+- `publicFeedLinkId` → `PublicFeedLink.id` (CASCADE on delete)
+- `projectId` → `Project.id` (CASCADE on delete)
+
+### Compatibilidade
+
+- ✅ Links de projeto único (`/public/feed/:token`) continuam funcionando normalmente
+- ✅ Links multi-projeto usam rota separada (`/public/feed/multi/:token`)
+- ✅ Campo `projectId` na tabela `PublicFeedLink` agora é opcional (`projectId?`)
+- ✅ Links multi-projeto não preenchem `projectId`, usam apenas a tabela de relacionamento
+
+---
+
 ## ⚡ Melhorias Futuras (Opcional)
 
 ### Fase 2:
@@ -2591,7 +3013,7 @@ function PublicFeedPage() {
 - [ ] Notificações por email quando houver novo post
 - [ ] Filtros públicos (por data, serviço)
 - [ ] Analytics de visualizações por post
-- [ ] Múltiplos links por projeto
+- [x] Múltiplos links por projeto ✅ **Implementado!**
 
 ### Fase 3:
 - [ ] Comentários públicos (permitir cliente comentar)

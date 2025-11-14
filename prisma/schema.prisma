@@ -371,9 +371,12 @@ model PublicFeedLink {
   id    String @id @default(uuid())
   token String @unique @db.VarChar(255) // Token único para acesso público
 
-  // Relacionamento com projeto
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId String
+  // Relacionamento com projeto (single project - legacy)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String?
+
+  // Relacionamento N:N com múltiplos projetos (novo)
+  projects PublicFeedLinkProject[]
 
   // Quem criou o link
   creator   User   @relation("PublicFeedLinkCreators", fields: [createdBy], references: [id])
@@ -391,6 +394,25 @@ model PublicFeedLink {
   @@index([token])
   @@index([projectId])
   @@index([isActive])
+}
+
+// Tabela de relacionamento N:N entre PublicFeedLink e Project
+model PublicFeedLinkProject {
+  id String @id @default(uuid())
+
+  // Relacionamento com PublicFeedLink
+  publicFeedLink   PublicFeedLink @relation(fields: [publicFeedLinkId], references: [id], onDelete: Cascade)
+  publicFeedLinkId String
+
+  // Relacionamento com Project
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  date_creation DateTime @default(now())
+
+  @@unique([publicFeedLinkId, projectId])
+  @@index([publicFeedLinkId])
+  @@index([projectId])
 }
 
 model ImgServiceProject {
@@ -466,10 +488,11 @@ model Project {
   location               String?                  @db.Text
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
-  InvoicePaymentTimeLine InvoicePaymentTimeLine[]
-  projectFiles           ProjectFiles[]
-  projectPastes          ProjectPastes[]
-  PublicFeedLinks        PublicFeedLink[]
+  InvoicePaymentTimeLine    InvoicePaymentTimeLine[]
+  projectFiles              ProjectFiles[]
+  projectPastes             ProjectPastes[]
+  PublicFeedLinks           PublicFeedLink[]
+  PublicFeedLinkProjects    PublicFeedLinkProject[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")

@@ -550,5 +550,417 @@ export class PublicFeedLinkController {
             });
         }
     }
+
+    /**
+     * Criar link público para múltiplos projetos
+     * POST /feed/public-link/multi-project
+     */
+    async createMultiProjectLink(request: Request, response: Response) {
+        try {
+            const { projectIds, expiresIn } = request.body;
+            const userId = request.body.userId || (request as any).userId;
+
+            // Validações
+            if (!userId) {
+                return response.status(400).json({
+                    success: false,
+                    error: 'userId é obrigatório'
+                });
+            }
+
+            if (!projectIds || !Array.isArray(projectIds) || projectIds.length === 0) {
+                return response.status(400).json({
+                    success: false,
+                    error: 'projectIds é obrigatório e deve conter pelo menos um projeto'
+                });
+            }
+
+            // Verifica se todos os projetos existem
+            const projects = await prisma.project.findMany({
+                where: {
+                    id: {
+                        in: projectIds
+                    }
+                },
+                select: {
+                    id: true,
+                    client: {
+                        select: {
+                            name: true
+                        }
+                    }
+                }
+            });
+
+            if (projects.length !== projectIds.length) {
+                return response.status(404).json({
+                    success: false,
+                    error: 'Um ou mais projetos não foram encontrados'
+                });
+            }
+
+            // Gera token único
+            const token = crypto.randomBytes(32).toString('hex');
+
+            // Calcula data de expiração se fornecida
+            let expiresAt: Date | null = null;
+            if (expiresIn && typeof expiresIn === 'number' && expiresIn > 0) {
+                expiresAt = new Date();
+                expiresAt.setDate(expiresAt.getDate() + expiresIn);
+            }
+
+            // Cria o link público sem projectId (multi-project)
+            const publicLink = await prisma.publicFeedLink.create({
+                data: {
+                    token: token,
+                    createdBy: userId,
+                    expiresAt: expiresAt,
+                    isActive: true,
+                    // Cria os relacionamentos com os projetos
+                    projects: {
+                        create: projectIds.map((projectId: string) => ({
+                            projectId: projectId
+                        }))
+                    }
+                },
+                include: {
+                    projects: {
+                        select: {
+                            projectId: true
+                        }
+                    }
+                }
+            });
+
+            const baseUrl = process.env.FRONTEND_URL || 'https://smartbuild.codelabsusa.com';
+            const url = `${baseUrl}/public/feed/multi/${publicLink.token}`;
+
+            return response.status(201).json({
+                success: true,
+                data: {
+                    id: publicLink.id,
+                    token: publicLink.token,
+                    projectIds: publicLink.projects.map(p => p.projectId),
+                    url: url,
+                    expiresAt: publicLink.expiresAt,
+                    createdAt: publicLink.date_creation,
+                    isActive: publicLink.isActive
+                }
+            });
+
+        } catch (error) {
+            console.error('Erro ao criar link multi-projeto:', error);
+            return response.status(500).json({
+                success: false,
+                error: 'Erro interno do servidor',
+                details: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
+
+    /**
+     * Acessar feed de múltiplos projetos via link público
+     * GET /public/feed/multi/:token
+     */
+    async getMultiProjectFeed(request: Request, response: Response) {
+        try {
+            const { token } = request.params;
+            const { 
+                limit = '50', 
+                offset = '0',
+                sortBy = 'date',
+                order = 'desc'
+            } = request.query;
+
+            // Busca o link pelo token com os projetos relacionados
+            const publicLink = await prisma.publicFeedLink.findUnique({
+                where: { token: token },
+                include: {
+                    projects: {
+                        include: {
+                            project: {
+                                include: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Validações
+            if (!publicLink) {
+                return response.status(404).json({
+                    success: false,
+                    error: 'Link expired or invalid'
+                });
+            }
+
+            if (!publicLink.isActive) {
+                return response.status(403).json({
+                    success: false,
+                    error: 'Link expired or invalid'
+                });
+            }
+
+            // Verifica expiração
+            if (publicLink.expiresAt && new Date() > publicLink.expiresAt) {
+                return response.status(403).json({
+                    success: false,
+                    error: 'Link expired or invalid'
+                });
+            }
+
+            // Verifica se tem projetos vinculados
+            if (publicLink.projects.length === 0) {
+                return response.status(404).json({
+                    success: false,
+                    error: 'Nenhum projeto vinculado a este link'
+                });
+            }
+
+            // Incrementa contador de acessos
+            await prisma.publicFeedLink.update({
+                where: { id: publicLink.id },
+                data: {
+                    accessCount: { increment: 1 },
+                    lastAccessAt: new Date()
+                }
+            });
+
+            // Extrai IDs dos projetos
+            const projectIds = publicLink.projects.map(p => p.projectId);
+
+            // Busca todos os serviços dos projetos
+            const serviceProjects = await prisma.serviceProject.findMany({
+                where: {
+                    projectId: {
+                        in: projectIds
+                    }
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    projectId: true
+                }
+            });
+
+            const serviceProjectIds = serviceProjects.map(sp => sp.id);
+
+            if (serviceProjectIds.length === 0) {
+                // Retorna informações dos projetos mesmo sem posts
+                const projectsInfo = publicLink.projects.map(p => ({
+                    id: p.project.id,
+                    clientName: p.project.client?.name || 'N/A',
+                    address: p.project.location || 'N/A'
+                }));
+
+                return response.status(200).json({
+                    success: true,
+                    data: {
+                        projects: projectsInfo,
+                        posts: [],
+                        pagination: {
+                            total: 0,
+                            limit: parseInt(limit as string),
+                            offset: parseInt(offset as string),
+                            hasMore: false
+                        }
+                    }
+                });
+            }
+
+            // Busca activities dos serviços
+            const activities = await prisma.activities.findMany({
+                where: {
+                    serviceProjectId: {
+                        in: serviceProjectIds
+                    }
+                },
+                include: {
+                    author: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true
+                        }
+                    },
+                    ServiceProject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            projectId: true,
+                            Project: {
+                                select: {
+                                    id: true,
+                                    location: true,
+                                    lat: true,
+                                    log: true,
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Busca fotos marcadas como FEED_POST
+            const feedPhotos = await prisma.galleryAfter.findMany({
+                where: {
+                    serviceProjectId: {
+                        in: serviceProjectIds
+                    },
+                    title: 'FEED_POST'
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Agrupa fotos por activity.id
+            const photosByActivityId = feedPhotos.reduce((acc, photo) => {
+                const activityId = photo.description || 'unlinked';
+                if (!acc[activityId]) {
+                    acc[activityId] = [];
+                }
+                acc[activityId].push(photo);
+                return acc;
+            }, {} as Record<string, typeof feedPhotos>);
+
+            // Busca contadores de likes e comentários
+            const activityIds = activities.map(a => a.id);
+            
+            const likesCount = await prisma.feedLike.groupBy({
+                by: ['activityId'],
+                where: {
+                    activityId: { in: activityIds }
+                },
+                _count: {
+                    activityId: true
+                }
+            });
+
+            const commentsCount = await prisma.feedComment.groupBy({
+                by: ['activityId'],
+                where: {
+                    activityId: { in: activityIds }
+                },
+                _count: {
+                    activityId: true
+                }
+            });
+
+            const likesMap = likesCount.reduce((acc, item) => {
+                acc[item.activityId] = item._count.activityId;
+                return acc;
+            }, {} as Record<string, number>);
+
+            const commentsMap = commentsCount.reduce((acc, item) => {
+                acc[item.activityId] = item._count.activityId;
+                return acc;
+            }, {} as Record<string, number>);
+
+            // Cria posts combinados
+            const posts = [];
+
+            for (const activity of activities) {
+                const linkedPhotos = photosByActivityId[activity.id] || [];
+                
+                const photos = await Promise.all(
+                    linkedPhotos.map(async (photo) => ({
+                        id: photo.id,
+                        url: await getPresignedUrl(photo.url),
+                        date_creation: photo.date_creation
+                    }))
+                );
+
+                posts.push({
+                    id: activity.id,
+                    text: activity.text === '📷' ? null : activity.text,
+                    date_creation: activity.date_creation,
+                    author: {
+                        id: activity.author?.id,
+                        name: activity.author?.name,
+                        avatar: activity.author?.avatar 
+                            ? await getPresignedUrl(activity.author.avatar)
+                            : null
+                    },
+                    serviceProject: activity.ServiceProject ? {
+                        name: activity.ServiceProject.name
+                    } : null,
+                    project: activity.ServiceProject?.Project ? {
+                        id: activity.ServiceProject.Project.id,
+                        clientName: activity.ServiceProject.Project.client?.name || 'N/A'
+                    } : null,
+                    location: activity.ServiceProject?.Project ? {
+                        address: activity.ServiceProject.Project.location || 'N/A',
+                        coordinates: {
+                            lat: activity.ServiceProject.Project.lat ? parseFloat(activity.ServiceProject.Project.lat) : null,
+                            lng: activity.ServiceProject.Project.log ? parseFloat(activity.ServiceProject.Project.log) : null
+                        }
+                    } : null,
+                    photos: photos,
+                    likesCount: likesMap[activity.id] || 0,
+                    commentsCount: commentsMap[activity.id] || 0
+                });
+            }
+
+            // Ordena os posts
+            const orderMultiplier = order === 'asc' ? 1 : -1;
+            posts.sort((a, b) => {
+                return (b.date_creation.getTime() - a.date_creation.getTime()) * orderMultiplier;
+            });
+
+            // Aplica paginação
+            const limitNum = parseInt(limit as string);
+            const offsetNum = parseInt(offset as string);
+            const totalPosts = posts.length;
+            const hasMore = offsetNum + limitNum < totalPosts;
+
+            const paginatedPosts = posts.slice(offsetNum, offsetNum + limitNum);
+
+            // Informações dos projetos
+            const projectsInfo = publicLink.projects.map(p => ({
+                id: p.project.id,
+                clientName: p.project.client?.name || 'N/A',
+                address: p.project.location || 'N/A'
+            }));
+
+            return response.status(200).json({
+                success: true,
+                data: {
+                    projects: projectsInfo,
+                    posts: paginatedPosts,
+                    pagination: {
+                        total: totalPosts,
+                        limit: limitNum,
+                        offset: offsetNum,
+                        hasMore: hasMore
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Erro ao buscar feed multi-projeto:', error);
+            return response.status(500).json({
+                success: false,
+                error: 'Erro interno do servidor',
+                details: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
 }
 
