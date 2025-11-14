@@ -1729,5 +1729,86 @@ export class UserController {
       })
     }
   }
+
+  async resendPassword(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      // Buscar usuário
+      const user = await prisma.user.findUnique({
+        where: { id },
+        include: {
+          company: {
+            select: {
+              avatar: true,
+              id: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Gerar nova senha aleatória
+      const newPassword = crypto.randomBytes(3).toString("hex").toUpperCase();
+      const hashedPassword = bcrypt.hashSync(newPassword, 10);
+
+      // Atualizar senha do usuário
+      await prisma.user.update({
+        where:  { id },
+        data: {
+          password: hashedPassword
+        }
+      });
+
+      // Configurar SMTP
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Obter URL do logo da empresa
+      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+
+      // Criar template de email
+      const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, newPassword);
+
+      // Enviar email
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: user.email,
+        subject: "Smart Build - Password Reset",
+        html: templateEmail,
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+        console.log(`Password resent successfully to ${user.email}`);
+        return res.status(200).json({ message: "Password resent successfully" });
+      } catch (mailErr) {
+        console.error("Error sending email:", mailErr);
+        return res.status(500).json({ error: "Error sending email. Please try again." });
+      }
+
+    } catch (error) {
+      console.error("Error resending password:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error"
+      });
+    }
+  }
 }
 
