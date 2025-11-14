@@ -198,9 +198,9 @@ export class PublicFeedLinkController {
                     success: true,
                     data: {
                         project: {
-                            id: publicLink.project.id,
-                            clientName: publicLink.project.client?.name || 'N/A',
-                            address: publicLink.project.location || 'N/A'
+                            id: publicLink.project?.id || '',
+                            clientName: publicLink.project?.client?.name || 'N/A',
+                            address: publicLink.project?.location || 'N/A'
                         },
                         posts: [],
                         pagination: {
@@ -329,10 +329,10 @@ export class PublicFeedLinkController {
                         name: serviceProject.name
                     } : null,
                     location: {
-                        address: publicLink.project.location || 'N/A',
+                        address: publicLink.project?.location || 'N/A',
                         coordinates: {
-                            lat: publicLink.project.lat ? parseFloat(publicLink.project.lat) : null,
-                            lng: publicLink.project.log ? parseFloat(publicLink.project.log) : null
+                            lat: publicLink.project?.lat ? parseFloat(publicLink.project.lat) : null,
+                            lng: publicLink.project?.log ? parseFloat(publicLink.project.log) : null
                         }
                     },
                     photos: photos,
@@ -359,9 +359,9 @@ export class PublicFeedLinkController {
                 success: true,
                 data: {
                     project: {
-                        id: publicLink.project.id,
-                        clientName: publicLink.project.client?.name || 'N/A',
-                        address: publicLink.project.location || 'N/A'
+                        id: publicLink.project?.id || '',
+                        clientName: publicLink.project?.client?.name || 'N/A',
+                        address: publicLink.project?.location || 'N/A'
                     },
                     posts: paginatedPosts,
                     pagination: {
