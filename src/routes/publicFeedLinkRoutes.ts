@@ -35,12 +35,27 @@ publicFeedLinkRoutes.patch(
     publicFeedLinkController.activatePublicLink.bind(publicFeedLinkController)
 );
 
+// ==================== MULTI-PROJECT ROUTES ====================
+
+// Criar link público para múltiplos projetos (requer autenticação)
+publicFeedLinkRoutes.post(
+    '/feed/public-link/multi-project',
+    checkToken,
+    publicFeedLinkController.createMultiProjectLink.bind(publicFeedLinkController)
+);
+
 // ==================== PUBLIC ROUTES (NO AUTH) ====================
 
 // Acessar feed via link público (SEM autenticação)
 publicFeedLinkRoutes.get(
     '/public/feed/:token',
     publicFeedLinkController.getPublicFeed.bind(publicFeedLinkController)
+);
+
+// Acessar feed multi-projeto via link público (SEM autenticação)
+publicFeedLinkRoutes.get(
+    '/public/feed/multi/:token',
+    publicFeedLinkController.getMultiProjectFeed.bind(publicFeedLinkController)
 );
 
 export { publicFeedLinkRoutes };
