@@ -79,6 +79,7 @@ model User {
 
   ProjectFiles  ProjectFiles[]
   ProjectPastes ProjectPastes[]
+  changeOrders  ChangeOrder[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -1492,7 +1493,10 @@ model ChangeOrder {
   scope_of_work String?           @db.Text
   status        ChangeOrderStatus @default(pending)
   total_amount  Decimal
-  number        Int               @unique @default(autoincrement())
+  number        Int
+
+  supervisorId String
+  supervisor   User?  @relation(fields: [supervisorId], references: [id])
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
@@ -1502,6 +1506,7 @@ model ChangeOrder {
   changeOrderServices ChangeOrderService[]
   pdfProjects         PdfProject[]
 
+  @@unique([number, estimateId])
   @@map("change_order")
 }
 

@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 
 interface CreateChangeOrderPayload {
     estimateId: string
+    supervisorId: string
     scopeOfWork?: string
     totalAmount: number
     services: {
@@ -19,9 +20,9 @@ export class CreateChangeOrderController {
     async handle(req: Request, res: Response) {
         const payload = req.body as CreateChangeOrderPayload
 
-        if (!payload.estimateId || !payload.totalAmount || !payload.services) {
+        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId) {
             return res.status(400).json({
-                error: "Estimate ID, total amount and services are required"
+                error: "Estimate ID, total amount, services and supervisor ID are required"
             })
         }
 
@@ -42,11 +43,42 @@ export class CreateChangeOrderController {
                     })
                 }
 
+                const supervisor = await smartbuild.user.findUnique({
+                    where: {
+                        id: payload.supervisorId
+                    },
+                    select: {
+                        id: true,
+                    }
+                })
+
+                if (!supervisor) {
+                    return res.status(404).json({
+                        error: "Supervisor not found"
+                    })
+                }
+
+                const last = await smartbuild.changeOrder.findFirst({
+                    where: {
+                        estimateId: payload.estimateId
+                    },
+                    orderBy: {
+                        number: "desc"
+                    },
+                    select: {
+                        number: true
+                    }
+                });
+
+                const nextNumber = last ? last.number + 1 : 1;
+
                 const changeOrder = await smartbuild.changeOrder.create({
                     data: {
                         estimateId: payload.estimateId,
                         total_amount: payload.totalAmount,
                         scope_of_work: payload.scopeOfWork || "",
+                        number: nextNumber,
+                        supervisorId: supervisor.id,
                     }
                 })
 
