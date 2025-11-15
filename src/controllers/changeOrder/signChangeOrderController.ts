@@ -191,7 +191,7 @@ export class SignChangeOrderController {
                     }
 
                     const signatureWidth = 100;
-                    const signatureHeight = 40;
+                    const signatureHeight = 35;
 
                     const page = pages[0];
                     const { width, height } = page.getSize();
