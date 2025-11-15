@@ -197,7 +197,7 @@ export class SignChangeOrderController {
                     const { width, height } = page.getSize();
 
                     const x = (width - signatureWidth) / 2;
-                    const y = 190;
+                    const y = 180;
 
                     page.drawImage(signatureImage, {
                         x,
