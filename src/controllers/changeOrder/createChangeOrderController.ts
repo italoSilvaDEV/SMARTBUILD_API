@@ -21,7 +21,7 @@ export class CreateChangeOrderController {
     async handle(req: Request, res: Response) {
         const payload = req.body as CreateChangeOrderPayload
 
-        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId || payload.pdfId) {
+        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId || !payload.pdfId) {
             return res.status(400).json({
                 error: "Estimate ID, total amount, services, supervisor ID and pdf ID are required"
             })
