@@ -39,10 +39,14 @@ export class UpdateChangeOrderController {
                     && payload.scopeOfWork !== (changeOrder.scope_of_work || "")) {
                     newData.scope_of_work = payload.scopeOfWork
 
-                } else if (payload.totalAmount) {
+                }
+
+                if (payload.totalAmount) {
                     newData.total_amount = payload.totalAmount
 
-                } else if (payload.status
+                }
+
+                if (payload.status
                     && payload.status !== changeOrder.status
                     && ["pending", "approved", "canceled"].includes(payload.status)) {
                     newData.status = payload.status

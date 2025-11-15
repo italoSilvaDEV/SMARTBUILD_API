@@ -49,19 +49,19 @@ export class UpdateChangeOrderServiceController {
                 if (payload.name && payload.name !== changeOrderService.name) {
                     newData.name = payload.name
                 }
-                else if (payload.description && payload.description !== changeOrderService.description) {
+                if (payload.description && payload.description !== changeOrderService.description) {
                     newData.description = payload.description
                 }
-                else if (payload.quantity) {
+                if (payload.quantity && payload.quantity !== changeOrderService.quantity) {
                     newData.quantity = payload.quantity
                 }
-                else if (payload.unitPrice) {
+                if (payload.unitPrice && Number(payload.unitPrice) !== Number(changeOrderService.unitPrice)) {
                     newData.unitPrice = payload.unitPrice
                 }
-                else if (payload.lineTotal) {
+                if (payload.lineTotal && Number(payload.lineTotal) !== Number(changeOrderService.lineTotal)) {
                     newData.lineTotal = payload.lineTotal
                 }
-                else if (payload.price) {
+                if (payload.price && Number(payload.price) !== Number(changeOrderService.price)) {
                     newData.price = payload.price
                 }
 
