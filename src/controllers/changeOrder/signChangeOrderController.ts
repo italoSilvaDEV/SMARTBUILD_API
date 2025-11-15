@@ -197,7 +197,7 @@ export class SignChangeOrderController {
                     const { width, height } = page.getSize();
 
                     const x = (width - signatureWidth) / 2;
-                    const y = 180;
+                    const y = 185;
 
                     page.drawImage(signatureImage, {
                         x,
@@ -205,18 +205,6 @@ export class SignChangeOrderController {
                         width: signatureWidth,
                         height: signatureHeight,
                     });
-
-                    const currentDate = new Date();
-                    const formattedDate = currentDate.toLocaleString('en-US', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        timeZone: 'America/New_York'
-                    });
-
                 } catch (signatureError) {
                     console.error('Error processing signature:', signatureError);
                 }
