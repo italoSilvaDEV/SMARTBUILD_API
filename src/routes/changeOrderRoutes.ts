@@ -9,6 +9,7 @@ import { CreateChangeOrderServiceController } from "../controllers/changeOrder/c
 import { DeleteChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/deleteChangeOrderServiceController";
 import { GetChangeOrderServicesController } from "../controllers/changeOrder/changeOrderService/getChangeOrderServices";
 import { UpdateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/updateChangeOrderServiceController";
+import { UpdatePdfChangeOrderController } from "../controllers/changeOrder/updatePdfChangeOrderController";
 
 const changeOrderRoutes = Router();
 
@@ -17,6 +18,7 @@ const signChangeOrderController = new SignChangeOrderController();
 const getAllChangeOrderByEstimateController = new GetAllChangeOrderByEstimateController();
 const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
+const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
 
 const createChangeOrderServiceController = new CreateChangeOrderServiceController();
 const deleteChangeOrderServiceController = new DeleteChangeOrderServiceController();
@@ -76,6 +78,12 @@ changeOrderRoutes.delete(
     "/service/:changeOrderServiceId",
     checkToken,
     deleteChangeOrderServiceController.handle
+);
+
+changeOrderRoutes.put(
+    "/pdf/update",
+    checkToken,
+    updatePdfChangeOrderController.handle
 );
 
 export default changeOrderRoutes;
