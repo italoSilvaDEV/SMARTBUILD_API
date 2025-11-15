@@ -2,12 +2,12 @@ import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 
 interface UpdateChangeOrderServicePayload {
-    name: string
+    name?: string
     description?: string
-    quantity: number
-    unitPrice: number
-    lineTotal: number
-    price: number
+    quantity?: number
+    unitPrice?: number
+    lineTotal?: number
+    price?: number
     changeOrderServiceId: string
 }
 
@@ -52,16 +52,16 @@ export class UpdateChangeOrderServiceController {
                 else if (payload.description && payload.description !== changeOrderService.description) {
                     newData.description = payload.description
                 }
-                else if (payload.quantity && payload.quantity !== changeOrderService.quantity) {
+                else if (payload.quantity) {
                     newData.quantity = payload.quantity
                 }
-                else if (payload.unitPrice && Number(payload.unitPrice) !== Number(changeOrderService.unitPrice)) {
+                else if (payload.unitPrice) {
                     newData.unitPrice = payload.unitPrice
                 }
-                else if (payload.lineTotal && Number(payload.lineTotal) !== Number(changeOrderService.lineTotal)) {
+                else if (payload.lineTotal) {
                     newData.lineTotal = payload.lineTotal
                 }
-                else if (payload.price && Number(payload.price) !== Number(changeOrderService.price)) {
+                else if (payload.price) {
                     newData.price = payload.price
                 }
 
