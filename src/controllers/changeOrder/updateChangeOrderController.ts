@@ -54,6 +54,8 @@ export class UpdateChangeOrderController {
                     })
                 }
 
+                console.log(newData)
+
                 const updatedChangeOrder = await smartbuild.changeOrder.update({
                     where: {
                         id: changeOrder.id
@@ -67,6 +69,7 @@ export class UpdateChangeOrderController {
                 })
             })
         } catch (error) {
+            console.log(error)
             return res.status(500).json({
                 error: "Internal server error"
             })
