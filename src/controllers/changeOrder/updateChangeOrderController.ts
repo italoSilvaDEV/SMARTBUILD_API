@@ -33,14 +33,14 @@ export class UpdateChangeOrderController {
                     })
                 }
 
-                let newData = {} as UpdateChangeOrderPayload
+                let newData = {} as any
 
                 if (payload.scopeOfWork
                     && payload.scopeOfWork !== (changeOrder.scope_of_work || "")) {
-                    newData.scopeOfWork = payload.scopeOfWork
+                    newData.scope_of_work = payload.scopeOfWork
 
                 } else if (payload.totalAmount) {
-                    newData.totalAmount = payload.totalAmount
+                    newData.total_amount = payload.totalAmount
 
                 } else if (payload.status
                     && payload.status !== changeOrder.status
@@ -53,8 +53,6 @@ export class UpdateChangeOrderController {
                         error: "No valid data to update"
                     })
                 }
-
-                console.log(newData)
 
                 const updatedChangeOrder = await smartbuild.changeOrder.update({
                     where: {
