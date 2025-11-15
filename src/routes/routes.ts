@@ -43,6 +43,7 @@ import { openAiRoutes } from './openAiRoutes'
 import { workContextRoutes } from './workContextRoutes'
 import { projectFeedRoutes } from './projectFeedRoutes'
 import { publicFeedLinkRoutes } from './publicFeedLinkRoutes'
+import changeOrderRoutes from './changeOrderRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -99,6 +100,7 @@ router.use("/openai", openAiRoutes)
 router.use(workContextRoutes)
 router.use(projectFeedRoutes)
 router.use(publicFeedLinkRoutes)
+router.use("/changeorder", changeOrderRoutes)
 
 export { router }
 
