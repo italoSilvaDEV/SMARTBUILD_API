@@ -1,6 +1,3 @@
--- DropForeignKey
-ALTER TABLE `publicfeedlink` DROP FOREIGN KEY `PublicFeedLink_createdBy_fkey`;
-
 -- CreateTable
 CREATE TABLE `change_order` (
     `id` VARCHAR(191) NOT NULL,
@@ -27,9 +24,6 @@ CREATE TABLE `change_order_service` (
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- AddForeignKey
-ALTER TABLE `PublicFeedLink` ADD CONSTRAINT `PublicFeedLink_createdBy_fkey` FOREIGN KEY (`createdBy`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `change_order` ADD CONSTRAINT `change_order_estimateId_fkey` FOREIGN KEY (`estimateId`) REFERENCES `Estimate`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
