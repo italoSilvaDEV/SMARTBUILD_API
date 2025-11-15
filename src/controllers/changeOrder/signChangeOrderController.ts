@@ -190,41 +190,39 @@ export class SignChangeOrderController {
                         }
                     }
 
-                    const signatureWidth = 100;
-                    const signatureHeight = 50;
+                    const signatureWidth = 150;
+                    const signatureHeight = 60;
 
-                    for (let i = 1; i < pages.length; i++) {
-                        const page = pages[i];
-                        const { width, height } = page.getSize();
+                    const page = pages[0];
+                    const { width, height } = page.getSize();
 
-                        const x = (width - signatureWidth) / 2;
-                        const y = 20;
+                    const x = (width - signatureWidth) / 2;
+                    const y = 180;
 
-                        page.drawImage(signatureImage, {
-                            x,
-                            y,
-                            width: signatureWidth,
-                            height: signatureHeight,
-                        });
+                    page.drawImage(signatureImage, {
+                        x,
+                        y,
+                        width: signatureWidth,
+                        height: signatureHeight,
+                    });
 
-                        const currentDate = new Date();
-                        const formattedDate = currentDate.toLocaleString('en-US', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            timeZone: 'America/New_York'
-                        });
+                    const currentDate = new Date();
+                    const formattedDate = currentDate.toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        timeZone: 'America/New_York'
+                    });
 
-                        page.drawText(`Signed on: ${formattedDate}`, {
-                            x,
-                            y: y - 15,
-                            size: 8,
-                            color: rgb(0.5, 0.5, 0.5)
-                        });
-                    }
+                    page.drawText(`Signed on: ${formattedDate}`, {
+                        x: (width - 180) / 2,
+                        y: y - 12,
+                        size: 9,
+                        color: rgb(0.4, 0.4, 0.4)
+                    });
                 } catch (signatureError) {
                     console.error('Error processing signature:', signatureError);
                 }
