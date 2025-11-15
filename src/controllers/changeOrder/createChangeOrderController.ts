@@ -6,6 +6,7 @@ interface CreateChangeOrderPayload {
     supervisorId: string
     scopeOfWork?: string
     totalAmount: number
+    pdfId: string
     services: {
         name: string
         description?: string
@@ -20,9 +21,9 @@ export class CreateChangeOrderController {
     async handle(req: Request, res: Response) {
         const payload = req.body as CreateChangeOrderPayload
 
-        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId) {
+        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId || payload.pdfId) {
             return res.status(400).json({
-                error: "Estimate ID, total amount, services and supervisor ID are required"
+                error: "Estimate ID, total amount, services, supervisor ID and pdf ID are required"
             })
         }
 
@@ -113,6 +114,23 @@ export class CreateChangeOrderController {
                         id: changeOrder.id
                     }
                 })
+
+                const pdfProject = await smartbuild.pdfProject.findUnique({
+                    where: {
+                        id: payload.pdfId
+                    }
+                })
+
+                if (pdfProject) {
+                    await smartbuild.pdfProject.update({
+                        where: {
+                            id: pdfProject.id
+                        },
+                        data: {
+                            changeOrderId: changeOrder.id
+                        }
+                    })
+                }
 
                 return res.status(201).json({
                     message: "Change order created successfully",
