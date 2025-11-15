@@ -1492,6 +1492,7 @@ model ChangeOrder {
   scope_of_work String?           @db.Text
   status        ChangeOrderStatus @default(pending)
   total_amount  Decimal
+  number        Int               @unique @default(autoincrement())
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
