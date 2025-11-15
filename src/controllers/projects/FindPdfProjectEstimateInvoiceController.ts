@@ -5,28 +5,32 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 export class FindPdfProjectEstimateInvoiceController {
     async handle(req: Request, res: Response) {
         try {
-            const { estimate_id, invoice_id, project_id } = req.body;
+            const { estimate_id, invoice_id, project_id, change_order_id } = req.body;
 
             // Validar se pelo menos um ID foi fornecido
             if (!estimate_id && !invoice_id && !project_id) {
-                return res.status(400).json({ 
-                    error: "At least one of estimate_id, invoice_id, or project_id is required" 
+                return res.status(400).json({
+                    error: "At least one of estimate_id, invoice_id, or project_id is required"
                 });
             }
 
             // Construir o filtro dinamicamente
             const whereClause: any = {};
-            
+
             if (estimate_id) {
                 whereClause.estimate_id = estimate_id;
             }
-            
+
             if (invoice_id) {
                 whereClause.invoice_id = invoice_id;
             }
-            
+
             if (project_id) {
                 whereClause.project_id = project_id;
+            }
+
+            if (change_order_id) {
+                whereClause.changeOrderId = change_order_id;
             }
 
             const pdfProjects = await prisma.pdfProject.findMany({
@@ -40,7 +44,7 @@ export class FindPdfProjectEstimateInvoiceController {
             const formattedResults = await Promise.all(
                 pdfProjects.map(async (pdf) => {
                     let presignedUrl = null;
-                    
+
                     if (pdf.uri) {
                         try {
                             presignedUrl = await getPresignedUrl(pdf.uri);
