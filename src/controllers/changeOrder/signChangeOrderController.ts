@@ -65,6 +65,8 @@ export class SignChangeOrderController {
                     })
                 }
 
+                console.log("Valor antigo do estimate:", estimate.totalAmount)
+
                 const createdEstimateServices: string[] = []
 
                 for (const service of changeOrder.changeOrderServices) {
@@ -83,6 +85,28 @@ export class SignChangeOrderController {
 
                     createdEstimateServices.push(estimateService.id)
                 }
+
+                const newPriceServices = await smartbuild.estimateServiceProject.findMany({
+                    where: {
+                        estimateId: estimate.id
+                    },
+                    select: {
+                        price: true
+                    }
+                })
+
+                const newPrice = newPriceServices.reduce((acc, curr) => acc + Number(curr.price), 0)
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: estimate.id
+                    },
+                    data: {
+                        totalAmount: newPrice
+                    }
+                })
+
+                console.log("Valor novo do estimate:", newPrice)
 
                 if (estimate.status === "approved") {
                     const project = await smartbuild.project.findUnique({
