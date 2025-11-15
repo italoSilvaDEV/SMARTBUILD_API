@@ -217,12 +217,6 @@ export class SignChangeOrderController {
                         timeZone: 'America/New_York'
                     });
 
-                    page.drawText(`Signed on: ${formattedDate}`, {
-                        x: (width - 150) / 2,
-                        y: y - 10,
-                        size: 8,
-                        color: rgb(0.4, 0.4, 0.4)
-                    });
                 } catch (signatureError) {
                     console.error('Error processing signature:', signatureError);
                 }
