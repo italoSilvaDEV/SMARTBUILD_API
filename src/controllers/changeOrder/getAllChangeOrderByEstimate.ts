@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class GetAllChangeOrderByEstimateController {
     async handle(req: Request, res: Response) {
@@ -41,9 +42,23 @@ export class GetAllChangeOrderByEstimateController {
                     }
                 })
 
+                const changeOrdersWithPresignedUrls = await Promise.all(changeOrders.map(async (changeOrder) => {
+                    const changeOrderWithPresignedUrls = {
+                        ...changeOrder,
+                        pdfProjects: await Promise.all(changeOrder.pdfProjects.map(async (pdfProject) => {
+                            return {
+                                ...pdfProject,
+                                uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null
+                            }
+                        }))
+                    }
+
+                    return changeOrderWithPresignedUrls
+                }))
+
                 return res.status(200).json({
                     message: "Change orders fetched successfully",
-                    data: changeOrders
+                    data: changeOrdersWithPresignedUrls
                 })
             })
         } catch (error) {
