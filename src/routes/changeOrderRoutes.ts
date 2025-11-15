@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { checkToken } from "../middlewares/checkToken";
+import multer from "multer";
+import uploadConfig from "../config/uploadUtf8";
 import { CreateChangeOrderController } from "../controllers/changeOrder/createChangeOrderController";
 import { SignChangeOrderController } from "../controllers/changeOrder/signChangeOrderController";
 import { GetAllChangeOrderByEstimateController } from "../controllers/changeOrder/getAllChangeOrderByEstimate";
@@ -10,8 +12,11 @@ import { DeleteChangeOrderServiceController } from "../controllers/changeOrder/c
 import { GetChangeOrderServicesController } from "../controllers/changeOrder/changeOrderService/getChangeOrderServices";
 import { UpdateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/updateChangeOrderServiceController";
 import { UpdatePdfChangeOrderController } from "../controllers/changeOrder/updatePdfChangeOrderController";
+import { SendEmailChangeOrderController } from "../controllers/changeOrder/sendEmailChangeOrderController";
 
 const changeOrderRoutes = Router();
+
+const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/change-order-attachments"));
 
 const createChangeOrderController = new CreateChangeOrderController();
 const signChangeOrderController = new SignChangeOrderController();
@@ -19,6 +24,7 @@ const getAllChangeOrderByEstimateController = new GetAllChangeOrderByEstimateCon
 const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
 const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
+const sendEmailChangeOrderController = new SendEmailChangeOrderController();
 
 const createChangeOrderServiceController = new CreateChangeOrderServiceController();
 const deleteChangeOrderServiceController = new DeleteChangeOrderServiceController();
@@ -84,6 +90,13 @@ changeOrderRoutes.put(
     "/pdf/update",
     checkToken,
     updatePdfChangeOrderController.handle
+);
+
+changeOrderRoutes.post(
+    "/:id/send",
+    checkToken,
+    uploadAttachments.array("attachments", 10),
+    sendEmailChangeOrderController.handle
 );
 
 export default changeOrderRoutes;
