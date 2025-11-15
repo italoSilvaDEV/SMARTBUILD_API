@@ -190,14 +190,14 @@ export class SignChangeOrderController {
                         }
                     }
 
-                    const signatureWidth = 150;
-                    const signatureHeight = 60;
+                    const signatureWidth = 100;
+                    const signatureHeight = 40;
 
                     const page = pages[0];
                     const { width, height } = page.getSize();
 
                     const x = (width - signatureWidth) / 2;
-                    const y = 180;
+                    const y = 165;
 
                     page.drawImage(signatureImage, {
                         x,
@@ -218,9 +218,9 @@ export class SignChangeOrderController {
                     });
 
                     page.drawText(`Signed on: ${formattedDate}`, {
-                        x: (width - 180) / 2,
-                        y: y - 12,
-                        size: 9,
+                        x: (width - 150) / 2,
+                        y: y - 10,
+                        size: 8,
                         color: rgb(0.4, 0.4, 0.4)
                     });
                 } catch (signatureError) {
