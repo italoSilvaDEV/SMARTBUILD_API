@@ -97,7 +97,7 @@ export class updatePdfEstimateController {
                         original_file_name: file.originalname,
                         uri: newFileName,
                         date_update: new Date(),
-                        templateNumber: templateNumber ? templateNumber : existingPdf.templateNumber
+                        templateNumber: templateNumber ? Number(templateNumber) : existingPdf.templateNumber
                     },
                     select: {
                         id: true,
