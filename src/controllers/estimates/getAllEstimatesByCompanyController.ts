@@ -154,7 +154,8 @@ export class GetAllEstimatesByCompanyController {
                     PdfProject: {
                         select: {
                             id: true,
-                            uri: true
+                            uri: true,
+                            templateNumber: true
                         }
                     },
                     InvoicePaymentTimeLine: true,

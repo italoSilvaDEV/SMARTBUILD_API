@@ -125,7 +125,8 @@ export class GetEstimateByProjectIdController {
                     PdfProject: {
                         select: {
                             id: true,
-                            uri: true
+                            uri: true,
+                            templateNumber: true
                         }
                     },
                     InvoicePaymentTimeLine: true
