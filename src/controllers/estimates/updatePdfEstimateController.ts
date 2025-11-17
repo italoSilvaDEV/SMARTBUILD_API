@@ -31,7 +31,8 @@ export class updatePdfEstimateController {
 
             try {
                 const {
-                    estimateId
+                    estimateId,
+                    templateNumber
                 } = req.body;
 
                 const file = req.file;
@@ -95,7 +96,8 @@ export class updatePdfEstimateController {
                     data: {
                         original_file_name: file.originalname,
                         uri: newFileName,
-                        date_update: new Date()
+                        date_update: new Date(),
+                        templateNumber: templateNumber ? templateNumber : existingPdf.templateNumber
                     },
                     select: {
                         id: true,
