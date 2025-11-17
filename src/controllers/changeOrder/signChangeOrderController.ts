@@ -102,7 +102,8 @@ export class SignChangeOrderController {
                         id: estimate.id
                     },
                     data: {
-                        totalAmount: newPrice
+                        totalAmount: newPrice,
+                        pdf_needs_update: true
                     }
                 })
 
