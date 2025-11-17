@@ -51,7 +51,6 @@ changeOrderRoutes.get(
 
 changeOrderRoutes.get(
     "/:changeOrderId",
-    checkToken,
     getChangeOrderController.handle
 );
 
