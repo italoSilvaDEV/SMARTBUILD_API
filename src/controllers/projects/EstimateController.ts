@@ -545,13 +545,18 @@ export class EstimateController {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
 
-      // Generate presigned URLs for PDFs if they exist
+      // Generate presigned URLs for PDFs and convert array to single object
       if (estimate.PdfProject && estimate.PdfProject.length > 0) {
-        for (const pdf of estimate.PdfProject) {
-          if (pdf.uri) {
-            pdf.uri = await getPresignedUrl(pdf.uri);
-          }
+        const pdf = estimate.PdfProject[0];
+        
+        if (pdf.uri) {
+          pdf.uri = await getPresignedUrl(pdf.uri);
         }
+        // Convert array to single object
+        (estimate as any).PdfProject = pdf;
+      } else {
+        // Set to null if no PDF found
+        (estimate as any).PdfProject = null;
       }
 
       // Usar a função utilitária
