@@ -18,6 +18,7 @@ import { DashboardEstimatesController } from "../controllers/estimates/dashboard
 import { updatePdfEstimateController } from "../controllers/estimates/updatePdfEstimateController";
 import { BalanceController } from "../controllers/estimates/balanceController";
 import { LastEstimateController } from "../controllers/estimates/lastEstimateController";
+import { ClearUpdateController } from "../controllers/estimates/clearUpdateController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -36,7 +37,7 @@ const getEstimateByProjectIdController = new GetEstimateByProjectIdController();
 const UpdatePdfEstimateController = new updatePdfEstimateController();
 const balanceController = new BalanceController();
 const lastEstimateController = new LastEstimateController();
-
+const clearUpdateController = new ClearUpdateController();
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
@@ -74,5 +75,5 @@ estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, estimateCont
 estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateController.updateService);
 estimateRoutes.post("/:id/resend", checkToken, estimateController.resendEmail);
 estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), estimateController.sendEmail);
-
+estimateRoutes.patch("/:estimateId/clear-pdf-flag", checkToken, clearUpdateController.handle);
 export { estimateRoutes }; 

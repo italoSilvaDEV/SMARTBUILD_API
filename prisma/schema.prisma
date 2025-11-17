@@ -993,6 +993,8 @@ model Estimate {
   amountPaid Decimal? @default(0)
   balanceDue Decimal?
 
+  pdf_needs_update Boolean? @default(false)
+
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
 
