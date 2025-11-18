@@ -125,7 +125,8 @@ export class GetEstimateByProjectIdController {
                     PdfProject: {
                         select: {
                             id: true,
-                            uri: true
+                            uri: true,
+                            templateNumber: true
                         }
                     },
                     InvoicePaymentTimeLine: true
@@ -162,12 +163,15 @@ export class GetEstimateByProjectIdController {
 
             const totalAmountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
 
-            const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
-                if (pdf.uri) {
-                    return await getPresignedUrl(pdf.uri)
-                }
-                return null
-            }).filter(Boolean))
+            let pdfProjectData = null;
+            if (estimate.PdfProject && estimate.PdfProject.length > 0) {
+                const pdf = estimate.PdfProject[0];
+                pdfProjectData = {
+                    id: pdf.id,
+                    uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
+                    templateNumber: pdf.templateNumber
+                };
+            }
 
             const urlUserAvatar = estimate.project.user?.avatar ? await getPresignedUrl(estimate.project.user.avatar) : null
             const urlClientAvatar = estimate.project.client?.avatar ? await getPresignedUrl(estimate.project.client.avatar) : null
@@ -178,7 +182,7 @@ export class GetEstimateByProjectIdController {
                     ...estimate,
                     balanceDue: totalAmount - Number(totalAmountPaid),
                     amountPaid: Number(totalAmountPaid),
-                    PdfProject: presignedUrls,
+                    PdfProject: pdfProjectData,
                     project: {
                         ...estimate.project,
                         user: {

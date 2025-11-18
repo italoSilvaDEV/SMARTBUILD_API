@@ -154,7 +154,8 @@ export class GetAllEstimatesByCompanyController {
                     PdfProject: {
                         select: {
                             id: true,
-                            uri: true
+                            uri: true,
+                            templateNumber: true
                         }
                     },
                     InvoicePaymentTimeLine: true,
@@ -189,19 +190,25 @@ export class GetAllEstimatesByCompanyController {
                 const totalAmount = services.reduce((acc, service) => acc + Number(service.quantity) * Number(service.unitPrice), 0)
 
                 const balanceDue = Number(totalAmount) - Number(totalInvoices) || 0
+                let pdfProjectData = null;
+                if (estimate.PdfProject && estimate.PdfProject.length > 0) {
+                    const pdf = estimate.PdfProject[0];
+                    pdfProjectData = {
+                        id: pdf.id,
+                        uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
+                        templateNumber: pdf.templateNumber
+                    };
+                }
 
-                const presignedUrls = await Promise.all(estimate.PdfProject.map(async (pdf) => {
-                    if (pdf.uri) {
-                        return await getPresignedUrl(pdf.uri)
-                    }
-                    if (estimate.project.client?.avatar) {
-                        return await getPresignedUrl(estimate.project.client.avatar)
-                    }
-                    if (estimate.project.user?.avatar) {
-                        return await getPresignedUrl(estimate.project.user.avatar)
-                    }
-                    return null
-                }).filter(Boolean))
+                let clientAvatar = null;
+                if (estimate.project.client?.avatar) {
+                    clientAvatar = await getPresignedUrl(estimate.project.client.avatar);
+                }
+
+                let userAvatar = null;
+                if (estimate.project.user?.avatar) {
+                    userAvatar = await getPresignedUrl(estimate.project.user.avatar);
+                }
 
                 const urlCompanyAvatar = estimate.project.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : null
 
@@ -211,12 +218,20 @@ export class GetAllEstimatesByCompanyController {
                     amountPaid: Number(totalInvoices),
                     project: {
                         ...estimate.project,
+                        client: estimate.project.client ? {
+                            ...estimate.project.client,
+                            avatar: clientAvatar
+                        } : null,
+                        user: estimate.project.user ? {
+                            ...estimate.project.user,
+                            avatar: userAvatar
+                        } : null,
                         company: {
                             ...estimate.project.company,
                             avatar: urlCompanyAvatar
                         }
                     },
-                    PdfProject: presignedUrls,
+                    PdfProject: pdfProjectData,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
                             ...service,

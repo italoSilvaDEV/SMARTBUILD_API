@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Estimate` ADD COLUMN `pdf_needs_update` BOOLEAN NULL DEFAULT false;

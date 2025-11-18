@@ -85,5 +85,7 @@ userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, Use
 userRoutes.put("/user/onboarding/complete/:id", checkToken, User.completeOnboardingStatus);
 userRoutes.get("/user/onboarding/status/:id", checkToken, User.getOnboardingStatus);
 
+// Resend password
+userRoutes.post("/user/resend-password/:id", checkToken, User.resendPassword);
 
 export { userRoutes }

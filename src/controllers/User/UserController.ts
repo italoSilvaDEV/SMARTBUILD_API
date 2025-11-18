@@ -58,10 +58,8 @@ export class UserController {
             });
           }
         }
-        console.timeEnd(`[create][${reqId}] employee-limit-check`);
       } catch (error) {
-        console.error(`[create][${reqId}] Error verifying employee limit:`, error);
-        // continua
+        console.error(`[create] Error verifying employee limit:`, error);
       }
     }
 
@@ -149,21 +147,24 @@ export class UserController {
 
           try {
             await transporter.sendMail(mailOptions);
-            console.log(`[create][${reqId}] Email de convite enviado para ${userExists.email}`);
           } catch (mailErr) {
-            console.error(`[create][${reqId}] Erro ao enviar email de convite:`, mailErr);
-            // Não retorna erro, pois o usuário foi criado com sucesso
+            console.error(`[create] Error sending invitation email:`, mailErr);
           }
         }
 
         return res.status(201).json({ message: "User created successfully" });
       }
 
-      // Senha temporária
-      const pass = crypto.randomBytes(3).toString("hex").toUpperCase();
-      const hashedPassword = bcrypt.hashSync(pass, 10);
+      let pass: string;
+      let hashedPassword: string;
 
-      // SMTP
+      if (data.password && data.password.trim() !== '') {
+        pass = data.password;
+        hashedPassword = bcrypt.hashSync(pass, 10);
+      } else {
+        pass = crypto.randomBytes(3).toString("hex").toUpperCase();
+        hashedPassword = bcrypt.hashSync(pass, 10);
+      }
 
       const SMTP_CONFIG = require("../../config/smtp");
       const transporter = nodemailer.createTransport({
@@ -173,10 +174,12 @@ export class UserController {
         auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
         tls: { rejectUnauthorized: false },
       });
-      transporter.verify((error, success) => {
-        if (error) console.error(`[create][${reqId}] transporter.verify ERROR:`, error);
-        else console.log(`[create][${reqId}] transporter.verify OK:`, success);
-      });
+
+      try {
+        await transporter.verify();
+      } catch (verifyError) {
+        console.error(`[create] SMTP verification failed:`, verifyError);
+      }
 
       // Criação do usuário
       const user = await prisma.user.create({
@@ -203,36 +206,35 @@ export class UserController {
         });
       }
 
-      // Buscar logo da company
       const company = await prisma.company.findUnique({
         where: { id: data.company_id },
         select: { avatar: true }
       });
       const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
-      // Monta e envia e-mail
+      
       const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
       const mailOptions = {
         from: SMTP_CONFIG.user,
         to: data.email,
-        subject: "Smart Build",
+        subject: "Smart Build - Welcome",
         html: templateEmail,
+        text: `Welcome ${data.name}!\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
       };
+
+      try {
+        await transporter.sendMail(mailOptions);
+      } catch (mailErr) {
+        console.error(`[create] Error sending email:`, mailErr);
+      }
 
       // apagar tmp
       if (req.file?.filename) {
         deleteFile(`./public/tmp/user/${req.file.filename}`);
       }
 
-      try {
-        const result = await transporter.sendMail(mailOptions);
-      } catch (mailErr) {
-        console.error(`[create][${reqId}] email SEND ERROR:`, mailErr);
-        // segue retorno 201 mesmo assim? (mantive sua lógica atual de sucesso antes do send)
-      }
-
       return res.status(201).json({ message: "User created successfully" });
     } catch (error: any) {
-      console.error(`[create][${reqId}] CATCH ERROR:`, error);
+      console.error(`[create] Error:`, error);
       return res.status(500).json({ error: error.message || "Internal error" });
     }
   }
@@ -1727,6 +1729,148 @@ export class UserController {
       return res.status(500).json({
         error: "Internal server error"
       })
+    }
+  }
+
+  async resendPassword(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { password: manualPassword, adminUserId } = req.body;
+
+      if (!id) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      if (!adminUserId) {
+        return res.status(401).json({ error: "Admin user ID is required" });
+      }
+
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminUserId },
+        include: {
+          companies: {
+            select: {
+              companyId: true
+            }
+          }
+        }
+      });
+
+      if (!adminUser) {
+        return res.status(401).json({ error: "Admin user not found" });
+      }
+
+      const adminCompanyIds = adminUser.companies.map(uc => uc.companyId);
+
+      const user = await prisma.user.findUnique({
+        where: { id },
+        include: {
+          company: {
+            select: {
+              avatar: true,
+              id: true
+            }
+          },
+          companies: {
+            select: {
+              companyId: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const targetUserCompanyIds = user.companies.map(uc => uc.companyId);
+
+      // Validação de segurança: verificar empresa em comum
+      const hasCommonCompany = adminCompanyIds.some(adminCompanyId => 
+        targetUserCompanyIds.includes(adminCompanyId)
+      );
+
+      if (!hasCommonCompany) {
+        console.error(`[resendPassword] Security violation: Admin ${adminUserId} attempted to change password for user ${id} from different company`);
+        return res.status(403).json({ 
+          error: "You can only reset passwords for users in your company" 
+        });
+      }
+
+      let passwordToUse: string;
+      let hashedPassword: string;
+
+      if (manualPassword && manualPassword.trim() !== '') {
+        if (manualPassword.length < 6) {
+          return res.status(400).json({ error: "Password must be at least 6 characters" });
+        }
+        passwordToUse = manualPassword;
+        hashedPassword = bcrypt.hashSync(passwordToUse, 10);
+      } else {
+        passwordToUse = crypto.randomBytes(3).toString("hex").toUpperCase();
+        hashedPassword = bcrypt.hashSync(passwordToUse, 10);
+      }
+
+      await prisma.user.update({
+        where:  { id },
+        data: {
+          password: hashedPassword
+        }
+      });
+
+      // Senha manual: não enviar email
+      if (manualPassword && manualPassword.trim() !== '') {
+        return res.status(200).json({ 
+          message: "Password updated successfully",
+          emailSent: false
+        });
+      }
+
+      // Senha automática: enviar email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      try {
+        await transporter.verify();
+      } catch (verifyError) {
+        console.error("[resendPassword] SMTP verification failed:", verifyError);
+      }
+
+      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+      const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, passwordToUse);
+      const mailOptions = {
+        from: SMTP_CONFIG.user,
+        to: user.email,
+        subject: "Smart Build - Password Reset",
+        html: templateEmail,
+        text: `Hello ${user.name}!\n\nYour new temporary password is: ${passwordToUse}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+        return res.status(200).json({ 
+          message: "Password resent successfully",
+          emailSent: true
+        });
+      } catch (mailErr) {
+        console.error("[resendPassword] Error sending email:", mailErr);
+        return res.status(500).json({ error: "Error sending email. Please try again." });
+      }
+
+    } catch (error) {
+      console.error("[resendPassword] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error"
+      });
     }
   }
 }

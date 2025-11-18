@@ -5,9 +5,9 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import S3Storage from "../../utils/S3/s3Storage";
 
-const upload = multer({ dest: './public/tmp/pdfestimate' }).single('file');
+const upload = multer({ dest: './public/tmp/pdfchangeorder' }).single('file');
 
-export class updatePdfEstimateController {
+export class UpdatePdfChangeOrderController {
     constructor() {
         this.handle = this.handle.bind(this);
         this.deleteFiles = this.deleteFiles.bind(this);
@@ -15,7 +15,7 @@ export class updatePdfEstimateController {
     }
 
     deleteFiles(file: string) {
-        deleteFile(`./public/tmp/pdfestimate/${file}`);
+        deleteFile(`./public/tmp/pdfchangeorder/${file}`);
     }
 
     async deleteFilesFromS3(file: string) {
@@ -31,17 +31,16 @@ export class updatePdfEstimateController {
 
             try {
                 const {
-                    estimateId,
-                    templateNumber
+                    changeOrderId
                 } = req.body;
 
                 const file = req.file;
 
-                if (!estimateId) {
+                if (!changeOrderId) {
                     if (file) this.deleteFiles(file.filename);
 
                     return res.status(400).json({
-                        error: "Estimate ID is required"
+                        error: "Change order ID is required"
                     });
                 }
 
@@ -54,28 +53,28 @@ export class updatePdfEstimateController {
                     return res.status(400).json({ error: "Only PDF files are allowed" });
                 }
 
-                const estimate = await prisma.estimate.findUnique({
-                    where: { id: estimateId },
+                const changeOrder = await prisma.changeOrder.findUnique({
+                    where: { id: changeOrderId },
                     select: { id: true }
                 });
 
-                if (!estimate) {
+                if (!changeOrder) {
                     this.deleteFiles(file.filename);
                     return res.status(404).json({
-                        error: "Estimate not found"
+                        error: "Change order not found"
                     });
                 }
 
                 const existingPdf = await prisma.pdfProject.findFirst({
                     where: {
-                        estimate_id: estimateId
+                        changeOrderId: changeOrderId
                     }
                 });
 
                 if (!existingPdf) {
                     this.deleteFiles(file.filename);
                     return res.status(404).json({
-                        error: "PDF not found for this estimate"
+                        error: "PDF not found for this change order"
                     });
                 }
 
@@ -96,8 +95,7 @@ export class updatePdfEstimateController {
                     data: {
                         original_file_name: file.originalname,
                         uri: newFileName,
-                        date_update: new Date(),
-                        templateNumber: templateNumber ? Number(templateNumber) : existingPdf.templateNumber
+                        date_update: new Date()
                     },
                     select: {
                         id: true,

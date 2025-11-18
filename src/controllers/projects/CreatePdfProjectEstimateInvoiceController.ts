@@ -111,6 +111,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                     estimate_id,
                     invoice_id,
                     project_id,
+                    change_order_id,
                     type_pdf,
                     templateNumber
                 } = req.body;
@@ -157,6 +158,15 @@ export class CreatePdfProjectEstimateInvoiceController {
                     );
                 }
 
+                if (change_order_id) {
+                    validationPromises.push(
+                        prisma.changeOrder.findUnique({
+                            where: { id: change_order_id },
+                            select: { id: true }
+                        }).then(result => ({ type: 'change_order', exists: !!result }))
+                    );
+                }
+
                 // Executar todas as validações em paralelo
                 if (validationPromises.length > 0) {
                     const validationResults = await Promise.all(validationPromises);
@@ -189,6 +199,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                         project_id: project_id || null,
                         estimate_id: estimate_id || null,
                         invoice_id: invoice_id || null,
+                        changeOrderId: change_order_id || null,
                         templateNumber: templateNumberInt,
                     },
                     select: {
