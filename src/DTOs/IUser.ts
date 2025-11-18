@@ -30,7 +30,7 @@ export interface INewUser {
   //office: IOffice;
   office_id: string;
   //apenas pate corrigir email
-  password: string
+  password?: string // Opcional - se não fornecida, será gerada automaticamente
   hourly_price?: number
   profession?: string
   company_id: string
