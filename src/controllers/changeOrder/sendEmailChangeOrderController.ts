@@ -276,7 +276,7 @@ Change Order: ${numberPerson || changeOrder.id}
 Additional Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(changeOrder.total_amount))}
 
 Please access the link to view details and approve the change order:
-${process.env.URL_FRONT}/change-order-response/${changeOrder.id}/${Buffer.from(changeOrder.estimate?.project?.client?.email || '').toString('base64')}
+${process.env.URL_FRONT}/changeorder-response/${changeOrder.id}}
 
 We appreciate your business. Feel free to contact us if you have any questions.
 
