@@ -114,6 +114,36 @@ export class UserController {
           return res.status(400).json({ error: "Email has already been registered in the system" });
         }
 
+        // Verificar se o usuário já tem outras empresas
+        const existingUserCompanies = await prisma.userCompany.findMany({
+          where: { userId: userExists.id }
+        });
+
+        const hasOtherCompanies = existingUserCompanies.length > 0;
+
+        let pass: string | null = null;
+        let shouldUpdatePassword = false;
+
+        // Se o usuário NÃO tem outras empresas, pode definir/atualizar senha
+        if (!hasOtherCompanies) {
+          if (data.password && data.password.trim() !== '') {
+            pass = data.password;
+          } else {
+            pass = crypto.randomBytes(3).toString("hex").toUpperCase();
+          }
+          shouldUpdatePassword = true;
+        }
+        // Se o usuário JÁ TEM outras empresas, NÃO resetar senha (manter a atual)
+
+        // Atualizar senha apenas se necessário
+        if (shouldUpdatePassword && pass) {
+          const hashedPassword = bcrypt.hashSync(pass, 10);
+          await prisma.user.update({
+            where: { id: userExists.id },
+            data: { password: hashedPassword }
+          });
+        }
+
         const uc = await prisma.userCompany.create({
           data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
         });
@@ -135,20 +165,44 @@ export class UserController {
             tls: { rejectUnauthorized: false },
           });
 
+          try {
+            await transporter.verify();
+          } catch (verifyError) {
+            console.error(`[create] SMTP verification failed:`, verifyError);
+          }
+
           const urlLogo = company.avatar ? await getPresignedUrl(company.avatar) : '';
 
-          const templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
-          const mailOptions = {
-            from: SMTP_CONFIG.user,
-            to: userExists.email,
-            subject: "Smart Build - Access to New Company",
-            html: templateEmail,
-          };
+          // Escolher template baseado na situação
+          let templateEmail: string;
+          let mailOptions: any;
+
+          if (hasOtherCompanies) {
+            // Usuário já tem outras empresas - enviar convite SEM senha
+            templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
+            mailOptions = {
+              from: SMTP_CONFIG.user,
+              to: userExists.email,
+              subject: "Smart Build - Access to New Company",
+              html: templateEmail,
+              text: `Dear ${userExists.name},\n\nWe are pleased to inform you that your account has been enabled for the company ${company.name}.\n\nYou can now access this company using your existing credentials.\n\nBest regards,\nSmart Build Team`
+            };
+          } else {
+            // Usuário sem outras empresas - enviar email COM senha
+            templateEmail = NewUser(userExists.name.toUpperCase(), urlLogo, pass!);
+            mailOptions = {
+              from: SMTP_CONFIG.user,
+              to: userExists.email,
+              subject: "Smart Build - Welcome",
+              html: templateEmail,
+              text: `Welcome ${userExists.name}!\n\nYou have been added to ${company.name}.\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+            };
+          }
 
           try {
             await transporter.sendMail(mailOptions);
           } catch (mailErr) {
-            console.error(`[create] Error sending invitation email:`, mailErr);
+            console.error(`[create] Error sending email:`, mailErr);
           }
         }
 
@@ -1729,6 +1783,124 @@ export class UserController {
       return res.status(500).json({
         error: "Internal server error"
       })
+    }
+  }
+
+  async checkUserCompanies(req: Request, res: Response) {
+    try {
+      const { userId, adminCompanyId } = req.body;
+
+      if (!userId || !adminCompanyId) {
+        return res.status(400).json({ error: "User ID and admin company ID are required" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          companies: {
+            select: {
+              companyId: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const userCompanyIds = user.companies.map(uc => uc.companyId);
+      const hasMultipleCompanies = userCompanyIds.length > 1;
+      const belongsToAdminCompany = userCompanyIds.includes(adminCompanyId);
+
+      return res.status(200).json({
+        hasMultipleCompanies,
+        belongsToAdminCompany,
+        companyCount: userCompanyIds.length,
+        canSetManualPassword: !hasMultipleCompanies && belongsToAdminCompany
+      });
+
+    } catch (error) {
+      console.error("[checkUserCompanies] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error"
+      });
+    }
+  }
+
+  async checkEmailAvailability(req: Request, res: Response) {
+    try {
+      const { email, companyId } = req.body;
+
+      if (!email || !companyId) {
+        return res.status(400).json({ error: "Email and company ID are required" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          companies: {
+            select: {
+              companyId: true
+            }
+          }
+        }
+      });
+
+      // Se o usuário não existe, email está disponível
+      if (!user) {
+        return res.status(200).json({
+          available: true,
+          userExists: false,
+          sameCompany: false,
+          differentCompany: false
+        });
+      }
+
+      // Obter IDs das empresas do usuário
+      const userCompanyIds = user.companies.map(uc => uc.companyId);
+      
+      // CASO ESPECIAL: Se o usuário existe mas não tem vinculo com nenhuma empresa
+      // Tratar como disponível e permitir definir senha manual
+      if (userCompanyIds.length === 0) {
+        return res.status(200).json({
+          available: true,
+          userExists: true,
+          sameCompany: false,
+          differentCompany: false,
+          hasNoCompanies: true,
+          message: "User exists but has no company associations. You can add them to your company."
+        });
+      }
+
+      // Verificar se o usuário pertence à empresa que está tentando cadastrar
+      const belongsToCompany = userCompanyIds.includes(companyId);
+
+      if (belongsToCompany) {
+        // Usuário já está cadastrado nesta empresa
+        return res.status(200).json({
+          available: false,
+          userExists: true,
+          sameCompany: true,
+          differentCompany: false,
+          message: "This email is already registered in your company"
+        });
+      } else {
+        // Usuário existe e está vinculado a outra(s) empresa(s)
+        return res.status(200).json({
+          available: false,
+          userExists: true,
+          sameCompany: false,
+          differentCompany: true,
+          message: "This user is already registered in another company. For security reasons, you cannot set a password."
+        });
+      }
+
+    } catch (error) {
+      console.error("[checkEmailAvailability] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error"
+      });
     }
   }
 
