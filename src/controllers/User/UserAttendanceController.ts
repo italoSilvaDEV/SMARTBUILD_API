@@ -625,4 +625,299 @@ export class UserAttendanceController {
             });
         }
     }
+
+    /**
+     * Lista TODOS os projetos/serviços em andamento disponíveis para check-in
+     * Não requer que o funcionário esteja previamente atribuído
+     */
+    async getAvailableProjectsForCheckIn(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId, companyId, search } = req.query;
+
+            if (!userId) {
+                res.status(400).json({ error: 'User ID is required.' });
+                return;
+            }
+
+            // Verifica se o usuário existe
+            const user = await prisma.user.findUnique({
+                where: { id: userId as string },
+                select: {
+                    company_id: true,
+                    companies: {
+                        select: {
+                            companyId: true
+                        }
+                    }
+                }
+            });
+
+            if (!user) {
+                res.status(404).json({ error: 'User not found.' });
+                return;
+            }
+
+            // Determina a company_id (prioriza query param, depois user.company_id)
+            const finalCompanyId = (companyId as string) || user.company_id;
+
+            // Busca todos os serviços de projetos em andamento
+            const serviceProjects = await prisma.serviceProject.findMany({
+                where: {
+                    // Apenas serviços não cancelados
+                    OR: [
+                        { status: { not: "Canceled" } },
+                        { status: null }
+                    ],
+                    // Apenas projetos ativos (combina todas as condições do projeto)
+                    Project: {
+                        // Status do projeto: apenas "In Progress" e "Final walkthrough"
+                        status_project: {
+                            in: ["In Progress", "Final walkthrough"]
+                        },
+                        // Filtra por empresa se especificado
+                        ...(finalCompanyId && {
+                            company_id: finalCompanyId
+                        })
+                    },
+                    // Busca por nome do serviço (opcional)
+                    ...(search && {
+                        name: {
+                            contains: (search as string).toLowerCase()
+                        }
+                    })
+                },
+                include: {
+                    Project: {
+                        select: {
+                            id: true,
+                            contract_number: true,
+                            status_project: true,
+                            location: true,
+                            lat: true,
+                            log: true,
+                            client: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    location: true
+                                }
+                            }
+                        }
+                    },
+                    // Verifica se o usuário já está atribuído
+                    UserServiceProject: {
+                        where: {
+                            user_id: userId as string
+                        },
+                        select: {
+                            id: true,
+                            assigned_at: true
+                        },
+                        take: 1
+                    }
+                },
+                orderBy: {
+                    date_creation: 'desc'
+                }
+            });
+
+            // Formata a resposta
+            const formattedServices = serviceProjects.map((sp) => ({
+                id: sp.id,
+                name: sp.name,
+                description: sp.description,
+                status: sp.status,
+                start_date: sp.start_date,
+                deadline: sp.deadline,
+                project: {
+                    id: sp.Project.id,
+                    contract_number: sp.Project.contract_number,
+                    status_project: sp.Project.status_project,
+                    location: sp.Project.location || sp.Project.client?.location,
+                    coordinates: {
+                        lat: sp.Project.lat,
+                        lng: sp.Project.log
+                    },
+                    client: {
+                        id: sp.Project.client?.id,
+                        name: sp.Project.client?.name
+                    }
+                },
+                // Indica se o usuário já está atribuído
+                isAssigned: sp.UserServiceProject.length > 0,
+                userServiceProjectId: sp.UserServiceProject[0]?.id || null
+            }));
+
+            res.status(200).json({
+                services: formattedServices,
+                total: formattedServices.length
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: 'Error while fetching available projects.' });
+        }
+    }
+
+    /**
+     * Check-in simplificado - aceita serviceProjectId diretamente
+     * Cria automaticamente o UserServiceProject se não existir
+     */
+    async checkInByServiceProject(req: Request, res: Response): Promise<void> {
+        try {
+            const {
+                user_id,
+                service_project_id, // Agora aceita serviceProjectId diretamente
+                address,
+                latitude,
+                longitude
+            } = req.body;
+
+            if (!user_id || !service_project_id) {
+                res.status(400).json({ 
+                    error: 'user_id and service_project_id are required.' 
+                });
+                return;
+            }
+
+            // Verifica se o usuário existe
+            const userExists = await prisma.user.findUnique({
+                where: { id: user_id },
+                select: {
+                    isOverTime: true,
+                    company: {
+                        select: {
+                            id: true,
+                            workStartTime: true,
+                            workEndTime: true
+                        }
+                    }
+                }
+            });
+
+            if (!userExists) {
+                res.status(400).json({ error: 'User not found.' });
+                return;
+            }
+
+            // Verifica se o serviço existe e está ativo
+            const serviceProject = await prisma.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: {
+                    Project: true
+                }
+            });
+
+            if (!serviceProject) {
+                res.status(404).json({ error: 'Service project not found.' });
+                return;
+            }
+
+            // Validações de status
+            const project = serviceProject.Project;
+            if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
+                res.status(400).json({
+                    error: 'Cannot check in to a canceled or rejected project.',
+                    project_status: project.status_project
+                });
+                return;
+            }
+
+            if (serviceProject.status === 'Canceled') {
+                res.status(400).json({
+                    error: 'Cannot check in to a canceled service.',
+                    service_status: serviceProject.status
+                });
+                return;
+            }
+
+            // Busca ou cria o UserServiceProject
+            let userServiceProject = await prisma.userServiceProject.findFirst({
+                where: {
+                    user_id: user_id,
+                    service_project_id: service_project_id
+                }
+            });
+
+            if (!userServiceProject) {
+                // Cria automaticamente a relação
+                userServiceProject = await prisma.userServiceProject.create({
+                    data: {
+                        user_id: user_id,
+                        service_project_id: service_project_id,
+                        assigned_at: new Date()
+                    }
+                });
+
+                // Atualiza o status do serviço se necessário
+                if (!serviceProject.status || serviceProject.status === 'Scheduled') {
+                    await prisma.serviceProject.update({
+                        where: { id: service_project_id },
+                        data: {
+                            status: 'In Progress'
+                        }
+                    });
+                }
+            }
+
+            // Verifica se já existe um check-in aberto para este serviço
+            const openAttendance = await prisma.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    user_service_project_id: userServiceProject.id,
+                    check_out_time: null,
+                },
+            });
+
+            if (openAttendance) {
+                res.status(400).json({
+                    error: 'There is already an open attendance for this service. Please check out before creating a new one.',
+                    attendance_id: openAttendance.id
+                });
+                return;
+            }
+
+            // Cria o registro de check-in
+            const attendance = await prisma.userAttendance.create({
+                data: {
+                    user_id,
+                    user_service_project_id: userServiceProject.id,
+                    check_in_time: new Date(),
+                    check_in_address: address || serviceProject.Project?.location || '',
+                    check_in_latitude: latitude || (serviceProject.Project?.lat ? parseFloat(serviceProject.Project.lat) : 0),
+                    check_in_longitude: longitude || (serviceProject.Project?.log ? parseFloat(serviceProject.Project.log) : 0),
+                    isOvertime: userExists.isOverTime,
+                    workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
+                    workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null
+                },
+                include: {
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    Project: {
+                                        select: {
+                                            id: true,
+                                            contract_number: true,
+                                            location: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            res.status(201).json({
+                success: true,
+                data: attendance,
+                message: 'Check-in realizado com sucesso. UserServiceProject criado automaticamente.'
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: 'Error while checking in.' });
+        }
+    }
 }

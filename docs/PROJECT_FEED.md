@@ -4,6 +4,8 @@
 
 O **Project Feed** é uma funcionalidade que permite aos funcionários publicarem posts (texto e fotos) relacionados aos projetos enquanto estão em ponto. Os posts são automaticamente vinculados ao serviço em que o funcionário está trabalhando.
 
+> 📱 **App Nativo dos Funcionários:** Para documentação completa das endpoints do app nativo (listar projetos, serviços, detalhes, etc), consulte [`EMPLOYEE_APP_API.md`](./EMPLOYEE_APP_API.md)
+
 ## Como Funciona
 
 ### Conceito
