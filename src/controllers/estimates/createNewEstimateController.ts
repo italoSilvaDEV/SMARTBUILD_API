@@ -129,7 +129,7 @@ export class CreateNewEstimateController {
                         })
 
                         for (const projectService of projectServices) {
-                            await smartbuild.estimateServiceProject.create({
+                           const estimateServiceProject = await smartbuild.estimateServiceProject.create({
                                 data: {
                                     name: projectService.name,
                                     description: projectService.description,
@@ -148,6 +148,8 @@ export class CreateNewEstimateController {
                                     }
                                 }
                             })
+
+                            console.log(estimateServiceProject)
                         }
                     }
                 } else {
