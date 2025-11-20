@@ -721,32 +721,34 @@ export class UserAttendanceController {
                 }
             });
 
-            // Formata a resposta
-            const formattedServices = serviceProjects.map((sp) => ({
-                id: sp.id,
-                name: sp.name,
-                description: sp.description,
-                status: sp.status,
-                start_date: sp.start_date,
-                deadline: sp.deadline,
-                project: {
-                    id: sp.Project.id,
-                    contract_number: sp.Project.contract_number,
-                    status_project: sp.Project.status_project,
-                    location: sp.Project.location || sp.Project.client?.location,
-                    coordinates: {
-                        lat: sp.Project.lat,
-                        lng: sp.Project.log
+            // Formata a resposta (filtra serviços sem projeto)
+            const formattedServices = serviceProjects
+                .filter((sp) => sp.Project !== null)
+                .map((sp) => ({
+                    id: sp.id,
+                    name: sp.name,
+                    description: sp.description,
+                    status: sp.status,
+                    start_date: sp.start_date,
+                    deadline: sp.deadline,
+                    project: {
+                        id: sp.Project!.id,
+                        contract_number: sp.Project!.contract_number,
+                        status_project: sp.Project!.status_project,
+                        location: sp.Project!.location || sp.Project!.client?.location || null,
+                        coordinates: {
+                            lat: sp.Project!.lat,
+                            lng: sp.Project!.log
+                        },
+                        client: {
+                            id: sp.Project!.client?.id || null,
+                            name: sp.Project!.client?.name || null
+                        }
                     },
-                    client: {
-                        id: sp.Project.client?.id,
-                        name: sp.Project.client?.name
-                    }
-                },
-                // Indica se o usuário já está atribuído
-                isAssigned: sp.UserServiceProject.length > 0,
-                userServiceProjectId: sp.UserServiceProject[0]?.id || null
-            }));
+                    // Indica se o usuário já está atribuído
+                    isAssigned: sp.UserServiceProject.length > 0,
+                    userServiceProjectId: sp.UserServiceProject[0]?.id || null
+                }));
 
             res.status(200).json({
                 services: formattedServices,
