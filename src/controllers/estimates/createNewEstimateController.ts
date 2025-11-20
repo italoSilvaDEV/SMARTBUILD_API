@@ -15,7 +15,8 @@ type payloadCreateEstimate = {
     multi_emails: string;
     date_creation?: string;
     workContextId?: string;
-    cancelEstimates?: boolean
+    cancelEstimates?: boolean;
+    isProjectFlow?: boolean;
 }
 
 export class CreateNewEstimateController {
@@ -119,6 +120,36 @@ export class CreateNewEstimateController {
                         },
                         data: updateData,
                     })
+
+                    if (payloadCreateEstimate.isProjectFlow) {
+                        const projectServices = await smartbuild.serviceProject.findMany({
+                            where: {
+                                projectId: payloadCreateEstimate.projectId
+                            },
+                        })
+
+                        for (const projectService of projectServices) {
+                            await smartbuild.estimateServiceProject.create({
+                                data: {
+                                    name: projectService.name,
+                                    description: projectService.description,
+                                    hours: projectService.hours,
+                                    price: projectService.price,
+                                    estimateId: createEstimate.id,
+                                    id_service: projectService.id_service,
+                                    start_date: projectService.start_date,
+                                    deadline: projectService.deadline,
+                                    unitPrice: projectService.price,
+                                    lineTotal: Number(projectService.price) * Number(projectService.hours),
+                                    serviceProject: {
+                                        connect: {
+                                            id: projectService.id
+                                        }
+                                    }
+                                }
+                            })
+                        }
+                    }
                 } else {
                     const updateData: any = {
                         price: Number(payloadCreateEstimate.totalAmount),
