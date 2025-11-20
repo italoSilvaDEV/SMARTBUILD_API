@@ -122,6 +122,8 @@ export class CreateNewEstimateController {
                     })
 
                     if (payloadCreateEstimate.isProjectFlow) {
+                        // Essa condição indentifica que esse estimate foi criado no fluxo de new project
+                        // Nesse caso, precisamos criar os serviços do projeto no estimate e criando o relacionamento dos serviços.
                         const projectServices = await smartbuild.serviceProject.findMany({
                             where: {
                                 projectId: payloadCreateEstimate.projectId
@@ -129,7 +131,7 @@ export class CreateNewEstimateController {
                         })
 
                         for (const projectService of projectServices) {
-                           const estimateServiceProject = await smartbuild.estimateServiceProject.create({
+                            await smartbuild.estimateServiceProject.create({
                                 data: {
                                     name: projectService.name,
                                     description: projectService.description,
@@ -148,8 +150,6 @@ export class CreateNewEstimateController {
                                     }
                                 }
                             })
-
-                            console.log(estimateServiceProject)
                         }
                     }
                 } else {
