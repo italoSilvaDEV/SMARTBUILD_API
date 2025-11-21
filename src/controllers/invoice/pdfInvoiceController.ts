@@ -382,6 +382,12 @@ ${company?.name || ''}
                 console.error("Error sending payment receipt email:", emailError);
             }
 
+            await prisma.pdfProject.deleteMany({
+                where: {
+                    invoice_id: invoiceId
+                }
+            })
+
             return res.status(200).json({
                 message: "Invoice checked successfully",
             })

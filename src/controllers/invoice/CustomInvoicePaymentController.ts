@@ -22,10 +22,10 @@ export class CustomInvoicePaymentController {
       });
 
       const verification = await transporter.verify();
-      console.log('✅ SMTP Configuration verified:', verification);
+      console.log('SMTP Configuration verified:', verification);
       return verification;
     } catch (error) {
-      console.error('❌ SMTP Configuration error:', error);
+      console.error('SMTP Configuration error:', error);
       throw error;
     }
   }
@@ -274,10 +274,8 @@ ${company?.name || ''}
           `.trim()
         });
 
-        console.log(`✅ Payment confirmation email sent to ${client.email}`);
       } catch (emailError: any) {
         console.error("Error sending payment confirmation email:", emailError);
-        // Não bloquear a resposta se o email falhar
       }
 
       return res.status(201).json({
