@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 
 const prisma = new PrismaClient();
 
@@ -696,6 +697,7 @@ export class UserAttendanceController {
                             location: true,
                             lat: true,
                             log: true,
+                            cover_photo: true,
                             client: {
                                 select: {
                                     id: true,
@@ -723,33 +725,49 @@ export class UserAttendanceController {
             });
 
             // Formata a resposta (filtra serviços sem projeto)
-            const formattedServices = serviceProjects
-                .filter((sp) => sp.Project !== null)
-                .map((sp) => ({
-                    id: sp.id,
-                    name: sp.name,
-                    description: sp.description,
-                    status: sp.status,
-                    start_date: sp.start_date,
-                    deadline: sp.deadline,
-                    project: {
-                        id: sp.Project!.id,
-                        contract_number: sp.Project!.contract_number,
-                        status_project: sp.Project!.status_project,
-                        location: sp.Project!.location || sp.Project!.client?.location || null,
-                        coordinates: {
-                            lat: sp.Project!.lat,
-                            lng: sp.Project!.log
-                        },
-                        client: {
-                            id: sp.Project!.client?.id || null,
-                            name: sp.Project!.client?.name || null
+            const formattedServices = await Promise.all(
+                serviceProjects
+                    .filter((sp) => sp.Project !== null)
+                    .map(async (sp) => {
+                        // Processa foto de capa do projeto
+                        let coverPhotoUrl = null;
+                        const coverPhoto = (sp.Project as any)?.cover_photo;
+                        if (coverPhoto) {
+                            try {
+                                coverPhotoUrl = await getPresignedUrl(coverPhoto);
+                            } catch (error) {
+                                console.error('Error generating presigned URL for cover photo:', error);
+                            }
                         }
-                    },
-                    // Indica se o usuário já está atribuído
-                    isAssigned: sp.UserServiceProject.length > 0,
-                    userServiceProjectId: sp.UserServiceProject[0]?.id || null
-                }));
+
+                        return {
+                            id: sp.id,
+                            name: sp.name,
+                            description: sp.description,
+                            status: sp.status,
+                            start_date: sp.start_date,
+                            deadline: sp.deadline,
+                            project: {
+                                id: sp.Project!.id,
+                                contract_number: sp.Project!.contract_number,
+                                status_project: sp.Project!.status_project,
+                                location: sp.Project!.location || sp.Project!.client?.location || null,
+                                coordinates: {
+                                    lat: sp.Project!.lat,
+                                    lng: sp.Project!.log
+                                },
+                                cover_photo: coverPhotoUrl,
+                                client: {
+                                    id: sp.Project!.client?.id || null,
+                                    name: sp.Project!.client?.name || null
+                                }
+                            },
+                            // Indica se o usuário já está atribuído
+                            isAssigned: sp.UserServiceProject.length > 0,
+                            userServiceProjectId: sp.UserServiceProject[0]?.id || null
+                        };
+                    })
+            );
 
             res.status(200).json({
                 services: formattedServices,
