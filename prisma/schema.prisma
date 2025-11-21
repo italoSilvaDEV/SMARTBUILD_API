@@ -489,6 +489,7 @@ model Project {
   location               String?                  @db.Text
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
+  cover_photo            String?                  @db.Text
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
   projectFiles           ProjectFiles[]
   projectPastes          ProjectPastes[]
@@ -578,6 +579,22 @@ model PdfProject {
   date_update   DateTime @updatedAt
 
   @@map("pdf_project")
+}
+
+model PdfInvoicePaid {
+  id String @id @default(uuid())
+
+  original_file_name String?
+  uri                String?
+
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([invoiceId])
+  @@map("pdf_invoice_paid")
 }
 
 model fildsPdfProject {
@@ -840,6 +857,8 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
+  checked Boolean? @default(false)
+
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
   status            String // Status do invoice: draft, open, paid, void, uncollectible
@@ -901,7 +920,8 @@ model Invoice {
   fildsPdfProjects fildsPdfProject[]
 
   // NOVO: Relacionamento com PaymentIntentRecord (para Payment Element)
-  PaymentIntents PaymentIntentRecord[]
+  PaymentIntents  PaymentIntentRecord[]
+  pdfInvoicePaids PdfInvoicePaid?
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -1437,13 +1457,20 @@ model QuickBooksConfig {
   @@map("quickbooks_config")
 }
 
+enum TypeFile {
+  text
+  others
+}
+
 model ProjectFiles {
   id String @id @default(uuid())
 
-  file String
+  file String?
 
   name        String? @db.Text
   description String? @db.Text
+
+  type_file TypeFile @default(others)
 
   pasteId String?
   paste   ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)

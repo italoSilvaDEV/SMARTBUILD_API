@@ -578,6 +578,7 @@ export class StripeController {
                     },
                     InvoiceItems: true, // Incluir os itens da fatura
                     PdfProject: true, // Incluir os PDFs relacionados
+                    pdfInvoicePaids: true,
                     project: {
                         include: {
                             client: {
@@ -623,6 +624,12 @@ export class StripeController {
                             if (pdf.uri) {
                                 pdf.uri = await getPresignedUrl(pdf.uri);
                             }
+                        }
+                    }
+
+                    if (invoice.pdfInvoicePaids) {
+                        if (invoice.pdfInvoicePaids.uri) {
+                            invoice.pdfInvoicePaids.uri = await getPresignedUrl(invoice.pdfInvoicePaids.uri);
                         }
                     }
 

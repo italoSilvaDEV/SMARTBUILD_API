@@ -45,7 +45,9 @@ export class UpdateFileController {
             } = {}
 
             if (filename) {
-                await deleteFileFromS3(file.file)
+                if (file.file) {
+                    await deleteFileFromS3(file.file)
+                }
 
                 const fileToS3 = await uploadFileToS3(filename, file.userAuthorId)
 

@@ -1250,23 +1250,17 @@ export class ProjectFeedController {
                 }
             });
 
-            // Busca todos os serviços em que o usuário já trabalhou
-            const userServiceProjects = await prisma.userServiceProject.findMany({
-                where: {
-                    user_id: userId
-                },
-                select: {
-                    service_project_id: true
-                }
-            });
+            // Obtém os serviceProjectIds das activities encontradas
+            const activityServiceProjectIds = activities
+                .map(a => a.serviceProjectId)
+                .filter((id): id is string => id !== null);
 
-            const serviceProjectIds = userServiceProjects.map(usp => usp.service_project_id);
-
-            // Busca fotos marcadas como FEED_POST desses serviços
+            // Busca fotos marcadas como FEED_POST dos serviços das activities
+            // Isso garante que as fotos estejam vinculadas aos serviços corretos
             const feedPhotos = await prisma.galleryAfter.findMany({
                 where: {
                     serviceProjectId: {
-                        in: serviceProjectIds
+                        in: activityServiceProjectIds.length > 0 ? activityServiceProjectIds : []
                     },
                     title: 'FEED_POST'
                 },

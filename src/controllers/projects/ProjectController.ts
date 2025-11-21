@@ -5,6 +5,7 @@ import { Request, Response } from "express";
 import nodemailer from "nodemailer";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 import S3Storage from "../../utils/S3/s3Storage";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import { generatePdf } from "../../utils/generatePdf";
@@ -158,6 +159,7 @@ export class ProjectController {
           seller_user_id: true,
           company_id: true,
           location: true,
+          cover_photo: true,
           client: {
             select: {
               id: true,
@@ -415,8 +417,14 @@ export class ProjectController {
 
         const balanceDue = priceProject - Number(totalAmountPaid);
 
+        // Converter cover_photo para URL presignada
+        const coverPhotoUrl = project.cover_photo
+          ? await getPresignedUrl(project.cover_photo)
+          : null;
+
         return {
           ...project,
+          cover_photo: coverPhotoUrl,
           balanceDue: balanceDue,
           amountPaid: Number(totalAmountPaid),
           client: {
@@ -676,8 +684,14 @@ export class ProjectController {
           }
         }
 
+        // Converter cover_photo para URL presignada
+        const coverPhotoUrl = project.cover_photo
+          ? await getPresignedUrl(project.cover_photo)
+          : null;
+
         res.json({
           ...project,
+          cover_photo: coverPhotoUrl,
           balanceDue: totalAmount - Number(totalAmountPaid),
           amountPaid: Number(totalAmountPaid),
           client: {
@@ -2785,6 +2799,151 @@ export class ProjectController {
       return res.status(500).json({
         error: "Internal server error, to update fields service project"
       })
+    }
+  }
+
+  /**
+   * Upload da foto de capa do projeto
+   * Substitui a foto antiga se existir
+   */
+  async uploadCoverPhoto(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      // Verifica se o projeto existe
+      const project = await prisma.project.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          cover_photo: true
+        }
+      });
+
+      if (!project) {
+        deleteFile(`./public/tmp/project-cover/${req.file.filename}`);
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Processa o arquivo
+      const filePath = req.file?.filename?.split(".")[0] + ".webp";
+      const s3Bucket = process.env.AMAZON_S3_BUCKET!;
+
+      // Faz upload para S3
+      const fileName = await uploadImageWebpToS3(
+        `./public/tmp/project-cover/${filePath}`,
+        s3Bucket
+      );
+
+      // Deleta a foto antiga do S3 se existir
+      if (project.cover_photo) {
+        try {
+          await deleteFileFromS3(project.cover_photo);
+        } catch (error) {
+          console.error("Error deleting old cover photo from S3:", error);
+          // Continua mesmo se não conseguir deletar a foto antiga
+        }
+      }
+
+      // Atualiza o projeto com a nova foto
+      const updatedProject = await prisma.project.update({
+        where: { id },
+        data: {
+          cover_photo: fileName
+        },
+        select: {
+          id: true,
+          cover_photo: true
+        }
+      });
+
+      // Limpa arquivos temporários
+      deleteFile(`./public/tmp/project-cover/${filePath}`);
+      deleteFile(`./public/tmp/project-cover/${req.file.filename}`);
+
+      // Gera URL pré-assinada
+      const coverPhotoUrl = updatedProject.cover_photo
+        ? await getPresignedUrl(updatedProject.cover_photo)
+        : null;
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: updatedProject.id,
+          cover_photo: coverPhotoUrl,
+          fileName: updatedProject.cover_photo
+        },
+        message: "Cover photo uploaded successfully"
+      });
+    } catch (error) {
+      // Limpeza em caso de erro
+      if (req.file) {
+        deleteFile(`./public/tmp/project-cover/${req.file.filename}`);
+        const filePath = req.file?.filename?.split(".")[0] + ".webp";
+        deleteFile(`./public/tmp/project-cover/${filePath}`);
+      }
+
+      console.error("Error uploading cover photo:", error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  /**
+   * Remove a foto de capa do projeto
+   */
+  async deleteCoverPhoto(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      // Verifica se o projeto existe
+      const project = await prisma.project.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          cover_photo: true
+        }
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.cover_photo) {
+        return res.status(400).json({ error: "Project does not have a cover photo" });
+      }
+
+      // Deleta a foto do S3
+      try {
+        await deleteFileFromS3(project.cover_photo);
+      } catch (error) {
+        console.error("Error deleting cover photo from S3:", error);
+        // Continua mesmo se não conseguir deletar do S3
+      }
+
+      // Remove a referência no banco
+      await prisma.project.update({
+        where: { id },
+        data: {
+          cover_photo: null
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Cover photo deleted successfully"
+      });
+    } catch (error) {
+      console.error("Error deleting cover photo:", error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 }

@@ -88,4 +88,10 @@ userRoutes.get("/user/onboarding/status/:id", checkToken, User.getOnboardingStat
 // Resend password
 userRoutes.post("/user/resend-password/:id", checkToken, User.resendPassword);
 
+// Check email availability
+userRoutes.post("/user/check-email", checkToken, User.checkEmailAvailability);
+
+// Check user companies
+userRoutes.post("/user/check-companies", checkToken, User.checkUserCompanies);
+
 export { userRoutes }

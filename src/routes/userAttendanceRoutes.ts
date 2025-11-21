@@ -36,4 +36,10 @@ userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.de
 // Nova rota para mudança de projeto
 userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject); 
 
+// Nova rota para listar projetos disponíveis para check-in (sem necessidade de estar atribuído)
+userAttendanceRoutes.get('/available-projects-for-checkin', checkToken, userAttendanceControlller.getAvailableProjectsForCheckIn);
+
+// Nova rota para check-in simplificado (aceita serviceProjectId diretamente)
+userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceControlller.checkInByServiceProject);
+
 export { userAttendanceRoutes };

@@ -493,4 +493,190 @@ export class UserServiceProjectController {
     }
   }
 
+  /**
+   * Lista TODOS os serviços em andamento agrupados por endereço
+   * Retorna serviços de projetos com status "In Progress" e "Final walkthrough"
+   * Se houver múltiplos projetos no mesmo endereço, o endereço aparece múltiplas vezes
+   */
+  async getProjectsGroupedByAddress(req: Request, res: Response) {
+    try {
+      const { userId, companyId, search } = req.query;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required.' });
+      }
+
+      // Verifica se o usuário existe
+      const user = await prisma.user.findUnique({
+        where: { id: userId as string },
+        select: {
+          company_id: true,
+          companies: {
+            select: {
+              companyId: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+
+      // Determina a company_id
+      const finalCompanyId = (companyId as string) || user.company_id;
+
+      // Busca todos os projetos em andamento
+      const projects = await prisma.project.findMany({
+        where: {
+          // Status do projeto: apenas "In Progress" e "Final walkthrough"
+          status_project: {
+            in: ["In Progress", "Final walkthrough"]
+          },
+          // Filtra por empresa se especificado
+          ...(finalCompanyId && {
+            company_id: finalCompanyId
+          }),
+          // Busca por endereço ou nome do cliente (opcional)
+          ...(search && {
+            OR: [
+              {
+                location: {
+                  contains: (search as string).toLowerCase()
+                }
+              },
+              {
+                client: {
+                  name: {
+                    contains: (search as string).toLowerCase()
+                  }
+                }
+              }
+            ]
+          })
+        },
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+              location: true
+            }
+          },
+          serviceProject: {
+            where: {
+              // Apenas serviços não cancelados
+              OR: [
+                { status: { not: "Canceled" } },
+                { status: null }
+              ]
+            },
+            include: {
+              photos: {
+                select: {
+                  id: true,
+                  uri: true,
+                  date_creation: true
+                },
+                take: 1,
+                orderBy: {
+                  date_creation: 'desc'
+                }
+              },
+              // Verifica se o usuário está atribuído a este serviço
+              UserServiceProject: {
+                where: {
+                  user_id: userId as string
+                },
+                select: {
+                  id: true
+                },
+                take: 1
+              }
+            },
+            orderBy: {
+              date_creation: 'desc'
+            }
+          }
+        },
+        orderBy: {
+          date_update: 'desc'
+        }
+      });
+
+      // Processa projetos (1 endereço = 1 projeto normalmente)
+      // Se houver múltiplos projetos no mesmo endereço, aparecem múltiplas vezes na lista
+      const projectsWithServices = await Promise.all(
+        projects.map(async (project) => {
+          // Determina endereço (prioriza location do projeto, depois do cliente)
+          const address = project.location || project.client?.location || 'No address';
+
+          // Processa foto de capa (campo opcional, pode não existir ainda se migration não foi aplicada)
+          let coverPhotoUrl = null;
+          const coverPhoto = (project as any).cover_photo;
+          if (coverPhoto) {
+            try {
+              coverPhotoUrl = await getPresignedUrl(coverPhoto);
+            } catch (error) {
+              console.error('Error generating presigned URL for cover photo:', error);
+            }
+          }
+
+          // Processa fotos dos serviços
+          const servicesWithPhotos = await Promise.all(
+            project.serviceProject.map(async (service) => {
+              let photoUrl = null;
+              if (service.photos && service.photos.length > 0) {
+                try {
+                  photoUrl = await getPresignedUrl(service.photos[0].uri);
+                } catch (error) {
+                  console.error('Error generating presigned URL:', error);
+                }
+              }
+
+              // Verifica se o usuário está atribuído a este serviço
+              const isAssigned = service.UserServiceProject && service.UserServiceProject.length > 0;
+
+              return {
+                id: service.id,
+                name: service.name,
+                description: service.description,
+                status: service.status,
+                start_date: service.start_date,
+                deadline: service.deadline,
+                photo: photoUrl,
+                isAssigned: isAssigned
+              };
+            })
+          );
+
+          return {
+            address: address,
+            project: {
+              id: project.id,
+              contract_number: project.contract_number,
+              status_project: project.status_project,
+              client: {
+                id: project.client?.id || null,
+                name: project.client?.name || null
+              },
+              cover_photo: coverPhotoUrl
+            },
+            services: servicesWithPhotos,
+            servicesCount: servicesWithPhotos.length
+          };
+        })
+      );
+
+      res.status(200).json({
+        projects: projectsWithServices,
+        total: projectsWithServices.length,
+        totalServices: projectsWithServices.reduce((sum, p) => sum + p.servicesCount, 0)
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Error while fetching projects grouped by address.' });
+    }
+  }
+
 }

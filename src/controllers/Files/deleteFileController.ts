@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 
 export class DeleteFileController {
     async handle(req: Request, res: Response) {
@@ -26,6 +27,10 @@ export class DeleteFileController {
         }
 
         try {
+            if (file.file) {
+                await deleteFileFromS3(file.file)
+            }
+
             await prisma.projectFiles.delete({
                 where: {
                     id
