@@ -12,6 +12,7 @@ import { invoicePaymentFailedCompany } from "../../templateEmail/invoicePaymentF
 import { invoicePaymentDisputedCompany } from "../../templateEmail/invoicePaymentDisputedCompany";
 import { invoicePaymentRequiresAction } from "../../templateEmail/invoicePaymentRequiresAction";
 import { invoicePaymentRequiresActionCompany } from "../../templateEmail/invoicePaymentRequiresActionCompany";
+import { invoicePaidPaymentEmail } from "../../templateEmail/invoicePaidPayment";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
@@ -218,10 +219,20 @@ export class StripeWebHookControllerConnect {
                             include: {
                                 project: {
                                     include: {
-                                        client: { select: { id: true, name: true, email: true, phone: true } }
+                                        client: { select: { id: true, name: true, email: true, phone: true } },
+                                        workContext: { select: { id: true, Email: true, Name: true } }
                                     }
                                 },
-                                estimate: { select: { id: true } },
+                                estimate: { 
+                                    include: {
+                                        project: {
+                                            include: {
+                                                client: { select: { id: true, name: true, email: true, phone: true } },
+                                                workContext: { select: { id: true, Email: true, Name: true } }
+                                            }
+                                        }
+                                    }
+                                },
                                 company: { select: { id: true, name: true, avatar: true, email: true, phone: true } }
                             }
                         }
@@ -346,43 +357,54 @@ export class StripeWebHookControllerConnect {
                     if (pr && pr.invoice) {
                         console.log("pr encontrado para invoice:", pr.invoice.id);
 
-                        // Buscar receipt_url do Charge associado ao PaymentIntent
-                        let receiptUrl = null;
-                        try {
-                            if (paymentIntent.latest_charge) {
-                                const chargeId = typeof paymentIntent.latest_charge === 'string'
-                                    ? paymentIntent.latest_charge
-                                    : paymentIntent.latest_charge.id;
+                        // Busca fees reais + receipt_url na CONTA CONECTADA (com retry)
+                        const feeInfo = await fetchChargeAndFeesWithRetry({
+                            stripe,
+                            stripeAccountId: pr.stripeAccountId,
+                            paymentIntent,
+                        });
 
-                                const charge = await stripe.charges.retrieve(chargeId,
-                                    { stripeAccount: pr.stripeAccountId }
-                                );
-                                receiptUrl = charge.receipt_url;
-                                console.log("Receipt URL encontrado:", receiptUrl);
-                            }
-                        } catch (chargeError) {
-                            console.error("Erro ao buscar charge para receipt URL:", chargeError);
-                        }
+                        const receiptUrl: string | null = feeInfo?.receiptUrl ?? null;
 
-                        // Atualizar status do PaymentIntentRecord e salvar receipt URL
+                        // Totais da sua aplicação
+                        const originalAmount = Number(pr.invoice.totalAmount); // valor base da invoice (sem surcharge local)
+                        const paidAmount = Number(pr.amount);                  // total ajustado no PI (com surcharge local se cartão)
+                        const localSurcharge = paidAmount - originalAmount;
+
+                        // Fees reais vindas da Stripe (se ainda não disponíveis, feeInfo será null e salvamos 0 — sem estimativa)
+                        const stripeFeesReal = feeInfo?.feeTotal ?? 0;
+                        const currency = feeInfo?.currency || paymentIntent.currency?.toUpperCase() || "USD";
+                        const netToConnected = feeInfo?.net ?? (paidAmount - stripeFeesReal);
+
+                        console.log("Resumo do pagamento:", {
+                            originalAmount,
+                            paidAmount,
+                            localSurcharge,
+                            stripeFeesReal,
+                            netToConnected,
+                            currency,
+                        });
+
+                        // Atualiza o registro do PaymentIntent
                         await prisma.paymentIntentRecord.update({
                             where: { stripePaymentIntentId: paymentIntent.id },
                             data: {
                                 status: "succeeded",
-                                receiptUrl: receiptUrl,
+                                receiptUrl,
                                 updatedAt: new Date()
                             }
                         });
 
-                        // NOVO: Atualizar dados do Invoice com informações de pagamento
+                        // Atualiza a Invoice com dados robustos do pagamento
                         await prisma.invoice.update({
                             where: { id: pr.invoice.id },
                             data: {
                                 status: "paid",
                                 stripePaymentIntentId: paymentIntent.id,
-                                paymentMethodType: pr.paymentMethodType, // Vem do PaymentIntentRecord
-                                totalAmountPaid: pr.amount, // Valor total pago (com surcharge)
-                                totalAmountWithSurcharge: pr.amount // Valor com surcharge
+                                paymentMethodType: pr.paymentMethodType || null,
+                                totalAmountPaid: paidAmount,            // total cobrado do cliente
+                                surchargePaymentLocal: localSurcharge,  // taxa local aplicada (só quando método = card/link/apple/google)
+                                surchargePaymentStripe: stripeFeesReal, //  taxa Stripe REAL (BT)
                             }
                         });
 
@@ -410,10 +432,10 @@ export class StripeWebHookControllerConnect {
 
                         console.log("Invoice atualizada como paga via Payment Element");
 
-                        // Registrar timeline
+                        // Timeline
                         await prisma.invoiceTimeline.create({
                             data: {
-                                description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)} (Method: ${pr.paymentMethodType || 'unknown'})`,
+                                description: `Payment completed (PI ${paymentIntent.id}) • Paid: ${paidAmount.toFixed(2)} ${currency} • Local surcharge: ${localSurcharge.toFixed(2)} • Stripe fees: ${stripeFeesReal.toFixed(2)} • Net to connected: ${netToConnected.toFixed(2)}`,
                                 invoiceId: pr.invoice.id
                             }
                         });
@@ -425,78 +447,15 @@ export class StripeWebHookControllerConnect {
                             console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
                         }
 
+                        // Enviar email com PDF de confirmação de pagamento (se existir)
+                        try {
+                            await this.sendPaymentConfirmationEmailWithPdf(pr.invoice, paymentIntent);
+                        } catch (pdfEmailError: any) {
+                            console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
+                        }
+
                     } else {
                         console.log("PaymentIntentRecord não encontrado no banco de dados local");
-                        break;
-                    }
-
-                    console.log("PR encontrado para invoice:", pr.invoice.id);
-
-                    //  Busca fees reais + receipt_url na CONTA CONECTADA (com retry)
-                    const feeInfo = await fetchChargeAndFeesWithRetry({
-                        stripe,
-                        stripeAccountId: pr.stripeAccountId,
-                        paymentIntent,
-                    });
-
-                    const receiptUrl: string | null = feeInfo?.receiptUrl ?? null;
-
-                    // Totais da sua aplicação
-                    const originalAmount = Number(pr.invoice.totalAmount); // valor base da invoice (sem surcharge local)
-                    const paidAmount = Number(pr.amount);                  // total ajustado no PI (com surcharge local se cartão)
-                    const localSurcharge = paidAmount - originalAmount;
-
-                    // Atualiza o registro do PaymentIntent
-                    await prisma.paymentIntentRecord.update({
-                        where: { stripePaymentIntentId: paymentIntent.id },
-                        data: {
-                            status: "succeeded",
-                            receiptUrl,
-                            updatedAt: new Date()
-                        }
-                    });
-
-                    // Fees reais vindas da Stripe (se ainda não disponíveis, feeInfo será null e salvamos 0 — sem estimativa)
-                    const stripeFeesReal = feeInfo?.feeTotal ?? 0;
-                    const currency = feeInfo?.currency || paymentIntent.currency?.toUpperCase() || "USD";
-                    const netToConnected = feeInfo?.net ?? (paidAmount - stripeFeesReal);
-
-                    console.log("Resumo do pagamento:", {
-                        originalAmount,
-                        paidAmount,
-                        localSurcharge,
-                        stripeFeesReal,
-                        netToConnected,
-                        currency,
-                    });
-
-                    // Atualiza a Invoice com dados robustos do pagamento
-                    await prisma.invoice.update({
-                        where: { id: pr.invoice.id },
-                        data: {
-                            status: "paid",
-                            stripePaymentIntentId: paymentIntent.id,
-                            paymentMethodType: pr.paymentMethodType || null,
-                            totalAmountPaid: paidAmount,            // total cobrado do cliente
-                            surchargePaymentLocal: localSurcharge,  // taxa local aplicada (só quando método = card/link/apple/google)
-                            surchargePaymentStripe: stripeFeesReal, //  taxa Stripe REAL (BT)
-
-                        }
-                    });
-
-                    // Timeline
-                    await prisma.invoiceTimeline.create({
-                        data: {
-                            description: `Payment completed (PI ${paymentIntent.id}) • Paid: ${paidAmount.toFixed(2)} ${currency} • Local surcharge: ${localSurcharge.toFixed(2)} • Stripe fees: ${stripeFeesReal.toFixed(2)} • Net to connected: ${netToConnected.toFixed(2)}`,
-                            invoiceId: pr.invoice.id
-                        }
-                    });
-
-                    // E-mails
-                    try {
-                        await this.sendPaymentConfirmationEmails(pr.invoice, paymentIntent);
-                    } catch (emailError: any) {
-                        console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
                     }
 
                     break;
@@ -849,15 +808,23 @@ export class StripeWebHookControllerConnect {
             // Lista de destinatários com templates específicos
             const recipients = [];
 
-            // Email do cliente
-            if (invoiceData.project?.client?.email && invoiceData.project?.client?.name) {
+            // Email do cliente - usar work context se disponível, senão usar client.email
+            const project = invoiceData.project || invoiceData.estimate?.project;
+            const client = invoiceData.project?.client || invoiceData.estimate?.project?.client;
+            const workContext = project?.workContext;
+
+            // Usar email do work context se disponível, senão usar email do cliente
+            const clientEmail = workContext?.Email || client?.email;
+            const clientName = workContext?.Name || client?.name;
+
+            if (clientEmail && clientName) {
                 // Obter logo da empresa
                 const companyLogo = invoiceData.company?.avatar
                     ? await getPresignedUrl(invoiceData.company.avatar)
                     : '';
 
                 const clientTemplate = invoicePaymentConfirmation(
-                    invoiceData.project.client.name,
+                    clientName,
                     companyLogo,
                     invoiceCode,
                     formattedAmount,
@@ -867,8 +834,8 @@ export class StripeWebHookControllerConnect {
                 );
 
                 recipients.push({
-                    email: invoiceData.project.client.email,
-                    name: invoiceData.project.client.name,
+                    email: clientEmail,
+                    name: clientName,
                     template: clientTemplate,
                     type: 'client'
                 });
@@ -1356,6 +1323,134 @@ export class StripeWebHookControllerConnect {
         } catch (error: any) {
             console.error("[PaymentRequiresAction] Erro geral ao enviar emails:", error.message);
             throw error;
+        }
+    }
+
+    /**
+     * Enviar email com PDF de confirmação de pagamento (pdfInvoicePaid)
+     */
+    private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
+        try {
+            console.log("Iniciando envio de email com PDF de confirmação de pagamento");
+
+            // Buscar o PDF de invoice pago
+            const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+                where: {
+                    invoiceId: invoiceData.id
+                }
+            });
+
+            if (!pdfInvoicePaid || !pdfInvoicePaid.uri) {
+                console.log("PDF invoice paid não encontrado, pulando envio de email com PDF");
+                return;
+            }
+
+            // Obter projeto com workContext
+            const project = invoiceData.project || invoiceData.estimate?.project;
+            const client = invoiceData.project?.client || invoiceData.estimate?.project?.client;
+            const company = invoiceData.company;
+            const workContext = project?.workContext;
+
+            // Usar email do work context se disponível, senão usar email do cliente
+            const recipientEmail = workContext?.Email || client?.email;
+            const recipientName = workContext?.Name || client?.name || 'Client';
+
+            if (!recipientEmail) {
+                console.log("Recipient email not found (neither work context nor client email), skipping email send");
+                return;
+            }
+
+            // Configurar SMTP
+            const SMTP_CONFIG = require("../../config/smtp");
+            const transporter = nodemailer.createTransport({
+                host: SMTP_CONFIG.host,
+                port: SMTP_CONFIG.port,
+                secure: SMTP_CONFIG.port === 465,
+                auth: {
+                    user: SMTP_CONFIG.user,
+                    pass: SMTP_CONFIG.pass,
+                },
+                tls: {
+                    rejectUnauthorized: false,
+                },
+            });
+
+            const companyAvatar = company?.avatar
+                ? await getPresignedUrl(company.avatar)
+                : "";
+
+            // Buscar o PDF do S3
+            const attachments = [];
+            try {
+                const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+                const pdfResponse = await fetch(pdfUrl);
+                if (pdfResponse.ok) {
+                    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                    const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
+                    attachments.push({
+                        filename: fileName,
+                        content: pdfBuffer,
+                        contentType: 'application/pdf'
+                    });
+                }
+            } catch (error) {
+                console.error("Error fetching PDF invoice paid:", error);
+                return; // Se não conseguir buscar o PDF, não envia o email
+            }
+
+            const paymentDate = new Date();
+            const formattedAmount = `$${(paymentIntent.amount_received / 100).toFixed(2)}`;
+            const invoiceCode = invoiceData.externalInvoiceId || invoiceData.id;
+            const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation`;
+
+            const emailHtml = invoicePaidPaymentEmail(
+                recipientName,
+                companyAvatar || "",
+                company?.name || '',
+                invoiceCode,
+                Number(paymentIntent.amount_received / 100),
+                paymentDate.toISOString(),
+                invoiceData.paymentMethodType || 'Payment'
+            );
+
+            await transporter.sendMail({
+                from: SMTP_CONFIG.user,
+                to: recipientEmail,
+                subject: emailSubject,
+                html: emailHtml,
+                attachments: attachments.length > 0 ? attachments : undefined,
+                text: `
+Dear ${recipientName},
+
+We are pleased to confirm that Invoice #${invoiceCode} has been paid successfully.
+
+Payment Details:
+- Invoice Number: #${invoiceCode}
+- Payment Amount: ${formattedAmount}
+- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Payment Method: ${invoiceData.paymentMethodType || 'Payment'}
+
+Thank you for your prompt payment. If you have any questions, please feel free to contact us.
+
+Have a great day!
+${company?.name || ''}
+                `.trim()
+            });
+
+            console.log(`Email com PDF enviado para ${recipientEmail}`);
+
+            // Log do envio de email
+            await prisma.invoiceEmailLog.create({
+                data: {
+                    invoiceId: invoiceData.id,
+                    recipient: recipientEmail,
+                    status: 'success'
+                }
+            });
+
+        } catch (error: any) {
+            console.error("[PaymentConfirmationWithPdf] Erro ao enviar email com PDF:", error.message);
+            // Não fazer throw para não interromper o fluxo principal
         }
     }
 
