@@ -159,6 +159,7 @@ export class ProjectController {
           seller_user_id: true,
           company_id: true,
           location: true,
+          cover_photo: true,
           client: {
             select: {
               id: true,
@@ -416,8 +417,14 @@ export class ProjectController {
 
         const balanceDue = priceProject - Number(totalAmountPaid);
 
+        // Converter cover_photo para URL presignada
+        const coverPhotoUrl = project.cover_photo
+          ? await getPresignedUrl(project.cover_photo)
+          : null;
+
         return {
           ...project,
+          cover_photo: coverPhotoUrl,
           balanceDue: balanceDue,
           amountPaid: Number(totalAmountPaid),
           client: {

@@ -622,19 +622,6 @@ export class UserServiceProjectController {
             }
           }
 
-          // Processa primeira foto do serviço (se não tiver cover photo)
-          let servicePhotoUrl = null;
-          if (!coverPhotoUrl && project.serviceProject.length > 0) {
-            const firstService = project.serviceProject[0];
-            if (firstService.photos && firstService.photos.length > 0) {
-              try {
-                servicePhotoUrl = await getPresignedUrl(firstService.photos[0].uri);
-              } catch (error) {
-                console.error('Error generating presigned URL for service photo:', error);
-              }
-            }
-          }
-
           // Processa fotos dos serviços
           const servicesWithPhotos = await Promise.all(
             project.serviceProject.map(async (service) => {
@@ -673,7 +660,7 @@ export class UserServiceProjectController {
                 id: project.client?.id || null,
                 name: project.client?.name || null
               },
-              cover_photo: coverPhotoUrl || servicePhotoUrl
+              cover_photo: coverPhotoUrl
             },
             services: servicesWithPhotos,
             servicesCount: servicesWithPhotos.length
