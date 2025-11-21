@@ -44,6 +44,7 @@ import { workContextRoutes } from './workContextRoutes'
 import { projectFeedRoutes } from './projectFeedRoutes'
 import { publicFeedLinkRoutes } from './publicFeedLinkRoutes'
 import changeOrderRoutes from './changeOrderRoutes'
+import pdfInvoicePaidRoutes from './pdfInvoicePaidRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -101,6 +102,7 @@ router.use(workContextRoutes)
 router.use(projectFeedRoutes)
 router.use(publicFeedLinkRoutes)
 router.use("/changeorder", changeOrderRoutes)
+router.use(pdfInvoicePaidRoutes)
 
 export { router }
 

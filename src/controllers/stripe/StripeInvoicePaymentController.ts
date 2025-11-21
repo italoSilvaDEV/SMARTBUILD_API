@@ -65,7 +65,7 @@ export class StripeInvoicePaymentController {
       }
 
       // Verificar se existe PaymentIntent ativo e cancelá-lo se necessário
-      const activePaymentIntent = invoice.PaymentIntents.find(pi => 
+      const activePaymentIntent = invoice.PaymentIntents.find(pi =>
         ['requires_payment_method', 'requires_confirmation', 'requires_action', 'requires_capture'].includes(pi.status)
       );
 
@@ -102,7 +102,7 @@ export class StripeInvoicePaymentController {
       }
 
       // Verificar se existe PaymentIntent em processamento que impede o pagamento manual
-      const processingPaymentIntent = invoice.PaymentIntents.find(pi => 
+      const processingPaymentIntent = invoice.PaymentIntents.find(pi =>
         ['processing', 'succeeded'].includes(pi.status)
       );
 
@@ -137,6 +137,12 @@ export class StripeInvoicePaymentController {
             updatedAt: new Date()
           }
         });
+
+        await smartbuild.pdfProject.deleteMany({
+          where: {
+            invoice_id: invoiceId
+          }
+        })
 
         // Criar entrada no timeline
         await smartbuild.invoiceTimeline.create({

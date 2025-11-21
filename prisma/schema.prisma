@@ -581,6 +581,22 @@ model PdfProject {
   @@map("pdf_project")
 }
 
+model PdfInvoicePaid {
+  id String @id @default(uuid())
+
+  original_file_name String?
+  uri                String?
+
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([invoiceId])
+  @@map("pdf_invoice_paid")
+}
+
 model fildsPdfProject {
   id          String  @id @default(uuid())
   sections    String
@@ -841,6 +857,8 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
+  checked Boolean? @default(false)
+
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
   status            String // Status do invoice: draft, open, paid, void, uncollectible
@@ -902,7 +920,8 @@ model Invoice {
   fildsPdfProjects fildsPdfProject[]
 
   // NOVO: Relacionamento com PaymentIntentRecord (para Payment Element)
-  PaymentIntents PaymentIntentRecord[]
+  PaymentIntents  PaymentIntentRecord[]
+  pdfInvoicePaids PdfInvoicePaid?
 
   @@index([externalInvoiceId, invoiceType])
 }

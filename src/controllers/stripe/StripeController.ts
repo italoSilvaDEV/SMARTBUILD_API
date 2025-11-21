@@ -457,7 +457,7 @@ export class StripeController {
                         }));
 
                         // Usar o controller instanciado no constructor
-                        const qbController = this.quickBooksController; 
+                        const qbController = this.quickBooksController;
 
                         if (!qbController) {
                             throw new Error("QuickBooksController is not initialized");
@@ -879,6 +879,7 @@ export class StripeController {
                     },
                     InvoiceItems: true, // Incluir os itens da fatura
                     PdfProject: true, // Incluir os PDFs relacionados
+                    pdfInvoicePaids: true,
                     InvoiceTimeline: {
                         orderBy: { date_creation: "asc" }
                     },
@@ -927,6 +928,12 @@ export class StripeController {
                             if (pdf.uri) {
                                 pdf.uri = await getPresignedUrl(pdf.uri);
                             }
+                        }
+                    }
+
+                    if (invoice.pdfInvoicePaids) {
+                        if (invoice.pdfInvoicePaids.uri) {
+                            invoice.pdfInvoicePaids.uri = await getPresignedUrl(invoice.pdfInvoicePaids.uri);
                         }
                     }
 
@@ -1041,6 +1048,7 @@ export class StripeController {
                         }
                     },
                     PdfProject: true,
+                    pdfInvoicePaids: true,
                     project: {
                         include: {
                             client: {
@@ -1107,6 +1115,12 @@ export class StripeController {
                             if (pdf.uri) {
                                 pdf.uri = await getPresignedUrl(pdf.uri);
                             }
+                        }
+                    }
+
+                    if (invoice.pdfInvoicePaids) {
+                        if (invoice.pdfInvoicePaids.uri) {
+                            invoice.pdfInvoicePaids.uri = await getPresignedUrl(invoice.pdfInvoicePaids.uri);
                         }
                     }
 
