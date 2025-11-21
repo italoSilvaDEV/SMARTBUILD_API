@@ -489,6 +489,7 @@ model Project {
   location               String?                  @db.Text
   log                    String?                  @db.VarChar(191)
   lat                    String?                  @db.VarChar(191)
+  cover_photo            String?                  @db.Text
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
   projectFiles           ProjectFiles[]
   projectPastes          ProjectPastes[]

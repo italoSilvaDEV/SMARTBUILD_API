@@ -30,6 +30,7 @@ Authorization: Bearer {token}
 10. [Calendário de Serviços](#10-calendário-de-serviços)
 11. [✨ Listar Projetos Disponíveis para Check-In](#11-listar-projetos-disponíveis-para-check-in) ⭐ NOVO
 12. [✨ Check-In Simplificado](#12-check-in-simplificado) ⭐ NOVO
+13. [✨ Listar Projetos Agrupados por Endereço](#13-listar-projetos-agrupados-por-endereço) ⭐ NOVO
 
 ---
 
@@ -745,7 +746,37 @@ const searchServices = async (searchTerm) => {
 };
 ```
 
-### Tela 1.1: Lista de TODOS os Projetos para Check-In (NOVO)
+### Tela 1.1: Lista de Projetos Agrupados por Endereço (NOVO)
+
+```javascript
+// Carregar projetos agrupados por endereço
+const loadProjectsGrouped = async (userId, companyId = null, search = '') => {
+  const params = new URLSearchParams({
+    userId: userId
+  });
+  
+  if (companyId) params.append('companyId', companyId);
+  if (search) params.append('search', search);
+  
+  const response = await fetch(`/projects-grouped-by-address?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const { locations } = await response.json();
+  // Exibir lista agrupada por endereço
+  // Cada endereço mostra projetos e serviços
+};
+
+// Navegação: Projeto → Serviço → Detalhes
+const navigateToServiceDetails = (serviceId) => {
+  // Navegar para tela de detalhes do serviço
+  router.push(`/services/details/${serviceId}`);
+};
+```
+
+### Tela 1.2: Lista de TODOS os Projetos para Check-In (NOVO)
 
 ```javascript
 // Carregar TODOS os projetos disponíveis para check-in
@@ -1122,6 +1153,223 @@ O endpoint retorna as coordenadas do projeto no campo `projectCoordinates`, perm
 | **Parâmetro** | `user_service_project_id` | `service_project_id` |
 | **Requer atribuição?** | ✅ Sim (deve existir UserServiceProject) | ❌ Não (cria automaticamente) |
 | **Uso recomendado** | Quando já está atribuído | Quando quer escolher qualquer projeto |
+
+---
+
+## 13. ✨ Listar Projetos com Serviços
+
+**GET** `/projects-grouped-by-address`
+
+Lista **TODOS os projetos em andamento** com seus serviços. Cada projeto tem seu endereço e serviços. Se houver múltiplos projetos no mesmo endereço, aparecem múltiplas vezes na lista (cada um com seus serviços). Ideal para navegação: **Projetos (por endereço) → Escolhe Projeto → Escolhe Serviço → Detalhes**.
+
+**Nota:** Normalmente 1 endereço = 1 projeto. Se houver exceções, cada projeto aparece separadamente na lista.
+
+### Headers
+```
+Authorization: Bearer {token}
+```
+
+### Query Parameters
+- `userId` (obrigatório) - ID do funcionário
+- `companyId` (opcional) - ID da empresa (filtra por empresa)
+- `search` (opcional) - Termo de busca por endereço ou nome do cliente
+
+### Exemplo de Request
+```bash
+# Listar todos os projetos agrupados
+curl -X GET 'http://localhost:3000/projects-grouped-by-address?userId=user-123' \
+  -H 'Authorization: Bearer seu-token'
+
+# Buscar por endereço
+curl -X GET 'http://localhost:3000/projects-grouped-by-address?userId=user-123&search=exeter' \
+  -H 'Authorization: Bearer seu-token'
+```
+
+### Resposta de Sucesso (200)
+```json
+{
+  "projects": [
+    {
+      "address": "1 Elm St, Exeter, NH 03833, USA",
+      "project": {
+        "id": "project-uuid-1",
+        "contract_number": 2024001,
+        "status_project": "In Progress",
+        "client": {
+          "id": "client-uuid-1",
+          "name": "Cliente ABC Ltda"
+        },
+        "cover_photo": "https://presigned-url..."
+      },
+      "services": [
+        {
+          "id": "service-uuid-1",
+          "name": "Hvac",
+          "description": "Instalação de sistema HVAC",
+          "status": "In Progress",
+          "start_date": "2024-11-01",
+          "deadline": "2024-11-15",
+          "photo": "https://presigned-url...",
+          "isAssigned": true
+        }
+      ],
+      "servicesCount": 1
+    },
+    {
+      "address": "32, Church Street, Concord, NH 03301, USA",
+      "project": {
+        "id": "project-uuid-2",
+        "contract_number": 2024002,
+        "status_project": "Final walkthrough",
+        "client": {
+          "id": "client-uuid-2",
+          "name": "Cliente XYZ S.A."
+        },
+        "cover_photo": null
+      },
+      "services": [
+        {
+          "id": "service-uuid-2",
+          "name": "Pintura Externa",
+          "description": "Pintura completa da fachada",
+          "status": "Scheduled",
+          "start_date": "2024-11-05",
+          "deadline": "2024-11-20",
+          "photo": "https://presigned-url...",
+          "isAssigned": false
+        },
+        {
+          "id": "service-uuid-3",
+          "name": "Instalação Elétrica",
+          "description": "Instalação elétrica completa",
+          "status": "In Progress",
+          "start_date": "2024-11-01",
+          "deadline": "2024-11-10",
+          "photo": null,
+          "isAssigned": true
+        }
+      ],
+      "servicesCount": 2
+    }
+  ],
+  "total": 2,
+  "totalServices": 3
+}
+```
+
+**Nota:** Cada item na lista representa um projeto com seu endereço e serviços. Se houver múltiplos projetos no mesmo endereço, aparecerão múltiplas vezes na lista (cada um separadamente).
+
+### Campos da Resposta
+
+**Estrutura:**
+- `projects` (array) - Array de projetos (cada um com seu endereço e serviços)
+  - `address` (string) - Endereço do projeto
+  - `project` (objeto) - Informações do projeto
+    - `id` - ID do projeto
+    - `contract_number` - Número do contrato
+    - `status_project` - Status do projeto
+    - `client` - Informações do cliente (id, name)
+    - `cover_photo` - URL pré-assinada da foto de capa (ou primeira foto do serviço se não houver capa)
+  - `services` (array) - Serviços do projeto
+    - `id` - ID do serviço
+    - `name` - Nome do serviço
+    - `description` - Descrição
+    - `status` - Status do serviço
+    - `start_date` - Data de início
+    - `deadline` - Prazo final
+    - `photo` - URL pré-assinada da primeira foto do serviço
+    - `isAssigned` - Indica se o funcionário está atribuído a este serviço
+  - `servicesCount` - Quantidade de serviços neste projeto
+- `total` - Total de projetos
+- `totalServices` - Total de serviços em todos os projetos
+
+### Características
+- ✅ **Agrupa por endereço** - Projetos no mesmo endereço ficam juntos
+- ✅ **Lista TODOS os projetos** - Não requer atribuição prévia
+- ✅ **Apenas projetos ativos** - Status "In Progress" e "Final walkthrough"
+- ✅ **Foto de capa** - Usa `cover_photo` do projeto ou primeira foto do serviço
+- ✅ **Indica atribuição** - Mostra se o funcionário está atribuído (`isAssigned`, `hasAssignedService`)
+- ✅ **Suporta busca** - Por endereço ou nome do cliente
+- ✅ **Filtra por empresa** - Opcional
+- ✅ **URLs pré-assinadas** - Fotos já vêm com URLs válidas
+
+### Fluxo de Navegação Recomendado
+
+```
+1. Tela: Lista de Projetos (por endereço)
+   GET /projects-grouped-by-address?userId=user-123
+   
+2. Usuário clica em um projeto → Mostra serviços do projeto
+   (Já vem na resposta, não precisa fazer nova requisição)
+
+3. Usuário clica em um serviço → Navega para detalhes
+   GET /services/details-geral/{serviceId}
+```
+
+**Nota:** Normalmente 1 endereço = 1 projeto. Cada item na lista é um projeto com seu endereço e serviços. Se houver múltiplos projetos no mesmo endereço, aparecerão múltiplas vezes na lista (cada um separadamente).
+
+### Exemplo de Uso no App (React Native)
+
+```javascript
+// 1. Carregar projetos com serviços
+const loadProjects = async () => {
+  const response = await fetch(
+    `/projects-grouped-by-address?userId=${userId}`,
+    {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }
+  );
+  
+  const { projects } = await response.json();
+  
+  // projects = [
+  //   {
+  //     address: "1 Elm St, Exeter, NH 03833, USA",
+  //     project: {
+  //       id: "project-1",
+  //       cover_photo: "...",
+  //       client: { name: "Cliente ABC" }
+  //     },
+  //     services: [
+  //       { id: "service-1", name: "Hvac", isAssigned: true },
+  //       { id: "service-2", name: "Elétrica", isAssigned: false }
+  //     ],
+  //     servicesCount: 2
+  //   }
+  // ]
+  
+  return projects;
+};
+
+// 2. Renderizar lista de projetos (por endereço)
+{projects.map((item) => (
+  <ProjectCard 
+    key={item.project.id}
+    address={item.address}
+    project={item.project}
+    servicesCount={item.servicesCount}
+    coverPhoto={item.project.cover_photo}
+    onPress={() => navigateToServices(item.services)}
+  />
+))}
+
+// 3. Renderizar serviços de um projeto
+{services.map((service) => (
+  <ServiceCard
+    key={service.id}
+    service={service}
+    photo={service.photo}
+    status={service.status}
+    isAssigned={service.isAssigned}
+    onPress={() => navigateToDetails(service.id)}
+  />
+))}
+```
+
+### Erros Possíveis
+- **400** - User ID is required
+- **404** - User not found
+- **500** - Error while fetching projects grouped by address
 
 ---
 

@@ -96,6 +96,8 @@ serviceRoutes.get('/services/details-geral/:id', checkToken, userServiceProjectC
 // custos do serviço app
 serviceRoutes.get( "/costs/:serviceProjectId",  userServiceProjectController.getCostsByServiceProject);
 
+// Lista projetos agrupados por endereço (todos os projetos em andamento)
+serviceRoutes.get('/projects-grouped-by-address', checkToken, userServiceProjectController.getProjectsGroupedByAddress);
 
 export { serviceRoutes }
 
