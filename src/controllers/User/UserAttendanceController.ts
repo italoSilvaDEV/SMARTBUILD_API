@@ -902,7 +902,10 @@ export class UserAttendanceController {
                                         select: {
                                             id: true,
                                             contract_number: true,
-                                            location: true
+                                            location: true,
+                                            lat: true,
+                                            log: true,
+                                            radius: true
                                         }
                                     }
                                 }
@@ -912,9 +915,20 @@ export class UserAttendanceController {
                 }
             });
 
+            // Prepara coordenadas do projeto para rastreamento GPS
+            const projectCoordinates = attendance.UserServiceProject?.service_project?.Project ? {
+                location: attendance.UserServiceProject.service_project.Project.location || null,
+                latitude: attendance.UserServiceProject.service_project.Project.lat ? Number(attendance.UserServiceProject.service_project.Project.lat) : null,
+                longitude: attendance.UserServiceProject.service_project.Project.log ? Number(attendance.UserServiceProject.service_project.Project.log) : null,
+                radius: attendance.UserServiceProject.service_project.Project.radius ? Number(attendance.UserServiceProject.service_project.Project.radius) : null,
+                radiusInKm: attendance.UserServiceProject.service_project.Project.radius ? Number(attendance.UserServiceProject.service_project.Project.radius) / 1000 : null
+            } : null;
+
             res.status(201).json({
                 success: true,
                 data: attendance,
+                // Coordenadas do projeto para rastreamento GPS (mesmo formato do /time-line/by-worker)
+                projectCoordinates: projectCoordinates,
                 message: 'Check-in realizado com sucesso. UserServiceProject criado automaticamente.'
             });
         } catch (error) {

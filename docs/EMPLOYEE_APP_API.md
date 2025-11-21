@@ -1056,14 +1056,35 @@ curl -X POST 'http://localhost:3000/check-in-by-service' \
         "Project": {
           "id": "project-uuid-1",
           "contract_number": "CONTRACT-2024-001",
-          "location": "Rua Exemplo, 123 - São Paulo, SP"
+          "location": "Rua Exemplo, 123 - São Paulo, SP",
+          "lat": "-23.550520",
+          "log": "-46.633308",
+          "radius": "100"
         }
       }
     }
   },
+  "projectCoordinates": {
+    "location": "Rua Exemplo, 123 - São Paulo, SP",
+    "latitude": -23.550520,
+    "longitude": -46.633308,
+    "radius": 100,
+    "radiusInKm": 0.1
+  },
   "message": "Check-in realizado com sucesso. UserServiceProject criado automaticamente."
 }
 ```
+
+### Campos Adicionais na Resposta
+
+**`projectCoordinates`** (objeto) - Coordenadas do projeto para rastreamento GPS:
+- `location` (string | null) - Endereço do projeto
+- `latitude` (number | null) - Latitude do projeto
+- `longitude` (number | null) - Longitude do projeto
+- `radius` (number | null) - Raio do geofence em metros
+- `radiusInKm` (number | null) - Raio do geofence em quilômetros
+
+**Nota:** Este campo está no mesmo formato retornado por `/time-line/by-worker`, permitindo que o app use as coordenadas do projeto imediatamente para rastreamento GPS sem precisar fazer uma requisição adicional.
 
 ### Comportamento
 1. ✅ Valida se o usuário existe
@@ -1073,6 +1094,16 @@ curl -X POST 'http://localhost:3000/check-in-by-service' \
 5. ✅ Atualiza o status do serviço para "In Progress" se necessário
 6. ✅ Verifica se não há check-in aberto para o mesmo serviço
 7. ✅ Cria o registro de check-in
+8. ✅ **Retorna coordenadas do projeto para rastreamento GPS** (campo `projectCoordinates`)
+
+### Rastreamento GPS
+
+O endpoint retorna as coordenadas do projeto no campo `projectCoordinates`, permitindo que o app:
+- Configure o geofence imediatamente após o check-in
+- Use as coordenadas do projeto (não apenas a localização do check-in)
+- Não precise fazer requisição adicional para `/time-line/by-worker` para obter coordenadas
+
+**Formato idêntico ao `/time-line/by-worker`** para facilitar a integração.
 
 ### Erros Possíveis
 - **400** - user_id and service_project_id are required
@@ -1144,6 +1175,35 @@ Funcionário (user-123)
 - ✅ Não precisa que admin atribua previamente
 - ✅ Funcionários podem trabalhar em projetos conforme necessário
 - ✅ Mantém compatibilidade com sistema antigo (check-in tradicional ainda funciona)
+- ✅ **Coordenadas do projeto retornadas imediatamente** para rastreamento GPS
+
+### 📍 Rastreamento GPS Melhorado
+
+**Problema resolvido:** O app agora recebe as coordenadas do projeto diretamente na resposta do check-in, eliminando a necessidade de fazer uma requisição adicional para `/time-line/by-worker`.
+
+**Antes:**
+```
+1. POST /check-in-by-service
+2. Aguardar timeline ser criada
+3. GET /time-line/by-worker/{userServiceProjectId}/{date} (pode retornar 404)
+4. Usar coordenadas do check-in como fallback
+```
+
+**Agora:**
+```
+1. POST /check-in-by-service
+2. Recebe projectCoordinates na resposta
+3. Configura geofence imediatamente com coordenadas do projeto
+```
+
+**Campo `projectCoordinates` na resposta:**
+- `location` - Endereço do projeto
+- `latitude` - Latitude do projeto (para geofence)
+- `longitude` - Longitude do projeto (para geofence)
+- `radius` - Raio em metros
+- `radiusInKm` - Raio em quilômetros
+
+**Formato idêntico ao `/time-line/by-worker`** para facilitar a integração.
 
 ### URLs Pré-assinadas (Presigned URLs)
 - Fotos e avatares retornam URLs pré-assinadas do S3
