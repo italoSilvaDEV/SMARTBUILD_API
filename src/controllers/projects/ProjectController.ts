@@ -677,8 +677,14 @@ export class ProjectController {
           }
         }
 
+        // Converter cover_photo para URL presignada
+        const coverPhotoUrl = project.cover_photo
+          ? await getPresignedUrl(project.cover_photo)
+          : null;
+
         res.json({
           ...project,
+          cover_photo: coverPhotoUrl,
           balanceDue: totalAmount - Number(totalAmountPaid),
           amountPaid: Number(totalAmountPaid),
           client: {
