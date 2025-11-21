@@ -152,7 +152,14 @@ export class CustomInvoicePaymentController {
             project: {
               include: {
                 client: true,
-                company: true
+                company: true,
+                workContext: {
+                  select: {
+                    id: true,
+                    Email: true,
+                    Name: true
+                  }
+                }
               }
             },
             estimate: {
@@ -160,7 +167,14 @@ export class CustomInvoicePaymentController {
                 project: {
                   include: {
                     client: true,
-                    company: true
+                    company: true,
+                    workContext: {
+                      select: {
+                        id: true,
+                        Email: true,
+                        Name: true
+                      }
+                    }
                   }
                 }
               }
@@ -176,11 +190,20 @@ export class CustomInvoicePaymentController {
           });
         }
 
+        const project = invoiceWithDetails.project || invoiceWithDetails.estimate?.project;
         const client = invoiceWithDetails.project?.client || invoiceWithDetails.estimate?.project?.client;
         const company = invoiceWithDetails.project?.company || invoiceWithDetails.estimate?.project?.company;
+        const workContext = project?.workContext;
 
-        if (!client || !client.email) {
-          console.log("Client email not found, skipping email send");
+        // Usar email do work context se disponível, senão usar email do cliente
+        const recipientEmail = workContext?.Email || client?.email;
+        const recipientName = workContext?.Name || client?.name || 'Client';
+
+        console.log("recipientEmail", recipientEmail);
+        console.log("recipientName", recipientName);
+
+        if (!recipientEmail) {
+          console.log("Recipient email not found (neither work context nor client email), skipping email send");
           return res.status(201).json({
             message: "Payment recorded successfully",
             payment
@@ -241,7 +264,7 @@ export class CustomInvoicePaymentController {
         const emailSubject = `Invoice #${invoice.externalInvoiceId} - Payment Confirmation`;
 
         const emailHtml = invoicePaidPaymentEmail(
-          client.name || 'Client',
+          recipientName,
           companyAvatar || "",
           company?.name || '',
           invoice.externalInvoiceId || invoiceId,
@@ -252,12 +275,12 @@ export class CustomInvoicePaymentController {
 
         await transporter.sendMail({
           from: SMTP_CONFIG.user,
-          to: client.email,
+          to: recipientEmail,
           subject: emailSubject,
           html: emailHtml,
           attachments: attachments.length > 0 ? attachments : undefined,
           text: `
-Dear ${client.name || 'Client'},
+Dear ${recipientName},
 
 We are pleased to confirm that Invoice #${invoice.externalInvoiceId} has been paid successfully.
 
