@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `invoice` ADD COLUMN `checked` BOOLEAN NULL DEFAULT false;
+ALTER TABLE `Invoice` ADD COLUMN `checked` BOOLEAN NULL DEFAULT false;
