@@ -235,3 +235,20 @@ const balanceController = new BalanceController();
 
 projectRoutes.patch("/project/update/balance-due", checkToken, balanceController.updateBalanceDue);
 projectRoutes.get("/project/amount-paid/:projectId", checkToken, balanceController.getAmountPaid);
+
+// Upload e gerenciamento de foto de capa do projeto
+const uploadProjectCover = multer(
+  uploadConfig.upload("./public/tmp/project-cover")
+);
+projectRoutes.post(
+  "/project/:id/cover-photo",
+  checkToken,
+  uploadProjectCover.single("file"),
+  compressImage("project-cover"),
+  projectController.uploadCoverPhoto.bind(projectController)
+);
+projectRoutes.delete(
+  "/project/:id/cover-photo",
+  checkToken,
+  projectController.deleteCoverPhoto.bind(projectController)
+);
