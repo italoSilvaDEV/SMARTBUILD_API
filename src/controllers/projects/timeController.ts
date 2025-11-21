@@ -602,7 +602,7 @@ export class TimeController {
     }
 
     async findManyByIdWorker(req: Request, res: Response) {
-        const { worker_id, start_date, deadline, page } = req.query;
+        const { worker_id, start_date, deadline, page, id } = req.query;
         try {
             if (!worker_id || !start_date || !deadline || !page) {
                 return res.status(400).json({ error: "Params invalid" });
@@ -628,8 +628,18 @@ export class TimeController {
                                     check_in_time: {
                                         gte: startDate,
                                     },
-                                }, {
-                                    check_out_time: { lte: newDeadline }
+                                },
+                                {
+                                    OR: [
+                                        {
+                                            check_out_time: { 
+                                                lte: newDeadline 
+                                            }
+                                        },
+                                        {
+                                            check_out_time: null
+                                        }
+                                    ]
                                 }
                             ]
                         }
@@ -637,24 +647,56 @@ export class TimeController {
                 }
             });
 
+            // Se company_id foi fornecido, usar para filtrar
+            const companyId = id ? String(id) : existWorker?.company?.id;
+
             const attendances = await prisma.userAttendance.findMany({
                 where: {
-                    user_id: String(worker_id),
-                    check_in_time: {
-                        gte: startDate,
-                    },
-                    check_out_time: {
-                        lte: newDeadline,
-                    },
-                    UserServiceProject: {
-                        service_project: {
-                            Project: {
-                                status_project: {
-                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                    AND: [
+                        {
+                            user_id: String(worker_id),
+                        },
+                        {
+                            check_in_time: {
+                                gte: startDate,
+                            },
+                        },
+                        {
+                            OR: [
+                                {
+                                    check_out_time: {
+                                        lte: newDeadline,
+                                    }
+                                },
+                                {
+                                    check_out_time: null
+                                }
+                            ]
+                        },
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    Project: {
+                                        ...(companyId ? {
+                                            company_id: companyId,
+                                        } : {}),
+                                        status_project: {
+                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
+                        },
+                        // Incluir registros com company_id null OU que correspondem ao company_id fornecido
+                        ...(companyId ? [{
+                            OR: [
+                                { company_id: companyId },
+                                { 
+                                    company_id: null
+                                }
+                            ]
+                        }] : [])
+                    ]
                 },
                 include: {
                     user: {
@@ -685,9 +727,7 @@ export class TimeController {
                 orderBy: {
                     check_in_time: 'desc'
                 }
-            }).then(results => results.filter(attendance =>
-                attendance.check_in_time && attendance.check_out_time
-            ));
+            });
 
             const resultCount = attendances.length;
 
@@ -705,8 +745,18 @@ export class TimeController {
                                                     check_in_time: {
                                                         gte: startDate,
                                                     },
-                                                }, {
-                                                    check_out_time: { lte: newDeadline }
+                                                },
+                                                {
+                                                    OR: [
+                                                        {
+                                                            check_out_time: { 
+                                                                lte: newDeadline 
+                                                            }
+                                                        },
+                                                        {
+                                                            check_out_time: null
+                                                        }
+                                                    ]
                                                 }
                                             ]
                                         }
@@ -716,6 +766,9 @@ export class TimeController {
                         },
                         {
                             Project: {
+                                ...(companyId ? {
+                                    company_id: companyId,
+                                } : {}),
                                 status_project: {
                                     in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                                 }
@@ -729,6 +782,9 @@ export class TimeController {
                 where: {
                     AND: [
                         {
+                            ...(companyId ? {
+                                company_id: companyId,
+                            } : {}),
                             status_project: {
                                 in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
                             },
@@ -746,8 +802,18 @@ export class TimeController {
                                                             check_in_time: {
                                                                 gte: startDate,
                                                             },
-                                                        }, {
-                                                            check_out_time: { lte: newDeadline }
+                                                        },
+                                                        {
+                                                            OR: [
+                                                                {
+                                                                    check_out_time: { 
+                                                                        lte: newDeadline 
+                                                                    }
+                                                                },
+                                                                {
+                                                                    check_out_time: null
+                                                                }
+                                                            ]
                                                         }
                                                     ]
                                                 }

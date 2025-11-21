@@ -608,6 +608,7 @@ export class UserAttendanceController {
                         workStartTime: userExists.isOverTime ? userExists.company?.workStartTime : null,
                         workEndTime: userExists.isOverTime ? userExists.company?.workEndTime : null,
                         isOvertime: userExists.isOverTime,
+                        company_id: project?.company_id || userExists.company?.id || null,
                     }
                 });
             }
