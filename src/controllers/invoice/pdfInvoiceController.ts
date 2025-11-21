@@ -346,7 +346,7 @@ export class PdfInvoicePaidController {
 
                 await transporter.sendMail({
                     from: SMTP_CONFIG.user,
-                    to: client.email,
+                    to: "rian.goncallves@gmail.com",
                     subject: emailSubject,
                     html: emailHtml,
                     attachments: [
