@@ -1457,13 +1457,20 @@ model QuickBooksConfig {
   @@map("quickbooks_config")
 }
 
+enum TypeFile {
+  text
+  others
+}
+
 model ProjectFiles {
   id String @id @default(uuid())
 
-  file String
+  file String?
 
   name        String? @db.Text
   description String? @db.Text
+
+  type_file TypeFile @default(others)
 
   pasteId String?
   paste   ProjectPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)

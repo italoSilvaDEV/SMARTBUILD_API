@@ -55,7 +55,7 @@ export class GetFileController {
                 })
             }
 
-            const fileUrl = await getPresignedUrl(file.file)
+            const fileUrl = file.file ? await getPresignedUrl(file.file) : null
 
             return res.status(200).json({
                 success: true,

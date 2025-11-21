@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3 } from "../../utils/S3/uploadFIleS3";
+import { TypeFile } from "@prisma/client";
 
 export class CreateFileController {
     async handle(req: Request, res: Response) {
@@ -14,12 +15,6 @@ export class CreateFileController {
         } = req.body
 
         const filename = req.file
-
-        if (!filename) {
-            return res.status(400).json({
-                error: "File is required"
-            })
-        }
 
         if (!userId || !projectId || !companyId) {
             return res.status(400).json({
@@ -78,7 +73,11 @@ export class CreateFileController {
         }
 
         try {
-            const fileToS3 = await uploadFileToS3(filename, userId)
+            let fileToS3 = null
+
+            if (filename) {
+                fileToS3 = await uploadFileToS3(filename, userId)
+            }
 
             const newFile = await prisma.projectFiles.create({
                 data: {
@@ -86,6 +85,7 @@ export class CreateFileController {
                     name: name,
                     description: description,
                     pasteId: pasteId,
+                    type_file: filename ? "others" : "text",
                     userAuthorId: userId,
                     projectId: projectId,
                     companyId: companyId
