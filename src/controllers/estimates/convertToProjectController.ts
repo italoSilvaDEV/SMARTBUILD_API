@@ -19,13 +19,23 @@ export class ConvertToProjectController {
             },
             select: {
                 projectId: true,
-                serviceProjects: true,
+                serviceProjects: {
+                    select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        hours: true,
+                        price: true,
+                        id_service: true,
+                    }
+                },
                 status: true,
                 totalAmount: true,
                 project: {
                     select: {
                         company_id: true,
                         status_project: true,
+                        contract_number: true,
                     }
                 }
             }
@@ -64,24 +74,45 @@ export class ConvertToProjectController {
                         id: estimateId
                     },
                     data: {
-                        number: `${project.contract_number}-01`,
-                        type_estimate: "estimateProject"
+                        number: project.contract_number ? `${project.contract_number}-01` : undefined,
+                        type_estimate: "estimateProject" as any
                     }
                 })
 
-                if (estimate.serviceProjects.length > 0) {
-                    await smartbuild.serviceProject.createMany({
-                        data: estimate.serviceProjects.map((service) => ({
+                if (estimate.serviceProjects && estimate.serviceProjects.length > 0) {
+                    // Verificar quais ServiceProjects já existem
+                    const existingServiceProjects = await smartbuild.serviceProject.findMany({
+                        where: {
+                            estimateServiceId: {
+                                in: estimate.serviceProjects.map(s => s.id)
+                            }
+                        },
+                        select: {
+                            estimateServiceId: true
+                        }
+                    });
+
+                    const existingIds = new Set(existingServiceProjects.map(sp => sp.estimateServiceId));
+
+                    // Criar apenas os ServiceProjects que não existem
+                    const servicesToCreate = estimate.serviceProjects
+                        .filter(service => !existingIds.has(service.id))
+                        .map((service) => ({
                             name: service.name,
                             description: service.description || "",
-                            hours: service.hours || 0,
-                            price: service.price || 0,
+                            hours: service.hours ? Number(service.hours) : 0,
+                            price: service.price ? Number(service.price) : 0,
                             id_service: service.id_service || null,
                             projectId: estimate.projectId,
                             company_id: estimate.project.company_id,
                             estimateServiceId: service.id
-                        }))
-                    })
+                        }));
+
+                    if (servicesToCreate.length > 0) {
+                        await smartbuild.serviceProject.createMany({
+                            data: servicesToCreate
+                        })
+                    }
                 }
 
                 if (estimate.status !== "approved") {
@@ -109,7 +140,7 @@ export class ConvertToProjectController {
                     if (inv.type_invoicebase === "estimate") {
                         await smartbuild.invoice.update({
                             where: { id: inv.id },
-                            data: { type_invoicebase: "project" }
+                            data: { type_invoicebase: "project" as any }
                         })
                     }
                 }
@@ -139,9 +170,13 @@ export class ConvertToProjectController {
                 message: "Estimate converted to project successfully"
             })
 
-        } catch (error) {
+        } catch (error: any) {
+            console.error("Error converting estimate to project:", error);
+            console.error("Error message:", error?.message);
+            console.error("Error stack:", error?.stack);
             return res.status(500).json({
-                error: "Internal server error while converting estimate to project"
+                error: "Internal server error while converting estimate to project",
+                details: error?.message || "Unknown error"
             })
         }
     }
