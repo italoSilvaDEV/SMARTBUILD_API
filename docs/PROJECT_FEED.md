@@ -1723,10 +1723,12 @@ Lista **TODOS os posts de TODOS os projetos de TODOS os funcionários** - ideal 
 - 📈 Estatísticas agregadas (projetos ativos, autores, fotos)
 - 📅 Ordenado do mais recente para o mais antigo (padrão)
 - ⚡ Paginação eficiente
+- 🛡️ Isolamento multi-empresa: retorna apenas posts das empresas às quais o usuário pertence
 
 #### Headers
 ```
 Authorization: Bearer {token}
+x-company-id: {empresaAtiva}   # obrigatório para manter o tenant correto
 ```
 
 #### Query Parameters
@@ -1751,26 +1753,31 @@ Authorization: Bearer {token}
 **Simples (todos os posts):**
 ```bash
 curl -X GET 'http://localhost:3000/feed/all?limit=50&offset=0' \
-  -H 'Authorization: Bearer seu-token'
+  -H 'Authorization: Bearer seu-token' \
+  -H 'x-company-id: company-123'
 ```
 
 **Com Filtros:**
 ```bash
 # Posts da última semana com fotos
 curl -X GET 'http://localhost:3000/feed/all?hasPhotos=true&startDate=2024-11-01T00:00:00Z&sortBy=photos&order=desc' \
-  -H 'Authorization: Bearer seu-token'
+  -H 'Authorization: Bearer seu-token' \
+  -H 'x-company-id: company-123'
 
 # Posts de um projeto específico
 curl -X GET 'http://localhost:3000/feed/all?projectId=project-abc-123' \
-  -H 'Authorization: Bearer seu-token'
+  -H 'Authorization: Bearer seu-token' \
+  -H 'x-company-id: company-123'
 
 # Posts de um funcionário específico
 curl -X GET 'http://localhost:3000/feed/all?userId=user-456' \
-  -H 'Authorization: Bearer seu-token'
+  -H 'Authorization: Bearer seu-token' \
+  -H 'x-company-id: company-123'
 
 # Posts do último mês ordenados por mais fotos
 curl -X GET 'http://localhost:3000/feed/all?startDate=2024-10-01T00:00:00Z&sortBy=photos&order=desc&limit=100' \
-  -H 'Authorization: Bearer seu-token'
+  -H 'Authorization: Bearer seu-token' \
+  -H 'x-company-id: company-123'
 ```
 
 #### Resposta de Sucesso (200)
