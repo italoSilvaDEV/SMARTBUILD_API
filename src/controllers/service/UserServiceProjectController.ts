@@ -523,29 +523,8 @@ export class UserServiceProjectController {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      // Monta conjunto de empresas do usuário
-      const userCompanyIds = new Set<string>();
-      if (user.company_id) {
-        userCompanyIds.add(user.company_id);
-      }
-      user.companies.forEach((c) => {
-        if (c.companyId) {
-          userCompanyIds.add(c.companyId);
-        }
-      });
-
-      // Se companyId foi enviado, valida pertença
-      if (companyId) {
-        if (!userCompanyIds.has(companyId as string)) {
-          return res.status(403).json({ error: 'User does not belong to the requested company.' });
-        }
-        userCompanyIds.clear();
-        userCompanyIds.add(companyId as string);
-      }
-
-      if (userCompanyIds.size === 0) {
-        return res.status(403).json({ error: 'User has no associated company.' });
-      }
+      // Determina a company_id
+      const finalCompanyId = (companyId as string) || user.company_id;
 
       // Busca todos os projetos em andamento
       const projects = await prisma.project.findMany({
@@ -554,10 +533,10 @@ export class UserServiceProjectController {
           status_project: {
             in: ["In Progress", "Final walkthrough"]
           },
-          // Filtra pelas empresas do usuário
-          company_id: {
-            in: Array.from(userCompanyIds)
-          },
+          // Filtra por empresa se especificado
+          ...(finalCompanyId && {
+            company_id: finalCompanyId
+          }),
           // Busca por endereço ou nome do cliente (opcional)
           ...(search && {
             OR: [
