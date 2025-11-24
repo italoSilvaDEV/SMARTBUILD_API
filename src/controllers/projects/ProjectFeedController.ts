@@ -1,4 +1,5 @@
 import multer from "multer";
+import Jwt from "jsonwebtoken";
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3 } from "../../utils/S3/uploadFIleS3";
@@ -8,6 +9,70 @@ import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 const upload = multer({ dest: './public/tmp/feed' });
 
 export class ProjectFeedController {
+    /**
+     * Resolve o usuário autenticado e todas as empresas às quais ele pertence.
+     * Retorna companyIds distintos para filtrar escopo multi-tenant.
+     */
+    private async resolveUserCompanies(request: Request): Promise<{ userId?: string; companyIds: string[] }> {
+        let userId = request.headers['x-user-id'] as string | undefined;
+
+        if (!userId) {
+            const authHeader = request.headers['authorization'];
+            const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+
+            if (token) {
+                try {
+                    const decoded = Jwt.verify(token, String(process.env.SECRET_JWT)) as { id?: string; userId?: string; sub?: string };
+                    userId = decoded?.id || decoded?.userId || (decoded?.sub as string | undefined);
+                } catch (error) {
+                    console.error('Erro ao decodificar token para resolver empresa do usuário:', error);
+                }
+            }
+        }
+
+        if (!userId) {
+            return { companyIds: [] };
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                company_id: true,
+                companies: {
+                    select: {
+                        companyId: true
+                    }
+                }
+            }
+        });
+
+        if (!user) {
+            return { companyIds: [] };
+        }
+
+        const requestedCompanyId = request.headers['x-company-id'] as string | undefined;
+
+        const companyIds = new Set<string>();
+        if (user.company_id) {
+            companyIds.add(user.company_id);
+        }
+        user.companies.forEach((company) => {
+            if (company.companyId) {
+                companyIds.add(company.companyId);
+            }
+        });
+
+        // Se o frontend enviar explicitamente a empresa ativa, respeitamos para evitar vazamentos entre empresas que o usuário participa
+        if (requestedCompanyId) {
+            return companyIds.has(requestedCompanyId)
+                ? { userId: user.id, companyIds: [requestedCompanyId] }
+                : { userId: user.id, companyIds: [] };
+        }
+
+        return { userId: user.id, companyIds: Array.from(companyIds) };
+    }
+
     async createPost(request: Request, response: Response) {
         const uploadMultiple = upload.array('photos', 10);
 
@@ -927,6 +992,33 @@ export class ProjectFeedController {
                 order = 'desc'
             } = request.query;
 
+            const { companyIds } = await this.resolveUserCompanies(request);
+
+            if (!companyIds || companyIds.length === 0) {
+                return response.status(403).json({
+                    error: 'Usuário não associado a nenhuma empresa. Não é possível listar o feed.'
+                });
+            }
+
+            if (projectId && typeof projectId === 'string') {
+                const project = await prisma.project.findUnique({
+                    where: { id: projectId },
+                    select: { company_id: true }
+                });
+
+                if (!project) {
+                    return response.status(404).json({
+                        error: 'Projeto não encontrado'
+                    });
+                }
+
+                if (!project.company_id || !companyIds.includes(project.company_id)) {
+                    return response.status(403).json({
+                        error: 'Você não tem permissão para acessar o feed deste projeto'
+                    });
+                }
+            }
+
             // Monta filtros dinâmicos
             const activityFilters: any = {};
 
@@ -940,6 +1032,14 @@ export class ProjectFeedController {
                     in: serviceProjects.map(sp => sp.id)
                 };
             }
+
+            // Filtro obrigatório por empresa (multi-tenant)
+            activityFilters.ServiceProject = {
+                OR: [
+                    { company_id: { in: companyIds } },
+                    { Project: { company_id: { in: companyIds } } }
+                ]
+            };
 
             // Filtro por autor
             if (userId && typeof userId === 'string') {
@@ -1163,7 +1263,8 @@ export class ProjectFeedController {
                         endDate: endDate || null,
                         hasPhotos: hasPhotos || null,
                         sortBy: sortBy,
-                        order: order
+                        order: order,
+                        companyIds: companyIds
                     },
                     statistics: {
                         totalProjects: uniqueProjects.size,
@@ -2115,4 +2216,3 @@ export class ProjectFeedController {
         }
     }
 }
-
