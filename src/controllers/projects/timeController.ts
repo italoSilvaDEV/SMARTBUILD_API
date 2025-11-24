@@ -984,16 +984,40 @@ export class TimeController {
                 return checkIn >= startDate.getTime() && checkIn <= newDeadline.getTime();
             });
 
+            const filteredTotals = filteredResult.reduce(
+                (acc, att) => {
+                    acc.totalPrice += att.price || 0;
+                    acc.totalHours += att.hours_worked || 0;
+                    acc.totalRegularHours += att.regular_hours || 0;
+                    acc.totalOvertimeHours += att.overtime_hours || 0;
+                    if (att.UserServiceProject?.service_project?.id) {
+                        acc.serviceProjectIds.add(att.UserServiceProject.service_project.id);
+                    }
+                    if (att.UserServiceProject?.service_project?.Project?.id) {
+                        acc.projectIds.add(att.UserServiceProject.service_project.Project.id);
+                    }
+                    return acc;
+                },
+                {
+                    totalPrice: 0,
+                    totalHours: 0,
+                    totalRegularHours: 0,
+                    totalOvertimeHours: 0,
+                    serviceProjectIds: new Set<string>(),
+                    projectIds: new Set<string>()
+                }
+            );
+
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
 
             return res.json({
                 indicators: {
-                    totalPrice: parseFloat(totalPrice.toFixed(2)),
-                    totalHours: parseFloat(totalHours.toFixed(2)),
-                    totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
-                    totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2)),
-                    totalServices: serviceCount,
-                    totalProjects: projects.length,
+                    totalPrice: parseFloat(filteredTotals.totalPrice.toFixed(2)),
+                    totalHours: parseFloat(filteredTotals.totalHours.toFixed(2)),
+                    totalRegularHours: parseFloat(filteredTotals.totalRegularHours.toFixed(2)),
+                    totalOvertimeHours: parseFloat(filteredTotals.totalOvertimeHours.toFixed(2)),
+                    totalServices: filteredTotals.serviceProjectIds.size,
+                    totalProjects: filteredTotals.projectIds.size,
                 },
                 userWorker: {
                     id: existWorker?.id,
@@ -1002,7 +1026,7 @@ export class TimeController {
                     office: existWorker?.office?.name
                 },
                 workers: filteredResult,
-                totalPages: Math.ceil(resultCount / 10)
+                totalPages: Math.ceil(filteredResult.length / 10)
             });
 
         } catch (error) {
