@@ -17,7 +17,8 @@ const app = express();
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
+  exposedHeaders: ['new-token'],
   maxAge: 86400 // Cache preflight por 24 horas
 }));
 

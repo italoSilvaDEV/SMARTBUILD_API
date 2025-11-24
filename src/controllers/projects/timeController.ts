@@ -620,6 +620,11 @@ export class TimeController {
                 where: { id: String(worker_id) },
                 include: {
                     company: true,
+                    companies: {
+                        include: {
+                            company: true
+                        }
+                    },
                     office: true,
                     UserAttendance: {
                         where: {
@@ -647,8 +652,12 @@ export class TimeController {
                 }
             });
 
-            // Se company_id foi fornecido, usar para filtrar
-            const companyId = id ? String(id) : existWorker?.company?.id;
+            const workerCompanyId = existWorker?.companies?.[0]?.company?.id || existWorker?.company?.id;
+            let companyId = id ? String(id) : workerCompanyId;
+            const belongsToWorker = existWorker?.companies?.some(c => c.company.id === companyId);
+            if (companyId && !belongsToWorker && workerCompanyId) {
+                companyId = workerCompanyId;
+            }
 
             const attendances = await prisma.userAttendance.findMany({
                 where: {
@@ -970,7 +979,15 @@ export class TimeController {
 
             const formattedResult = workersWithCorrectOvertime.sort((a, b) =>
                 new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
-            );
+            ).map(attendance => {
+                const projectLocation = attendance.UserServiceProject?.service_project?.Project?.location;
+                const clientLocation = attendance.UserServiceProject?.service_project?.Project?.client?.location;
+                return {
+                    ...attendance,
+                    check_in_address: attendance.check_in_address || projectLocation || clientLocation || "",
+                    check_out_address: attendance.check_out_address || projectLocation || clientLocation || ""
+                };
+            });
 
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
 
@@ -987,7 +1004,7 @@ export class TimeController {
                     id: existWorker?.id,
                     name: existWorker?.name,
                     avatar: urlAvatar,
-                    office: existWorker?.office.name
+                    office: existWorker?.office?.name
                 },
                 workers: formattedResult,
                 totalPages: Math.ceil(resultCount / 10)
