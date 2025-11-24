@@ -668,19 +668,8 @@ export class TimeController {
                         {
                             check_in_time: {
                                 gte: startDate,
+                                lte: newDeadline,
                             },
-                        },
-                        {
-                            OR: [
-                                {
-                                    check_out_time: {
-                                        lte: newDeadline,
-                                    }
-                                },
-                                {
-                                    check_out_time: null
-                                }
-                            ]
                         },
                         {
                             UserServiceProject: {
@@ -923,13 +912,13 @@ export class TimeController {
                 );
 
                 sortedWeekAttendances.forEach((attendance: any) => {
-                    if (!attendance.check_out_time || !attendance.check_in_time) {
+                    if (!attendance.check_in_time) {
                         return;
                     }
 
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
+                        attendance.check_out_time?.toISOString() || attendance.check_in_time.toISOString(),
                         attendance.workStartTime,
                         attendance.workEndTime,
                     );
@@ -989,6 +978,12 @@ export class TimeController {
                 };
             });
 
+            // Filtrar pelo intervalo informado para evitar incluir lançamentos fora do range (ex.: ranges amplos retornados por fallback de company)
+            const filteredResult = formattedResult.filter(att => {
+                const checkIn = new Date(att.check_in_time).getTime();
+                return checkIn >= startDate.getTime() && checkIn <= newDeadline.getTime();
+            });
+
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
 
             return res.json({
@@ -1006,7 +1001,7 @@ export class TimeController {
                     avatar: urlAvatar,
                     office: existWorker?.office?.name
                 },
-                workers: formattedResult,
+                workers: filteredResult,
                 totalPages: Math.ceil(resultCount / 10)
             });
 
