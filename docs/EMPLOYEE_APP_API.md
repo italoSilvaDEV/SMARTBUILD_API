@@ -31,6 +31,7 @@ Authorization: Bearer {token}
 11. [✨ Listar Projetos Disponíveis para Check-In](#11-listar-projetos-disponíveis-para-check-in) ⭐ NOVO
 12. [✨ Check-In Simplificado](#12-check-in-simplificado) ⭐ NOVO
 13. [✨ Listar Projetos Agrupados por Endereço](#13-listar-projetos-agrupados-por-endereço) ⭐ NOVO
+14. [✨ Registrar Custo de Material](#14-registrar-custo-de-material) ⭐ NOVO
 
 ---
 
@@ -1496,6 +1497,195 @@ Funcionário (user-123)
 ### Erro 404 ao buscar serviço
 **Causa:** ID do serviço incorreto ou serviço foi deletado  
 **Solução:** Verificar se o ID está correto e se o serviço existe
+
+---
+
+## 14. ✨ Registrar Custo de Material
+
+**POST** `/costproject`
+
+Registra um custo de material/transação relacionado a um serviço do projeto. Permite registrar materiais comprados, despesas e outras transações financeiras.
+
+### ⚠️ Importante: Fluxo em 2 Etapas
+
+Para registrar um custo, você precisa seguir **2 etapas**:
+
+1. **Primeiro:** Criar uma fatura/nota fiscal (Invoice) usando `POST /invoicecostproject`
+2. **Depois:** Registrar os custos/materiais usando `POST /costproject` com o ID da fatura criada
+
+### Headers
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+### Body (JSON)
+
+A rota aceita um **objeto único** ou um **array de objetos** para criar múltiplos custos de uma vez.
+
+#### Campos Obrigatórios:
+- `material_name` (string) - Nome do material/item
+- `transaction_type` (string) - Tipo de transação (ex: "Credit", "Debit", "Purchase", etc.)
+- `price` (number) - Preço unitário (deve ser maior que zero)
+- `amout` (number) - Quantidade (deve ser maior que zero)
+- `userId` (string) - ID do usuário/funcionário que está registrando
+- `serviceProjectId` (string) - ID do serviço do projeto
+- `invoice_cost_project_id` (string) - **ID da fatura criada anteriormente** (obtido de `POST /invoicecostproject`)
+
+#### Campos Opcionais:
+- `cost_date` (string, ISO 8601) - Data do custo (ex: "2024-11-21T10:30:00Z"). Se não informado, usa a data atual.
+
+### Exemplo de Request (Objeto Único)
+
+```bash
+curl -X POST 'https://apismartbuild.codelabsusa.com/costproject' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "material_name": "Tinta Acrílica Branca",
+    "transaction_type": "Purchase",
+    "price": 45.99,
+    "amout": 5,
+    "userId": "2525b9fb-1c50-46ac-9213-c7b5f8d34df8",
+    "serviceProjectId": "5ae59af6-6dfe-4123-8db1-cc4f304e02c8",
+    "invoice_cost_project_id": "dd22ff08-155c-401e-9dfe-b7d2881e603d",
+    "cost_date": "2024-11-21T10:30:00Z"
+  }'
+```
+
+### Exemplo de Request (Array - Múltiplos Itens)
+
+```bash
+curl -X POST 'https://apismartbuild.codelabsusa.com/costproject' \
+  -H 'Authorization: Bearer seu-token' \
+  -H 'Content-Type: application/json' \
+  -d '[
+    {
+      "material_name": "Tinta Acrílica Branca",
+      "transaction_type": "Purchase",
+      "price": 45.99,
+      "amout": 5,
+      "userId": "2525b9fb-1c50-46ac-9213-c7b5f8d34df8",
+      "serviceProjectId": "5ae59af6-6dfe-4123-8db1-cc4f304e02c8",
+      "invoice_cost_project_id": "dd22ff08-155c-401e-9dfe-b7d2881e603d"
+    },
+    {
+      "material_name": "Pincel 4 polegadas",
+      "transaction_type": "Purchase",
+      "price": 12.50,
+      "amout": 3,
+      "userId": "2525b9fb-1c50-46ac-9213-c7b5f8d34df8",
+      "serviceProjectId": "5ae59af6-6dfe-4123-8db1-cc4f304e02c8",
+      "invoice_cost_project_id": "dd22ff08-155c-401e-9dfe-b7d2881e603d"
+    }
+  ]'
+```
+
+### Resposta de Sucesso (201)
+
+```json
+{
+  "message": "Cost projects created successfully"
+}
+```
+
+### Resposta de Erro (400)
+
+Quando há erros de validação, a API retorna um **array de mensagens de erro**:
+
+```json
+{
+  "error": [
+    "Material name is required!",
+    "Transaction type is required",
+    "Price is mandatory and must be greater than zero!",
+    "Amout is mandatory and must be greater than zero",
+    "User linked to invalid project!",
+    "Service project linked to invalid project!",
+    "Invoice cost project is invalid!"
+  ]
+}
+```
+
+### Erros Possíveis
+
+- **400 Bad Request** - Campos obrigatórios faltando ou inválidos:
+  - `Material name is required!` - Nome do material não informado
+  - `Transaction type is required` - Tipo de transação não informado
+  - `Price is mandatory and must be greater than zero!` - Preço não informado ou inválido
+  - `Amout is mandatory and must be greater than zero` - Quantidade não informada ou inválida
+  - `User linked to invalid project!` - ID do usuário não encontrado
+  - `Service project linked to invalid project!` - ID do serviço não encontrado
+  - `Invoice cost project is invalid!` - ID da fatura não informado ou inválido
+
+- **500 Internal Server Error** - Erro interno do servidor
+
+### 📝 Notas Importantes
+
+1. **Fluxo Completo:**
+   - Primeiro, crie uma fatura usando `POST /invoicecostproject` (com ou sem arquivo PDF/imagem)
+   - Use o `id` retornado como `invoice_cost_project_id` nesta rota
+
+2. **Validações:**
+   - `price` deve ser um número maior que zero
+   - `amout` deve ser um número inteiro maior que zero
+   - `userId` e `serviceProjectId` devem existir no banco de dados
+   - `invoice_cost_project_id` deve existir no banco de dados
+
+3. **Múltiplos Itens:**
+   - Você pode enviar um array de objetos para criar vários custos de uma vez
+   - Se algum item do array tiver erro, os outros ainda serão processados
+   - A resposta de erro listará todos os problemas encontrados
+
+4. **Data do Custo:**
+   - Se `cost_date` não for informado, será usada a data/hora atual
+   - Formato aceito: ISO 8601 (ex: "2024-11-21T10:30:00Z")
+
+### Exemplo de Uso no App
+
+```javascript
+// 1. Primeiro, criar a fatura (se ainda não existir)
+const invoiceResponse = await fetch('https://apismartbuild.codelabsusa.com/invoicecostproject', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data'
+  },
+  body: formData // com project_id e opcionalmente um arquivo
+});
+
+const invoice = await invoiceResponse.json();
+const invoiceId = invoice.id;
+
+// 2. Depois, registrar os custos/materiais
+const costData = {
+  material_name: "Tinta Acrílica Branca",
+  transaction_type: "Purchase",
+  price: 45.99,
+  amout: 5,
+  userId: "2525b9fb-1c50-46ac-9213-c7b5f8d34df8",
+  serviceProjectId: "5ae59af6-6dfe-4123-8db1-cc4f304e02c8",
+  invoice_cost_project_id: invoiceId,
+  cost_date: new Date().toISOString()
+};
+
+const response = await fetch('https://apismartbuild.codelabsusa.com/costproject', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify(costData)
+});
+
+if (!response.ok) {
+  const error = await response.json();
+  console.error('Erros:', error.error); // Array de mensagens de erro
+} else {
+  const result = await response.json();
+  console.log('Sucesso:', result.message);
+}
+```
 
 ---
 
