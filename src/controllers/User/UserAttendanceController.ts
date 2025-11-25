@@ -703,7 +703,7 @@ export class UserAttendanceController {
                         // Filtra por empresas do usuário
                         company_id: {
                             in: Array.from(userCompanyIds)
-                        })
+                        }
                     },
                     // Busca por nome do serviço (opcional)
                     ...(search && {
@@ -980,3 +980,4 @@ export class UserAttendanceController {
         }
     }
 }
+
