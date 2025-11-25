@@ -392,4 +392,66 @@ ${company?.name || ''}
             })
         }
     }
+
+    async setIgnoreChecked(req: Request, res: Response) {
+        const {
+            companyId
+        } = req.body
+
+        if (!companyId) {
+            return res.status(400).json({
+                error: "Company id is required"
+            })
+        }
+
+        try {
+            const company = await prisma.company.findUnique({
+                where: {
+                    id: companyId
+                },
+                select: {
+                    id: true
+                }
+            })
+
+            if (!company) {
+                return res.status(404).json({
+                    error: "Company not found"
+                })
+            }
+
+            const invoicesPaidUpdatePending = await prisma.invoice.findMany({
+                where: {
+                    companyId: company.id,
+                    status: "paid",
+                    checked: false
+                },
+            })
+
+            if (invoicesPaidUpdatePending.length > 0) {
+                await prisma.invoice.updateMany({
+                    where: {
+                        companyId: company.id,
+                        status: "paid",
+                        checked: false
+                    },
+                    data: {
+                        ignoreChecked: true
+                    }
+                })
+            } else {
+                return res.status(404).json({
+                    error: "Invoices paid update pending not found"
+                })
+            }
+
+            return res.status(200).json({
+                message: "Invoices paid with update pending ignore flag checked now",
+            })
+        } catch (error) {
+            return res.status(500).json({
+                error: "Internal server error"
+            })
+        }
+    }
 }

@@ -21,4 +21,9 @@ fileRoutes.delete("/invoice/pdfpaid/delete/:pdfId", checkToken, pdfInvoicePaidCo
 fileRoutes.put("/invoice/pdfpaid/set-checked", checkToken, pdfInvoicePaidController.setChecked.bind(pdfInvoicePaidController)
 );
 
+fileRoutes.put("/invoice/pdfpaid/ignorechecked", checkToken, pdfInvoicePaidController.setIgnoreChecked.bind(pdfInvoicePaidController)
+);
+
+
+
 export default fileRoutes;

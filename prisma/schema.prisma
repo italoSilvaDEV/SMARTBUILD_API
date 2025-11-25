@@ -858,6 +858,7 @@ model Invoice {
   externalInvoiceId     String?
 
   checked Boolean? @default(false)
+  ignoreChecked Boolean? @default(false)
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
