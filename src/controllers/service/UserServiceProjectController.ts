@@ -523,7 +523,7 @@ export class UserServiceProjectController {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      // Monta conjunto de empresas do usuário
+      // Conjunto de empresas do usuário
       const userCompanyIds = new Set<string>();
       if (user.company_id) {
         userCompanyIds.add(user.company_id);
@@ -534,7 +534,7 @@ export class UserServiceProjectController {
         }
       });
 
-      // Se companyId foi enviado, valida pertença
+      // Se companyId foi enviado, valida pertença e restringe
       if (companyId) {
         if (!userCompanyIds.has(companyId as string)) {
           return res.status(403).json({ error: 'User does not belong to the requested company.' });
@@ -543,8 +543,13 @@ export class UserServiceProjectController {
         userCompanyIds.add(companyId as string);
       }
 
+      // Sem empresa associada: devolve vazio para não quebrar o app
       if (userCompanyIds.size === 0) {
-        return res.status(403).json({ error: 'User has no associated company.' });
+        return res.status(200).json({
+          projects: [],
+          total: 0,
+          totalServices: 0
+        });
       }
 
       // Busca todos os projetos em andamento

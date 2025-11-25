@@ -659,7 +659,7 @@ export class UserAttendanceController {
                 return;
             }
 
-            // Determina conjunto de empresas do usuário
+            // Monta conjunto de empresas do usuário
             const userCompanyIds = new Set<string>();
             if (user.company_id) {
                 userCompanyIds.add(user.company_id);
@@ -670,19 +670,22 @@ export class UserAttendanceController {
                 }
             });
 
-            // Se veio companyId na query, valida se pertence ao usuário
+            // Se companyId veio na query, valida pertença e restringe
             if (companyId) {
                 if (!userCompanyIds.has(companyId as string)) {
                     res.status(403).json({ error: 'User does not belong to the requested company.' });
                     return;
                 }
-                // Restringe ao companyId escolhido
                 userCompanyIds.clear();
                 userCompanyIds.add(companyId as string);
             }
 
+            // Sem empresa associada: retorna lista vazia para não quebrar o app
             if (userCompanyIds.size === 0) {
-                res.status(403).json({ error: 'User has no associated company.' });
+                res.status(200).json({
+                    services: [],
+                    total: 0
+                });
                 return;
             }
 
@@ -700,7 +703,7 @@ export class UserAttendanceController {
                         status_project: {
                             in: ["In Progress", "Final walkthrough"]
                         },
-                        // Filtra por empresas do usuário
+                        // Filtra pelas empresas do usuário
                         company_id: {
                             in: Array.from(userCompanyIds)
                         }
