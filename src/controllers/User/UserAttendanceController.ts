@@ -659,8 +659,35 @@ export class UserAttendanceController {
                 return;
             }
 
-            // Determina a company_id (prioriza query param, depois user.company_id)
-            const finalCompanyId = (companyId as string) || user.company_id;
+            // Monta conjunto de empresas do usuário
+            const userCompanyIds = new Set<string>();
+            if (user.company_id) {
+                userCompanyIds.add(user.company_id);
+            }
+            user.companies.forEach((c) => {
+                if (c.companyId) {
+                    userCompanyIds.add(c.companyId);
+                }
+            });
+
+            // Se companyId veio na query, valida pertença e restringe
+            if (companyId) {
+                if (!userCompanyIds.has(companyId as string)) {
+                    res.status(403).json({ error: 'User does not belong to the requested company.' });
+                    return;
+                }
+                userCompanyIds.clear();
+                userCompanyIds.add(companyId as string);
+            }
+
+            // Sem empresa associada: retorna lista vazia para não quebrar o app
+            if (userCompanyIds.size === 0) {
+                res.status(200).json({
+                    services: [],
+                    total: 0
+                });
+                return;
+            }
 
             // Busca todos os serviços de projetos em andamento
             const serviceProjects = await prisma.serviceProject.findMany({
@@ -676,10 +703,10 @@ export class UserAttendanceController {
                         status_project: {
                             in: ["In Progress", "Final walkthrough"]
                         },
-                        // Filtra por empresa se especificado
-                        ...(finalCompanyId && {
-                            company_id: finalCompanyId
-                        })
+                        // Filtra pelas empresas do usuário
+                        company_id: {
+                            in: Array.from(userCompanyIds)
+                        }
                     },
                     // Busca por nome do serviço (opcional)
                     ...(search && {
