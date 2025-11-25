@@ -699,6 +699,11 @@ export class UserAttendanceController {
                     ],
                     // Apenas projetos ativos (combina todas as condições do projeto)
                     Project: {
+                        // Status do projeto: apenas "In Progress" e "Final walkthrough"
+                        status_project: {
+                            in: ["In Progress", "Final walkthrough", "Pre-Start"]
+                        },
+                        // Filtra pelas empresas do usuário
                         company_id: {
                             in: Array.from(userCompanyIds)
                         }
@@ -816,8 +821,8 @@ export class UserAttendanceController {
             } = req.body;
 
             if (!user_id || !service_project_id) {
-                res.status(400).json({ 
-                    error: 'user_id and service_project_id are required.' 
+                res.status(400).json({
+                    error: 'user_id and service_project_id are required.'
                 });
                 return;
             }
