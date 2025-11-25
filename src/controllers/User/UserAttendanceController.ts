@@ -699,11 +699,6 @@ export class UserAttendanceController {
                     ],
                     // Apenas projetos ativos (combina todas as condições do projeto)
                     Project: {
-                        // Status do projeto: apenas "In Progress" e "Final walkthrough"
-                        status_project: {
-                            in: ["In Progress", "Final walkthrough"]
-                        },
-                        // Filtra pelas empresas do usuário
                         company_id: {
                             in: Array.from(userCompanyIds)
                         }
