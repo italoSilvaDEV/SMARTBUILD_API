@@ -167,14 +167,8 @@ function getEmailBody(
     timeZone: "UTC"
   });
 
-  // Texto baseado no tipo de invoice
-  const isStripe = invoiceType === "stripe";
-  // URL base pode ser configurada via variável de ambiente, padrão: localhost:4003
-  const baseUrl = process.env.FRONT_URL || process.env.API_URL || "http://localhost:4003";
-  const paymentLink = isStripe ? `${baseUrl}/pay/${invoiceCode}` : null;
-  const paymentText = isStripe 
-    ? `<p>To make the payment, go to: <a href="${paymentLink}">${paymentLink}</a></p>`
-    : `<p>Contact us to arrange payment.</p>`;
+  
+  const paymentText = `<p>Contact us to arrange payment.</p>`;
 
   if (emailType.startsWith("before_")) {
     // Lembretes antes do vencimento
