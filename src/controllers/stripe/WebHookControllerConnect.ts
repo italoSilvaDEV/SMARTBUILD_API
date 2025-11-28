@@ -400,6 +400,7 @@ export class StripeWebHookControllerConnect {
                             where: { id: pr.invoice.id },
                             data: {
                                 status: "paid",
+                                checked: true,
                                 stripePaymentIntentId: paymentIntent.id,
                                 paymentMethodType: pr.paymentMethodType || null,
                                 totalAmountPaid: paidAmount,            // total cobrado do cliente
