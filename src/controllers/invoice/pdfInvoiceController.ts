@@ -428,6 +428,8 @@ ${company?.name || ''}
                 },
             })
 
+            console.log("invoicesPaidUpdatePending", invoicesPaidUpdatePending);
+
             if (invoicesPaidUpdatePending.length > 0) {
                 await prisma.invoice.updateMany({
                     where: {
@@ -449,6 +451,7 @@ ${company?.name || ''}
                 message: "Invoices paid with update pending ignore flag checked now",
             })
         } catch (error) {
+            console.error("Error in setIgnoreChecked:", error);
             return res.status(500).json({
                 error: "Internal server error"
             })
