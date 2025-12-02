@@ -354,5 +354,77 @@ export class CampaignController {
       });
     }
   }
+
+  // Buscar clientes de uma campanha específica
+  async getCampaignClients(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      
+      // Verificar se a campanha existe
+      const campaign = await prisma.campaign.findUnique({
+        where: { id },
+        include: {
+          plan: true
+        }
+      });
+
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+
+      // Buscar todas as subscriptions da campanha com dados da empresa e usuário
+      const subscriptions = await prisma.subscription.findMany({
+        where: {
+          campaignId: id
+        },
+        include: {
+          company: {
+            include: {
+              User: {
+                where: {
+                  office: {
+                    name: 'administrator'
+                  }
+                },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: {
+          startDate: 'desc'
+        }
+      });
+
+      // Formatar resposta no mesmo formato que a listagem de empresas
+      const formattedClients = subscriptions.map(subscription => ({
+        id: subscription.company.id,
+        name: subscription.company.name,
+        avatar: subscription.company.avatar,
+        extraEmployees: subscription.company.extraEmployees,
+        subscriptionDate: subscription.startDate,
+        User: subscription.company.User[0] || null
+      }));
+
+      res.status(200).json({
+        campaign: {
+          id: campaign.id,
+          name: campaign.name,
+          description: campaign.description,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          isActive: campaign.isActive,
+          plan: campaign.plan
+        },
+        clients: formattedClients
+      });
+    } catch (error) {
+      console.error('Error fetching campaign clients:', error);
+      res.status(500).json({ 
+        message: 'Error fetching campaign clients', 
+        error: (error as Error).message 
+      });
+    }
+  }
 }
 
