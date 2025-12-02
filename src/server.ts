@@ -7,6 +7,7 @@ import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
 import { setupConnectWebhook } from './config/stripeWebHookConnect';
 import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
+import { setupInvoiceAutoEmailJob } from './jobs/invoiceAutoEmailJob';
 const cors = require('cors');
 
 
@@ -42,7 +43,8 @@ app.use(express.static('public'));
 (async () => {
   await setupWebhook(); 
   await setupConnectWebhook();
-  // setupAttendanceJobs(); 
+  // setupAttendanceJobs();
+  setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
 })();
 
 app.listen(4003, () =>

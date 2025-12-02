@@ -27,6 +27,7 @@ import { invoiceRoutes } from "./invoiceRoutes"
 import { customInvoiceRoutes } from "./customInvoiceRoutes"
 import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
 import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
+import { invoiceAutoEmailRoutes } from "./invoiceAutoEmailRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
 import { isMultiCompanyEnabled } from '../helpers/featureToggle'
@@ -88,6 +89,7 @@ router.use(invoiceRoutes);
 router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
+router.use(invoiceAutoEmailRoutes);
 router.use("/estimate", estimateRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);

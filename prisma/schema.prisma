@@ -147,6 +147,7 @@ model Company {
   SyncStatus       SyncStatus[]       @relation("SyncStatus")
   ContractTerms    ContractTerms[]
   QuickBooksConfig QuickBooksConfig[]
+  InvoiceAutoEmailConfig InvoiceAutoEmailConfig?
 
   workContexts WorkContext[]
 
@@ -913,6 +914,7 @@ model Invoice {
 
   InvoiceTimeline InvoiceTimeline[]
   InvoiceEmailLog InvoiceEmailLog[]
+  InvoiceAutoEmailLog InvoiceAutoEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment    InvoicePayment?
@@ -1421,7 +1423,7 @@ model QuickBooksOAuthState {
   @@map("quickbooks_oauth_state")
 }
 
-model InvoicePaymentTimeLine {
+model InvoicePaymentTimeLine { 
   id String @id @default(uuid())
 
   description   String   @db.Text
@@ -1576,6 +1578,52 @@ model ChangeOrderService {
   @@map("change_order_service")
 }
 
+
+// Configurações de envio automático de emails para invoices
+model InvoiceAutoEmailConfig {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Ativar/desativar funcionalidade
+  isActive Boolean @default(false)
+
+  // Lembretes antes do vencimento
+  sendBefore7Days Boolean @default(false)
+  sendBefore3Days Boolean @default(false)
+  sendBefore1Day  Boolean @default(false)
+
+  // Enviar no dia do vencimento
+  sendOnDueDate Boolean @default(false)
+
+  // Lembretes após vencimento
+  sendAfter1Day  Boolean @default(false)
+  sendAfter3Days Boolean @default(false)
+  sendAfter7Days Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId])
+  @@map("invoice_auto_email_config")
+}
+
+// Histórico de envios automáticos de emails
+model InvoiceAutoEmailLog {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  recipient    String // Email do destinatário
+  emailType    String // "before_7", "before_3", "before_1", "on_due", "after_1", "after_3", "after_7"
+  status       String // "success", "error"
+  errorMessage String?
+  sentAt       DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([sentAt])
+  @@map("invoice_auto_email_log")
+
 model TutorialProgress {
   id           String    @id @default(uuid())
   userId       String    @map("user_id")
@@ -1592,4 +1640,5 @@ model TutorialProgress {
   @@index([tutorialCode], map: "idx_tutorial_progress_tutorial")
   @@index([completed], map: "idx_tutorial_progress_completed")
   @@map("tutorial_progress")
+
 }
