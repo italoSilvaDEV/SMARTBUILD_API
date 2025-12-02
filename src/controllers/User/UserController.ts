@@ -1544,7 +1544,8 @@ export class UserController {
         validityType: company.Plan.validityType,
         validityDuration: company.Plan.validityDuration,
         stripePriceId: company.Plan.stripePriceId,
-        stripeProductId: company.Plan.stripeProductId
+        stripeProductId: company.Plan.stripeProductId,
+        isCampaign: company.Plan.isCampaign
       } : null;
 
       // Buscar a assinatura mais recente pelo startDate usando o company_id do parâmetro
