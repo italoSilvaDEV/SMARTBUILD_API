@@ -4,7 +4,7 @@ import { prisma } from '../../utils/prisma';
 export class SubscriptionController {
   async create(req: Request, res: Response) {
     try {
-      const { companyId, planId, startDate, endDate } = req.body;
+      const { companyId, planId, startDate, endDate, campaignId } = req.body;
       
       // Validações
       if (!companyId || !planId) {
@@ -40,6 +40,28 @@ export class SubscriptionController {
         return res.status(400).json({ message: 'Empresa não encontrada' });
       }
 
+      // Se há campaignId, verificar se a campanha existe e está ativa
+      let fromCampaign = false;
+      if (campaignId) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: campaignId }
+        });
+
+        if (!campaign) {
+          return res.status(400).json({ message: 'Campanha não encontrada' });
+        }
+
+        if (!campaign.isActive || campaign.endDate < new Date()) {
+          return res.status(400).json({ message: 'Campanha inativa ou expirada' });
+        }
+
+        if (campaign.planId !== planId) {
+          return res.status(400).json({ message: 'O plano não corresponde ao plano da campanha' });
+        }
+
+        fromCampaign = true;
+      }
+
       // Criar a assinatura
       const subscription = await prisma.subscription.create({
         data: {
@@ -47,7 +69,9 @@ export class SubscriptionController {
           planId,
           startDate: startDateObj,
           endDate: endDateObj,
-          isActive: true
+          isActive: true,
+          fromCampaign,
+          campaignId: campaignId || null
         }
       });
 
@@ -68,7 +92,9 @@ export class SubscriptionController {
         planId: subscription.planId,
         startDate: subscription.startDate,
         endDate: subscription.endDate,
-        isActive: subscription.isActive
+        isActive: subscription.isActive,
+        fromCampaign: subscription.fromCampaign,
+        campaignId: subscription.campaignId
       };
       
       res.status(201).json(formattedSubscription);
