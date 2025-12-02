@@ -39,6 +39,7 @@ projectRoutes.patch("/project/update/status", checkToken, projectController.upda
 projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
 projectRoutes.patch("/project/update/start_date", checkToken, projectController.startDateProject);
 projectRoutes.patch("/project/update/deadline", checkToken, projectController.deadlineProject);
+projectRoutes.patch("/project/update/location", checkToken, projectController.updateLocationProject);
 projectRoutes.get(
   "/project/find",
   checkToken,
