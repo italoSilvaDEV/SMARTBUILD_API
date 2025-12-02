@@ -12,7 +12,7 @@ export class PlanController {
   // integrado com stripe
   async create(req: Request, res: Response) {
     try {
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign } = req.body;
       
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
@@ -77,7 +77,8 @@ export class PlanController {
           permissionGroupId,
           stripeProductId,
           stripePriceId,
-          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null
+          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
+          isCampaign: isCampaign || false
         },
         include: {
           permissionGroup: true
@@ -107,6 +108,7 @@ export class PlanController {
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
+        isCampaign: plan.isCampaign,
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt
       };
@@ -143,7 +145,8 @@ export class PlanController {
         updatedAt: plan.updatedAt,
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
-        allowedEmployees: plan.allowedEmployees
+        allowedEmployees: plan.allowedEmployees,
+        isCampaign: plan.isCampaign
       }));
 
       // Se solicitado agrupamento, organizar por grupos de permissão e periodicidade
@@ -221,7 +224,7 @@ export class PlanController {
   async updatePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign } = req.body;
       
       // Buscar o plano atual para verificar se há alterações e se existem IDs do Stripe
       const currentPlan = await prisma.plan.findUnique({
@@ -326,7 +329,8 @@ export class PlanController {
           permissionGroupId,
           stripeProductId,
           stripePriceId,
-          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null
+          allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
+          isCampaign: isCampaign !== undefined ? isCampaign : undefined
         },
         include: { permissionGroup: true }
       });
@@ -345,6 +349,7 @@ export class PlanController {
         stripeProductId: updatedPlan.stripeProductId,
         stripePriceId: updatedPlan.stripePriceId,
         allowedEmployees: updatedPlan.allowedEmployees,
+        isCampaign: updatedPlan.isCampaign,
         createdAt: updatedPlan.createdAt,
         updatedAt: updatedPlan.updatedAt
       };

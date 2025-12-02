@@ -77,9 +77,10 @@ model User {
   FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
   PublicFeedLinks        PublicFeedLink[]   @relation("PublicFeedLinkCreators")
 
-  ProjectFiles  ProjectFiles[]
-  ProjectPastes ProjectPastes[]
-  changeOrders  ChangeOrder[]
+  ProjectFiles     ProjectFiles[]
+  ProjectPastes    ProjectPastes[]
+  changeOrders     ChangeOrder[]
+  tutorialProgress TutorialProgress[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -858,7 +859,8 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
-  checked Boolean? @default(false)
+  checked       Boolean? @default(false)
+  ignoreChecked Boolean? @default(false)
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
@@ -1126,6 +1128,9 @@ model Subscription {
   paymentFailed                  Boolean   @default(false)
   stripeSubscriptionCanceled     Boolean   @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
+  fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
+  campaignId                     String? // ID da campanha (opcional)
+  campaign                       Campaign? @relation(fields: [campaignId], references: [id])
 }
 
 enum ValidityType {
@@ -1150,10 +1155,26 @@ model Plan {
   permissionGroupId String
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
+  campaigns         Campaign[] // Relaciona-se com as campanhas
 
   allowedEmployees Int?
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
+  isCampaign       Boolean  @default(false) // Indica se o plano pode ser usado em campanhas
+}
+
+model Campaign {
+  id           String         @id @default(uuid())
+  name         String // Nome da campanha
+  description  String?        @db.Text // Descrição da campanha
+  planId       String // ID do plano associado
+  plan         Plan           @relation(fields: [planId], references: [id])
+  startDate    DateTime? // Data e hora de início da campanha (opcional)
+  endDate      DateTime // Data e hora de término da campanha
+  isActive     Boolean        @default(true) // Indica se a campanha está ativa
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  subscriptions Subscription[] // Assinaturas criadas através desta campanha
 }
 
 model EstimateEmailLog {
@@ -1557,6 +1578,7 @@ model ChangeOrderService {
   @@map("change_order_service")
 }
 
+
 // Configurações de envio automático de emails para invoices
 model InvoiceAutoEmailConfig {
   id        String   @id @default(uuid())
@@ -1601,4 +1623,22 @@ model InvoiceAutoEmailLog {
   @@index([invoiceId])
   @@index([sentAt])
   @@map("invoice_auto_email_log")
+
+model TutorialProgress {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tutorialCode String    @map("tutorial_code") @db.VarChar(100)
+  completed    Boolean   @default(false)
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tutorialCode], map: "unique_user_tutorial")
+  @@index([userId], map: "idx_tutorial_progress_user")
+  @@index([tutorialCode], map: "idx_tutorial_progress_tutorial")
+  @@index([completed], map: "idx_tutorial_progress_completed")
+  @@map("tutorial_progress")
+
 }

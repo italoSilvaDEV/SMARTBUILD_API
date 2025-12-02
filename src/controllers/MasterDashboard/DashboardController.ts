@@ -7,64 +7,74 @@ export class DashboardController {
         try {
             const { year } = request.query;
             const selectedYear = year ? parseInt(year as string) : new Date().getFullYear();
+            const now = new Date();
+            const oneMonthAgo = new Date(now);
+            oneMonthAgo.setMonth(now.getMonth() - 1);
 
-            // Buscar total de usuários clientes (usuários que têm empresa associada e office Administrator)
-            const clients = await prisma.user.findMany({
-                where: {
-                    companies: {
-                        some: {}
-                    },
-                    office: {
-                        name: {
-                            equals: "Administrator"
+            const [companies, activeProjects, activePlans, permissionsGroups, adminAccessRecords, activeSubscriptions] = await Promise.all([
+                prisma.company.findMany({
+                    select: {
+                        id: true,
+                        date_creation: true
+                    }
+                }),
+                prisma.project.findMany({
+                    where: {
+                        status_project: {
+                            in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough"],
                         }
                     }
-                },
-                select: {
-                    id: true,
-                    companies: {
-                        select: {
-                            company: {
-                                select: {
-                                    name: true
-                                }
+                }),
+                prisma.plan.findMany({
+                    where: {
+                        subscriptions: {
+                            some: {
+                                isActive: true
                             }
                         }
                     }
-                }
-            })
-
-            const activeProjects = await prisma.project.findMany({
-                where: {
-                    status_project: {
-                        in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough"],
-                    }
-                }
-            })
-
-            const activePlans = await prisma.plan.findMany({
-                where: {
-                    subscriptions: {
-                        some: {
-                            isActive: true
-                        }
-                    }
-                }
-            })
-
-            const permissionsGroups = await prisma.permissionGroup.findMany()
-
-            // Buscar usuários clientes criados no ano especificado e calcular dados cumulativos
-            const clientsData = await prisma.user.findMany({
-                where: {
-                    companies: {
-                        some: {}
-                    },
-                    office: {
-                        name: {
-                            equals: "Administrator"
+                }),
+                prisma.permissionGroup.findMany(),
+                prisma.userCompany.findMany({
+                    where: {
+                        office: {
+                            name: "Administrator"
                         }
                     },
+                    select: {
+                        companyId: true,
+                        user: {
+                            select: {
+                                last_acess: true
+                            }
+                        }
+                    }
+                }),
+                prisma.subscription.findMany({
+                    where: {
+                        isActive: true
+                    },
+                    select: {
+                        companyId: true,
+                        plan: {
+                            select: {
+                                validityType: true
+                            }
+                        }
+                    }
+                })
+            ]);
+
+            // Buscar dados para cálculo cumulativo de novas empresas por mês
+            const clientsBeforeYear = await prisma.company.count({
+                where: {
+                    date_creation: {
+                        lt: new Date(`${selectedYear}-01-01`)
+                    }
+                }
+            });
+            const companiesCreatedThisYear = await prisma.company.findMany({
+                where: {
                     date_creation: {
                         gte: new Date(`${selectedYear}-01-01`),
                         lte: new Date(`${selectedYear}-12-31 23:59:59`)
@@ -78,32 +88,14 @@ export class DashboardController {
                 }
             });
 
-            // Buscar total de usuários clientes criados antes do ano selecionado
-            const clientsBeforeYear = await prisma.user.count({
-                where: {
-                    company_id: {
-                        not: null
-                    },
-                    office: {
-                        name: {
-                            equals: "Administrator"
-                        }
-                    },
-                    date_creation: {
-                        lt: new Date(`${selectedYear}-01-01`)
-                    }
-                }
-            });
-
             // Calcular dados cumulativos por mês
             const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
             const cumulativeData = [];
             let runningTotal = clientsBeforeYear;
 
             for (let month = 0; month < 12; month++) {
-                // Contar clientes criados neste mês
-                const clientsThisMonth = clientsData.filter(client => {
-                    const clientMonth = client.date_creation.getMonth();
+                const clientsThisMonth = companiesCreatedThisYear.filter(company => {
+                    const clientMonth = company.date_creation.getMonth();
                     return clientMonth === month;
                 }).length;
 
@@ -219,8 +211,54 @@ export class DashboardController {
                 };
             });
 
+            const lastAccessByCompany = new Map<string, Date | null>();
+            adminAccessRecords.forEach(record => {
+                const current = lastAccessByCompany.get(record.companyId);
+                const lastAccess = record.user.last_acess;
+
+                if (!current || (lastAccess && current < lastAccess)) {
+                    lastAccessByCompany.set(record.companyId, lastAccess);
+                }
+            });
+
+            const subscriptionTypeByCompany = new Map<string, string>();
+            activeSubscriptions.forEach(subscription => {
+                const type = subscription.plan?.validityType;
+                if (!type) return;
+
+                const currentType = subscriptionTypeByCompany.get(subscription.companyId);
+                if (!currentType || currentType === 'FREE') {
+                    subscriptionTypeByCompany.set(subscription.companyId, type);
+                }
+            });
+
+            let activeClients = 0;
+            let inactiveClients = 0;
+            companies.forEach(company => {
+                const lastAccess = lastAccessByCompany.get(company.id);
+                if (lastAccess && lastAccess >= oneMonthAgo) {
+                    activeClients += 1;
+                } else {
+                    inactiveClients += 1;
+                }
+            });
+
+            let freeClients = 0;
+            let paidClients = 0;
+            subscriptionTypeByCompany.forEach(type => {
+                if (type === 'FREE') {
+                    freeClients += 1;
+                } else {
+                    paidClients += 1;
+                }
+            });
+
             return response.json({
-                clients: clients.length,
+                clients: companies.length,
+                freeClients,
+                paidClients,
+                activeClients,
+                inactiveClients,
                 activeProjects: activeProjects.length,
                 activePlans: activePlans.length,
                 permissionsGroups: permissionsGroups.length,

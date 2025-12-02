@@ -620,6 +620,11 @@ export class TimeController {
                 where: { id: String(worker_id) },
                 include: {
                     company: true,
+                    companies: {
+                        include: {
+                            company: true
+                        }
+                    },
                     office: true,
                     UserAttendance: {
                         where: {
@@ -647,8 +652,12 @@ export class TimeController {
                 }
             });
 
-            // Se company_id foi fornecido, usar para filtrar
-            const companyId = id ? String(id) : existWorker?.company?.id;
+            const workerCompanyId = existWorker?.companies?.[0]?.company?.id || existWorker?.company?.id;
+            let companyId = id ? String(id) : workerCompanyId;
+            const belongsToWorker = existWorker?.companies?.some(c => c.company.id === companyId);
+            if (companyId && !belongsToWorker && workerCompanyId) {
+                companyId = workerCompanyId;
+            }
 
             const attendances = await prisma.userAttendance.findMany({
                 where: {
@@ -659,19 +668,8 @@ export class TimeController {
                         {
                             check_in_time: {
                                 gte: startDate,
+                                lte: newDeadline,
                             },
-                        },
-                        {
-                            OR: [
-                                {
-                                    check_out_time: {
-                                        lte: newDeadline,
-                                    }
-                                },
-                                {
-                                    check_out_time: null
-                                }
-                            ]
                         },
                         {
                             UserServiceProject: {
@@ -914,13 +912,13 @@ export class TimeController {
                 );
 
                 sortedWeekAttendances.forEach((attendance: any) => {
-                    if (!attendance.check_out_time || !attendance.check_in_time) {
+                    if (!attendance.check_in_time) {
                         return;
                     }
 
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
+                        attendance.check_out_time?.toISOString() || attendance.check_in_time.toISOString(),
                         attendance.workStartTime,
                         attendance.workEndTime,
                     );
@@ -970,27 +968,65 @@ export class TimeController {
 
             const formattedResult = workersWithCorrectOvertime.sort((a, b) =>
                 new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
+            ).map(attendance => {
+                const projectLocation = attendance.UserServiceProject?.service_project?.Project?.location;
+                const clientLocation = attendance.UserServiceProject?.service_project?.Project?.client?.location;
+                return {
+                    ...attendance,
+                    check_in_address: attendance.check_in_address || projectLocation || clientLocation || "",
+                    check_out_address: attendance.check_out_address || projectLocation || clientLocation || ""
+                };
+            });
+
+            // Filtrar pelo intervalo informado para evitar incluir lançamentos fora do range (ex.: ranges amplos retornados por fallback de company)
+            const filteredResult = formattedResult.filter(att => {
+                const checkIn = new Date(att.check_in_time).getTime();
+                return checkIn >= startDate.getTime() && checkIn <= newDeadline.getTime();
+            });
+
+            const filteredTotals = filteredResult.reduce(
+                (acc, att) => {
+                    acc.totalPrice += att.price || 0;
+                    acc.totalHours += att.hours_worked || 0;
+                    acc.totalRegularHours += att.regular_hours || 0;
+                    acc.totalOvertimeHours += att.overtime_hours || 0;
+                    if (att.UserServiceProject?.service_project?.id) {
+                        acc.serviceProjectIds.add(att.UserServiceProject.service_project.id);
+                    }
+                    if (att.UserServiceProject?.service_project?.Project?.id) {
+                        acc.projectIds.add(att.UserServiceProject.service_project.Project.id);
+                    }
+                    return acc;
+                },
+                {
+                    totalPrice: 0,
+                    totalHours: 0,
+                    totalRegularHours: 0,
+                    totalOvertimeHours: 0,
+                    serviceProjectIds: new Set<string>(),
+                    projectIds: new Set<string>()
+                }
             );
 
             const urlAvatar = await getPresignedUrl(String(existWorker?.avatar));
 
             return res.json({
                 indicators: {
-                    totalPrice: parseFloat(totalPrice.toFixed(2)),
-                    totalHours: parseFloat(totalHours.toFixed(2)),
-                    totalRegularHours: parseFloat(totalRegularHours.toFixed(2)),
-                    totalOvertimeHours: parseFloat(totalOvertimeHours.toFixed(2)),
-                    totalServices: serviceCount,
-                    totalProjects: projects.length,
+                    totalPrice: parseFloat(filteredTotals.totalPrice.toFixed(2)),
+                    totalHours: parseFloat(filteredTotals.totalHours.toFixed(2)),
+                    totalRegularHours: parseFloat(filteredTotals.totalRegularHours.toFixed(2)),
+                    totalOvertimeHours: parseFloat(filteredTotals.totalOvertimeHours.toFixed(2)),
+                    totalServices: filteredTotals.serviceProjectIds.size,
+                    totalProjects: filteredTotals.projectIds.size,
                 },
                 userWorker: {
                     id: existWorker?.id,
                     name: existWorker?.name,
                     avatar: urlAvatar,
-                    office: existWorker?.office.name
+                    office: existWorker?.office?.name
                 },
-                workers: formattedResult,
-                totalPages: Math.ceil(resultCount / 10)
+                workers: filteredResult,
+                totalPages: Math.ceil(filteredResult.length / 10)
             });
 
         } catch (error) {
