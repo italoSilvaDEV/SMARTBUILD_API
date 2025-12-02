@@ -77,9 +77,10 @@ model User {
   FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
   PublicFeedLinks        PublicFeedLink[]   @relation("PublicFeedLinkCreators")
 
-  ProjectFiles  ProjectFiles[]
-  ProjectPastes ProjectPastes[]
-  changeOrders  ChangeOrder[]
+  ProjectFiles     ProjectFiles[]
+  ProjectPastes    ProjectPastes[]
+  changeOrders     ChangeOrder[]
+  tutorialProgress TutorialProgress[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -857,7 +858,7 @@ model Invoice {
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
-  checked Boolean? @default(false)
+  checked       Boolean? @default(false)
   ignoreChecked Boolean? @default(false)
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
@@ -1554,4 +1555,22 @@ model ChangeOrderService {
   changeOrder   ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
 
   @@map("change_order_service")
+}
+
+model TutorialProgress {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tutorialCode String    @map("tutorial_code") @db.VarChar(100)
+  completed    Boolean   @default(false)
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tutorialCode], map: "unique_user_tutorial")
+  @@index([userId], map: "idx_tutorial_progress_user")
+  @@index([tutorialCode], map: "idx_tutorial_progress_tutorial")
+  @@index([completed], map: "idx_tutorial_progress_completed")
+  @@map("tutorial_progress")
 }
