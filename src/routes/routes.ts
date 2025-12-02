@@ -19,6 +19,7 @@ import { planRoutes } from './planRoutes'
 import { permissionRoutes } from './permissionRoutes'
 import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
+import { campaignRoutes } from './campaignRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
 import { quickBooksConfigRoutes } from './quickBooksConfigRoutes'
@@ -96,6 +97,7 @@ router.use(planRoutes)
 router.use(permissionRoutes)
 router.use(permissionGroupRoutes)
 router.use(subscriptionRoutes)
+router.use(campaignRoutes)
 router.use("/timecards", timeCardsRouts)
 router.use("/contract-terms", contractTermRoutes)
 router.use("/openai", openAiRoutes)

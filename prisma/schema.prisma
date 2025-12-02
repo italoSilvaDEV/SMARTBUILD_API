@@ -1126,6 +1126,9 @@ model Subscription {
   paymentFailed                  Boolean   @default(false)
   stripeSubscriptionCanceled     Boolean   @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
+  fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
+  campaignId                     String? // ID da campanha (opcional)
+  campaign                       Campaign? @relation(fields: [campaignId], references: [id])
 }
 
 enum ValidityType {
@@ -1150,10 +1153,26 @@ model Plan {
   permissionGroupId String
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
+  campaigns         Campaign[] // Relaciona-se com as campanhas
 
   allowedEmployees Int?
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
+  isCampaign       Boolean  @default(false) // Indica se o plano pode ser usado em campanhas
+}
+
+model Campaign {
+  id           String         @id @default(uuid())
+  name         String // Nome da campanha
+  description  String?        @db.Text // Descrição da campanha
+  planId       String // ID do plano associado
+  plan         Plan           @relation(fields: [planId], references: [id])
+  startDate    DateTime? // Data e hora de início da campanha (opcional)
+  endDate      DateTime // Data e hora de término da campanha
+  isActive     Boolean        @default(true) // Indica se a campanha está ativa
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  subscriptions Subscription[] // Assinaturas criadas através desta campanha
 }
 
 model EstimateEmailLog {
