@@ -498,6 +498,14 @@ export class SalesDealController {
                     name: "Administrator"
                   }
                 },
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                  phone: true,
+                  profession: true
+                },
                 take: 1
               }
             }
@@ -529,6 +537,22 @@ export class SalesDealController {
 
       if (!deal) {
         return res.status(404).json({ error: "Deal não encontrado" });
+      }
+
+      // Adicionar URL pré-assinada para avatares
+      if (deal.company?.avatar) {
+        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+        deal.company.avatar = await getPresignedUrl(deal.company.avatar);
+      }
+
+      if (deal.company?.User?.[0]?.avatar) {
+        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+        deal.company.User[0].avatar = await getPresignedUrl(deal.company.User[0].avatar);
+      }
+
+      if (deal.assignedTo?.avatar) {
+        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+        deal.assignedTo.avatar = await getPresignedUrl(deal.assignedTo.avatar);
       }
 
       return res.status(200).json(deal);

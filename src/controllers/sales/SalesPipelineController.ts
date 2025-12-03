@@ -146,6 +146,20 @@ export class SalesPipelineController {
         return res.status(404).json({ error: "Pipeline não encontrado" });
       }
 
+      // Adicionar URL pré-assinada para avatares dos deals
+      const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+      
+      for (const stage of pipeline.stages) {
+        for (const deal of stage.deals) {
+          if (deal.company?.avatar) {
+            deal.company.avatar = await getPresignedUrl(deal.company.avatar);
+          }
+          if (deal.assignedTo?.avatar) {
+            deal.assignedTo.avatar = await getPresignedUrl(deal.assignedTo.avatar);
+          }
+        }
+      }
+
       return res.status(200).json(pipeline);
     } catch (error: any) {
       console.error("Error getting pipeline:", error);
