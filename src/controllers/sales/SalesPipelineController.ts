@@ -104,13 +104,21 @@ export class SalesPipelineController {
                       id: true,
                       name: true,
                       avatar: true,
+                      address: true,
+                      phone: true,
+                      email: true,
+                      date_creation: true,
                       Subscription: {
                         select: {
                           plan: {
                             select: {
-                              name: true
+                              name: true,
+                              price: true,
+                              validityType: true
                             }
-                          }
+                          },
+                          createdAt: true,
+                          expiresAt: true
                         }
                       }
                     }

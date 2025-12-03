@@ -471,7 +471,27 @@ export class SalesDealController {
         where: { id },
         include: {
           company: {
-            include: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+              address: true,
+              phone: true,
+              email: true,
+              date_creation: true,
+              Subscription: {
+                select: {
+                  plan: {
+                    select: {
+                      name: true,
+                      price: true,
+                      validityType: true
+                    }
+                  },
+                  createdAt: true,
+                  expiresAt: true
+                }
+              },
               User: {
                 where: {
                   office: {
