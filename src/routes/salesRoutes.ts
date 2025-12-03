@@ -27,6 +27,7 @@ salesRoutes.post('/sales/deals', checkToken, dealController.create);
 salesRoutes.get('/sales/deals/:id', checkToken, dealController.getById);
 salesRoutes.put('/sales/deals/:id', checkToken, dealController.update);
 salesRoutes.patch('/sales/deals/:id/move', checkToken, dealController.moveStage);
+salesRoutes.post('/sales/deals/reorder', checkToken, dealController.reorderDeals);
 salesRoutes.post('/sales/deals/:id/convert', checkToken, dealController.convert);
 salesRoutes.delete('/sales/deals/:id', checkToken, dealController.delete);
 

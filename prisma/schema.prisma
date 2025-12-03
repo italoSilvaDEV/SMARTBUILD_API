@@ -1221,6 +1221,7 @@ model SalesDeal {
   pipeline        SalesPipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   stageId         String
   stage           SalesStage      @relation(fields: [stageId], references: [id])
+  position        Int             @default(0) // Posição do deal dentro do stage (para ordenação)
   assignedToId   String?         // ID do vendedor responsável
   assignedTo      User?          @relation("AssignedDeals", fields: [assignedToId], references: [id], onDelete: SetNull)
   notes           String?        @db.Text // Notas sobre o deal

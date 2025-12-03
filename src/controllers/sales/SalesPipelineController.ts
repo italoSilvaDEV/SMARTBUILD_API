@@ -118,7 +118,7 @@ export class SalesPipelineController {
                     select: { activities: true }
                   }
                 },
-                orderBy: { updatedAt: 'desc' }
+                orderBy: { position: 'asc' }
               }
             }
           }

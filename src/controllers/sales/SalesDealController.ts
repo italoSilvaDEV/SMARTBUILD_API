@@ -190,7 +190,7 @@ export class SalesDealController {
   async moveStage(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { stageId, userId } = req.body;
+      const { stageId, userId, position } = req.body;
 
       if (!stageId) {
         return res.status(400).json({ error: "stageId é obrigatório" });
@@ -219,9 +219,22 @@ export class SalesDealController {
         });
       }
 
+      // Se position foi fornecida, usar ela; senão, colocar no final
+      let newPosition = position;
+      if (newPosition === undefined) {
+        const lastDeal = await prisma.salesDeal.findFirst({
+          where: { stageId },
+          orderBy: { position: 'desc' }
+        });
+        newPosition = lastDeal ? lastDeal.position + 1 : 0;
+      }
+
       const updatedDeal = await prisma.salesDeal.update({
         where: { id },
-        data: { stageId },
+        data: { 
+          stageId,
+          position: newPosition
+        },
         include: {
           company: {
             select: {
@@ -253,8 +266,8 @@ export class SalesDealController {
         }
       });
 
-      // Se moveu para "Assinante", marcar como convertido
-      if ((newStage.name.toLowerCase().includes("assinante") || newStage.name.toLowerCase().includes("convertido")) && !deal.isConverted) {
+      // Se moveu para "Paid", marcar como convertido
+      if ((newStage.name.toLowerCase().includes("paid") || newStage.name.toLowerCase().includes("convertido")) && !deal.isConverted) {
         await prisma.salesDeal.update({
           where: { id },
           data: {
@@ -270,6 +283,52 @@ export class SalesDealController {
       console.error("Error moving deal stage:", error);
       return res.status(500).json({ 
         error: "Erro ao mover deal",
+        message: error.message 
+      });
+    }
+  }
+
+  // Reordenar deals dentro de um stage
+  async reorderDeals(req: Request, res: Response) {
+    try {
+      const { stageId, dealIds } = req.body;
+
+      if (!stageId || !dealIds || !Array.isArray(dealIds)) {
+        return res.status(400).json({ 
+          error: "stageId e dealIds (array) são obrigatórios" 
+        });
+      }
+
+      // Atualizar a posição de cada deal
+      // Usar posições temporárias negativas primeiro para evitar conflitos
+      const tempUpdatePromises = dealIds.map((dealId, index) => 
+        prisma.salesDeal.updateMany({
+          where: { 
+            id: dealId,
+            stageId: stageId // Garantir que o deal pertence ao stage
+          },
+          data: { position: -1000 - index }
+        })
+      );
+      await Promise.all(tempUpdatePromises);
+
+      // Depois, atualizar para as posições finais
+      const finalUpdatePromises = dealIds.map((dealId, index) => 
+        prisma.salesDeal.updateMany({
+          where: { 
+            id: dealId,
+            stageId: stageId
+          },
+          data: { position: index }
+        })
+      );
+      await Promise.all(finalUpdatePromises);
+
+      return res.status(200).json({ message: "Deals reordenados com sucesso" });
+    } catch (error: any) {
+      console.error("Error reordering deals:", error);
+      return res.status(500).json({ 
+        error: "Erro ao reordenar deals",
         message: error.message 
       });
     }
