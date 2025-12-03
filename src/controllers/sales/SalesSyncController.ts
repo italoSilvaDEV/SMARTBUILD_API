@@ -41,13 +41,36 @@ export class SalesSyncController {
         }
       });
 
-      const leadStage = defaultPipeline.stages.find(s => s.name === "Lead");
-      const freeTrialStage = defaultPipeline.stages.find(s => s.name === "Free Trial");
-      const endFreeTrialStage = defaultPipeline.stages.find(s => s.name === "End Free Trial");
-      const assinanteStage = defaultPipeline.stages.find(s => s.name === "Assinante");
+      // Buscar estágios de forma flexível (pode ter nomes diferentes)
+      const leadStage = defaultPipeline.stages.find(s => 
+        s.name.toLowerCase().includes("lead") || 
+        s.name.toLowerCase().includes("prospect")
+      ) || defaultPipeline.stages.sort((a, b) => a.position - b.position)[0]; // Fallback para primeiro estágio
+      
+      const freeTrialStage = defaultPipeline.stages.find(s => 
+        s.name.toLowerCase().includes("free trial") && 
+        !s.name.toLowerCase().includes("inactive")
+      );
+      
+      const inactiveStage = defaultPipeline.stages.find(s => 
+        s.name.toLowerCase().includes("inactive") ||
+        s.name.toLowerCase().includes("inativos") ||
+        s.name.toLowerCase().includes("free trial que acabou") ||
+        s.name.toLowerCase().includes("acabou ou inativos") ||
+        s.name.toLowerCase().includes("trial expir")
+      );
+      
+      const paidStage = defaultPipeline.stages.find(s => 
+        s.name.toLowerCase().includes("paid") ||
+        s.name.toLowerCase().includes("pagantes") ||
+        s.name.toLowerCase().includes("assinante") ||
+        s.name.toLowerCase().includes("convertido") ||
+        s.name.toLowerCase().includes("converted") ||
+        s.name.toLowerCase().includes("vendido")
+      );
 
       if (!leadStage) {
-        return res.status(400).json({ error: "Estágio 'Lead' não encontrado no pipeline" });
+        return res.status(400).json({ error: "No initial stage found in pipeline" });
       }
 
       let created = 0;
@@ -68,26 +91,41 @@ export class SalesSyncController {
         let targetStageId = leadStage.id;
         let isConverted = false;
 
+        // Verificar se é inativo (sem acesso recente)
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        const lastAccess = adminUser?.last_acess;
+        const isInactive = !lastAccess || new Date(lastAccess) < oneMonthAgo;
+
         if (activeSubscription && plan) {
           if (plan.validityType === "FREE") {
-            // Se tem subscription FREE, está em Free Trial
-            if (freeTrialStage) {
-              targetStageId = freeTrialStage.id;
+            // Verificar se o trial acabou
+            const trialExpired = activeSubscription.endDate < new Date();
+            
+            if (trialExpired || isInactive) {
+              // Trial expirado OU inativo - mover para "Inactive"
+              if (inactiveStage) {
+                targetStageId = inactiveStage.id;
+              }
+            } else {
+              // Trial ativo e ativo - está em Free Trial
+              if (freeTrialStage) {
+                targetStageId = freeTrialStage.id;
+              }
             }
           } else {
-            // Se tem subscription paga, está como Assinante
-            if (assinanteStage) {
-              targetStageId = assinanteStage.id;
+            // Se tem subscription paga, está como Paid
+            if (paidStage) {
+              targetStageId = paidStage.id;
               isConverted = true;
             }
           }
-
-          // Verificar se o trial acabou mas ainda não pagou
-          if (plan.validityType === "FREE" && activeSubscription.endDate < new Date()) {
-            if (endFreeTrialStage) {
-              targetStageId = endFreeTrialStage.id;
-            }
+        } else {
+          // Sem subscription - verificar se é inativo
+          if (isInactive && inactiveStage) {
+            targetStageId = inactiveStage.id;
           }
+          // Se não é inativo e não tem subscription, fica em Leads (já definido acima)
         }
 
         if (existingDeal) {
