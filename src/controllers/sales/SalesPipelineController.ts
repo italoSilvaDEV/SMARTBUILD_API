@@ -99,13 +99,22 @@ export class SalesPipelineController {
               deals: {
                 where: whereClause,
                 include: {
-                  company: {
-                    select: {
-                      id: true,
-                      name: true,
-                      avatar: true
-                    }
-                  },
+                        company: {
+                            select: {
+                                id: true,
+                                name: true,
+                                avatar: true,
+                                subscription: {
+                                    select: {
+                                        plan: {
+                                            select: {
+                                                name: true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
                   assignedTo: {
                     select: {
                       id: true,
