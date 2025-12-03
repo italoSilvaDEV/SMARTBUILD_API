@@ -45,5 +45,8 @@ salesRoutes.delete('/sales/stages/:id', checkToken, stageController.delete);
 // Sync routes
 salesRoutes.post('/sales/sync/companies', checkToken, syncController.syncCompaniesToDeals);
 
+// Comments (usando activities com type "comment")
+salesRoutes.post('/sales/deals/:dealId/comments', checkToken, activityController.create);
+
 export { salesRoutes };
 

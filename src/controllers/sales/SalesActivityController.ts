@@ -2,24 +2,37 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 
 export class SalesActivityController {
-  // Criar atividade
+  // Criar atividade ou comentário
   async create(req: Request, res: Response) {
     try {
-      const { dealId, type, description, metadata, userId } = req.body;
+      const { dealId: paramDealId } = req.params;
+      const { dealId: bodyDealId, type, description, metadata, userId, content } = req.body;
+      const currentUserId = (req as any).user?.id;
 
-      if (!dealId || !type) {
+      // Suportar tanto /activities quanto /comments endpoint
+      const finalDealId = paramDealId || bodyDealId;
+      const activityType = type || 'comment';
+      const activityDescription = description || content;
+
+      if (!finalDealId) {
         return res.status(400).json({ 
-          error: "dealId e type são obrigatórios" 
+          error: "dealId is required" 
+        });
+      }
+
+      if (!activityDescription || !activityDescription.trim()) {
+        return res.status(400).json({ 
+          error: "Description or content is required" 
         });
       }
 
       const activity = await prisma.salesActivity.create({
         data: {
-          dealId,
-          type,
-          description,
+          dealId: finalDealId,
+          type: activityType,
+          description: activityDescription.trim(),
           metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-          userId
+          userId: userId || currentUserId || null
         },
         include: {
           user: {
@@ -37,6 +50,12 @@ export class SalesActivityController {
           }
         }
       });
+
+      // Gerar URL pré-assinada para avatar
+      if (activity.user?.avatar) {
+        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+        activity.user.avatar = await getPresignedUrl(activity.user.avatar);
+      }
 
       return res.status(201).json(activity);
     } catch (error: any) {
@@ -66,6 +85,14 @@ export class SalesActivityController {
         },
         orderBy: { createdAt: 'desc' }
       });
+
+      // Gerar URLs pré-assinadas para avatares
+      const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+      for (const activity of activities) {
+        if (activity.user?.avatar) {
+          activity.user.avatar = await getPresignedUrl(activity.user.avatar);
+        }
+      }
 
       return res.status(200).json(activities);
     } catch (error: any) {

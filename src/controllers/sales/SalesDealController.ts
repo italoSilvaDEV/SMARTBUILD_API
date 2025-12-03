@@ -531,7 +531,7 @@ export class SalesDealController {
               }
             },
             orderBy: { createdAt: 'desc' }
-          }
+          },
         }
       });
 
@@ -540,19 +540,27 @@ export class SalesDealController {
       }
 
       // Adicionar URL pré-assinada para avatares
+      const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
+      
       if (deal.company?.avatar) {
-        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
         deal.company.avatar = await getPresignedUrl(deal.company.avatar);
       }
 
       if (deal.company?.User?.[0]?.avatar) {
-        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
         deal.company.User[0].avatar = await getPresignedUrl(deal.company.User[0].avatar);
       }
 
       if (deal.assignedTo?.avatar) {
-        const { getPresignedUrl } = await import('../../utils/S3/getPresignedUrl');
         deal.assignedTo.avatar = await getPresignedUrl(deal.assignedTo.avatar);
+      }
+
+      // Adicionar URLs para avatares das activities
+      if (deal.activities) {
+        for (const activity of deal.activities) {
+          if (activity.user?.avatar) {
+            activity.user.avatar = await getPresignedUrl(activity.user.avatar);
+          }
+        }
       }
 
       return res.status(200).json(deal);

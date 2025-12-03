@@ -1234,7 +1234,7 @@ model SalesDeal {
   convertedAt      DateTime?     // Quando foi convertido
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
-  activities       SalesActivity[] // Histórico de atividades/interações
+  activities       SalesActivity[] // Histórico de atividades/interações (inclui comentários com type="comment")
 
   @@index([pipelineId])
   @@index([stageId])
