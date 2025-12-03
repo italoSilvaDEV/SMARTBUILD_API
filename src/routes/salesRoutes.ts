@@ -15,6 +15,7 @@ const syncController = new SalesSyncController();
 
 // Pipeline routes
 salesRoutes.post('/sales/pipelines/default', checkToken, pipelineController.createDefaultPipeline);
+salesRoutes.post('/sales/pipelines/restore-default-stages', checkToken, pipelineController.restoreDefaultStages);
 salesRoutes.get('/sales/pipelines', checkToken, pipelineController.list);
 salesRoutes.get('/sales/pipelines/:id', checkToken, pipelineController.getById);
 salesRoutes.post('/sales/pipelines', checkToken, pipelineController.create);

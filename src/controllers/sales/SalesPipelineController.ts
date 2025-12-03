@@ -209,6 +209,102 @@ export class SalesPipelineController {
     }
   }
 
+  // Restaurar colunas padrão (criar se não existir, atualizar se existir)
+  async restoreDefaultStages(req: Request, res: Response) {
+    try {
+      let defaultPipeline = await prisma.salesPipeline.findFirst({
+        where: { isDefault: true },
+        include: {
+          stages: {
+            orderBy: { position: 'asc' }
+          }
+        }
+      });
+
+      const defaultStages = [
+        { name: "Leads", position: 0, color: "#E2A300" },
+        { name: "Free Trial", position: 1, color: "#4C6EF5" },
+        { name: "Inactive", position: 2, color: "#6C7B7F" },
+        { name: "Paid", position: 3, color: "#079455" },
+        { name: "Lost", position: 4, color: "#D92D20" }
+      ];
+
+      if (!defaultPipeline) {
+        // Criar pipeline padrão se não existir
+        defaultPipeline = await prisma.salesPipeline.create({
+          data: {
+            name: "Sales Pipeline",
+            description: "Default sales pipeline",
+            isDefault: true,
+            isActive: true,
+            stages: {
+              create: defaultStages
+            }
+          },
+          include: {
+            stages: {
+              orderBy: { position: 'asc' }
+            }
+          }
+        });
+      } else {
+        // Verificar quais estágios existem e quais precisam ser criados
+        const existingStages = defaultPipeline.stages;
+        const existingNames = existingStages.map(s => s.name.toLowerCase());
+
+        // Atualizar estágios existentes
+        for (const defaultStage of defaultStages) {
+          const existingStage = existingStages.find(s => 
+            s.position === defaultStage.position
+          );
+
+          if (existingStage) {
+            // Atualizar estágio existente
+            await prisma.salesStage.update({
+              where: { id: existingStage.id },
+              data: {
+                name: defaultStage.name,
+                color: defaultStage.color,
+                position: defaultStage.position
+              }
+            });
+          } else {
+            // Criar estágio que não existe
+            await prisma.salesStage.create({
+              data: {
+                pipelineId: defaultPipeline.id,
+                name: defaultStage.name,
+                color: defaultStage.color,
+                position: defaultStage.position
+              }
+            });
+          }
+        }
+
+        // Buscar pipeline atualizado
+        defaultPipeline = await prisma.salesPipeline.findUnique({
+          where: { id: defaultPipeline.id },
+          include: {
+            stages: {
+              orderBy: { position: 'asc' }
+            }
+          }
+        });
+      }
+
+      return res.status(200).json({
+        message: "Default columns restored successfully",
+        pipeline: defaultPipeline
+      });
+    } catch (error: any) {
+      console.error("Error restoring default stages:", error);
+      return res.status(500).json({
+        error: "Error restoring default columns",
+        message: error.message
+      });
+    }
+  }
+
   // Deletar pipeline
   async delete(req: Request, res: Response) {
     try {
