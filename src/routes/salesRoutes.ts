@@ -38,6 +38,7 @@ salesRoutes.delete('/sales/activities/:id', checkToken, activityController.delet
 // Stage routes
 salesRoutes.post('/sales/stages', checkToken, stageController.create);
 salesRoutes.put('/sales/stages/:id', checkToken, stageController.update);
+salesRoutes.post('/sales/stages/reorder', checkToken, stageController.reorder);
 salesRoutes.delete('/sales/stages/:id', checkToken, stageController.delete);
 
 // Sync routes

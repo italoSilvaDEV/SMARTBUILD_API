@@ -109,5 +109,36 @@ export class SalesStageController {
       });
     }
   }
+
+  // Reordenar stages
+  async reorder(req: Request, res: Response) {
+    try {
+      const { pipelineId, stageIds } = req.body;
+
+      if (!pipelineId || !stageIds || !Array.isArray(stageIds)) {
+        return res.status(400).json({ 
+          error: "pipelineId e stageIds (array) são obrigatórios" 
+        });
+      }
+
+      // Atualizar a posição de cada stage
+      const updatePromises = stageIds.map((stageId, index) => 
+        prisma.salesStage.update({
+          where: { id: stageId },
+          data: { position: index }
+        })
+      );
+
+      await Promise.all(updatePromises);
+
+      return res.status(200).json({ message: "Stages reordenados com sucesso" });
+    } catch (error: any) {
+      console.error("Error reordering stages:", error);
+      return res.status(500).json({ 
+        error: "Erro ao reordenar stages",
+        message: error.message 
+      });
+    }
+  }
 }
 
