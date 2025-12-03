@@ -5,7 +5,7 @@ export class SalesStageController {
   // Criar stage
   async create(req: Request, res: Response) {
     try {
-      const { pipelineId, name, position, color } = req.body;
+      const { pipelineId, name, color } = req.body;
 
       if (!pipelineId || !name) {
         return res.status(400).json({ 
@@ -13,11 +13,20 @@ export class SalesStageController {
         });
       }
 
+      // Buscar a maior posição existente no pipeline
+      const lastStage = await prisma.salesStage.findFirst({
+        where: { pipelineId },
+        orderBy: { position: 'desc' }
+      });
+
+      // Nova posição será a próxima após a última
+      const newPosition = lastStage ? lastStage.position + 1 : 0;
+
       const stage = await prisma.salesStage.create({
         data: {
           pipelineId,
           name,
-          position: position ?? 0,
+          position: newPosition,
           color: color || "#6C7B7F"
         },
         include: {
