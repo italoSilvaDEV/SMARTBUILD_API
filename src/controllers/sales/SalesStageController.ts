@@ -121,15 +121,23 @@ export class SalesStageController {
         });
       }
 
-      // Atualizar a posição de cada stage
-      const updatePromises = stageIds.map((stageId, index) => 
+      // Primeiro, mover todos para posições temporárias negativas para evitar conflito
+      const tempUpdatePromises = stageIds.map((stageId, index) => 
+        prisma.salesStage.update({
+          where: { id: stageId },
+          data: { position: -1000 - index } // Posições temporárias negativas
+        })
+      );
+      await Promise.all(tempUpdatePromises);
+
+      // Depois, atualizar para as posições finais
+      const finalUpdatePromises = stageIds.map((stageId, index) => 
         prisma.salesStage.update({
           where: { id: stageId },
           data: { position: index }
         })
       );
-
-      await Promise.all(updatePromises);
+      await Promise.all(finalUpdatePromises);
 
       return res.status(200).json({ message: "Stages reordenados com sucesso" });
     } catch (error: any) {
