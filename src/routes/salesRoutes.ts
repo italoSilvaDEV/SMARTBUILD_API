@@ -3,6 +3,7 @@ import { SalesPipelineController } from '../controllers/sales/SalesPipelineContr
 import { SalesDealController } from '../controllers/sales/SalesDealController';
 import { SalesActivityController } from '../controllers/sales/SalesActivityController';
 import { SalesStageController } from '../controllers/sales/SalesStageController';
+import { SalesSyncController } from '../controllers/sales/SalesSyncController';
 import { checkToken } from '../middlewares/checkToken';
 
 const salesRoutes = Router();
@@ -10,6 +11,7 @@ const pipelineController = new SalesPipelineController();
 const dealController = new SalesDealController();
 const activityController = new SalesActivityController();
 const stageController = new SalesStageController();
+const syncController = new SalesSyncController();
 
 // Pipeline routes
 salesRoutes.post('/sales/pipelines/default', checkToken, pipelineController.createDefaultPipeline);
@@ -36,6 +38,9 @@ salesRoutes.delete('/sales/activities/:id', checkToken, activityController.delet
 salesRoutes.post('/sales/stages', checkToken, stageController.create);
 salesRoutes.put('/sales/stages/:id', checkToken, stageController.update);
 salesRoutes.delete('/sales/stages/:id', checkToken, stageController.delete);
+
+// Sync routes
+salesRoutes.post('/sales/sync/companies', checkToken, syncController.syncCompaniesToDeals);
 
 export { salesRoutes };
 

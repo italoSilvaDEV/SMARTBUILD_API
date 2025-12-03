@@ -17,12 +17,11 @@ export class SalesPipelineController {
       }
 
       const defaultStages = [
-        { name: "Lead/Prospect", position: 0, color: "#E2A300" },
-        { name: "Contato Inicial", position: 1, color: "#4C6EF5" },
-        { name: "Proposta Enviada", position: 2, color: "#6C7B7F" },
-        { name: "Negociação", position: 3, color: "#F59E0B" },
-        { name: "Convertido", position: 4, color: "#079455" },
-        { name: "Perdido", position: 5, color: "#D92D20" }
+        { name: "Lead", position: 0, color: "#E2A300" },
+        { name: "Free Trial", position: 1, color: "#4C6EF5" },
+        { name: "End Free Trial", position: 2, color: "#6C7B7F" },
+        { name: "Perdido", position: 3, color: "#D92D20" },
+        { name: "Assinante", position: 4, color: "#079455" }
       ];
 
       const pipeline = await prisma.salesPipeline.create({

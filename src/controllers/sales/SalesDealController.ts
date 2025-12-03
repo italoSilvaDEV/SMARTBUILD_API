@@ -253,8 +253,8 @@ export class SalesDealController {
         }
       });
 
-      // Se moveu para "Convertido", marcar como convertido
-      if (newStage.name.toLowerCase().includes("convertido") && !deal.isConverted) {
+      // Se moveu para "Assinante", marcar como convertido
+      if ((newStage.name.toLowerCase().includes("assinante") || newStage.name.toLowerCase().includes("convertido")) && !deal.isConverted) {
         await prisma.salesDeal.update({
           where: { id },
           data: {
