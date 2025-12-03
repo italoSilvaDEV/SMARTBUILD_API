@@ -117,8 +117,8 @@ export class SalesPipelineController {
                               validityType: true
                             }
                           },
-                          date_creation: true,
-                          date_expiration: true
+                          startDate: true,
+                          endDate: true
                         }
                       }
                     }
