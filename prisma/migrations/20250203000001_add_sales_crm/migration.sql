@@ -7,7 +7,6 @@ CREATE TABLE `SalesPipeline` (
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
-
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -20,7 +19,6 @@ CREATE TABLE `sales_stage` (
     `pipelineId` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
-
     UNIQUE INDEX `sales_stage_pipelineId_position_key`(`pipelineId`, `position`),
     INDEX `sales_stage_pipelineId_idx`(`pipelineId`),
     PRIMARY KEY (`id`)
@@ -46,7 +44,6 @@ CREATE TABLE `sales_deal` (
     `convertedAt` DATETIME(3) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
-
     INDEX `sales_deal_pipelineId_idx`(`pipelineId`),
     INDEX `sales_deal_stageId_idx`(`stageId`),
     INDEX `sales_deal_assignedToId_idx`(`assignedToId`),
@@ -63,7 +60,6 @@ CREATE TABLE `sales_activity` (
     `userId` VARCHAR(191) NULL,
     `metadata` JSON NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-
     INDEX `sales_activity_dealId_idx`(`dealId`),
     INDEX `sales_activity_userId_idx`(`userId`),
     PRIMARY KEY (`id`)
@@ -89,4 +85,3 @@ ALTER TABLE `sales_activity` ADD CONSTRAINT `sales_activity_dealId_fkey` FOREIGN
 
 -- AddForeignKey
 ALTER TABLE `sales_activity` ADD CONSTRAINT `sales_activity_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
