@@ -584,7 +584,7 @@ export class CompanyController {
                                 shouldInclude = planType === 'FREE';
                                 break;
                             case 'paid':
-                                shouldInclude = planType && planType !== 'FREE';
+                                shouldInclude = !!planType && planType !== 'FREE';
                                 break;
                             case 'active':
                                 shouldInclude = isActive;
