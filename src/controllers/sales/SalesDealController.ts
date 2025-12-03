@@ -488,8 +488,8 @@ export class SalesDealController {
                       validityType: true
                     }
                   },
-                  date_creation: true,
-                  date_expiration: true
+                  startDate: true,
+                  endDate: true
                 }
               },
               User: {
