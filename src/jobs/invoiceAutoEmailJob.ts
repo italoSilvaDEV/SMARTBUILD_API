@@ -160,7 +160,7 @@ function getEmailBody(
   let subject = "";
 
   // Formatar data de vencimento (usar UTC)
-  const formattedDueDate = dueDateUTC.toLocaleDateString("pt-BR", { 
+  const formattedDueDate = dueDateUTC.toLocaleDateString("en-US", { 
     year: "numeric", 
     month: "long", 
     day: "numeric",
@@ -185,7 +185,7 @@ function getEmailBody(
     subject = `Payment due today: Invoice #${invoiceCode}`;
     message = `
       
-      <p>This is a reminder that your invoice is due on: <strong>#${invoiceCode}</strong>, is for the amount of <strong>${invoiceAmount}</strong>, is due <strong>hoje</strong>.</p>
+      <p>This is a reminder that your invoice is due on: <strong>#${invoiceCode}</strong>, is for the amount of <strong>${invoiceAmount}</strong>, is due <strong>today</strong>.</p>
       <p><strong>Due date:</strong> ${formattedDueDate}</p>
       ${paymentText}
     `;
@@ -572,12 +572,6 @@ export function setupInvoiceAutoEmailJob() {
     checkAndSendAutoEmails();
   });
 
-  // Para testes: descomentar a linha abaixo para executar a cada minuto
-  // cron.schedule("* * * * *", () => {
-  //   console.log("Executando job de teste de envio automático de emails de invoices");
-  //   checkAndSendAutoEmails();
-  // });
-
-  console.log("Job de cron de envio automático de emails de invoices agendado para 19:09 diariamente");
+  console.log("Job de cron de envio automático de emails de invoices agendado para 09:00 diariamente");
 }
 
