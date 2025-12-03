@@ -82,6 +82,10 @@ model User {
   changeOrders     ChangeOrder[]
   tutorialProgress TutorialProgress[]
 
+  // Sales CRM
+  salesDeals       SalesDeal[]      @relation("AssignedDeals")
+  salesActivities   SalesActivity[]  // Atividades realizadas pelo usuário
+
   @@index([office_id], map: "User_office_id_fkey")
 }
 
@@ -154,6 +158,9 @@ model Company {
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
   Subcontractors Subcontractor[]
+
+  // Sales CRM
+  salesDeals     SalesDeal[] // Deals relacionados à empresa
 }
 
 model ContractNotes {
@@ -1175,6 +1182,80 @@ model Campaign {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   subscriptions Subscription[] // Assinaturas criadas através desta campanha
+}
+
+model SalesPipeline {
+  id          String       @id @default(uuid())
+  name        String       // Nome do pipeline (ex: "Sales Pipeline", "Onboarding")
+  description String?      @db.Text
+  isDefault   Boolean      @default(false) // Pipeline padrão
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  stages      SalesStage[] // Estágios do pipeline
+  deals       SalesDeal[]  // Deals neste pipeline
+}
+
+model SalesStage {
+  id          String       @id @default(uuid())
+  name        String       // Nome do estágio (ex: "Lead", "Proposta Enviada")
+  position    Int          // Posição do estágio no pipeline (ordem)
+  color       String?      // Cor do estágio no Kanban
+  pipelineId  String
+  pipeline    SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       SalesDeal[]  // Deals neste estágio
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([pipelineId, position])
+  @@map("sales_stage")
+}
+
+model SalesDeal {
+  id              String          @id @default(uuid())
+  title           String          // Título do deal (geralmente nome da empresa)
+  estimatedValue  Decimal?        @db.Decimal(10, 2) // Valor estimado do deal
+  companyId       String?         // ID da Company (se já existe)
+  company         Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  pipelineId      String
+  pipeline        SalesPipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageId         String
+  stage           SalesStage      @relation(fields: [stageId], references: [id])
+  assignedToId   String?         // ID do vendedor responsável
+  assignedTo      User?          @relation("AssignedDeals", fields: [assignedToId], references: [id], onDelete: SetNull)
+  notes           String?        @db.Text // Notas sobre o deal
+  contactName     String?        // Nome do contato
+  contactEmail    String?        // Email do contato
+  contactPhone    String?        // Telefone do contato
+  expectedCloseDate DateTime?    // Data esperada de fechamento
+  actualCloseDate   DateTime?    // Data real de fechamento (quando convertido)
+  isConverted      Boolean       @default(false) // Se foi convertido em cliente ativo
+  convertedAt      DateTime?     // Quando foi convertido
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  activities       SalesActivity[] // Histórico de atividades/interações
+
+  @@index([pipelineId])
+  @@index([stageId])
+  @@index([assignedToId])
+  @@index([companyId])
+  @@map("sales_deal")
+}
+
+model SalesActivity {
+  id          String      @id @default(uuid())
+  dealId      String
+  deal        SalesDeal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  type        String      // Tipo de atividade: "call", "email", "meeting", "note", "stage_change"
+  description String?     @db.Text
+  userId      String?     // Usuário que realizou a atividade
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  metadata    Json?       // Dados adicionais (ex: duração de call, participantes de meeting)
+  createdAt   DateTime    @default(now())
+
+  @@index([dealId])
+  @@index([userId])
+  @@map("sales_activity")
 }
 
 model EstimateEmailLog {

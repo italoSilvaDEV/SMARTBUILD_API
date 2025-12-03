@@ -48,6 +48,7 @@ import { publicFeedLinkRoutes } from './publicFeedLinkRoutes'
 import changeOrderRoutes from './changeOrderRoutes'
 import pdfInvoicePaidRoutes from './pdfInvoicePaidRoutes'
 import { tutorialRoutes } from './tutorialRoutes'
+import { salesRoutes } from './salesRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -109,6 +110,7 @@ router.use(publicFeedLinkRoutes)
 router.use("/changeorder", changeOrderRoutes)
 router.use(pdfInvoicePaidRoutes)
 router.use(tutorialRoutes)
+router.use(salesRoutes)
 
 export { router }
 
