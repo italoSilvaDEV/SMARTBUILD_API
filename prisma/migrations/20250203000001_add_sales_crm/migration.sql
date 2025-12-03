@@ -73,7 +73,7 @@ CREATE TABLE `sales_activity` (
 ALTER TABLE `sales_stage` ADD CONSTRAINT `sales_stage_pipelineId_fkey` FOREIGN KEY (`pipelineId`) REFERENCES `SalesPipeline`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `sales_deal` ADD CONSTRAINT `sales_deal_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `company`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `sales_deal` ADD CONSTRAINT `sales_deal_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `sales_deal` ADD CONSTRAINT `sales_deal_pipelineId_fkey` FOREIGN KEY (`pipelineId`) REFERENCES `SalesPipeline`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
