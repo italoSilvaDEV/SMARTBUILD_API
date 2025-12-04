@@ -1725,3 +1725,15 @@ model TutorialProgress {
   @@map("tutorial_progress")
 
 }
+
+model AppVersion {
+  id             String   @id @default(uuid())
+  minimumVersion String   // Versão mínima requerida (ex: "1.83")
+  currentVersion String?  // Versão atual mais recente (ex: "1.84")
+  forceUpdate    Boolean  @default(false) // Se true, força atualização obrigatória
+  message        String?  @db.Text // Mensagem personalizada para o modal
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("app_version")
+}

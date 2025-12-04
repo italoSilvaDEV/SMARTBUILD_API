@@ -49,6 +49,7 @@ import changeOrderRoutes from './changeOrderRoutes'
 import pdfInvoicePaidRoutes from './pdfInvoicePaidRoutes'
 import { tutorialRoutes } from './tutorialRoutes'
 import { salesRoutes } from './salesRoutes'
+import { appVersionRoutes } from './appVersionRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -59,6 +60,8 @@ router.get('/config', async (req, res) => {
   const config = await isMultiCompanyEnabled();
   res.json({ config })
 })
+// Rota pública para versão do app (deve estar antes das rotas protegidas)
+router.use(appVersionRoutes);
 router.post(
   "/upload-image",
   checkToken,
