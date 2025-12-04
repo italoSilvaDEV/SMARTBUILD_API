@@ -8,7 +8,7 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 
 export class CustomInvoiceController {
-  private quickBooksController: QuickBooksInvoiceController;
+  private quickBooksController: QuickBooksInvoiceController; 
 
   constructor() {
     this.quickBooksController = new QuickBooksInvoiceController();
@@ -1564,5 +1564,193 @@ export class CustomInvoiceController {
       })
     }
 
+  }
+
+  /**
+   * Busca uma invoice custom para visualização pública (similar ao startPayment do PaymentElement)
+   * Rota pública - não requer autenticação
+   */
+  async getCustomInvoicePublic(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      console.log("Buscando invoice custom para visualização:", invoiceId);
+
+      // Buscar invoice com relacionamentos
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          },
+          InvoiceItems: true,
+          payment: true,
+          PdfProject: true
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({
+          error: "Invoice not found"
+        });
+      }
+
+      // Verificar se é do tipo custom
+      if (invoice.invoiceType !== 'custom') {
+        return res.status(400).json({
+          error: "This invoice is not a custom invoice"
+        });
+      }
+
+      // Verificar se invoice está void
+      if (invoice.status === 'void') {
+        return res.status(400).json({
+          error: "Invoice is void"
+        });
+      }
+
+      if (!invoice.project || !invoice.project.company || !invoice.project.client) {
+        return res.status(404).json({
+          error: "Invoice, project, company, or client not found"
+        });
+      }
+
+      const company = invoice.project.company;
+      const client = invoice.project.client;
+
+      // Registrar visualização no timeline
+      // try {
+      //   await prisma.invoiceTimeline.create({
+      //     data: {
+      //       description: "Invoice viewed",
+      //       invoice: {
+      //         connect: {
+      //           id: invoiceId
+      //         }
+      //       }
+      //     }
+      //   });
+      // } catch (timelineError) {
+      //   console.warn("Erro ao registrar visualização no timeline:", timelineError);
+      //   // Não falhar a requisição se o timeline falhar
+      // }
+
+      // Preparar resposta
+      const response = {
+        invoice: {
+          id: invoice.id,
+          externalInvoiceId: invoice.externalInvoiceId || invoice.id,
+          status: invoice.status,
+          totalAmount: Number(invoice.totalAmount),
+          currency: invoice.currency || 'usd',
+          dueDate: invoice.dueDate?.toISOString() || null,
+          description: invoice.description,
+          createdAt: invoice.createdAt.toISOString(),
+          invoiceType: invoice.invoiceType
+        },
+        company: {
+          id: company.id,
+          name: company.name,
+          email: company.email,
+          phone: company.phone
+        },
+        client: {
+          id: client.id,
+          name: client.name,
+          email: client.email,
+          phone: client.phone
+        },
+        invoiceItems: invoice.InvoiceItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          quantity: Number(item.quantity),
+          price: Number(item.price),
+          totalAmount: Number(item.totalAmount)
+        })),
+        payment: invoice.payment ? {
+          id: invoice.payment.id,
+          paymentMethod: invoice.payment.paymentMethod,
+          notes: invoice.payment.notes,
+          amount: invoice.payment.amount,
+          paidAt: invoice.payment.paidAt.toISOString()
+        } : null
+      };
+
+      return res.status(200).json(response);
+
+    } catch (error) {
+      console.error("Erro ao buscar invoice custom:", error);
+      return res.status(500).json({
+        error: "Internal Server Error"
+      });
+    }
+  }
+
+  /**
+   * Busca o PDF de uma invoice custom (rota pública)
+   */
+  async getCustomInvoicePdf(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      console.log("Buscando PDF para invoice custom:", invoiceId);
+
+      // Buscar invoice com PDFs relacionados
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          PdfProject: true
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({
+          error: "Invoice not found"
+        });
+      }
+
+      // Verificar se é do tipo custom
+      if (invoice.invoiceType !== 'custom') {
+        return res.status(400).json({
+          error: "This invoice is not a custom invoice"
+        });
+      }
+
+      // Verificar se existe PDF
+      if (!invoice.PdfProject || invoice.PdfProject.length === 0) {
+        return res.status(404).json({
+          error: "No PDF found for this invoice"
+        });
+      }
+
+      // Pegar o primeiro PDF (assumindo que há apenas um por invoice)
+      const pdf = invoice.PdfProject[0];
+
+      if (!pdf.uri) {
+        return res.status(404).json({
+          error: "PDF URI not found"
+        });
+      }
+
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdf.uri);
+
+      console.log("PDF URL gerada com sucesso");
+
+      return res.status(200).json({
+        pdfUrl: pdfUrl,
+        fileName: pdf.original_file_name || 'invoice.pdf'
+      });
+
+    } catch (error) {
+      console.error("Erro ao buscar PDF da invoice custom:", error);
+      return res.status(500).json({
+        error: "Internal Server Error"
+      });
+    }
   }
 } 

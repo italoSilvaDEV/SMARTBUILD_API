@@ -78,7 +78,7 @@ export class CompanyController {
                         name: data.name,
                         email: data.email,
                         document: null,
-                        phone: null,
+                        phone: data.phone || null,
                         city_and_state: null,
                         rules: JSON.stringify(data.rules) || {},
                         office_id: String(office?.id),
@@ -101,7 +101,7 @@ export class CompanyController {
                         name: data.name,
                         email: data.email,
                         document: null,
-                        phone: null,
+                        phone: data.phone || null,
                         city_and_state: null,
                         rules: JSON.stringify(data.rules) || {},
                         office_id: String(office?.id),
@@ -509,7 +509,24 @@ export class CompanyController {
 
     async findMany(req: Request, res: Response) {
         try {
+            const { filter, startDate, endDate } = req.query;
+            
+            // Construir filtro de data se fornecido
+            const dateFilter: any = {};
+            if (startDate) {
+                dateFilter.gte = new Date(startDate as string);
+            }
+            if (endDate) {
+                dateFilter.lte = new Date(endDate as string);
+            }
+            
+            const whereClause: any = {};
+            if (Object.keys(dateFilter).length > 0) {
+                whereClause.date_creation = dateFilter;
+            }
+            
             const response = await prisma.company.findMany({
+                where: whereClause,
                 include: {
                     userCompanies: {
                         where: {
@@ -526,23 +543,86 @@ export class CompanyController {
                         select: {
                             user: true
                         }
+                    },
+                    Subscription: {
+                        include: {
+                            plan: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    validityType: true,
+                                    validityDuration: true,
+                                    price: true
+                                }
+                            }
+                        },
+                        orderBy: {
+                            endDate: 'desc'
+                        }
                     }
                 }
             });
 
-            // Processar URLs dos avatares com verificação de null/undefined
+            // Processar URLs dos avatares e filtrar subscriptions ativas
             const companyWithPresignedAvatar = await Promise.all(
-                response.map(async (company) => ({
-                    ...company,
-                    avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
-                    User: company.userCompanies[0] ? {
-                        ...company.userCompanies[0].user,
-                        avatar: company.userCompanies[0].user?.avatar ? await getPresignedUrl(company.userCompanies[0].user.avatar) : null
-                    } : null
-                }))
+                response.map(async (company) => {
+                    const adminUser = company.userCompanies[0]?.user;
+                    const oneMonthAgo = new Date();
+                    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                    
+                    const lastAccess = adminUser?.last_acess;
+                    const isActive = lastAccess ? new Date(lastAccess) >= oneMonthAgo : false;
+                    
+                    const activeSubscription = company.Subscription?.find(sub => sub.isActive);
+                    const planType = activeSubscription?.plan?.validityType;
+                    
+                    // Aplicar filtro se fornecido
+                    if (filter) {
+                        let shouldInclude = true;
+                        switch (filter) {
+                            case 'free':
+                                shouldInclude = planType === 'FREE';
+                                break;
+                            case 'paid':
+                                shouldInclude = !!planType && planType !== 'FREE';
+                                break;
+                            case 'active':
+                                shouldInclude = isActive;
+                                break;
+                            case 'inactive':
+                                shouldInclude = !isActive;
+                                break;
+                            case 'all':
+                            default:
+                                shouldInclude = true;
+                        }
+                        if (!shouldInclude) return null;
+                    }
+                    
+                    return {
+                        ...company,
+                        avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
+                        User: adminUser ? {
+                            ...adminUser,
+                            avatar: adminUser?.avatar ? await getPresignedUrl(adminUser.avatar) : null
+                        } : null,
+                        Subscription: company.Subscription?.map(sub => ({
+                            id: sub.id,
+                            companyId: sub.companyId,
+                            planId: sub.planId,
+                            startDate: sub.startDate,
+                            endDate: sub.endDate,
+                            isActive: sub.isActive,
+                            plan: sub.plan
+                        })) || []
+                    };
+                })
             );
 
-            return res.status(200).json(companyWithPresignedAvatar);
+            // Remover nulls do filtro
+            const filteredCompanies = companyWithPresignedAvatar.filter(company => company !== null);
+
+            return res.status(200).json(filteredCompanies);
         } catch (error: any) {
             console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });

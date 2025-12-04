@@ -19,6 +19,7 @@ import { planRoutes } from './planRoutes'
 import { permissionRoutes } from './permissionRoutes'
 import { permissionGroupRoutes } from './permissionGroupRoutes'
 import { subscriptionRoutes } from './subscriptionRoutes'
+import { campaignRoutes } from './campaignRoutes'
 
 import { quickbooksRoutes } from './quickbooksRoutes'
 import { quickBooksConfigRoutes } from './quickBooksConfigRoutes'
@@ -26,6 +27,7 @@ import { invoiceRoutes } from "./invoiceRoutes"
 import { customInvoiceRoutes } from "./customInvoiceRoutes"
 import { invoicePaymentRoutes } from "./customInvoicePaymentRoutes"
 import { invoiceStatisticsRoutes } from "./invoiceStatisticsRoutes"
+import { invoiceAutoEmailRoutes } from "./invoiceAutoEmailRoutes"
 
 import { estimateRoutes } from './estimateRoutes'
 import { isMultiCompanyEnabled } from '../helpers/featureToggle'
@@ -45,6 +47,9 @@ import { projectFeedRoutes } from './projectFeedRoutes'
 import { publicFeedLinkRoutes } from './publicFeedLinkRoutes'
 import changeOrderRoutes from './changeOrderRoutes'
 import pdfInvoicePaidRoutes from './pdfInvoicePaidRoutes'
+import { tutorialRoutes } from './tutorialRoutes'
+import { salesRoutes } from './salesRoutes'
+import { appVersionRoutes } from './appVersionRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -55,6 +60,8 @@ router.get('/config', async (req, res) => {
   const config = await isMultiCompanyEnabled();
   res.json({ config })
 })
+// Rota pública para versão do app (deve estar antes das rotas protegidas)
+router.use(appVersionRoutes);
 router.post(
   "/upload-image",
   checkToken,
@@ -86,6 +93,7 @@ router.use(invoiceRoutes);
 router.use(customInvoiceRoutes);
 router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
+router.use(invoiceAutoEmailRoutes);
 router.use("/estimate", estimateRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);
@@ -95,6 +103,7 @@ router.use(planRoutes)
 router.use(permissionRoutes)
 router.use(permissionGroupRoutes)
 router.use(subscriptionRoutes)
+router.use(campaignRoutes)
 router.use("/timecards", timeCardsRouts)
 router.use("/contract-terms", contractTermRoutes)
 router.use("/openai", openAiRoutes)
@@ -103,6 +112,8 @@ router.use(projectFeedRoutes)
 router.use(publicFeedLinkRoutes)
 router.use("/changeorder", changeOrderRoutes)
 router.use(pdfInvoicePaidRoutes)
+router.use(tutorialRoutes)
+router.use(salesRoutes)
 
 export { router }
 

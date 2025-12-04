@@ -31,6 +31,14 @@ customInvoiceRoutes.post(
 // Atualizar invoice personalizado
 customInvoiceRoutes.put("/custom/invoice/:invoiceId", checkToken, customInvoiceController.updateInvoice.bind(customInvoiceController));
 
-customInvoiceRoutes.get("/custom/invoice/view/:invoiceId", checkToken, customInvoiceController.statusViewInvoice.bind(customInvoiceController));
+customInvoiceRoutes.get("/custom/invoice/view/:invoiceId",  customInvoiceController.statusViewInvoice.bind(customInvoiceController));
+
+// Rotas públicas para Custom Invoice (similar ao Payment Element)
+// Buscar invoice custom para visualização pública
+customInvoiceRoutes.get("/custom/invoices/public/:invoiceId", customInvoiceController.getCustomInvoicePublic.bind(customInvoiceController));
+
+// Buscar PDF de uma invoice custom
+customInvoiceRoutes.get("/custom/invoices/public/:invoiceId/pdf", customInvoiceController.getCustomInvoicePdf.bind(customInvoiceController));
+
 
 export { customInvoiceRoutes }; 

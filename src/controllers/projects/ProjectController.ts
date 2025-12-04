@@ -1378,6 +1378,53 @@ export class ProjectController {
     }
   }
 
+  async updateLocationProject(req: Request, res: Response) {
+    const { id, location, lat, log, radius } = req.body;
+
+    try {
+      // Validação do ID
+      if (!id) {
+        return res.status(400).json({ error: "Invalid or missing 'id'" });
+      }
+
+      // Validação dos campos obrigatórios
+      if (!location || !lat || !log) {
+        return res.status(400).json({ error: "Location, latitude and longitude are required" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Converter radius para Float
+      const radiusFloat = radius ? parseFloat(radius) : 100;
+
+      // Atualizar a localização do projeto
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          location,
+          lat,
+          log,
+          radius: radiusFloat,
+        },
+      });
+
+      return res.json(project);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
   async deleteProject(req: Request, res: Response) {
     const {
       id
