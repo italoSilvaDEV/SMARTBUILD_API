@@ -1334,18 +1334,6 @@ export class StripeWebHookControllerConnect {
         try {
             console.log("Iniciando envio de email com PDF de confirmação de pagamento");
 
-            // Buscar o PDF de invoice pago
-            const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-                where: {
-                    invoiceId: invoiceData.id
-                }
-            });
-
-            if (!pdfInvoicePaid || !pdfInvoicePaid.uri) {
-                console.log("PDF invoice paid não encontrado, pulando envio de email com PDF");
-                return;
-            }
-
             // Obter projeto com workContext
             const project = invoiceData.project || invoiceData.estimate?.project;
             const client = invoiceData.project?.client || invoiceData.estimate?.project?.client;
@@ -1360,6 +1348,13 @@ export class StripeWebHookControllerConnect {
                 console.log("Recipient email not found (neither work context nor client email), skipping email send");
                 return;
             }
+
+            // Buscar o PDF de invoice pago (opcional - pode não existir para invoices antigos)
+            const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+                where: {
+                    invoiceId: invoiceData.id
+                }
+            });
 
             // Configurar SMTP
             const SMTP_CONFIG = require("../../config/smtp");
@@ -1380,23 +1375,28 @@ export class StripeWebHookControllerConnect {
                 ? await getPresignedUrl(company.avatar)
                 : "";
 
-            // Buscar o PDF do S3
+            // Buscar o PDF do S3 (apenas se existir)
             const attachments = [];
-            try {
-                const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
-                const pdfResponse = await fetch(pdfUrl);
-                if (pdfResponse.ok) {
-                    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-                    const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
-                    attachments.push({
-                        filename: fileName,
-                        content: pdfBuffer,
-                        contentType: 'application/pdf'
-                    });
+            if (pdfInvoicePaid?.uri) {
+                try {
+                    const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+                    const pdfResponse = await fetch(pdfUrl);
+                    if (pdfResponse.ok) {
+                        const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                        const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
+                        attachments.push({
+                            filename: fileName,
+                            content: pdfBuffer,
+                            contentType: 'application/pdf'
+                        });
+                        console.log(`PDF paid anexado ao email: ${fileName}`);
+                    }
+                } catch (error) {
+                    console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
+                    // Continua sem o PDF anexado
                 }
-            } catch (error) {
-                console.error("Error fetching PDF invoice paid:", error);
-                return; // Se não conseguir buscar o PDF, não envia o email
+            } else {
+                console.log("PDF invoice paid não encontrado, enviando email sem anexo");
             }
 
             const paymentDate = new Date();
