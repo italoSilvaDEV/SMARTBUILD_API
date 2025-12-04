@@ -258,7 +258,7 @@ async function checkAndSendAutoEmails() {
 
     // Para cada configuração ativa, processar os invoices da empresa
     for (const config of activeConfigs) {
-      console.log(`Processando empresa: ${config.company.name} (${config.companyId})`);
+      // console.log(`Processando empresa: ${config.company.name} (${config.companyId})`);
 
       try {
         // Buscar todos os invoices pendentes (open) da empresa que têm dueDate
@@ -282,7 +282,7 @@ async function checkAndSendAutoEmails() {
           }
         });
 
-        console.log(`Encontrados ${pendingInvoices.length} invoices pendentes para a empresa ${config.company.name}`);
+        // console.log(`Encontrados ${pendingInvoices.length} invoices pendentes para a empresa ${config.company.name}`);
 
         // Para cada invoice, verificar se precisa enviar algum lembrete
         for (const invoice of pendingInvoices) {
@@ -290,7 +290,7 @@ async function checkAndSendAutoEmails() {
           const recipientEmail = invoice.project?.workContext?.Email || invoice.project?.client?.email;
           
           if (!invoice.dueDate || !recipientEmail) {
-            console.log(`Pulando invoice ${invoice.externalInvoiceId}: data de vencimento ou email do destinatário ausente`);
+            // console.log(`Pulando invoice ${invoice.externalInvoiceId}: data de vencimento ou email do destinatário ausente`);
             continue;
           }
 
@@ -313,9 +313,9 @@ async function checkAndSendAutoEmails() {
           const daysDiff = getDaysDifference(dueDate, today);
           
           // Log de debug para verificar cálculo de dias (usar formato UTC)
-          const dueDateStr = `${dueDate.getUTCFullYear()}-${String(dueDate.getUTCMonth() + 1).padStart(2, '0')}-${String(dueDate.getUTCDate()).padStart(2, '0')}`;
-          const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
-          console.log(`Invoice ${invoice.externalInvoiceId}: DueDate=${dueDateStr}, Hoje=${todayStr}, Diferença=${daysDiff} dias`);
+          // const dueDateStr = `${dueDate.getUTCFullYear()}-${String(dueDate.getUTCMonth() + 1).padStart(2, '0')}-${String(dueDate.getUTCDate()).padStart(2, '0')}`;
+          // const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
+          // console.log(`Invoice ${invoice.externalInvoiceId}: DueDate=${dueDateStr}, Hoje=${todayStr}, Diferença=${daysDiff} dias`);
 
           // Determinar qual tipo de email enviar baseado na configuração
           let emailType: string | null = null;
@@ -351,13 +351,13 @@ async function checkAndSendAutoEmails() {
             );
           });
 
-          if (alreadySentToday) {
-            console.log(`Email do tipo ${emailType} já foi enviado hoje para o invoice ${invoice.externalInvoiceId}`);
-            continue;
-          }
+          // if (alreadySentToday) {
+          //   console.log(`Email do tipo ${emailType} já foi enviado hoje para o invoice ${invoice.externalInvoiceId}`);
+          //   continue;
+          // }
 
           // Enviar o email
-          console.log(`Enviando email do tipo ${emailType} para o invoice ${invoice.externalInvoiceId}`);
+          // console.log(`Enviando email do tipo ${emailType} para o invoice ${invoice.externalInvoiceId}`);
           await sendAutoEmail(invoice, emailType, config.company);
         }
       } catch (companyError) {
@@ -567,7 +567,7 @@ export function setupInvoiceAutoEmailJob() {
   console.log("Configurando job de cron para envio automático de emails de invoices...");
 
   // Agendar para executar todos os dias às 19:09
-  cron.schedule("0 9 * * *", () => {
+  cron.schedule("54 21 * * *", () => {
     console.log("Executando job agendado de envio automático de emails de invoices às 19:09");
     checkAndSendAutoEmails();
   });
