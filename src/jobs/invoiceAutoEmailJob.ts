@@ -138,7 +138,7 @@ function getEmailBody(
   companyName: string,
   dueDate: Date,
   invoiceType: string
-): string {
+): { message: string; subject: string } {
   // Criar data de hoje em UTC
   const now = new Date();
   const today = new Date(Date.UTC(
@@ -159,7 +159,7 @@ function getEmailBody(
   let message = "";
   let subject = "";
 
-  // Formatar data de vencimento (usar UTC)
+  // Formatar data de vencimento em inglês (usar UTC)
   const formattedDueDate = dueDateUTC.toLocaleDateString("en-US", { 
     year: "numeric", 
     month: "long", 
@@ -167,41 +167,35 @@ function getEmailBody(
     timeZone: "UTC"
   });
 
-  
   const paymentText = `<p>Contact us to arrange payment.</p>`;
 
   if (emailType.startsWith("before_")) {
     // Lembretes antes do vencimento
     const daysRemaining = Math.abs(daysDiff);
-    subject = `Reminder: Invoice #${invoiceCode} due on ${daysRemaining} day${daysRemaining > 1 ? "s" : ""}`;
+    subject = `Your invoice is due on ${formattedDueDate}`;
     message = `
-      
-      <p>This is a reminder that your invoice <strong>#${invoiceCode}</strong>, in the amount of <strong>${invoiceAmount}</strong>, is due in <strong>${daysRemaining} day${daysRemaining > 1 ? "s" : ""}</strong>.</p>
-      <p><strong>Dued ate:</strong> ${formattedDueDate}</p>
+      <p>This is a reminder that your invoice <strong>#${invoiceCode}</strong>, in the amount of <strong>${invoiceAmount}</strong>, is due on <strong>${formattedDueDate}</strong>.</p>
       ${paymentText}
     `;
   } else if (emailType === "on_due") {
     // Lembrete no dia do vencimento
-    subject = `Payment due today: Invoice #${invoiceCode}`;
+    subject = `Your invoice #${invoiceCode} is due today`;
     message = `
-      
-      <p>This is a reminder that your invoice is due on: <strong>#${invoiceCode}</strong>, is for the amount of <strong>${invoiceAmount}</strong>, is due <strong>today</strong>.</p>
-      <p><strong>Due date:</strong> ${formattedDueDate}</p>
+      <p>This is a reminder that your invoice <strong>#${invoiceCode}</strong>, in the amount of <strong>${invoiceAmount}</strong>, is due <strong>today</strong>.</p>
       ${paymentText}
     `;
   } else if (emailType.startsWith("after_")) {
     // Lembretes após o vencimento
     const daysOverdue = Math.abs(daysDiff);
-    subject = `Overdue: Invoice #${invoiceCode} - ${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue`;
+    subject = `Your invoice #${invoiceCode} is ${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue`;
     message = `
-      
       <p>This is a reminder that your invoice <strong>#${invoiceCode}</strong>, in the amount of <strong>${invoiceAmount}</strong>, is now <strong>${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue</strong>.</p>
       <p><strong>Original due date:</strong> ${formattedDueDate}</p>
       ${paymentText}
     `;
   }
 
-  return message;
+  return { message, subject };
 }
 
 /**
@@ -218,7 +212,8 @@ function buildEmailTemplate(
   subject: string,
   invoiceType: string,
   invoiceUrl: string | null,
-  invoiceId: string
+  invoiceId: string,
+  companyEmail?: string
 ): string {
   // Usar o mesmo template do sendInvoice
   const { invoiceCustom } = require("../templateEmail/invoiceCustom");
@@ -233,7 +228,8 @@ function buildEmailTemplate(
     subject,
     invoiceType,
     invoiceUrl,
-    invoiceId
+    invoiceId,
+    companyEmail
   );
 }
 
@@ -351,14 +347,14 @@ async function checkAndSendAutoEmails() {
             );
           });
 
-          // if (alreadySentToday) {
-          //   console.log(`Email do tipo ${emailType} já foi enviado hoje para o invoice ${invoice.externalInvoiceId}`);
-          //   continue;
-          // }
+          if (alreadySentToday) {
+            console.log(`Email do tipo ${emailType} já foi enviado hoje para o invoice ${invoice.externalInvoiceId}`);
+            continue;
+          }
 
           // Enviar o email
           // console.log(`Enviando email do tipo ${emailType} para o invoice ${invoice.externalInvoiceId}`);
-          await sendAutoEmail(invoice, emailType, config.company);
+          await sendAutoEmail(invoice, emailType, config.company); 
         }
       } catch (companyError) {
         console.error(`Erro ao processar empresa ${config.company.name}:`, companyError);
@@ -442,7 +438,7 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
     
     const daysDiff = getDaysDifference(dueDateForCalc, today);
 
-    // Gerar o corpo do email baseado no tipo (a função já retorna o subject também)
+    // Gerar o corpo do email baseado no tipo (a função agora retorna subject e message)
     const emailContent = getEmailBody(
       emailType,
       clientName,
@@ -453,20 +449,8 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
       invoice.invoiceType || "custom"
     );
 
-    // Extrair subject e body do retorno (por enquanto retornamos apenas o body, subject será gerado separadamente)
-    const customBody = emailContent;
-    
-    // Gerar subject apropriado em português
-    let subject = "";
-    if (emailType.startsWith("before_")) {
-      const daysRemaining = Math.abs(daysDiff);
-      subject = `Reminder: Invoice #${invoiceCode} due in ${daysRemaining} day${daysRemaining > 1 ? "s" : ""}`;
-    } else if (emailType === "on_due") {
-      subject = `Payment due today: Invoice #${invoiceCode}`;
-    } else if (emailType.startsWith("after_")) {
-      const daysOverdue = Math.abs(daysDiff);
-      subject = `Overdue: Invoice #${invoiceCode} - ${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue`;
-    }
+    const customBody = emailContent.message;
+    const subject = emailContent.subject;
 
     // Montar template HTML completo
     const emailTemplate = buildEmailTemplate(
@@ -480,7 +464,8 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
       subject,
       invoice.invoiceType,
       invoice.invoiceUrl,
-      invoice.id
+      invoice.id,
+      company.email
     );
 
     // Obter configuração SMTP para o campo "from"
@@ -532,7 +517,7 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
       }
     });
 
-    console.log(`✅ Email do tipo ${emailType} enviado com sucesso para invoice ${invoiceCode} para ${recipientEmail}`);
+    console.log(` Email do tipo ${emailType} enviado com sucesso para invoice ${invoiceCode} para ${recipientEmail}`);
   } catch (error: any) {
     // Obter email do destinatário para o log de erro (workContext primeiro, depois client)
     const recipientEmailForLog = invoice.project?.workContext?.Email || invoice.project?.client?.email || "unknown";
@@ -541,9 +526,9 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
     const isTransient = isTransientError(error);
     
     if (isTransient) {
-      console.error(`❌ Erro transitório ao enviar email automático para invoice ${invoice.id} após todas as tentativas:`, error.code, error.message);
+      console.error(` Erro transitório ao enviar email automático para invoice ${invoice.id} após todas as tentativas:`, error.code, error.message);
     } else {
-      console.error(`❌ Erro permanente ao enviar email automático para invoice ${invoice.id}:`, error.code, error.message);
+      console.error(` Erro permanente ao enviar email automático para invoice ${invoice.id}:`, error.code, error.message);
     }
 
     // Registrar erro no log
@@ -567,7 +552,7 @@ export function setupInvoiceAutoEmailJob() {
   console.log("Configurando job de cron para envio automático de emails de invoices...");
 
   // Agendar para executar todos os dias às 19:09
-  cron.schedule("54 21 * * *", () => {
+  cron.schedule("0 9 * * *", () => {
     console.log("Executando job agendado de envio automático de emails de invoices às 19:09");
     checkAndSendAutoEmails();
   });
