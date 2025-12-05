@@ -72,7 +72,7 @@ Content-Type: multipart/form-data
 userId: string (obrigatório) - ID do funcionário
 serviceProjectId: string (opcional se :id for serviceProjectId) - ID do serviço
 text: string (opcional) - Texto do post
-photos: File[] (opcional, máx 10) - Fotos do post
+photos: File[] (opcional, máx 50) - Fotos do post
 ```
 
 **Nota:** É obrigatório enviar pelo menos `text` OU `photos`.
@@ -643,7 +643,7 @@ curl -X GET 'http://localhost:3000/users/user-123/feed?limit=20&offset=0' \
 1. ✅ Funcionário **não precisa estar em ponto** para criar post
 2. ✅ É obrigatório especificar o serviço (serviceProjectId)
 3. ✅ É obrigatório enviar texto OU fotos (ou ambos)
-4. ✅ Máximo de 10 fotos por post
+4. ✅ Máximo de 50 fotos por post
 5. ✅ Fotos são automaticamente vinculadas ao serviço especificado
 
 ### Agrupamento Inteligente

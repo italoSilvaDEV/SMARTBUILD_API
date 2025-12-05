@@ -142,12 +142,6 @@ export class StripeInvoicePaymentController {
           }
         });
 
-        await smartbuild.pdfProject.deleteMany({
-          where: {
-            invoice_id: invoiceId
-          }
-        })
-
         // Criar entrada no timeline
         await smartbuild.invoiceTimeline.create({
           data: {
@@ -441,7 +435,10 @@ export class StripeInvoicePaymentController {
         invoiceCode,
         amount,
         paymentDate.toISOString(),
-        paymentMethod || 'Manual Payment'
+        paymentMethod || 'Manual Payment',
+        undefined,
+        company?.phone || '',
+        company?.email || ''
       );
 
       await transporter.sendMail({

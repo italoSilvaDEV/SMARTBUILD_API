@@ -1753,4 +1753,230 @@ export class CustomInvoiceController {
       });
     }
   }
+
+  async sendInvoicePaid(req: Request, res: Response) {
+    const { invoiceId, userId, companyId, pdfInvoicePaidId, customSubject, customBody, customEmails } = req.body;
+
+    try {
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      if (!pdfInvoicePaidId) {
+        return res.status(400).json({ error: "PDF Invoice Paid ID is required" });
+      }
+
+      // Validar customEmails se fornecido
+      let emailsToSend = [];
+      if (customEmails && Array.isArray(customEmails) && customEmails.length > 0) {
+        // Validar cada email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidEmails = customEmails.filter(email => !emailRegex.test(email));
+        if (invalidEmails.length > 0) {
+          return res.status(400).json({
+            error: "Invalid email addresses in customEmails",
+            invalidEmails
+          });
+        }
+        emailsToSend = customEmails;
+      }
+
+      // Buscar a fatura com todas as informações necessárias
+      const invoice = await prisma.invoice.findFirst({
+        where: {
+          id: invoiceId,
+          companyId: companyId,
+        },
+        include: {
+          project: {
+            include: {
+              client: true,
+              company: true
+            }
+          },
+          InvoiceItems: true,
+          payment: true
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      if (invoice.status !== "paid") {
+        return res.status(400).json({ error: "Invoice is not marked as paid" });
+      }
+
+      if (!invoice.project?.client) {
+        return res.status(400).json({ error: "Client not found for this invoice" });
+      }
+
+      // Se não foram fornecidos customEmails, usar o email do cliente
+      if (emailsToSend.length === 0) {
+        if (!invoice.project.client.email) {
+          return res.status(400).json({ error: "Client email is required when customEmails is not provided" });
+        }
+        emailsToSend = [invoice.project.client.email];
+      }
+
+      // Buscar o PDF de pagamento para usar como anexo
+      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+        where: { id: pdfInvoicePaidId }
+      });
+
+      if (!pdfInvoicePaid || !pdfInvoicePaid.uri) {
+        return res.status(404).json({ error: "PDF Invoice Paid not found or has no URI" });
+      }
+
+      // Gerar URL presigned para o PDF
+      const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+
+      // Baixar o PDF do S3
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
+      }
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+      // Configurar o envio de email
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // Obter o logo da empresa
+      const company = invoice.project.company;
+      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+
+      // Preparar os dados para o template
+      const companyName = company?.name || 'Smart Build';
+      const phone = company?.phone || '';
+      const companyEmail = company?.email || '';
+      const clientName = invoice.project.client.name;
+      const invoiceAmount = Number(invoice.totalAmount);
+      const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+      const paymentDate = invoice.payment?.createdAt || invoice.updatedAt;
+
+      // Usar o template de pagamento confirmado
+      const { invoicePaidReceiptEmail } = require('../../templateEmail/invoicePaidReceipt');
+      const emailTemplate = invoicePaidReceiptEmail(
+        clientName,
+        urlLogo,
+        companyName,
+        invoiceCode,
+        invoiceAmount,
+        paymentDate.toISOString(),
+        customBody,
+        phone,
+        companyEmail
+      );
+
+      const fileName = pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`;
+
+      // Usar subject personalizado se fornecido, senão usar o padrão
+      const emailSubject = customSubject || `Payment Receipt - Invoice #${invoiceCode} - ${companyName}`;
+
+      // Resultados do envio para cada email
+      const results = [];
+
+      // Processar todos os emails
+      for (const email of emailsToSend) {
+        try {
+          // Enviar o email com o PDF anexado
+          await transporter.sendMail({
+            from: SMTP_CONFIG.user,
+            to: email,
+            subject: emailSubject,
+            html: emailTemplate,
+            attachments: [
+              {
+                filename: fileName,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+              }
+            ]
+          });
+
+          // Se chegou aqui, o envio foi bem-sucedido
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoice: { connect: { id: invoice.id } },
+              recipient: email,
+              status: "success",
+              sentAt: new Date()
+            }
+          });
+
+          // Registrar o envio no histórico
+          await prisma.invoiceSendHistory.create({
+            data: {
+              invoiceId: invoice.id,
+              recipient: email,
+              user_id: userId
+            }
+          });
+
+          results.push({ email, status: "success" });
+
+          // Registrar evento na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Payment receipt sent to ${email}`,
+              invoice: {
+                connect: { id: invoice.id }
+              }
+            }
+          });
+        } catch (error: any) {
+          // Registrar o erro no log
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoice: { connect: { id: invoice.id } },
+              recipient: email,
+              status: "error",
+              errorMessage: error.message || "Unknown error",
+              sentAt: new Date()
+            }
+          });
+
+          results.push({ email, status: "error", message: error.message });
+
+          // Registrar evento na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Failed to send payment receipt to ${email}: ${error.message}`,
+              invoice: {
+                connect: { id: invoice.id }
+              }
+            }
+          });
+        }
+      }
+
+      // Verificar se pelo menos um email foi enviado com sucesso
+      const successfulSends = results.filter(r => r.status === "success");
+
+      return res.status(200).json({
+        message: successfulSends.length > 0 ? "Payment receipt sent successfully" : "Failed to send payment receipt to all recipients",
+        success: successfulSends.length > 0,
+        results,
+        totalSent: successfulSends.length,
+        totalAttempted: emailsToSend.length
+      });
+    } catch (error) {
+      console.error("Error sending payment confirmation email:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
 } 

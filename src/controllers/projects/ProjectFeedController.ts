@@ -74,13 +74,20 @@ export class ProjectFeedController {
     }
 
     async createPost(request: Request, response: Response) {
-        const uploadMultiple = upload.array('photos', 10);
+        // Aumentado o limite para 50 fotos para suportar posts com muitas imagens
+        const uploadMultiple = upload.array('photos', 50);
 
         uploadMultiple(request, response, async (err) => {
             if (err) {
+                // Melhora a mensagem de erro para casos específicos
+                let errorMessage = err.message;
+                if (err.message.includes('Unexpected field') || err.message.includes('Too many files')) {
+                    errorMessage = 'Número máximo de fotos excedido. Limite: 50 fotos por post.';
+                }
+                
                 return response.status(400).json({
                     error: 'Erro no upload dos arquivos',
-                    details: err.message
+                    details: errorMessage
                 });
             }
 
@@ -99,6 +106,15 @@ export class ProjectFeedController {
                 if (!text && (!files || files.length === 0)) {
                     return response.status(400).json({
                         error: 'É necessário enviar texto ou fotos'
+                    });
+                }
+
+                // Validação adicional: verifica se o número de fotos não excede o limite
+                const MAX_PHOTOS = 50;
+                if (files && files.length > MAX_PHOTOS) {
+                    return response.status(400).json({
+                        error: 'Número máximo de fotos excedido',
+                        details: `Limite: ${MAX_PHOTOS} fotos por post. Recebido: ${files.length} fotos.`
                     });
                 }
 

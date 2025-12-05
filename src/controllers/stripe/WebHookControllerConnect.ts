@@ -1411,7 +1411,10 @@ export class StripeWebHookControllerConnect {
                 invoiceCode,
                 Number(paymentIntent.amount_received / 100),
                 paymentDate.toISOString(),
-                invoiceData.paymentMethodType || 'Payment'
+                invoiceData.paymentMethodType || 'Payment',
+                undefined,
+                company?.phone || '',
+                company?.email || ''
             );
 
             await transporter.sendMail({

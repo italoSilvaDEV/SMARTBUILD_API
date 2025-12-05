@@ -103,12 +103,6 @@ export class CustomInvoicePaymentController {
           }
         });
 
-        await smartbuild.pdfProject.deleteMany({
-          where: {
-            invoice_id: invoiceId
-          }
-        })
-
         await smartbuild.invoiceTimeline.create({
           data: {
             description: `Payment`,
@@ -270,7 +264,10 @@ export class CustomInvoicePaymentController {
           invoice.externalInvoiceId || invoiceId,
           Number(amount),
           paymentDate.toISOString(),
-          paymentMethod
+          paymentMethod,
+          undefined,
+          company?.phone || '',
+          company?.email || ''
         );
 
         await transporter.sendMail({
