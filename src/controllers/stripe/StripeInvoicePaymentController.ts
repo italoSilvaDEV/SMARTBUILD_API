@@ -142,12 +142,6 @@ export class StripeInvoicePaymentController {
           }
         });
 
-        await smartbuild.pdfProject.deleteMany({
-          where: {
-            invoice_id: invoiceId
-          }
-        })
-
         // Criar entrada no timeline
         await smartbuild.invoiceTimeline.create({
           data: {
