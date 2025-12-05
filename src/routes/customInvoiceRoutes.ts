@@ -28,6 +28,9 @@ customInvoiceRoutes.post(
   customInvoiceController.sendInvoiceMultiple.bind(customInvoiceController)
 );
 
+// Enviar confirmação de pagamento
+customInvoiceRoutes.post("/invoice/send/paid", checkToken, customInvoiceController.sendInvoicePaid.bind(customInvoiceController));
+
 // Atualizar invoice personalizado
 customInvoiceRoutes.put("/custom/invoice/:invoiceId", checkToken, customInvoiceController.updateInvoice.bind(customInvoiceController));
 
