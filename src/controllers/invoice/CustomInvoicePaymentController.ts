@@ -103,12 +103,6 @@ export class CustomInvoicePaymentController {
           }
         });
 
-        await smartbuild.pdfProject.deleteMany({
-          where: {
-            invoice_id: invoiceId
-          }
-        })
-
         await smartbuild.invoiceTimeline.create({
           data: {
             description: `Payment`,
