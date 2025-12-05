@@ -1197,67 +1197,57 @@ export class StripeController {
             console.log("Processando serviços e calculando valores para update...");
             const servicesArray = Array.isArray(services) ? services : [];
 
-            // Buscar invoices pagos do projeto (excluindo o invoice sendo atualizado)
-            const paidInvoices = await prisma.invoice.findMany({
-                where: {
-                    projectId: existingInvoice.project.id,
-                    status: "paid",
-                    id: { not: invoiceId } // Excluir o invoice sendo atualizado
-                },
-                select: {
-                    totalAmount: true
-                }
-            });
-
-            const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
-            console.log(`Total já pago no projeto (update): $${totalPaidAmount}`);
-
-            // Calcular valor total original do projeto (sem coeficiente)
-            const originalProjectValue = servicesArray.reduce((sum, service) => {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                return sum + (service.total || (quantity * price));
-            }, 0);
-
-            // Calcular saldo restante após pagamentos
-            const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
-
-            // Aplicar coeficiente sobre o saldo restante
-            const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
-            const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
-
             let calculatedTotalAmount = 0;
             const lineItems: any[] = [];
-
             const dueDateObj = dueDate ? new Date(dueDate) : new Date();
 
-            // Processar serviços com nova lógica
-            for (const service of servicesArray) {
-                const quantity = Number(service.quantity) || 0;
-                const price = Number(service.price) || 0;
-                const originalServiceAmount = service.total || (quantity * price);
+            // Usar totalAmount fornecido e distribuir proporcionalmente
+            if (totalAmount && totalAmount > 0 && servicesArray.length > 0) {
+                console.log(`Usando totalAmount fornecido: $${totalAmount}`);
+                
+                // Calcular o valor total dos serviços enviados (para calcular proporções)
+                const totalServicesValue = servicesArray.reduce((sum, service) => {
+                    const quantity = Number(service.quantity) || 0;
+                    const price = Number(service.price) || 0;
+                    return sum + (service.totalAmount || service.total || (quantity * price));
+                }, 0);
 
-                // Calcular proporção deste serviço no valor total original
-                const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
+                console.log(`Valor total dos serviços enviados: $${totalServicesValue}`);
 
-                // Aplicar a proporção ao valor da fatura com coeficiente
-                const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
+                // Distribuir o totalAmount proporcionalmente entre os serviços
+                for (const service of servicesArray) {
+                    const quantity = Number(service.quantity) || 0;
+                    const price = Number(service.price) || 0;
+                    const serviceValue = service.totalAmount || service.total || (quantity * price);
 
-                if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-                    console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
-                    continue;
+                    // Calcular proporção deste serviço no total dos serviços enviados
+                    const serviceProportion = totalServicesValue > 0 ? serviceValue / totalServicesValue : 0;
+
+                    // Aplicar a proporção ao totalAmount do invoice
+                    const adjustedAmount = totalAmount * serviceProportion;
+
+                    console.log(`Serviço: ${service.name}, Valor original: $${serviceValue}, Proporção: ${(serviceProportion * 100).toFixed(2)}%, Valor ajustado: $${adjustedAmount.toFixed(2)}`);
+
+                    if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+                        console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
+                        continue;
+                    }
+
+                    calculatedTotalAmount += adjustedAmount;
+
+                    lineItems.push({
+                        name: service.name,
+                        description: createSafeDescription(service.name, service.description || "No additional description"),
+                        originalDescription: service.description || "No additional description",
+                        quantity,
+                        price,
+                        totalAmount: adjustedAmount
+                    });
                 }
 
-                calculatedTotalAmount += adjustedAmount;
-
-                lineItems.push({
-                    name: service.name,
-                    description: createSafeDescription(service.name, service.description || "No additional description"), // Para APIs externas
-                    originalDescription: service.description || "No additional description", // Para base local
-                    quantity,
-                    price,
-                    totalAmount: adjustedAmount
-                });
+                console.log(`Total calculado após distribuição: $${calculatedTotalAmount.toFixed(2)}`);
+            } else {
+                console.warn("totalAmount não fornecido ou inválido. Serviços não serão processados.");
             }
 
             let newInvoiceType
@@ -1353,13 +1343,16 @@ export class StripeController {
                     // Verificar se o invoice original tinha referência do QuickBooks
                     if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
                         // Preparar serviços para o formato esperado pelo QuickBooks
-                        const qbServices = services.map((service: any) => ({
-                            name: service.name || "Service",
-                            description: service.description || "",
-                            quantity: service.quantity || 1,
-                            price: service.price || 0,
-                            total: service.total || (service.quantity * service.price)
+                        // Usar os lineItems processados (com valores ajustados) para manter consistência
+                        const qbServices = lineItems.map((item: any) => ({
+                            name: item.name || "Service",
+                            description: item.originalDescription || "",
+                            quantity: item.quantity || 1,
+                            price: item.price || 0,
+                            total: item.totalAmount // Usar o valor ajustado calculado
                         }));
+
+                        console.log(`Enviando ${qbServices.length} serviço(s) para QuickBooks com valor total: $${totalAmount || calculatedTotalAmount}`);
 
                         // Usar o controller instanciado no constructor
                         const qbController = this.quickBooksController;
@@ -1407,27 +1400,24 @@ export class StripeController {
                         } else {
                             console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
 
-                            // TENTAR DE CRIAÇÃO DE INVOICE NO QBO
-                            const qbServicesSource =
-                                Array.isArray(services) && services.length > 0
-                                    ? services
-                                    : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
-                                        name: ii.name || "Service",
-                                        description: ii.description || "",
-                                        quantity: Number(ii.quantity || 1),
-                                        price: Number(ii.price || 0),
-                                        total: Number(ii.totalAmount || 0),
-                                    }));
+                            // Usar os lineItems processados para manter consistência
+                            const qbServicesForCreate = lineItems.length > 0
+                                ? lineItems.map((item: any) => ({
+                                    name: item.name || "Service",
+                                    description: item.originalDescription || "",
+                                    quantity: Number(item.quantity || 1),
+                                    price: Number(item.price || 0),
+                                    total: Number(item.totalAmount || 0),
+                                }))
+                                : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
+                                    name: ii.name || "Service",
+                                    description: ii.description || "",
+                                    quantity: Number(ii.quantity || 1),
+                                    price: Number(ii.price || 0),
+                                    total: Number(ii.totalAmount || 0),
+                                }));
 
-                            const qbServicesForCreate = qbServicesSource.map((s: any) => ({
-                                name: s.name || "Service",
-                                description: s.description || "",
-                                quantity: Number(s.quantity || 1),
-                                price: Number(s.price || 0),
-                                total: Number(
-                                    s.total != null ? s.total : (Number(s.quantity || 0) * Number(s.price || 0))
-                                ),
-                            }));
+                            console.log(`Criando invoice no QB com ${qbServicesForCreate.length} serviço(s), valor total: $${totalAmount || calculatedTotalAmount}`);
 
                             const qbController = this.quickBooksController;
                             if (!qbController) throw new Error("QuickBooksController is not initialized");
