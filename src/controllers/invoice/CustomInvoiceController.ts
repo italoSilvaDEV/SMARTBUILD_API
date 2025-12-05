@@ -1861,6 +1861,8 @@ export class CustomInvoiceController {
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
+      const phone = company?.phone || '';
+      const companyEmail = company?.email || '';
       const clientName = invoice.project.client.name;
       const invoiceAmount = Number(invoice.totalAmount);
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
@@ -1875,7 +1877,9 @@ export class CustomInvoiceController {
         invoiceCode,
         invoiceAmount,
         paymentDate.toISOString(),
-        customBody
+        customBody,
+        phone,
+        companyEmail
       );
 
       const fileName = pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`;
