@@ -22,24 +22,17 @@ export const invoicePaidReceiptEmail = (
         day: 'numeric'
     });
 
-    // Função para processar formatação markdown básica
     const processMarkdown = (text: string): string => {
         if (!text) return '';
         
         return text
-            // Converter quebras de linha para <br>
             .replace(/\n/g, '<br>')
-            // Converter **texto** para <strong>texto</strong>
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            // Converter *texto* para <em>texto</em>
             .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-            // Converter --- para linha horizontal
             .replace(/---/g, '<hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">')
-            // Converter • para bullet points
             .replace(/• /g, '&bull; ');
     };
 
-    // Usar o corpo personalizado processado se fornecido, caso contrário usar o padrão
     const emailContent = customBody ? processMarkdown(customBody) : `
         <p style="font-size:16px;color:#333333;margin:10px 0 0 0;line-height:1.6;">Great news! We have successfully received your payment of <strong>${formattedAmount}</strong> for Invoice #${invoiceNumber}. 🎉</p>
         <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">Your payment receipt is attached to this email for your records.</p>

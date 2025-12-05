@@ -435,7 +435,10 @@ export class StripeInvoicePaymentController {
         invoiceCode,
         amount,
         paymentDate.toISOString(),
-        paymentMethod || 'Manual Payment'
+        paymentMethod || 'Manual Payment',
+        undefined,
+        company?.phone || '',
+        company?.email || ''
       );
 
       await transporter.sendMail({

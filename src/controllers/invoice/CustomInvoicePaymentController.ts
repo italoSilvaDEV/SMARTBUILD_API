@@ -264,7 +264,10 @@ export class CustomInvoicePaymentController {
           invoice.externalInvoiceId || invoiceId,
           Number(amount),
           paymentDate.toISOString(),
-          paymentMethod
+          paymentMethod,
+          undefined,
+          company?.phone || '',
+          company?.email || ''
         );
 
         await transporter.sendMail({
