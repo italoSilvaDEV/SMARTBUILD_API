@@ -3,6 +3,9 @@ import { prisma } from "../../utils/prisma";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
+import nodemailer from "nodemailer";
+import { invoicePaidPaymentEmail } from "../../templateEmail/invoicePaidPayment";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
 
@@ -134,6 +137,7 @@ export class StripeInvoicePaymentController {
           where: { id: invoiceId },
           data: {
             status: "paid",
+            checked: true,
             updatedAt: new Date()
           }
         });
@@ -255,6 +259,37 @@ export class StripeInvoicePaymentController {
       }
       */
 
+      const updatedInvoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          project: {
+            include: {
+              client: { select: { id: true, name: true, email: true, phone: true } },
+              workContext: { select: { id: true, Email: true, Name: true } }
+            }
+          },
+          estimate: {
+            include: {
+              project: {
+                include: {
+                  client: { select: { id: true, name: true, email: true, phone: true } },
+                  workContext: { select: { id: true, Email: true, Name: true } }
+                }
+              }
+            }
+          },
+          company: { select: { id: true, name: true, avatar: true, email: true, phone: true } }
+        }
+      });
+
+      if (updatedInvoice) {
+        try {
+          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
+        } catch (pdfEmailError: any) {
+          console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
+        }
+      }
+
       // Buscar o pagamento recém-criado para retornar
       const payment = await prisma.invoicePayment.findUnique({
         where: { invoiceId }
@@ -326,6 +361,127 @@ export class StripeInvoicePaymentController {
     } catch (error: any) {
       console.error("Error updating payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
+  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number) {
+    try {
+      const project = invoiceData.project || invoiceData.estimate?.project;
+      const client = invoiceData.project?.client || invoiceData.estimate?.project?.client;
+      const company = invoiceData.company;
+      const workContext = project?.workContext;
+
+      const recipientEmail = workContext?.Email || client?.email;
+      const recipientName = workContext?.Name || client?.name || 'Client';
+
+      if (!recipientEmail) {
+        console.log("Recipient email not found (neither work context nor client email), skipping email send");
+        return;
+      }
+
+      // Buscar o PDF de invoice pago (opcional - pode não existir para invoices antigos)
+      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+        where: {
+          invoiceId: invoiceData.id
+        }
+      });
+
+      // Configurar SMTP
+      const SMTP_CONFIG = require("../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      const companyAvatar = company?.avatar
+        ? await getPresignedUrl(company.avatar)
+        : "";
+
+      // Buscar o PDF do S3 (apenas se existir)
+      const attachments = [];
+      if (pdfInvoicePaid?.uri) {
+        try {
+          const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+          const pdfResponse = await fetch(pdfUrl);
+          if (pdfResponse.ok) {
+            const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
+            attachments.push({
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            });
+            console.log(`PDF paid anexado ao email: ${fileName}`);
+          }
+        } catch (error) {
+          console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
+          // Continua sem o PDF anexado
+        }
+      } else {
+        console.log("PDF invoice paid não encontrado, enviando email sem anexo");
+      }
+
+      const paymentDate = new Date();
+      const formattedAmount = `$${amount.toFixed(2)}`;
+      const invoiceCode = invoiceData.externalInvoiceId || invoiceData.id;
+      const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation`;
+
+      const emailHtml = invoicePaidPaymentEmail(
+        recipientName,
+        companyAvatar || "",
+        company?.name || '',
+        invoiceCode,
+        amount,
+        paymentDate.toISOString(),
+        paymentMethod || 'Manual Payment'
+      );
+
+      await transporter.sendMail({
+        from: SMTP_CONFIG.user,
+        to: recipientEmail,
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        text: `
+Dear ${recipientName},
+
+We are pleased to confirm that Invoice #${invoiceCode} has been paid successfully.
+
+Payment Details:
+- Invoice Number: #${invoiceCode}
+- Payment Amount: ${formattedAmount}
+- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Payment Method: ${paymentMethod || 'Manual Payment'}
+
+Thank you for your prompt payment. If you have any questions, please feel free to contact us.
+
+Have a great day!
+${company?.name || ''}
+        `.trim()
+      });
+
+      console.log(`Email com PDF enviado para ${recipientEmail}`);
+
+      // Log do envio de email
+      await prisma.invoiceEmailLog.create({
+        data: {
+          invoiceId: invoiceData.id,
+          recipient: recipientEmail,
+          status: 'success'
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[ManualPaymentConfirmationWithPdf] Erro ao enviar email com PDF:", error.message);
+      // Não fazer throw para não interromper o fluxo principal
     }
   }
 }
