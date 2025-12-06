@@ -163,7 +163,9 @@ export class GetAllEstimatesByCompanyController {
                             id: true,
                             url: true,
                             original_filename: true,
-                            title: true
+                            title: true,
+                            date_creation: true,
+                            date_update: true
                         }
                     },
                     InvoicePaymentTimeLine: true,
