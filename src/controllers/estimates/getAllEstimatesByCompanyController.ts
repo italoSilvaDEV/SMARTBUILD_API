@@ -210,6 +210,8 @@ export class GetAllEstimatesByCompanyController {
                     };
                 }
 
+                console.log(estimate.imagesAttachments);
+
                 let imagesAttachmentsData = null;
                 if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
                     imagesAttachmentsData = estimate.imagesAttachments.map(async (image) => {
