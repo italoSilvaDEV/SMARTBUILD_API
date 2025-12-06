@@ -173,14 +173,20 @@ export class GetEstimateByProjectIdController {
 
             const totalAmountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
 
-            let imagesAttachmentsData = null;
+            let imagesAttachmentsData: any[] = [];
             if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
-                imagesAttachmentsData = estimate.imagesAttachments.map(async (image) => {
-                    return {
-                        id: image.id,
-                        url: image.url ? await getPresignedUrl(image.url) : null,
-                    }
-                })
+                imagesAttachmentsData = await Promise.all(
+                    estimate.imagesAttachments.map(async (image) => {
+                        return {
+                            id: image.id,
+                            url: image.url ? await getPresignedUrl(image.url) : null,
+                            original_filename: image.original_filename,
+                            title: image.title,
+                            date_creation: image.date_creation,
+                            date_update: image.date_update
+                        }
+                    })
+                );
             }
 
             let pdfProjectData = null;
