@@ -158,6 +158,14 @@ export class GetAllEstimatesByCompanyController {
                             templateNumber: true
                         }
                     },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true
+                        }
+                    },
                     InvoicePaymentTimeLine: true,
                 },
                 orderBy: {
@@ -200,6 +208,16 @@ export class GetAllEstimatesByCompanyController {
                     };
                 }
 
+                let imagesAttachmentsData = null;
+                if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+                    imagesAttachmentsData = estimate.imagesAttachments.map(async (image) => {
+                        return {
+                            id: image.id,
+                            url: image.url ? await getPresignedUrl(image.url) : null,
+                        }
+                    })
+                }
+
                 let clientAvatar = null;
                 if (estimate.project.client?.avatar) {
                     clientAvatar = await getPresignedUrl(estimate.project.client.avatar);
@@ -232,6 +250,7 @@ export class GetAllEstimatesByCompanyController {
                         }
                     },
                     PdfProject: pdfProjectData,
+                    imagesAttachments: imagesAttachmentsData,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
                             ...service,

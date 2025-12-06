@@ -129,6 +129,14 @@ export class GetEstimateByProjectIdController {
                             templateNumber: true
                         }
                     },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true
+                        }
+                    },
                     InvoicePaymentTimeLine: true
                 },
             })
@@ -163,6 +171,16 @@ export class GetEstimateByProjectIdController {
 
             const totalAmountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
 
+            let imagesAttachmentsData = null;
+            if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+                imagesAttachmentsData = estimate.imagesAttachments.map(async (image) => {
+                    return {
+                        id: image.id,
+                        url: image.url ? await getPresignedUrl(image.url) : null,
+                    }
+                })
+            }
+
             let pdfProjectData = null;
             if (estimate.PdfProject && estimate.PdfProject.length > 0) {
                 const pdf = estimate.PdfProject[0];
@@ -183,6 +201,7 @@ export class GetEstimateByProjectIdController {
                     balanceDue: totalAmount - Number(totalAmountPaid),
                     amountPaid: Number(totalAmountPaid),
                     PdfProject: pdfProjectData,
+                    imagesAttachments: imagesAttachmentsData,
                     project: {
                         ...estimate.project,
                         user: {
