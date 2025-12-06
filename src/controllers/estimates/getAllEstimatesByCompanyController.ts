@@ -212,6 +212,7 @@ export class GetAllEstimatesByCompanyController {
 
                 let imagesAttachmentsData = null;
                 if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+                    console.log(estimate.imagesAttachments);
                     imagesAttachmentsData = await Promise.all(
                         estimate.imagesAttachments.map(async (image) => {
                             return {
