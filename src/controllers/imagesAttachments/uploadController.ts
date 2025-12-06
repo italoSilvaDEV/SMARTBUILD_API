@@ -6,12 +6,13 @@ export class UploadController {
     async handle(req: Request, res: Response) {
         try {
             const {
-                file,
                 projectId,
                 estimateId,
                 invoiceId,
                 title
             } = req.body;
+
+            const file = req.file;
 
             if (!file) {
                 return res.status(400).json({
