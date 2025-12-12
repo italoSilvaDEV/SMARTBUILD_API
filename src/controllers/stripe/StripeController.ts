@@ -904,6 +904,16 @@ export class StripeController {
                             createdAt: true,
                             amount: true
                         }
+                    },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true,
+                            date_creation: true,
+                            date_update: true
+                        }
                     }
                 },
                 skip: pageNumber * itemsLimit,
@@ -937,9 +947,25 @@ export class StripeController {
                         }
                     }
 
+                    let imagesAttachmentsData: any[] = [];
+                    if (invoice.imagesAttachments && invoice.imagesAttachments.length > 0) {
+                        imagesAttachmentsData = await Promise.all(
+                            invoice.imagesAttachments.map(async (image) => {
+                                return {
+                                    id: image.id,
+                                    url: image.url ? await getPresignedUrl(image.url) : null,
+                                    original_filename: image.original_filename,
+                                    title: image.title,
+                                    date_creation: image.date_creation,
+                                    date_update: image.date_update
+                                }
+                            })
+                        );
+                    }
+
                     // Não mais sincronizar com Stripe - usar dados locais apenas
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
-                    return { ...invoice, lastSentAt: lastSend };
+                    return { ...invoice, lastSentAt: lastSend, imagesAttachments: imagesAttachmentsData };
                 })
             );
 
@@ -1090,6 +1116,16 @@ export class StripeController {
                             date_creation: "asc"
                         }
                     },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true,
+                            date_creation: true,
+                            date_update: true
+                        }
+                    },
                 },
                 skip: pageNumber * itemsLimit,
                 take: itemsLimit
@@ -1124,6 +1160,22 @@ export class StripeController {
                         }
                     }
 
+                    let imagesAttachmentsData: any[] = [];
+                    if (invoice.imagesAttachments && invoice.imagesAttachments.length > 0) {
+                        imagesAttachmentsData = await Promise.all(
+                            invoice.imagesAttachments.map(async (image) => {
+                                return {
+                                    id: image.id,
+                                    url: image.url ? await getPresignedUrl(image.url) : null,
+                                    original_filename: image.original_filename,
+                                    title: image.title,
+                                    date_creation: image.date_creation,
+                                    date_update: image.date_update
+                                }
+                            })
+                        );
+                    }
+
                     const avatarUrl = invoice.company?.avatar ? await getPresignedUrl(invoice.company.avatar) : null;
 
                     const lastSend = invoice.InvoiceSendHistory[0]?.sentAt || null;
@@ -1131,6 +1183,7 @@ export class StripeController {
                         ...invoice,
                         avatar: avatarUrl,
                         lastSentAt: lastSend,
+                        imagesAttachments: imagesAttachmentsData,
                     };
                 })
             );
