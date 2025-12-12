@@ -435,6 +435,16 @@ export class EstimateController {
             },
             take: 1
           },
+          imagesAttachments: {
+            select: {
+              id: true,
+              url: true,
+              original_filename: true,
+              title: true,
+              date_creation: true,
+              date_update: true
+            }
+          },
           canceledBy: {
             select: {
               id: true,
@@ -473,6 +483,23 @@ export class EstimateController {
           // Set to null if no PDF found
           (estimate as any).PdfProject = null;
         }
+
+        let imagesAttachmentsData: any[] = [];
+        if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+          imagesAttachmentsData = await Promise.all(
+            estimate.imagesAttachments.map(async (image) => {
+              return {
+                id: image.id,
+                url: image.url ? await getPresignedUrl(image.url) : null,
+                original_filename: image.original_filename,
+                title: image.title,
+                date_creation: image.date_creation,
+                date_update: image.date_update
+              }
+            })
+          );
+        }
+        (estimate as any).imagesAttachments = imagesAttachmentsData;
 
         if (estimate.project.company?.avatar) {
           estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
