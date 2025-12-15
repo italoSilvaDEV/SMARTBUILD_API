@@ -986,35 +986,232 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation } = req.body;
 
     try {
-      const result = await this.createInvoiceInternal({
-        projectId,
-        description,
-        type_invoicebase,
-        dueDate,
-        userId,
-        coefficientPerfentage,
-        services,
-        type_value
-      });
+      console.log("🚀 Iniciando criação de invoice QuickBooks via rota pública...");
+      console.log("ProjectId:", projectId);
+      console.log("UserId:", userId);
+      console.log("TotalAmount:", totalAmount);
 
-      return res.status(201).json(result);
-    } catch (error: any) {
-      console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
-
-      // Verificar se é um erro de autorização
-      if (error.message && (error.message.includes("401") || error.message.includes("403") || error.message.includes("Insufficient permissions"))) {
-        return res.status(403).json({
-          error: "Insufficient permissions",
-          message: "You need to reconnect your QuickBooks account with additional permissions",
-          action: "reauthorize"
+      // Validações básicas
+      if (!projectId || !userId) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "projectId and userId are required"
         });
       }
 
+      // Buscar o projeto para obter company_id
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          error: "Project not found",
+          message: "The specified project does not exist"
+        });
+      }
+
+      if (!project.company_id) {
+        return res.status(400).json({
+          error: "Company not found",
+          message: "Project does not have an associated company"
+        });
+      }
+
+      // Verificar se o QuickBooks está conectado
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: project.company_id },
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(400).json({
+          error: "QuickBooks not connected",
+          message: "Please connect your QuickBooks account first",
+          action: "connect_quickbooks"
+        });
+      }
+
+      // PASSO 1: Criar invoice local primeiro (garantir que temos registro no banco)
+      console.log("📝 Criando invoice local no banco de dados...");
+      
+      // Gerar externalInvoiceId único
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 1000);
+      const externalInvoiceId = `QB-${timestamp}-${randomNum}`;
+
+      // Calcular o total amount
+      let calculatedTotalAmount = totalAmount;
+      if (!calculatedTotalAmount && services && Array.isArray(services)) {
+        calculatedTotalAmount = services.reduce((sum: number, service: any) => {
+          const total = service.total || (service.quantity * service.price);
+          return sum + total;
+        }, 0);
+      }
+
+      // Criar invoice local
+      const localInvoice = await prisma.invoice.create({
+        data: {
+          stripeInvoiceId: externalInvoiceId,
+          externalInvoiceId: externalInvoiceId,
+          invoiceType: "quickbooks",
+          status: "pending", // Começar como pending, será atualizado após criação no QB
+          totalAmount: calculatedTotalAmount || 0,
+          dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 dias padrão
+          description: description || `QuickBooks Invoice for Project ${project.id}`,
+          projectId: project.id,
+          companyId: project.company_id,
+          user_id: userId,
+          percentageCoefficient: coefficientPerfentage || 1,
+          type_value: type_value,
+          type_invoicebase: type_invoicebase as "project" | "estimate" | null,
+          multi_emails: multi_emails || project.client?.email,
+          createdAt: date_creation ? new Date(date_creation) : new Date(),
+          InvoiceItems: {
+            create: services?.map((service: any) => ({
+              name: service.name || "Service",
+              description: service.description || "",
+              quantity: service.quantity || 1,
+              price: service.price || 0,
+              totalAmount: service.total || (service.quantity * service.price)
+            })) || []
+          }
+        },
+        include: {
+          InvoiceItems: true
+        }
+      });
+
+      console.log("✅ Invoice local criado com ID:", localInvoice.id);
+
+      // Registrar na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `QuickBooks invoice created locally with total amount $${calculatedTotalAmount}`,
+          invoiceId: localInvoice.id
+        }
+      });
+
+      // PASSO 2: Tentar criar no QuickBooks
+      console.log("☁️ Criando invoice no QuickBooks...");
+      let quickBooksResult = null;
+      let quickBooksError = null;
+
+      try {
+        quickBooksResult = await this.createInvoiceInternal({
+          projectId,
+          description,
+          type_invoicebase,
+          dueDate,
+          userId,
+          coefficientPerfentage,
+          services,
+          type_value,
+          totalAmountTarget: calculatedTotalAmount,
+          calledFromStripe: false // Criar como invoice independente no QB
+        });
+
+        console.log("✅ Invoice criado no QuickBooks:", quickBooksResult);
+
+        // PASSO 3: Atualizar invoice local com dados do QuickBooks
+        if (quickBooksResult?.invoice) {
+          await prisma.invoice.update({
+            where: { id: localInvoice.id },
+            data: {
+              externalInvoiceId: quickBooksResult.invoice.externalInvoiceId,
+              idQuickbookContabio: quickBooksResult.invoice.externalInvoiceId,
+              docNumberQuickBooksContabio: quickBooksResult.invoice.externalDocNumber,
+              idQuickBooksRef: quickBooksResult.invoice.externalInvoiceId,
+              status: quickBooksResult.invoice.status || "open",
+              totalAmount: quickBooksResult.invoice.totalAmount || calculatedTotalAmount
+            }
+          });
+
+          // Registrar sucesso na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `QuickBooks invoice synced successfully (QB ID: ${quickBooksResult.invoice.externalInvoiceId}, DocNumber: ${quickBooksResult.invoice.externalDocNumber})`,
+              invoiceId: localInvoice.id
+            }
+          });
+
+          console.log("✅ Invoice local atualizado com dados do QuickBooks");
+        }
+
+        // Retornar invoice completo atualizado
+        const updatedInvoice = await prisma.invoice.findUnique({
+          where: { id: localInvoice.id },
+          include: {
+            InvoiceItems: true,
+            InvoiceTimeline: true
+          }
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "QuickBooks invoice created successfully",
+          invoice: updatedInvoice,
+          databaseInvoice: updatedInvoice, // Para compatibilidade com frontend
+          quickBooks: {
+            success: true,
+            result: quickBooksResult
+          }
+        });
+
+      } catch (qbError: any) {
+        console.error("❌ Erro ao criar invoice no QuickBooks:", qbError.message);
+        quickBooksError = qbError.message;
+
+        // Registrar erro na timeline
+        await prisma.invoiceTimeline.create({
+          data: {
+            description: `Failed to sync with QuickBooks: ${qbError.message}`,
+            invoiceId: localInvoice.id
+          }
+        });
+
+        // Marcar invoice local como erro
+        await prisma.invoice.update({
+          where: { id: localInvoice.id },
+          data: {
+            status: "draft" // Manter como draft se falhar no QB
+          }
+        });
+
+        // Verificar se é erro de autorização
+        if (qbError.message && (qbError.message.includes("401") || qbError.message.includes("403") || qbError.message.includes("Insufficient permissions"))) {
+          return res.status(403).json({
+            error: "Insufficient permissions",
+            message: "You need to reconnect your QuickBooks account with additional permissions",
+            action: "reauthorize",
+            invoice: localInvoice // Ainda retorna o invoice local criado
+          });
+        }
+
+        // Para outros erros, retornar o invoice local mas indicar que QB falhou
+        return res.status(207).json({ // 207 Multi-Status
+          success: true,
+          message: "Invoice created locally but QuickBooks sync failed",
+          invoice: localInvoice,
+          databaseInvoice: localInvoice,
+          quickBooks: {
+            success: false,
+            error: quickBooksError
+          }
+        });
+      }
+
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao criar fatura:", error);
+
       return res.status(500).json({
-        error: "QuickBooks API Error",
+        error: "Internal Server Error",
         message: error.message,
         details: error.toString()
       });
