@@ -64,7 +64,7 @@ export class GetProjectsByCompanyController {
                 }
             })
 
-            const projectsFormatted = Promise.all(projects.map(async (project) => {
+            const projectsFormatted = await Promise.all(projects.map(async (project) => {
                 const coverPhotoUrl = project.cover_photo ? await getPresignedUrl(project.cover_photo) : null
                 const totalPrice = project.serviceProject?.reduce((total, service) => total + Number(service.price) * Number(service.hours), 0)
 
