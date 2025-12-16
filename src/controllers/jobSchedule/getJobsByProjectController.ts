@@ -75,7 +75,7 @@ export class GetJobsByProjectController {
                 }
             })
 
-            const jobsFormatted = Promise.all(jobs.map(async (job) => {
+            const jobsFormatted = await Promise.all(jobs.map(async (job) => {
                 const users = await Promise.all(job.UserServiceProject.map(async (user) => {
                     const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
 

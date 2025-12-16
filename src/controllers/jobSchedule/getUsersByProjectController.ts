@@ -2,12 +2,12 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
-export class GetUsersByCompanyController {
+export class GetUsersByProjectController {
     async handle(req: Request, res: Response) {
-        const { companyId } = req.params
+        const { projectId, companyId } = req.params
 
         try {
-            if (!companyId) {
+            if (!projectId || !companyId) {
                 return res.status(400).json({
                     error: "Company ID is required"
                 })
@@ -25,6 +25,21 @@ export class GetUsersByCompanyController {
             if (!company) {
                 return res.status(404).json({
                     error: "Company not found"
+                })
+            }
+
+            const project = await prisma.project.findUnique({
+                where: {
+                    id: projectId
+                },
+                select: {
+                    id: true,
+                }
+            })
+
+            if (!project) {
+                return res.status(404).json({
+                    error: "Project not found"
                 })
             }
 

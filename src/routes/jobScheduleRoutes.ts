@@ -2,22 +2,28 @@ import { Router } from "express";
 import { GetJobsByProjectController } from "../controllers/jobSchedule/getJobsByProjectController";
 import { checkToken } from "../middlewares/checkToken";
 import { GetProjectsByCompanyController } from "../controllers/jobSchedule/getProjectsByCompanyController";
-import { GetUsersByCompanyController } from "../controllers/jobSchedule/getUsersByCompanyController";
+import { GetUsersByProjectController } from "../controllers/jobSchedule/getUsersByProjectController";
 import { CreateJobCompanyController } from "../controllers/jobSchedule/createJobCompanyController";
 import { GetJobsByCompanyController } from "../controllers/jobSchedule/getJobsByCompanyController";
+import { GetServicesByProjectController } from "../controllers/jobSchedule/getServicesByProjectController";
+import { CreateJobProjectController } from "../controllers/jobSchedule/createJobProjectController";
 const jobScheduleRoutes = Router();
 
 const getJobsByProjectController = new GetJobsByProjectController();
 const getProjectsByCompanyController = new GetProjectsByCompanyController();
-const getUsersByCompanyController = new GetUsersByCompanyController();
+const getUsersByProjectController = new GetUsersByProjectController();
 const createJobCompanyController = new CreateJobCompanyController();
 const getJobsByCompanyController = new GetJobsByCompanyController();
+const getServicesByProjectController = new GetServicesByProjectController();
+const createJobProjectController = new CreateJobProjectController();
 
 jobScheduleRoutes.get("/jobs/details/:projectId", checkToken, getJobsByProjectController.handle)
+jobScheduleRoutes.get("/jobs/details/users/:projectId/:companyId", checkToken, getUsersByProjectController.handle)
+jobScheduleRoutes.get("/jobs/details/services/:projectId/:companyId", checkToken, getServicesByProjectController.handle)
+jobScheduleRoutes.post("/jobs/details/create", checkToken, createJobProjectController.handle)
 
 jobScheduleRoutes.get("/jobs/main/jobs/:companyId", checkToken, getJobsByCompanyController.handle)
 jobScheduleRoutes.get("/jobs/main/projects/:companyId", checkToken, getProjectsByCompanyController.handle)
-jobScheduleRoutes.get("/jobs/main/users/:companyId", checkToken, getUsersByCompanyController.handle)
 jobScheduleRoutes.post("/jobs/main/create", checkToken, createJobCompanyController.handle)
 
 export default jobScheduleRoutes;
