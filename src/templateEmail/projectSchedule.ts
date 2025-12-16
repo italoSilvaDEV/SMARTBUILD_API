@@ -39,34 +39,26 @@ export const projectScheduleEmail = (
 
     // Determinar título e conteúdo baseado no contexto
     const title = isScheduleChange 
-        ? "Project Schedule Updated 📅" 
-        : "Project Scheduled Successfully! 🎉";
+        ? "Project Schedule Update" 
+        : "Project Schedule Confirmation";
     
-    const badgeText = isScheduleChange 
-        ? "Schedule Updated" 
-        : "New Schedule";
-    
-    const badgeColor = isScheduleChange 
-        ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" 
-        : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)";
-    
-    const badgeShadow = isScheduleChange 
-        ? "rgba(245, 158, 11, 0.25)" 
-        : "rgba(59, 130, 246, 0.25)";
+    const subtitle = isScheduleChange 
+        ? "Your project schedule has been updated" 
+        : "Your project has been scheduled";
 
     const mainContent = isScheduleChange ? `
-        <p style="font-size:16px;color:#333333;margin:10px 0 0 0;line-height:1.6;">We wanted to inform you that there has been an update to your project schedule.</p>
+        <p style="font-size:15px;color:#4b5563;margin:0 0 16px 0;line-height:1.7;">This email confirms that your project schedule has been updated. Please review the new schedule details below.</p>
         ${formattedOldStartDate && formattedOldDeadline ? `
-        <p style="font-size:16px;color:#666666;margin:16px 0 0 0;line-height:1.6;padding:12px;background-color:#f9fafb;border-left:3px solid #f59e0b;border-radius:4px;">
-            <strong>Previous Schedule:</strong><br>
-            Start Date: ${formattedOldStartDate}<br>
-            Deadline: ${formattedOldDeadline}
-        </p>
+        <div style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:0 0 20px 0;">
+            <p style="font-size:13px;color:#6b7280;margin:0 0 8px 0;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Previous Schedule</p>
+            <p style="font-size:14px;color:#374151;margin:4px 0;line-height:1.6;"><strong>Start Date:</strong> ${formattedOldStartDate}</p>
+            <p style="font-size:14px;color:#374151;margin:4px 0;line-height:1.6;"><strong>Deadline:</strong> ${formattedOldDeadline}</p>
+        </div>
         ` : ''}
-        <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">Please review the updated schedule details below.</p>
+        <p style="font-size:15px;color:#4b5563;margin:0 0 0 0;line-height:1.7;">The updated schedule is detailed below. If you have any questions or concerns, please contact us.</p>
     ` : `
-        <p style="font-size:16px;color:#333333;margin:10px 0 0 0;line-height:1.6;">Great news! Your project has been successfully scheduled and we're excited to get started!</p>
-        <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">Please find the schedule details below. We look forward to working with you on this project.</p>
+        <p style="font-size:15px;color:#4b5563;margin:0 0 16px 0;line-height:1.7;">This email confirms that your project has been scheduled. We are pleased to inform you of the project timeline and look forward to beginning work.</p>
+        <p style="font-size:15px;color:#4b5563;margin:0 0 0 0;line-height:1.7;">Please review the schedule details below. If you have any questions or need to discuss any adjustments, please don't hesitate to contact us.</p>
     `;
 
     return `
@@ -131,78 +123,68 @@ export const projectScheduleEmail = (
                     
                     <!-- Hero Section -->
                     <tr>
-                        <td align="center" style="padding:0 32px 32px;">
-                            <h1 style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:28px;font-weight:700;color:#1a1a1a;margin:0 0 12px;line-height:1.3;">
+                        <td style="padding:0 32px 32px;">
+                            <h1 style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:24px;font-weight:600;color:#111827;margin:0 0 8px;line-height:1.3;text-align:left;">
                                 ${title}
                             </h1>
-                            
-                            <!-- Status Badge -->
-                            <div style="margin:0 0 20px;">
-                                <span class="status-badge" style="display:inline-block;background:${badgeColor};color:#ffffff;padding:8px 20px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;box-shadow:0 4px 12px ${badgeShadow};">
-                                    ${badgeText}
-                                </span>
-                            </div>
-                            
-                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:600;color:#BC9C6B;margin:0;line-height:1.5;">
-                                Hello, ${clientName}
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#6b7280;margin:0 0 24px;line-height:1.5;text-align:left;">
+                                ${subtitle}
+                            </p>
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#374151;margin:0;line-height:1.6;text-align:left;">
+                                Dear ${clientName},
                             </p>
                         </td>
                     </tr>
                     
                     <!-- Schedule Card -->
                     <tr>
-                        <td align="center" style="padding:0 32px 32px;">
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);border-radius:12px;border:2px solid #3b82f6;">
+                        <td style="padding:0 32px 32px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
                                 <tr>
-                                    <td class="schedule-card" align="center" style="padding:28px;">
-                                        <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:13px;color:#1e40af;margin:0 0 16px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">
-                                            Project Schedule
-                                        </p>
-                                        
-                                        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
+                                    <td style="padding:24px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
-                                                <td align="left" style="padding:8px 0;">
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1e40af;margin:0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
+                                                <td style="padding-bottom:20px;border-bottom:1px solid #e5e7eb;">
+                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#6b7280;margin:0 0 6px 0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
                                                         Contract Number
                                                     </p>
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:18px;color:#1e3a8a;margin:4px 0 0 0;font-weight:700;">
+                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:18px;color:#111827;margin:0;font-weight:600;">
                                                         ${contractNumber}
                                                     </p>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td align="left" style="padding:8px 0;">
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1e40af;margin:0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
+                                                <td style="padding:20px 0;border-bottom:1px solid #e5e7eb;">
+                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#6b7280;margin:0 0 6px 0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
                                                         Project Location
                                                     </p>
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;color:#1e3a8a;margin:4px 0 0 0;font-weight:600;">
+                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#374151;margin:0;line-height:1.5;">
                                                         ${projectLocation || 'Not specified'}
                                                     </p>
                                                 </td>
                                             </tr>
-                                        </table>
-                                        
-                                        <div style="height:1px;background-color:#bfdbfe;margin:16px 0;"></div>
-                                        
-                                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
-                                                <td align="left" style="padding:12px;background-color:#ffffff;border-radius:8px;margin-bottom:8px;">
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;color:#64748b;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">
-                                                        Start Date
-                                                    </p>
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:700;color:#059669;margin:0;line-height:1;">
-                                                        ${formattedStartDate}
-                                                    </p>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td align="left" style="padding:12px;background-color:#ffffff;border-radius:8px;margin-top:8px;">
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;color:#64748b;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">
-                                                        Deadline
-                                                    </p>
-                                                    <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:700;color:#dc2626;margin:0;line-height:1;">
-                                                        ${formattedDeadline}
-                                                    </p>
+                                                <td style="padding:20px 0 0 0;">
+                                                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                                        <tr>
+                                                            <td width="50%" style="padding-right:12px;vertical-align:top;">
+                                                                <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#6b7280;margin:0 0 8px 0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
+                                                                    Start Date
+                                                                </p>
+                                                                <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;color:#059669;margin:0;font-weight:600;">
+                                                                    ${formattedStartDate}
+                                                                </p>
+                                                            </td>
+                                                            <td width="50%" style="padding-left:12px;vertical-align:top;">
+                                                                <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#6b7280;margin:0 0 8px 0;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">
+                                                                    Deadline
+                                                                </p>
+                                                                <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;color:#dc2626;margin:0;font-weight:600;">
+                                                                    ${formattedDeadline}
+                                                                </p>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
                                                 </td>
                                             </tr>
                                         </table>
@@ -214,12 +196,9 @@ export const projectScheduleEmail = (
                     
                     <!-- Content Section -->
                     <tr>
-                        <td class="content-wrapper" style="padding:0 48px 32px;">
-                            <div style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#333333;line-height:1.6;text-align:center;">
+                        <td style="padding:0 32px 32px;">
+                            <div style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#374151;line-height:1.7;text-align:left;">
                                 ${mainContent}
-                                <p style="font-size:15px;color:#666666;margin:20px 0 0 0;line-height:1.6;">
-                                    If you have any questions or need to discuss any adjustments, please don't hesitate to contact us. We're here to ensure everything runs smoothly.
-                                </p>
                             </div>
                         </td>
                     </tr>
@@ -234,17 +213,17 @@ export const projectScheduleEmail = (
                     <!-- Footer -->
                     <tr>
                         <td align="center" style="padding:32px;">
-                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;font-weight:600;color:#1a1a1a;margin:0 0 8px;">
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;font-weight:600;color:#111827;margin:0 0 8px;">
                                 ${company}
                             </p>
                             ${phone ? `
-                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#666666;margin:0;">
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#6b7280;margin:0;">
                                 ${phone}
                             </p>
                             ` : ''}
                             ${companyEmail ? `
-                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#666666;margin:4px 0 0 0;">
-                                ${companyEmail}
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#6b7280;margin:4px 0 0 0;">
+                                <a href="mailto:${companyEmail}" style="color:#2563eb;text-decoration:none;">${companyEmail}</a>
                             </p>
                             ` : ''}
                         </td>
@@ -261,7 +240,7 @@ export const projectScheduleEmail = (
                 <table width="600" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
                     <tr>
                         <td align="center" style="padding:0 20px;">
-                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#999999;line-height:1.5;margin:0;">
+                            <p style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#9ca3af;line-height:1.5;margin:0;">
                                 This is an automated message. Please do not reply directly to this email.
                             </p>
                         </td>
