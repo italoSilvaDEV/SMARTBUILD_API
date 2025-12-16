@@ -63,7 +63,7 @@ export class GetProjectsByCompanyController {
                     }
                 },
                 orderBy: {
-                    status_project: "asc"
+                    status_project: "desc"
                 }
             })
 
