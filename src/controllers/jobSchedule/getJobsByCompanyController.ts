@@ -27,17 +27,11 @@ export class GetJobsByCompanyController {
                 })
             }
 
-            const projects = await prisma.project.findMany({
+            const allProjects = await prisma.project.findMany({
                 where: {
                     company_id: company.id,
                     status_project: {
                         in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
-                    },
-                    start_date: {
-                        not: null
-                    },
-                    deadline: {
-                        not: null
                     }
                 },
                 select: {
@@ -57,9 +51,14 @@ export class GetJobsByCompanyController {
                 }
             })
 
-            console.log(projects)
+            const projectsWithSchedule = allProjects.filter(project => 
+                project.start_date && 
+                project.deadline && 
+                project.start_date !== "" && 
+                project.deadline !== ""
+            )
 
-            const jobs = Promise.all(projects.map(async (project) => {
+            const jobs = await Promise.all(projectsWithSchedule.map(async (project) => {
                 return {
                     id: project.id,
                     name: project.workContext?.Name || project.client?.name,
