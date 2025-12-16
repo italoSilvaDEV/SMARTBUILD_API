@@ -61,6 +61,9 @@ export class GetProjectsByCompanyController {
                             price: true,
                         }
                     }
+                },
+                orderBy: {
+                    status_project: "asc"
                 }
             })
 
