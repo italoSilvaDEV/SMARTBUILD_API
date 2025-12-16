@@ -57,6 +57,8 @@ export class GetJobsByCompanyController {
                 }
             })
 
+            console.log(projects)
+
             const jobs = Promise.all(projects.map(async (project) => {
                 return {
                     id: project.id,
