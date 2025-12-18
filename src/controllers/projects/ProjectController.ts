@@ -2016,20 +2016,20 @@ export class ProjectController {
       const events = userServiceProjects
         .filter((userServiceProject) => {
           const service = userServiceProject.service_project;
-          return service.start_date && service.deadline; // Filtra serviços com ambas as datas presentes
+          return service?.start_date && service?.deadline; // Filtra serviços com ambas as datas presentes
         })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
 
-          const initial = service.start_date; // Formato 'YYYY-MM-DD'
-          const end = service.deadline; // Formato 'YYYY-MM-DD'
-          const description = service.Project?.location
-            ? service.Project.location
+          const initial = service?.start_date; // Formato 'YYYY-MM-DD'
+          const end = service?.deadline; // Formato 'YYYY-MM-DD'
+          const description = service?.Project?.location
+            ? service?.Project.location
             : "No address available";
 
           return {
-            id: service.Project?.id || service.id, // Garantir que há um ID válido
-            service: service.name,
+            id: service?.Project?.id || service?.id, // Garantir que há um ID válido
+            service: service?.name,
             initial,
             end,
             description,
