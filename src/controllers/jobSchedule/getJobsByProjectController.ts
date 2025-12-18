@@ -71,6 +71,33 @@ export class GetJobsByProjectController {
                                 }
                             }
                         }
+                    },
+                    subServicesProjects: {
+                        select: {
+                            id: true,
+                            name: true,
+                            start_date: true,
+                            deadline: true,
+                            userServiceProject: {
+                                select: {
+                                    user: {
+                                        select: {
+                                            id: true,
+                                            avatar: true,
+                                            name: true,
+                                            hourly_price: true,
+                                            isOverTime: true,
+                                            profession: true,
+                                            office: {
+                                                select: {
+                                                    name: true,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             })
@@ -88,6 +115,30 @@ export class GetJobsByProjectController {
                     }
                 }))
 
+                const subServicesProjects = await Promise.all(job.subServicesProjects.map(async (subServiceProject) => {
+                    const users = await Promise.all(subServiceProject.userServiceProject.map(async (user) => {
+                        const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
+
+                        return {
+                            id: user.user.id,
+                            name: user.user.name,
+                            avatar: avatar,
+                            hourly_price: user.user.hourly_price,
+                            isOverTime: user.user.isOverTime,
+                            profession: user.user.profession,
+                            office: user.user.office?.name,
+                        }
+                    }))
+
+                    return {
+                        id: subServiceProject.id,
+                        name: subServiceProject.name,
+                        start_date: subServiceProject.start_date,
+                        deadline: subServiceProject.deadline,
+                        users: users,
+                    }
+                }))
+
                 return {
                     id: job.id,
                     name: job.name,
@@ -96,6 +147,7 @@ export class GetJobsByProjectController {
                     clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
                     projectId: job.Project?.id,
                     users: users,
+                    subServicesProjects: subServicesProjects,
                 }
             }))
 
