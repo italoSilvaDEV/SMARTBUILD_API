@@ -30,12 +30,12 @@ export class CreateSubserviceController {
                 });
             }
 
-            const service = await prisma.service.findUnique({
+            const service = await prisma.serviceProject.findUnique({
                 where: {
                     id: body.serviceId
                 },
                 select: {
-                    id: true
+                    id: true,
                 }
             })
 
