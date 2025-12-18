@@ -7,11 +7,11 @@ interface User {
 
 interface CreateSubserviceRequest {
     name: string
-    description: string
+    description?: string
     serviceId: string
-    start_date: string
-    deadline: string
-    price: number
+    start_date?: string
+    deadline?: string
+    price?: number
     users: User[]
 }
 
