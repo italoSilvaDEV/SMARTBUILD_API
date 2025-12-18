@@ -21,11 +21,12 @@ export class CreateSubserviceController {
             const body = req.body as CreateSubserviceRequest;
 
             if (!body.name
-                || !body.description
+                || !body.start_date
+                || !body.deadline
                 || !body.serviceId
             ) {
                 return res.status(400).json({
-                    error: "Name, description and serviceId are required"
+                    error: "Name, start_date, deadline and serviceId are required"
                 });
             }
 
