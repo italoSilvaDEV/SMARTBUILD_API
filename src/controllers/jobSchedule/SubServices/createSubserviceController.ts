@@ -5,6 +5,10 @@ interface User {
     id: string
 }
 
+interface Subcontractor {
+    id: string
+}
+
 interface CreateSubserviceRequest {
     name: string
     description?: string
@@ -12,7 +16,8 @@ interface CreateSubserviceRequest {
     start_date?: string
     deadline?: string
     price?: number
-    users: User[]
+    users?: User[]
+    subcontractors?: Subcontractor[]
 }
 
 export class CreateSubserviceController {
@@ -28,6 +33,12 @@ export class CreateSubserviceController {
                 return res.status(400).json({
                     error: "Name, start_date, deadline and serviceId are required"
                 });
+            }
+
+            if (!body.users && !body.subcontractors) {
+                return res.status(400).json({
+                    error: "Users or subcontractors are required"
+                })
             }
 
             const service = await prisma.serviceProject.findUnique({
@@ -57,7 +68,7 @@ export class CreateSubserviceController {
                 }
             })
 
-            if (body.users.length > 0) {
+            if (body.users && body.users.length > 0) {
                 for (const user of body.users) {
                     const userExists = await prisma.user.findUnique({
                         where: {
@@ -84,6 +95,40 @@ export class CreateSubserviceController {
                         await prisma.userServiceProject.create({
                             data: {
                                 user_id: user.id,
+                                sub_service_project_id: subservice.id
+                            }
+                        })
+                    }
+                }
+            }
+
+            if (body.subcontractors && body.subcontractors.length > 0) {
+                for (const subcontractor of body.subcontractors) {
+                    const subcontractorExists = await prisma.subcontractor.findUnique({
+                        where: {
+                            id: subcontractor.id,
+                        }
+                    })
+
+                    if (!subcontractorExists) {
+                        return res.status(404).json({
+                            error: "Subcontractor not found"
+                        })
+                    }
+
+                    const subcontractorServiceProjectExists = await prisma.subContractorServiceProject.findUnique({
+                        where: {
+                            subcontractor_id_sub_service_project_id: {
+                                subcontractor_id: subcontractor.id,
+                                sub_service_project_id: subservice.id
+                            }
+                        }
+                    })
+
+                    if (!subcontractorServiceProjectExists) {
+                        await prisma.subContractorServiceProject.create({
+                            data: {
+                                subcontractor_id: subcontractor.id,
                                 sub_service_project_id: subservice.id
                             }
                         })

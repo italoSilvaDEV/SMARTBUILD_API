@@ -290,9 +290,10 @@ model ServiceProject {
   company_id         String?
   TimeLine           TimeLine[]
 
-  estimateServiceId   String?                 @unique
-  estimateService     EstimateServiceProject? @relation(fields: [estimateServiceId], references: [id])
-  subServicesProjects SubServicesProject[]
+  estimateServiceId            String?                       @unique
+  estimateService              EstimateServiceProject?       @relation(fields: [estimateServiceId], references: [id])
+  subServicesProjects          SubServicesProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
 }
 
 model SubServicesProject {
@@ -309,9 +310,10 @@ model SubServicesProject {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  serviceProject     ServiceProject?      @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
-  serviceProjectId   String?
-  userServiceProject UserServiceProject[]
+  serviceProject               ServiceProject?               @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
+  serviceProjectId             String?
+  userServiceProject           UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
 
   @@map("sub_services_project")
 }
@@ -780,8 +782,9 @@ model Subcontractor {
 
   workedHours Workedhours[]
 
-  company    Company? @relation(fields: [company_id], references: [id])
-  company_id String?
+  company                      Company?                      @relation(fields: [company_id], references: [id])
+  company_id                   String?
+  subContractorServiceProjects SubContractorServiceProject[]
 
   @@map("subcontractors")
 }
@@ -836,6 +839,29 @@ model UserServiceProject {
   @@index([service_project_id], map: "user_service_project_service_project_id_fkey")
   @@index([sub_service_project_id], map: "user_service_project_sub_service_project_id_fkey")
   @@map("user_service_project")
+}
+
+model SubContractorServiceProject {
+  id String @id @default(uuid())
+
+  subcontractor    Subcontractor @relation(fields: [subcontractor_id], references: [id], onDelete: Cascade)
+  subcontractor_id String
+
+  service_project    ServiceProject? @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
+  service_project_id String?
+
+  sub_service_project    SubServicesProject? @relation(fields: [sub_service_project_id], references: [id], onDelete: Cascade)
+  sub_service_project_id String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
+  @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
+  @@index([subcontractor_id], map: "sub_contractor_service_project_subcontractor_id_fkey")
+  @@index([service_project_id], map: "sub_contractor_service_project_service_project_id_fkey")
+  @@index([sub_service_project_id], map: "sub_contractor_service_project_sub_service_project_id_fkey")
+  @@map("sub_contractor_service_project")
 }
 
 model UserAttendance {

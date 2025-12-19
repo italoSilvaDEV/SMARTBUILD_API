@@ -5,11 +5,16 @@ interface User {
     id: string
 }
 
+interface Subcontractor {
+    id: string
+}
+
 interface CreateJobProject {
     projectId: string
     companyId: string
     serviceProjectId: string
-    users: User[]
+    users?: User[]
+    subcontractors?: Subcontractor[]
     startDate: string
     deadline: string
 }
@@ -22,12 +27,17 @@ export class CreateJobProjectController {
             if (!body.projectId
                 || !body.companyId
                 || !body.serviceProjectId
-                || !body.users
                 || !body.startDate
                 || !body.deadline
             ) {
                 return res.status(400).json({
-                    error: "Project ID, company ID, service project ID, user ID, start date and deadline are required"
+                    error: "Project ID, company ID, service project ID, start date and deadline are required"
+                })
+            }
+
+            if (!body.users && !body.subcontractors) {
+                return res.status(400).json({
+                    error: "Users or subcontractors are required"
                 })
             }
 
@@ -78,45 +88,82 @@ export class CreateJobProjectController {
                 })
             }
 
-            for (const user of body.users) {
-                const userExists = await prisma.user.findUnique({
-                    where: {
-                        id: user.id,
-                        isDisabled: false,
-                        office: {
-                            name: "Worker"
-                        },
-                        companies: {
-                            some: {
-                                companyId: company.id
+            if (body.users) {
+                for (const user of body.users) {
+                    const userExists = await prisma.user.findUnique({
+                        where: {
+                            id: user.id,
+                            isDisabled: false,
+                            office: {
+                                name: "Worker"
+                            },
+                            companies: {
+                                some: {
+                                    companyId: company.id
+                                }
                             }
                         }
-                    }
-                })
-
-                if (!userExists) {
-                    return res.status(404).json({
-                        error: "User not found"
                     })
+
+                    if (!userExists) {
+                        return res.status(404).json({
+                            error: "User not found"
+                        })
+                    }
+
+                    const userServiceProjectExists = await prisma.userServiceProject.findUnique({
+                        where: {
+                            user_id_service_project_id: {
+                                user_id: user.id,
+                                service_project_id: serviceProject.id
+                            }
+                        }
+                    })
+
+                    if (!userServiceProjectExists) {
+                        await prisma.userServiceProject.create({
+                            data: {
+                                user_id: user.id,
+                                service_project_id: serviceProject.id,
+                                assigned_at: new Date().toISOString()
+                            }
+                        })
+                    }
                 }
+            }
 
-                const userServiceProjectExists = await prisma.userServiceProject.findUnique({
-                    where: {
-                        user_id_service_project_id: {
-                            user_id: user.id,
-                            service_project_id: serviceProject.id
-                        }
-                    }
-                })
-
-                if (!userServiceProjectExists) {
-                    await prisma.userServiceProject.create({
-                        data: {
-                            user_id: user.id,
-                            service_project_id: serviceProject.id,
-                            assigned_at: new Date().toISOString()
+            if (body.subcontractors) {
+                for (const subcontractor of body.subcontractors) {
+                    const subcontractorExists = await prisma.subcontractor.findUnique({
+                        where: {
+                            id: subcontractor.id,
+                            company_id: company.id
                         }
                     })
+
+                    if (!subcontractorExists) {
+                        return res.status(404).json({
+                            error: "Subcontractor not found"
+                        })
+                    }
+
+                    const subcontractorServiceProjectExists = await prisma.subContractorServiceProject.findUnique({
+                        where: {
+                            subcontractor_id_service_project_id: {
+                                subcontractor_id: subcontractor.id,
+                                service_project_id: serviceProject.id
+                            }
+                        }
+                    })
+
+                    if (!subcontractorServiceProjectExists) {
+                        await prisma.subContractorServiceProject.create({
+                            data: {
+                                subcontractor_id: subcontractor.id,
+                                service_project_id: serviceProject.id
+                            }
+                        })
+                    }
                 }
             }
 
