@@ -218,11 +218,6 @@ export class CampaignController {
 
       if (startDate !== undefined) {
         startDateTime = startDate ? new Date(startDate) : null;
-        if (startDateTime && startDateTime < now) {
-          return res.status(400).json({ 
-            message: 'The campaign start date must be in the future' 
-          });
-        }
       }
 
       if (endDate) {

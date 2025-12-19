@@ -4,6 +4,8 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { PDFDocument, rgb } from 'pdf-lib';
+import nodemailer from "nodemailer";
+import { changeOrderApprovedEmail } from "../../templateEmail/changeOrder";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -240,6 +242,102 @@ export class SignChangeOrderController {
                     uri: newFileName
                 }
             });
+
+            try {
+                const changeOrderWithDetails = await prisma.changeOrder.findUnique({
+                    where: { id: changeOrder.id },
+                    include: {
+                        estimate: {
+                            include: {
+                                project: {
+                                    include: {
+                                        client: true,
+                                        company: {
+                                            include: {
+                                                userCompanies: {
+                                                    include: {
+                                                        user: {
+                                                            include: {
+                                                                office: true
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                if (changeOrderWithDetails?.estimate?.project?.company) {
+                    const company = changeOrderWithDetails.estimate.project.company;
+                    const adminUser = company.userCompanies.find(uc => 
+                        uc.user.office?.name === "Administrator"
+                    );
+
+                    if (adminUser?.user?.email) {
+                        const SMTP_CONFIG = require("../../config/smtp");
+                        const transporter = nodemailer.createTransport({
+                            host: SMTP_CONFIG.host,
+                            port: SMTP_CONFIG.port,
+                            secure: SMTP_CONFIG.port === 465,
+                            auth: {
+                                user: SMTP_CONFIG.user,
+                                pass: SMTP_CONFIG.pass,
+                            },
+                            tls: {
+                                rejectUnauthorized: false,
+                            },
+                        });
+
+                        const companyAvatar = company.avatar
+                            ? await getPresignedUrl(company.avatar)
+                            : "";
+
+                        const clientName = changeOrderWithDetails.estimate?.project?.client?.name || "the client";
+                        const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
+                        const estimateNumber = changeOrderWithDetails.estimate?.number || "";
+                        const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
+
+                        const mailOptions = {
+                            from: SMTP_CONFIG.user,
+                            to: adminUser.user.email,
+                            subject: `${company.name} - Change Order Approved`,
+                            html: changeOrderApprovedEmail(
+                                adminUser.user.name,
+                                companyAvatar,
+                                company.name,
+                                changeOrderNumber,
+                                estimateNumber,
+                                totalAmount,
+                                changeOrder.id,
+                                clientName
+                            ),
+                            text: `
+Dear ${adminUser.user.name},
+
+Great news! The change order you sent to ${clientName} has been approved.
+
+Change Order: ${changeOrderNumber}
+Estimate: ${estimateNumber}
+Additional Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalAmount)}
+
+The client has reviewed and accepted the additional work scope and costs.
+
+Have a great day!
+${company.name}
+                            `.trim()
+                        };
+
+                        await transporter.sendMail(mailOptions);
+                    }
+                }
+            } catch (emailError) {
+                console.error('❌ Error sending approval email to company owner:', emailError);
+            }
 
             return res.status(200).json({
                 message: "Change order signed successfully"
