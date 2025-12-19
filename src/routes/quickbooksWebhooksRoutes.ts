@@ -6,7 +6,7 @@ export const quickbooksWebHooksRoutes = Router();
 const ctrl = new QuickBooksWebhookController();
 
 quickbooksWebHooksRoutes.post(
-  "/webhooks/quickbooks",
-  express.raw({ type: "*/*" }), // corpo cru para HMAC do QBO
+  "/quickbooks",
   (req, res) => ctrl.handle(req, res)
 );
+ 
