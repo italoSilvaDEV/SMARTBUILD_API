@@ -252,19 +252,7 @@ export class SignChangeOrderController {
                                 project: {
                                     include: {
                                         client: true,
-                                        company: {
-                                            include: {
-                                                userCompanies: {
-                                                    include: {
-                                                        user: {
-                                                            include: {
-                                                                office: true
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        company: true
                                     }
                                 }
                             }
@@ -272,52 +260,55 @@ export class SignChangeOrderController {
                     }
                 });
 
-                if (changeOrderWithDetails?.estimate?.project?.company) {
+                if (changeOrderWithDetails?.estimate?.project?.company?.email) {
                     const company = changeOrderWithDetails.estimate.project.company;
-                    const adminUser = company.userCompanies.find(uc => 
-                        uc.user.office?.name === "Administrator"
-                    );
+                    const companyEmail = company.email;
 
-                    if (adminUser?.user?.email) {
-                        const SMTP_CONFIG = require("../../config/smtp");
-                        const transporter = nodemailer.createTransport({
-                            host: SMTP_CONFIG.host,
-                            port: SMTP_CONFIG.port,
-                            secure: SMTP_CONFIG.port === 465,
-                            auth: {
-                                user: SMTP_CONFIG.user,
-                                pass: SMTP_CONFIG.pass,
-                            },
-                            tls: {
-                                rejectUnauthorized: false,
-                            },
-                        });
+                    if (!companyEmail) {
+                        return;
+                    }
 
-                        const companyAvatar = company.avatar
-                            ? await getPresignedUrl(company.avatar)
-                            : "";
+                    const SMTP_CONFIG = require("../../config/smtp");
+                    const transporter = nodemailer.createTransport({
+                        host: SMTP_CONFIG.host,
+                        port: SMTP_CONFIG.port,
+                        secure: SMTP_CONFIG.port === 465,
+                        auth: {
+                            user: SMTP_CONFIG.user,
+                            pass: SMTP_CONFIG.pass,
+                        },
+                        tls: {
+                            rejectUnauthorized: false,
+                        },
+                    });
 
-                        const clientName = changeOrderWithDetails.estimate?.project?.client?.name || "the client";
-                        const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
-                        const estimateNumber = changeOrderWithDetails.estimate?.number || "";
-                        const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
+                    const companyAvatar = company.avatar
+                        ? await getPresignedUrl(company.avatar)
+                        : "";
 
-                        const mailOptions = {
-                            from: SMTP_CONFIG.user,
-                            to: adminUser.user.email,
-                            subject: `${company.name} - Change Order Approved`,
-                            html: changeOrderApprovedEmail(
-                                adminUser.user.name,
-                                companyAvatar,
-                                company.name,
-                                changeOrderNumber,
-                                estimateNumber,
-                                totalAmount,
-                                changeOrder.id,
-                                clientName
-                            ),
-                            text: `
-Dear ${adminUser.user.name},
+                    const clientName = changeOrderWithDetails.estimate?.project?.client?.name || "the client";
+                    const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
+                    const estimateNumber = changeOrderWithDetails.estimate?.number || "";
+                    const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
+                    const projectId = changeOrderWithDetails.estimate?.project?.id || "";
+
+                    const mailOptions = {
+                        from: SMTP_CONFIG.user,
+                        to: companyEmail,
+                        subject: `${company.name} - Change Order Approved`,
+                        html: changeOrderApprovedEmail(
+                            company.name,
+                            companyAvatar,
+                            company.name,
+                            changeOrderNumber,
+                            estimateNumber,
+                            totalAmount,
+                            changeOrder.id,
+                            clientName,
+                            projectId
+                        ),
+                        text: `
+Dear ${company.name},
 
 Great news! The change order you sent to ${clientName} has been approved.
 
@@ -329,14 +320,14 @@ The client has reviewed and accepted the additional work scope and costs.
 
 Have a great day!
 ${company.name}
-                            `.trim()
-                        };
+                        `.trim()
+                    };
 
-                        await transporter.sendMail(mailOptions);
-                    }
+                    await transporter.sendMail(mailOptions);
+                    console.log(`✅ Email sent to company: ${companyEmail}`);
                 }
             } catch (emailError) {
-                console.error('❌ Error sending approval email to company owner:', emailError);
+                console.error('❌ Error sending approval email to company:', emailError);
             }
 
             return res.status(200).json({
