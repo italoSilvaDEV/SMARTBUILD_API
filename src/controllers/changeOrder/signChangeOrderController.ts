@@ -243,6 +243,7 @@ export class SignChangeOrderController {
                 }
             });
 
+            // Enviar email para o dono da company quando o change order for aceito
             try {
                 const changeOrderWithDetails = await prisma.changeOrder.findUnique({
                     where: { id: changeOrder.id },
@@ -333,6 +334,7 @@ ${company.name}
                         };
 
                         await transporter.sendMail(mailOptions);
+                        console.log(`✅ Email sent to company owner: ${adminUser.user.email}`);
                     }
                 }
             } catch (emailError) {
