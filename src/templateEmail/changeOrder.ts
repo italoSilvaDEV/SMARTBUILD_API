@@ -259,6 +259,7 @@ export const changeOrderApprovedEmail = (
     value: number,
     changeOrderId: string,
     clientName: string,
+    projectId: string,
     customBody?: string
 ) => {
     // Formatar o valor como moeda em dólares
@@ -346,9 +347,9 @@ export const changeOrderApprovedEmail = (
                                                 <p style="font-size:12px;color:#666666;margin:5px 0 0 0;text-align:center;">For Estimate ${estimateNumber}</p>
                                                 <p style="font-size:14px;color:#333333;margin:10px 0 0 0;text-align:center;"><strong>Additional Amount: ${formattedValue}</strong></p>
                                                 <p style="font-size:12px;color:#333333;margin:15px 0;text-align:center;">
-                                                  <a href="${process.env.URL_FRONT}/changeorder/${changeOrderId}" 
+                                                  <a href="${process.env.URL_FRONT}/seller/project/details/${projectId}?tab=ChangeOrders" 
                                                      style="background-color:#28a745;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;margin-top:10px;font-size:14px;">
-                                                    View Change Order
+                                                    View Change Orders
                                                   </a>
                                                 </p>
                                             </td>

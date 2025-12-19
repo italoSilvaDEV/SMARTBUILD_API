@@ -291,6 +291,7 @@ export class SignChangeOrderController {
                     const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
                     const estimateNumber = changeOrderWithDetails.estimate?.number || "";
                     const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
+                    const projectId = changeOrderWithDetails.estimate?.project?.id || "";
 
                     const mailOptions = {
                         from: SMTP_CONFIG.user,
@@ -304,7 +305,8 @@ export class SignChangeOrderController {
                             estimateNumber,
                             totalAmount,
                             changeOrder.id,
-                            clientName
+                            clientName,
+                            projectId
                         ),
                         text: `
 Dear ${company.name},
