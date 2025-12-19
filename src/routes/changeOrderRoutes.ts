@@ -39,7 +39,6 @@ changeOrderRoutes.post(
 
 changeOrderRoutes.post(
     "/sign",
-    checkToken,
     signChangeOrderController.handle
 );
 
