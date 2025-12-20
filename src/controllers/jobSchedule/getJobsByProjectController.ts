@@ -57,6 +57,19 @@ export class GetJobsByProjectController {
                             }
                         }
                     },
+                    subContractorServiceProjects: {
+                        select: {
+                            subcontractor: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                    phone: true,
+                                    address: true,
+                                }
+                            }
+                        }
+                    },
                     Project: {
                         select: {
                             id: true,
@@ -93,6 +106,19 @@ export class GetJobsByProjectController {
                                                     name: true,
                                                 }
                                             }
+                                        }
+                                    }
+                                }
+                            },
+                            subContractorServiceProjects: {
+                                select: {
+                                    subcontractor: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            address: true,
                                         }
                                     }
                                 }
@@ -136,6 +162,7 @@ export class GetJobsByProjectController {
                         start_date: subServiceProject.start_date,
                         deadline: subServiceProject.deadline,
                         users: users,
+                        subContractors: subServiceProject.subContractorServiceProjects,
                     }
                 }))
 
@@ -148,6 +175,7 @@ export class GetJobsByProjectController {
                     projectId: job.Project?.id,
                     users: users,
                     subServicesProjects: subServicesProjects,
+                    subContractors: job.subContractorServiceProjects,
                 }
             }))
 
