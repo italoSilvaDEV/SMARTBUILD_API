@@ -90,6 +90,7 @@ export class GetJobsByProjectController {
                             id: true,
                             name: true,
                             start_date: true,
+                            description: true,
                             deadline: true,
                             userServiceProject: {
                                 select: {
