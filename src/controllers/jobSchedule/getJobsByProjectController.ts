@@ -161,6 +161,7 @@ export class GetJobsByProjectController {
                     return {
                         id: subServiceProject.id,
                         name: subServiceProject.name,
+                        description: subServiceProject.description,
                         start_date: subServiceProject.start_date,
                         deadline: subServiceProject.deadline,
                         users: users,
@@ -172,6 +173,7 @@ export class GetJobsByProjectController {
                     id: job.id,
                     name: job.name,
                     start_date: job.start_date,
+                    description: job.description,
                     deadline: job.deadline,
                     clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
                     projectId: job.Project?.id,
