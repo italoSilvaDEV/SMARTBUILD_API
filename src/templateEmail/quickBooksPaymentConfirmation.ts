@@ -40,17 +40,6 @@ export function quickBooksPaymentConfirmation(
                         </td>
                     </tr>
                     
-                    <!-- Success Icon -->
-                    <tr>
-                        <td style="padding: 30px 40px; text-align: center;">
-                            <div style="display: inline-block; width: 80px; height: 80px; background-color: #4CAF50; border-radius: 50%; margin-bottom: 20px;">
-                                <svg width="80" height="80" viewBox="0 0 80 80">
-                                    <path d="M26 40 L35 49 L54 30" stroke="white" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                        </td>
-                    </tr>
-                    
                     <!-- Content -->
                     <tr>
                         <td style="padding: 0 40px 30px;">
