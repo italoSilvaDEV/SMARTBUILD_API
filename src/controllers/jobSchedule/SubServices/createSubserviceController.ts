@@ -42,31 +42,31 @@ export class CreateSubserviceController {
                 })
             }
 
-            const service = await prisma.serviceProject.findUnique({
-                where: {
-                    id: body.serviceId
-                },
-                select: {
-                    id: true,
-                }
-            })
-
-            const customService = await prisma.customServiceSchedule.findUnique({
-                where: {
-                    id: body.customServiceId
-                },
-                select: {
-                    id: true,
-                }
-            })
-
             if (body.serviceId) {
+                const service = await prisma.serviceProject.findUnique({
+                    where: {
+                        id: body.serviceId
+                    },
+                    select: {
+                        id: true,
+                    }
+                })
+
                 if (!service) {
                     return res.status(404).json({
                         error: "Service not found"
                     });
                 }
             } else if (body.customServiceId) {
+                const customService = await prisma.customServiceSchedule.findUnique({
+                    where: {
+                        id: body.customServiceId
+                    },
+                    select: {
+                        id: true,
+                    }
+                })
+
                 if (!customService) {
                     return res.status(404).json({
                         error: "Custom service not found"
