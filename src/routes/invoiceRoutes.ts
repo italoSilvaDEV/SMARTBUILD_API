@@ -36,4 +36,7 @@ invoiceRoutes.post("/invoice/create/item", checkToken, invoiceItemsController.cr
 invoiceRoutes.put("/invoice/update/item", checkToken, invoiceItemsController.updateInvoiceItem.bind(invoiceItemsController));
 invoiceRoutes.delete("/invoice/delete/item/:invoiceItemId", checkToken, invoiceItemsController.deleteInvoiceItem.bind(invoiceItemsController));
 
+// Buscar pagamentos QBO de um invoice
+invoiceRoutes.get("/invoices/:invoiceId/qbo-payments", checkToken, unifiedInvoiceController.getQboPayments.bind(unifiedInvoiceController));
+
 export { invoiceRoutes }; 

@@ -20,6 +20,33 @@ export function extractCustomer(data: any) {
   return null;
 }
 
+/**
+ * ETAPA 4: Função de derivação de status QBO
+ * QuickBooks é a fonte de verdade - sempre usar os dados vindos do QBO
+ */
+export function deriveQboInvoiceStatus(qbInvoice: any): "void" | "paid" | "partial" | "open" {
+  // 1. Verificar se está cancelado
+  if (qbInvoice.TxnStatus === "Voided") {
+    return "void";
+  }
+
+  const totalAmt = Number(qbInvoice.TotalAmt ?? 0);
+  const balance = Number(qbInvoice.Balance ?? 0);
+
+  // 2. Pago completamente
+  if (totalAmt > 0 && balance === 0) {
+    return "paid";
+  }
+
+  // 3. Pagamento parcial
+  if (balance > 0 && balance < totalAmt) {
+    return "partial";
+  }
+
+  // 4. Aberto (nenhum pagamento)
+  return "open";
+}
+
 export class QuickBooksWebhookWorker {
   static async process(payload: any) {
     const notifs = payload?.eventNotifications ?? [];
@@ -60,7 +87,7 @@ export class QuickBooksWebhookWorker {
       // Filtre somente Customer events 
       const customerEvents = entities.filter((e: any) => e.name?.toLowerCase() === "customer");
       
-      // ⚠️ Validação de sincronização APENAS para Customer events
+      //  Validação de sincronização APENAS para Customer events
       if (customerEvents.length > 0) {
         const syncEnabled = await this.isSyncEnabledForCompany(companyId, account.user_id);
         if (!syncEnabled) {
@@ -395,27 +422,36 @@ export class QuickBooksWebhookWorker {
         return;
       }
 
-      // Determinar status do invoice baseado no QuickBooks
-      const deriveStatus = (inv: any): string => {
-        if (inv.TxnStatus === "Voided") return "void";
-        const total = Number(inv.TotalAmt || 0);
-        const balance = Number(inv.Balance || 0);
-        if (total > 0 && balance === 0) return "paid";
-        if (balance > 0 && balance < total) return "partial";
-        return "open";
-      };
-
-      const newStatus = deriveStatus(qbInvoice);
+      // ETAPA 6: Usar função de derivação de status (QuickBooks = fonte de verdade)
+      const newStatus = deriveQboInvoiceStatus(qbInvoice);
       const oldStatus = localInvoice.status;
 
-      console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} - Status: ${oldStatus} → ${newStatus}`);
+      // Calcular valores do QBO
+      const totalAmt = Number(qbInvoice.TotalAmt || 0);
+      const balance = Number(qbInvoice.Balance || 0);
+      const totalPaid = totalAmt - balance;
 
-      // Atualizar invoice local
+      console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} - Status: ${oldStatus} → ${newStatus}, Total: ${totalAmt}, Balance: ${balance}, Paid: ${totalPaid}`);
+
+      // ETAPA 7: Detectar alteração de valor após pagamento
+      let amountChanged = localInvoice.amountChangedAfterPayment;
+      let timelineMessage = `QuickBooks webhook: Invoice ${operation} - Status changed from ${oldStatus} to ${newStatus}`;
+
+      if ((oldStatus === "paid" || oldStatus === "partial") && totalAmt !== Number(localInvoice.totalAmount)) {
+        amountChanged = true;
+        timelineMessage = `QuickBooks updated invoice amount after payment (${localInvoice.totalAmount} → ${totalAmt})`;
+        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} amount changed after payment!`);
+      }
+
+      // Atualizar invoice local com todos os novos campos
       await prisma.invoice.update({
         where: { id: localInvoice.id },
         data: {
           status: newStatus,
-          totalAmount: Number(qbInvoice.TotalAmt || localInvoice.totalAmount),
+          totalAmount: totalAmt,
+          balanceRemaining: balance,
+          totalAmountPaidQbo: totalPaid,
+          amountChangedAfterPayment: amountChanged,
           docNumberQuickBooksContabio: qbInvoice.DocNumber || localInvoice.docNumberQuickBooksContabio,
           updatedAt: new Date()
         }
@@ -424,7 +460,7 @@ export class QuickBooksWebhookWorker {
       // Registrar na timeline
       await prisma.invoiceTimeline.create({
         data: {
-          description: `QuickBooks webhook: Invoice ${operation} - Status changed from ${oldStatus} to ${newStatus}`,
+          description: timelineMessage,
           invoiceId: localInvoice.id
         }
       });
@@ -464,7 +500,8 @@ export class QuickBooksWebhookWorker {
   }
 
   /**
-   * Processar evento de Payment (pagamento aplicado a um invoice)
+   * ETAPA 5: Processar evento de Payment (pagamento aplicado a um invoice)
+   * Persiste pagamentos de forma idempotente usando PaymentTransaction e PaymentApplication
    */
   private static async handlePaymentEvent(
     companyId: string,
@@ -476,23 +513,90 @@ export class QuickBooksWebhookWorker {
     try {
       console.log(`[QBO Webhook] Processando payment ${qbPayment.Id} - Operation: ${operation}`);
 
-      // Payment pode estar vinculado a um ou mais invoices via Line items
+      // ETAPA 5.1: Verificar se já existe PaymentTransaction (idempotência)
+      const existingPayment = await prisma.paymentTransaction.findUnique({
+        where: {
+          provider_externalPaymentId: {
+            provider: "qbo",
+            externalPaymentId: qbPayment.Id
+          }
+        },
+        include: {
+          applications: true
+        }
+      });
+
+      if (existingPayment) {
+        console.log(`[QBO Webhook] Payment ${qbPayment.Id} já processado anteriormente, pulando`);
+        return;
+      }
+
+      // ETAPA 5.2: Criar PaymentTransaction
+      const paymentTransaction = await prisma.paymentTransaction.create({
+        data: {
+          provider: "qbo",
+          externalPaymentId: qbPayment.Id,
+          currency: qbPayment.CurrencyRef?.value || "USD",
+          totalAmount: Number(qbPayment.TotalAmt || 0),
+          paymentMethodType: qbPayment.PaymentMethodRef?.name || qbPayment.PaymentType || null,
+          txnDate: qbPayment.TxnDate ? new Date(qbPayment.TxnDate) : null,
+          companyId
+        }
+      });
+
+      console.log(`[QBO Webhook] PaymentTransaction criado: ${paymentTransaction.id}`);
+
+      // ETAPA 5.3: Processar LinkedTxn e criar PaymentApplication
       const lines = qbPayment.Line || [];
-      
+      let processedInvoices = 0;
+
       for (const line of lines) {
         if (line.LinkedTxn && Array.isArray(line.LinkedTxn)) {
           for (const linkedTxn of line.LinkedTxn) {
             if (linkedTxn.TxnType === "Invoice" && linkedTxn.TxnId) {
-              const invoiceId = linkedTxn.TxnId;
-              
-              console.log(`[QBO Webhook] Payment vinculado ao Invoice ${invoiceId}`);
+              const qboInvoiceId = linkedTxn.TxnId;
+              const amountApplied = Number(line.Amount || 0);
 
-              // Buscar o invoice atualizado no QuickBooks
+              console.log(`[QBO Webhook] Payment vinculado ao Invoice ${qboInvoiceId}, valor aplicado: ${amountApplied}`);
+
+              // Buscar invoice local
+              const localInvoice = await prisma.invoice.findFirst({
+                where: {
+                  companyId,
+                  idQuickbookContabio: qboInvoiceId
+                }
+              });
+
+              if (!localInvoice) {
+                console.warn(`[QBO Webhook] Invoice ${qboInvoiceId} não encontrado localmente`);
+                continue;
+              }
+
+              // Criar PaymentApplication
+              await prisma.paymentApplication.create({
+                data: {
+                  paymentTransactionId: paymentTransaction.id,
+                  invoiceId: localInvoice.id,
+                  amountApplied
+                }
+              });
+
+              // Atualizar lastPaymentAt do invoice
+              await prisma.invoice.update({
+                where: { id: localInvoice.id },
+                data: {
+                  lastPaymentAt: paymentTransaction.txnDate || new Date()
+                }
+              });
+
+              processedInvoices++;
+
+              // Buscar invoice atualizado no QBO e processar
               try {
                 const invoiceData: any = await limiter.schedule(
                   () =>
                     new Promise((resolve, reject) => {
-                      qb.getInvoice(invoiceId, (err: any, data: any) => (err ? reject(err) : resolve(data)));
+                      qb.getInvoice(qboInvoiceId, (err: any, data: any) => (err ? reject(err) : resolve(data)));
                     })
                 );
 
@@ -504,7 +608,7 @@ export class QuickBooksWebhookWorker {
                 }
 
               } catch (invoiceError: any) {
-                console.error(`[QBO Webhook] Erro ao buscar invoice ${invoiceId}:`, invoiceError.message);
+                console.error(`[QBO Webhook] Erro ao buscar invoice ${qboInvoiceId}:`, invoiceError.message);
               }
             }
           }
@@ -521,9 +625,12 @@ export class QuickBooksWebhookWorker {
           qbPaymentId: qbPayment.Id,
           operation,
           totalAmount: qbPayment.TotalAmt,
-          linkedInvoices: lines.length
+          linkedInvoices: processedInvoices,
+          paymentTransactionId: paymentTransaction.id
         }),
       });
+
+      console.log(`[QBO Webhook] Payment ${qbPayment.Id} processado com sucesso. Invoices afetados: ${processedInvoices}`);
 
     } catch (error: any) {
       console.error("[QBO Webhook] Erro ao processar evento de Payment:", error.message);
