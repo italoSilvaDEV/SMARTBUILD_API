@@ -1792,12 +1792,19 @@ model AppVersion {
   @@map("app_version")
 }
 
+enum TypeImagesAttachments {
+  image
+  document
+}
+
 model ImagesAttachments {
   id String @id @default(uuid())
 
   original_filename String? @db.Text
   url               String  @db.Text
   title             String? @db.Text
+
+  type_images_attachments TypeImagesAttachments @default(image)
 
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
