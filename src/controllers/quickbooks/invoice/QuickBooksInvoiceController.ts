@@ -635,6 +635,7 @@ export class QuickBooksInvoiceController {
     dueDate?: string;
     userId: string;
     coefficientPerfentage?: number;
+    type_value?: string;
     services: any[];
     totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
     calledFromStripe?: boolean; // Parâmetro para identificar origem
@@ -646,6 +647,7 @@ export class QuickBooksInvoiceController {
       dueDate, 
       userId, 
       coefficientPerfentage, 
+      type_value, 
       services, 
       totalAmountTarget,
       calledFromStripe = false 
@@ -730,7 +732,8 @@ export class QuickBooksInvoiceController {
 
       console.log(`Invoice encontrado. SyncToken: ${currentInvoice.SyncToken}`);
 
-      // Verificar se a fatura pode ser editada (não pode estar paga ou cancelada)
+      // ETAPA 8: Validações de edição
+      // Verificar se a fatura pode ser editada (não pode estar paga, cancelada ou com pagamento parcial)
       if (currentInvoice.TxnStatus === "Voided") {
         throw new Error("Cannot update a voided invoice");
       }
@@ -740,6 +743,11 @@ export class QuickBooksInvoiceController {
       const balance = Number(currentInvoice.Balance || 0);
       if (totalAmt > 0 && balance === 0) {
         throw new Error("Cannot update a paid invoice");
+      }
+
+      // ETAPA 8: Verificar pagamento parcial (bloqueio de edição)
+      if (balance > 0 && balance < totalAmt) {
+        throw new Error("Invoice partially paid and locked. Cannot edit invoice with partial payment.");
       }
 
       // Preparar os itens da fatura com logs detalhados
@@ -1022,6 +1030,8 @@ export class QuickBooksInvoiceController {
             data: {
               totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
               status: deriveQboInvoicePaymentStatus(updatedInv),
+              percentageCoefficient: coefficientPerfentage,
+              type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
               updatedAt: new Date()
@@ -1852,6 +1862,153 @@ export class QuickBooksInvoiceController {
       }
 
       throw new Error(`QuickBooks API Error: ${error.message}`);
+    }
+  }
+
+  async updateInvoice(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { description, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount } = req.body;
+
+    try {
+      console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
+      console.log("InvoiceId:", invoiceId);
+      console.log("UserId:", userId);
+
+      // Validações básicas
+      if (!invoiceId || !userId) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "invoiceId and userId are required"
+        });
+      }
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({
+          error: "Invoice not found",
+          message: "The specified invoice does not exist"
+        });
+      }
+
+      if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({
+          error: "Not a QuickBooks invoice",
+          message: "This invoice is not a QuickBooks invoice"
+        });
+      }
+
+      if (!invoice.idQuickbookContabio) {
+        return res.status(400).json({
+          error: "QuickBooks invoice ID missing",
+          message: "This invoice has not been synced with QuickBooks yet"
+        });
+      }
+
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({
+          error: "Company not found",
+          message: "Invoice does not have an associated company"
+        });
+      }
+
+      // Verificar se o QuickBooks está conectado
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: invoice.project.company_id },
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(400).json({
+          error: "QuickBooks not connected",
+          message: "Please connect your QuickBooks account first",
+          action: "connect_quickbooks"
+        });
+      }
+
+      // Calcular o total amount se não fornecido
+      let calculatedTotalAmount = totalAmount;
+      if (!calculatedTotalAmount && services && Array.isArray(services)) {
+        calculatedTotalAmount = services.reduce((sum: number, service: any) => {
+          const total = service.total || (service.quantity * service.price);
+          return sum + total;
+        }, 0);
+      }
+
+      console.log(" Delegando atualização para updateInvoiceInternal...");
+
+      // Chamar updateInvoiceInternal
+      const result = await this.updateInvoiceInternal({
+        quickBooksInvoiceId: invoice.idQuickbookContabio, 
+        projectId: invoice.projectId,
+        description,
+        dueDate,
+        userId,
+        coefficientPerfentage,
+        type_value,
+        services,
+        totalAmountTarget: calculatedTotalAmount,
+        calledFromStripe: false // Atualizar como invoice completo (banco + QB)
+      });
+
+      console.log(" Invoice atualizado com sucesso:", invoice.id);
+
+      return res.status(200).json({
+        success: true,
+        message: "QuickBooks invoice updated successfully",
+        invoice: result,
+        quickBooks: {
+          success: true,
+          result: result
+        }
+      });
+
+    } catch (error: any) {
+      console.error(" Erro detalhado ao atualizar fatura:", error);
+
+      // Verificar se é erro de invoice parcialmente pago
+      if (error.message && error.message.includes("partially paid and locked")) {
+        return res.status(409).json({
+          error: "Invoice partially paid",
+          message: "Cannot edit an invoice with partial payment",
+          details: error.message
+        });
+      }
+
+      // Verificar se é erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account with additional permissions",
+          action: "reauthorize"
+        });
+      }
+
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to update invoice",
+        details: error.toString()
+      });
     }
   }
 
