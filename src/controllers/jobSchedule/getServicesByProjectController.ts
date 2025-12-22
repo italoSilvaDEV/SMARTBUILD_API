@@ -60,9 +60,25 @@ export class GetServicesByProjectController {
                 }
             })
 
+            const customServices = await prisma.customServiceSchedule.findMany({
+                where: {
+                    projectId: project.id
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    start_date: true,
+                    deadline: true,
+                    description: true,
+                }
+            })
+
             return res.status(200).json({
                 message: "Services fetched successfully",
-                data: services
+                data: {
+                    services: services,
+                    customServices: customServices,
+                }
             })
         } catch (error) {
             return res.status(500).json({

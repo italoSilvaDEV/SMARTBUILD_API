@@ -290,6 +290,8 @@ model ServiceProject {
   company_id         String?
   TimeLine           TimeLine[]
 
+  scheduleCompleted Boolean? @default(false)
+
   estimateServiceId            String?                       @unique
   estimateService              EstimateServiceProject?       @relation(fields: [estimateServiceId], references: [id])
   subServicesProjects          SubServicesProject[]
@@ -310,12 +312,41 @@ model SubServicesProject {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  serviceProject               ServiceProject?               @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
-  serviceProjectId             String?
+  scheduleCompleted Boolean? @default(false)
+
+  serviceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
+  serviceProjectId String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
+
   userServiceProject           UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
 
   @@map("sub_services_project")
+}
+
+model CustomServiceSchedule {
+  id String @id @default(uuid())
+
+  name        String
+  description String? @db.Text
+  start_date  String?
+  deadline    String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  scheduleCompleted Boolean? @default(false)
+
+  subServicesProjects          SubServicesProject[]
+  userServiceProjects          UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String?
+
+  @@map("custom_service_schedule")
 }
 
 model Activities {
@@ -529,6 +560,7 @@ model Project {
   PublicFeedLinks        PublicFeedLink[]
   PublicFeedLinkProjects PublicFeedLinkProject[]
   imagesAttachments      ImagesAttachments[]
+  customServiceSchedules CustomServiceSchedule[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -830,14 +862,19 @@ model UserServiceProject {
   sub_service_project    SubServicesProject? @relation(fields: [sub_service_project_id], references: [id], onDelete: Cascade)
   sub_service_project_id String?
 
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
+
   user_attendances UserAttendance[]
   TimeLine         TimeLine[]
 
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
   @@unique([user_id, sub_service_project_id], map: "user_service_project_unique_sub_service_unique")
+  @@unique([user_id, custom_service_schedule_id], map: "user_service_project_unique_custom_schedule")
   @@index([user_id], map: "user_service_project_user_id_fkey")
   @@index([service_project_id], map: "user_service_project_service_project_id_fkey")
   @@index([sub_service_project_id], map: "user_service_project_sub_service_project_id_fkey")
+  @@index([custom_service_schedule_id], map: "user_service_project_custom_schedule_id_fkey")
   @@map("user_service_project")
 }
 
@@ -853,14 +890,19 @@ model SubContractorServiceProject {
   sub_service_project    SubServicesProject? @relation(fields: [sub_service_project_id], references: [id], onDelete: Cascade)
   sub_service_project_id String?
 
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
+
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
   @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
   @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
+  @@unique([subcontractor_id, custom_service_schedule_id], map: "sub_contractor_service_project_unique_custom_schedule")
   @@index([subcontractor_id], map: "sub_contractor_service_project_subcontractor_id_fkey")
   @@index([service_project_id], map: "sub_contractor_service_project_service_project_id_fkey")
   @@index([sub_service_project_id], map: "sub_contractor_service_project_sub_service_project_id_fkey")
+  @@index([custom_service_schedule_id], map: "sub_contractor_service_project_custom_schedule_id_fkey")
   @@map("sub_contractor_service_project")
 }
 
