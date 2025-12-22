@@ -4,9 +4,9 @@ import { prisma } from "../../utils/prisma";
 interface CompleteJob {
     companyId: string
     projectId: string
-    serviceProjectId: string
-    subServiceId: string
-    customServiceId: string
+    serviceProjectId?: string
+    subServiceId?: string
+    customServiceId?: string
 }
 
 export class CompleteJobController {

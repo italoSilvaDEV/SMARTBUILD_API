@@ -82,6 +82,7 @@ export class CreateSubserviceController {
                     custom_service_schedule_id: body.customServiceId || null,
                     start_date: body.start_date || null,
                     deadline: body.deadline || null,
+                    quantity: 1,
                     price: body.price || 0,
                     status: "pending" //pending or completed
                 }
@@ -160,8 +161,10 @@ export class CreateSubserviceController {
                 data: subservice
             });
         } catch (error) {
+            console.error('Error creating subservice:', error);
             return res.status(500).json({
-                error: "Internal server error"
+                error: "Internal server error",
+                details: error instanceof Error ? error.message : 'Unknown error'
             });
         }
     }
