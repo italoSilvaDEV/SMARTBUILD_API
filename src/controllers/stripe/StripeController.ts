@@ -910,6 +910,7 @@ export class StripeController {
                             id: true,
                             url: true,
                             original_filename: true,
+                            type_images_attachments: true,
                             title: true,
                             date_creation: true,
                             date_update: true
@@ -1121,6 +1122,7 @@ export class StripeController {
                             id: true,
                             url: true,
                             original_filename: true,
+                            type_images_attachments: true,
                             title: true,
                             date_creation: true,
                             date_update: true
