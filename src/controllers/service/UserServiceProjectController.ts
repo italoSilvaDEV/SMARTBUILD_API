@@ -267,11 +267,11 @@ export class UserServiceProjectController {
 
       const formattedResult = userServiceProjects.map((usp) => ({
         id_userServiceProject: usp.id,
-        name_service: usp.service_project.name,
-        address_client: usp.service_project.Project?.location || usp.service_project.Project?.client?.location,
+        name_service: usp.service_project?.name,
+        address_client: usp.service_project?.Project?.location || usp.service_project?.Project?.client?.location,
         selected: false,
-        project_status: usp.service_project.Project?.status_project,
-        service_status: usp.service_project.status
+        project_status: usp.service_project?.Project?.status_project,
+        service_status: usp.service_project?.status
       }));
 
       res.status(200).json(formattedResult);
@@ -315,15 +315,15 @@ export class UserServiceProjectController {
       });
 
       const formattedResult = userServiceProjects.map((usp) => {
-        const stages = usp.service_project.stages || [];
+        const stages = usp.service_project?.stages || [];
         const totalStages = stages.length;
         const completedStages = stages.filter((stage) => stage.check).length;
 
-        const attendances = usp.service_project.UserServiceProject.flatMap(
+        const attendances = usp.service_project?.UserServiceProject.flatMap(
           (usp) => usp.user_attendances || []
         );
 
-        const workedHours = attendances.reduce((total, attendance) => {
+        const workedHours = attendances?.reduce((total, attendance) => {
           if (attendance.check_out_time && attendance.check_in_time) {
             const duration =
               new Date(attendance.check_out_time).getTime() -
@@ -334,10 +334,10 @@ export class UserServiceProjectController {
         }, 0);
 
         // Correção para tratar start_date e deadline como strings
-        const startDate = usp.service_project.start_date
+        const startDate = usp.service_project?.start_date
           ? new Date(`${usp.service_project.start_date}T00:00:00`)
           : null;
-        const deadline = usp.service_project.deadline
+        const deadline = usp.service_project?.deadline
           ? new Date(`${usp.service_project.deadline}T00:00:00`)
           : null;
 
@@ -350,13 +350,13 @@ export class UserServiceProjectController {
         return {
           id: usp.id,
           service_project_id: usp.service_project_id,
-          name: usp.service_project.name,
-          address: usp.service_project.Project?.client?.location || null,
+          name: usp.service_project?.name,
+          address: usp.service_project?.Project?.client?.location || null,
           startDate: startDate ? startDate.toLocaleDateString("pt-BR") : null,
           daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
-          workedHours: workedHours.toFixed(1), // Horas trabalhadas formatadas
+          workedHours: workedHours?.toFixed(1), // Horas trabalhadas formatadas
           stages: `${completedStages}/${totalStages}`, // Etapas completas de total
-          status: usp.service_project.status || null,
+          status: usp.service_project?.status || null,
         };
       });
 
