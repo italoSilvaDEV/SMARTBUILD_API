@@ -981,9 +981,16 @@ model InvoiceItem {
   id          String   @id @default(uuid())
   name        String // Nome do serviço ou item
   description String?  @db.Text // Descrição opcional do item
-  quantity    Decimal // Quantidade
-  price       Decimal // Preço unitário
+  quantity    Decimal // Quantidade REAL (ex: 30) - usado para exibição e edição
+  price       Decimal // Preço unitário REAL (ex: 200) - usado para exibição e edição
   totalAmount Decimal // Valor total (quantidade * preço)
+  
+  //  Campos para guardar o que foi enviado especificamente para QuickBooks
+  // Quando invoice é QuickBooks, estes campos guardam os valores ajustados enviados ao QBO
+  // Para Custom/Stripe, estes campos ficam NULL
+  qboQuantity Decimal? // Quantidade enviada para QBO (sempre 1)
+  qboPrice    Decimal? // Preço ajustado enviado para QBO (ex: 6000 = 30 * 200)
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

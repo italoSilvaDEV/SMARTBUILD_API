@@ -277,17 +277,20 @@ export class QuickBooksInvoiceController {
             throw new Error("ERR_ITEM_NOT_FOUND_AND_ERR_TO_CREATE");
           }
 
-          // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
-          processedLineItems.push({
-            DetailType: "SalesItemLineDetail",
-            Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
-            Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
-            SalesItemLineDetail: {
-              ItemRef: { value: itemId, name: qboItemName },
-              Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
-              UnitPrice: unitPrice // Rate = valor total do serviço
-            }
-          });
+        // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
+        processedLineItems.push({
+          DetailType: "SalesItemLineDetail",
+          Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
+          Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
+          SalesItemLineDetail: {
+            ItemRef: { value: itemId, name: qboItemName },
+            Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
+            UnitPrice: unitPrice // Rate = valor total do serviço
+          },
+          // Armazenar valores reais para salvar no banco
+          _realQuantity: calc.qty,
+          _realPrice: calc.priceParsed
+        });
 
           // Logs defensivos
           console.log(
@@ -503,9 +506,13 @@ export class QuickBooksInvoiceController {
                 create: processedLineItems.map((item: any) => ({
                   name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
                   description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
-                  quantity: item?.SalesItemLineDetail?.Qty || 1,
-                  price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-                  totalAmount: item.Amount
+                  // Valores reais para exibição/cálculo local
+                  quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
+                  price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+                  totalAmount: item.Amount,
+                  // Valores ajustados enviados ao QuickBooks
+                  quickbooksQuantity: item?.SalesItemLineDetail?.Qty || 1,
+                  quickbooksPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
                 }))
               }
             },
@@ -967,9 +974,13 @@ export class QuickBooksInvoiceController {
               invoiceId: localInvoice.id,
               name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
               description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
-              quantity: item?.SalesItemLineDetail?.Qty || 1,
-              price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-              totalAmount: item.Amount
+              // Valores reais para exibição/cálculo local
+              quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
+              price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+              totalAmount: item.Amount,
+              // Valores ajustados enviados ao QuickBooks
+              quickbooksQuantity: item?.SalesItemLineDetail?.Qty || 1,
+              quickbooksPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
             }))
           });
         }
