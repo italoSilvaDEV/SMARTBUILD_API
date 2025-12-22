@@ -956,6 +956,7 @@ export class StripeController {
                                     id: image.id,
                                     url: image.url ? await getPresignedUrl(image.url) : null,
                                     original_filename: image.original_filename,
+                                    type_images_attachments: image.type_images_attachments,
                                     title: image.title,
                                     date_creation: image.date_creation,
                                     date_update: image.date_update
@@ -1170,6 +1171,7 @@ export class StripeController {
                                     id: image.id,
                                     url: image.url ? await getPresignedUrl(image.url) : null,
                                     original_filename: image.original_filename,
+                                    type_images_attachments: image.type_images_attachments,
                                     title: image.title,
                                     date_creation: image.date_creation,
                                     date_update: image.date_update
@@ -1259,7 +1261,7 @@ export class StripeController {
             // Usar totalAmount fornecido e distribuir proporcionalmente
             if (totalAmount && totalAmount > 0 && servicesArray.length > 0) {
                 console.log(`Usando totalAmount fornecido: $${totalAmount}`);
-                
+
                 // Calcular o valor total dos serviços enviados (para calcular proporções)
                 const totalServicesValue = servicesArray.reduce((sum, service) => {
                     const quantity = Number(service.quantity) || 0;
