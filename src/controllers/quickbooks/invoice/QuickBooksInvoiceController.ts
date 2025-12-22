@@ -318,20 +318,20 @@ export class QuickBooksInvoiceController {
         let clientId;
         
         try {
-          console.log("🔍 Verificando cliente no QuickBooks...");
+          console.log(" Verificando cliente no QuickBooks...");
           console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
           console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
 
           // 1) Primeiro verificar se o cliente local já tem idQuickbooks
           if (project.client!.idQuickbooks) {
-            console.log(`📋 Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
+            console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
             
             // Verificar se o cliente ainda existe no QuickBooks
             try {
               const existingCustomer = await new Promise((resolve, reject) => {
                 qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
                   if (err) {
-                    console.warn("⚠️ Cliente com idQuickbooks não encontrado no QBO, será criado novo");
+                    console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
                     resolve(null);
                   } else {
                     resolve(data);
@@ -342,17 +342,17 @@ export class QuickBooksInvoiceController {
               if (existingCustomer) {
                 const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
                 clientId = customer.Id;
-                console.log(`✅ Cliente existente confirmado no QBO com ID: ${clientId}`);
+                console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
               }
             } catch (getError: any) {
-              console.warn("⚠️ Erro ao verificar cliente existente:", getError?.message || getError);
+              console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
               console.log("Continuando para criação de novo cliente...");
             }
           }
 
           // 2) Se não tem idQuickbooks válido, criar novo cliente
           if (!clientId) {
-            console.log(`📝 Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
             
             // Validar dados do cliente antes de criar
             const clientName = project.client!.name?.trim();
@@ -377,11 +377,11 @@ export class QuickBooksInvoiceController {
               const createCustomerResult = await new Promise((resolve, reject) => {
                 qb.createCustomer(createCustomerData, (err: any, data: any) => {
                   if (err) {
-                    console.error("❌ Erro ao criar cliente no QuickBooks:", err);
+                    console.error(" Erro ao criar cliente no QuickBooks:", err);
                     console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
                     reject(err);
                   } else {
-                    console.log("✅ Cliente criado com sucesso no QuickBooks");
+                    console.log(" Cliente criado com sucesso no QuickBooks");
                     resolve(data);
                   }
                 });
@@ -392,12 +392,12 @@ export class QuickBooksInvoiceController {
               console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
               
               if (!createdCustomer || !createdCustomer.Id) {
-                console.error("❌ Resposta inválida do QuickBooks ao criar cliente");
+                console.error(" Resposta inválida do QuickBooks ao criar cliente");
                 throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
               }
 
               clientId = createdCustomer.Id;
-              console.log(`✅ Novo cliente criado no QBO com ID: ${clientId}`);
+              console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
 
               // Atualizar cliente local com o novo idQuickbooks
               try {
@@ -405,27 +405,27 @@ export class QuickBooksInvoiceController {
                   where: { id: project.client!.id },
                   data: { idQuickbooks: clientId }
                 });
-                console.log(`✅ Cliente local atualizado com idQuickbooks: ${clientId}`);
+                console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
               } catch (updateError: any) {
-                console.error("⚠️ Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
+                console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
                 // Não falhar a criação do invoice por causa disso
               }
             } catch (createError: any) {
-              console.error("❌ Erro crítico ao criar cliente no QuickBooks:", createError);
+              console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
               throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
             }
           }
 
           // 3) Validação final: garantir que temos um clientId válido
           if (!clientId) {
-            console.error("❌ ERRO CRÍTICO: clientId não foi definido após processamento");
+            console.error(" ERRO CRÍTICO: clientId não foi definido após processamento");
             throw new Error("Failed to obtain valid QuickBooks customer ID");
           }
 
-          console.log(`✅ Cliente QuickBooks confirmado - ID: ${clientId}`);
+          console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
 
         } catch (clientError: any) {
-          console.error("❌ ERRO ao processar cliente no QuickBooks:", clientError);
+          console.error(" ERRO ao processar cliente no QuickBooks:", clientError);
           console.error("Stack trace:", clientError?.stack);
           throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
         }
@@ -595,7 +595,7 @@ export class QuickBooksInvoiceController {
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
         errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
-        console.error("❌ Erro do QuickBooks:", errorMessage);
+        console.error(" Erro do QuickBooks:", errorMessage);
       }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
@@ -1069,7 +1069,7 @@ export class QuickBooksInvoiceController {
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
         errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
-        console.error("❌ Erro do QuickBooks (Update):", errorMessage);
+        console.error(" Erro do QuickBooks (Update):", errorMessage);
       }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
