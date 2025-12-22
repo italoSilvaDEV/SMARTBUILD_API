@@ -505,11 +505,6 @@ export class CustomInvoiceController {
         }
       })
 
-      console.log(`📄 Found ${documentsAttachments.length} document attachments for invoice ${invoice.id}`);
-      if (documentsAttachments.length > 0) {
-        console.log('📎 Documents:', documentsAttachments.map(d => ({ id: d.id, filename: d.original_filename, url: d.url?.substring(0, 50) })));
-      }
-
       if (!pdfProject || !pdfProject.uri) {
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
@@ -524,17 +519,14 @@ export class CustomInvoiceController {
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-      // Preparar anexos dos documentos (se existirem)
       const documentAttachments = [];
       if (documentsAttachments && documentsAttachments.length > 0) {
-        console.log('🔄 Starting to download document attachments...');
         for (const document of documentsAttachments) {
           try {
-            console.log(`  Downloading document ${document.id}: ${document.original_filename || document.title}`);
             if (document.url) {
               const documentUrl = await getPresignedUrl(document.url);
               const documentResponse = await fetch(documentUrl);
-              console.log(`  Response status: ${documentResponse.status} ${documentResponse.statusText}`);
+
               if (documentResponse.ok) {
                 const documentBuffer = Buffer.from(await documentResponse.arrayBuffer());
                 const fileName = document.original_filename || document.title || `document_${document.id}`;
@@ -545,18 +537,12 @@ export class CustomInvoiceController {
                   content: documentBuffer,
                   contentType: contentType
                 });
-                console.log(`  ✅ Successfully added document: ${fileName} (${contentType})`);
-              } else {
-                console.log(`  ❌ Failed to download: ${documentResponse.status}`);
               }
-            } else {
-              console.log(`  ⚠️ Document ${document.id} has no URL`);
             }
           } catch (error) {
-            console.error(`  ❌ Error fetching document attachment ${document.id}:`, error);
+            console.error(`Error fetching document attachment ${document.id}:`, error);
           }
         }
-        console.log(`✅ Total documents prepared for attachment: ${documentAttachments.length}`);
       }
 
       // Configurar o envio de email
@@ -607,9 +593,6 @@ export class CustomInvoiceController {
       // Resultados do envio para cada email
       const results = [];
 
-      console.log(`📨 [sendInvoice] Preparing to send emails to ${emailsToSend.length} recipient(s)`);
-      console.log(`📎 [sendInvoice] Total attachments available: ${documentAttachments.length} documents + 1 PDF = ${documentAttachments.length + 1}`);
-
       // Processar todos os emails
       for (const email of emailsToSend) {
         try {
@@ -621,11 +604,6 @@ export class CustomInvoiceController {
             },
             ...documentAttachments
           ];
-
-          console.log(`📧 [sendInvoice] Sending email to ${email} with ${attachments.length} attachments:`);
-          attachments.forEach((att, idx) => {
-            console.log(`  ${idx + 1}. ${att.filename} (${att.contentType}) - ${att.content.length} bytes`);
-          });
 
           await transporter.sendMail({
             from: SMTP_CONFIG.user,
@@ -1896,11 +1874,6 @@ export class CustomInvoiceController {
         }
       });
 
-      console.log(`📄 [sendInvoicePaid] Found ${documentsAttachments.length} document attachments for invoice ${invoice.id}`);
-      if (documentsAttachments.length > 0) {
-        console.log('📎 [sendInvoicePaid] Documents:', documentsAttachments.map(d => ({ id: d.id, filename: d.original_filename, url: d.url?.substring(0, 50) })));
-      }
-
       // Gerar URL presigned para o PDF
       const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
 
@@ -1911,17 +1884,14 @@ export class CustomInvoiceController {
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-      // Preparar anexos dos documentos (se existirem)
       const documentAttachments = [];
       if (documentsAttachments && documentsAttachments.length > 0) {
-        console.log('🔄 [sendInvoicePaid] Starting to download document attachments...');
         for (const document of documentsAttachments) {
           try {
-            console.log(`  [sendInvoicePaid] Downloading document ${document.id}: ${document.original_filename || document.title}`);
             if (document.url) {
               const documentUrl = await getPresignedUrl(document.url);
               const documentResponse = await fetch(documentUrl);
-              console.log(`  [sendInvoicePaid] Response status: ${documentResponse.status} ${documentResponse.statusText}`);
+
               if (documentResponse.ok) {
                 const documentBuffer = Buffer.from(await documentResponse.arrayBuffer());
                 const fileName = document.original_filename || document.title || `document_${document.id}`;
@@ -1932,18 +1902,12 @@ export class CustomInvoiceController {
                   content: documentBuffer,
                   contentType: contentType
                 });
-                console.log(`  ✅ [sendInvoicePaid] Successfully added document: ${fileName} (${contentType})`);
-              } else {
-                console.log(`  ❌ [sendInvoicePaid] Failed to download: ${documentResponse.status}`);
               }
-            } else {
-              console.log(`  ⚠️ [sendInvoicePaid] Document ${document.id} has no URL`);
             }
           } catch (error) {
-            console.error(`  ❌ [sendInvoicePaid] Error fetching document attachment ${document.id}:`, error);
+            console.error(`Error fetching document attachment ${document.id}:`, error);
           }
         }
-        console.log(`✅ [sendInvoicePaid] Total documents prepared for attachment: ${documentAttachments.length}`);
       }
 
       // Configurar o envio de email
@@ -1994,9 +1958,6 @@ export class CustomInvoiceController {
       // Resultados do envio para cada email
       const results = [];
 
-      console.log(`📨 [sendInvoicePaid] Preparing to send emails to ${emailsToSend.length} recipient(s)`);
-      console.log(`📎 [sendInvoicePaid] Total attachments available: ${documentAttachments.length} documents + 1 PDF = ${documentAttachments.length + 1}`);
-
       // Processar todos os emails
       for (const email of emailsToSend) {
         try {
@@ -2008,11 +1969,6 @@ export class CustomInvoiceController {
             },
             ...documentAttachments
           ];
-
-          console.log(`📧 [sendInvoicePaid] Sending email to ${email} with ${attachments.length} attachments:`);
-          attachments.forEach((att, idx) => {
-            console.log(`  ${idx + 1}. ${att.filename} (${att.contentType}) - ${att.content.length} bytes`);
-          });
 
           await transporter.sendMail({
             from: SMTP_CONFIG.user,
