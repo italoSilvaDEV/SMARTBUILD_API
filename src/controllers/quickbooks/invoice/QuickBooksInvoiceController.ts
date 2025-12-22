@@ -315,21 +315,23 @@ export class QuickBooksInvoiceController {
       // dueDateObj.setDate(dueDateObj.getDate() + 30);
 
         // Verificar cliente no QuickBooks - abordagem conservadora
+        let clientId;
+        
         try {
-          console.log("Verificando cliente no QuickBooks...");
-
-          let clientId;
+          console.log("🔍 Verificando cliente no QuickBooks...");
+          console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
+          console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
 
           // 1) Primeiro verificar se o cliente local já tem idQuickbooks
           if (project.client!.idQuickbooks) {
-            console.log(`Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
+            console.log(`📋 Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
             
             // Verificar se o cliente ainda existe no QuickBooks
             try {
               const existingCustomer = await new Promise((resolve, reject) => {
                 qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
                   if (err) {
-                    console.warn("Cliente com idQuickbooks não encontrado no QBO, será criado novo");
+                    console.warn("⚠️ Cliente com idQuickbooks não encontrado no QBO, será criado novo");
                     resolve(null);
                   } else {
                     resolve(data);
@@ -340,61 +342,108 @@ export class QuickBooksInvoiceController {
               if (existingCustomer) {
                 const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
                 clientId = customer.Id;
-                console.log(`Cliente existente confirmado no QBO com ID: ${clientId}`);
+                console.log(`✅ Cliente existente confirmado no QBO com ID: ${clientId}`);
               }
-            } catch (getError) {
-              console.warn("Erro ao verificar cliente existente, criando novo:", getError);
+            } catch (getError: any) {
+              console.warn("⚠️ Erro ao verificar cliente existente:", getError?.message || getError);
+              console.log("Continuando para criação de novo cliente...");
             }
           }
 
-          // 2) Se não tem idQuickbooks válido, criar novo cliente (abordagem conservadora)
+          // 2) Se não tem idQuickbooks válido, criar novo cliente
           if (!clientId) {
-            console.log(`Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            console.log(`📝 Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            
+            // Validar dados do cliente antes de criar
+            const clientName = project.client!.name?.trim();
+            if (!clientName || clientName.length === 0) {
+              throw new Error("Client name is required to create QuickBooks customer");
+            }
+
+            const clientEmail = project.client!.email?.trim() || "noemail@example.com";
+            console.log(`Email do cliente: ${clientEmail}`);
             
             const createCustomerData = {
-              DisplayName: project.client!.name,
-              CompanyName: project.client!.name,
+              DisplayName: clientName,
+              CompanyName: clientName,
               PrimaryEmailAddr: {
-                Address: project.client!.email || "cliente@exemplo.com"
+                Address: clientEmail
               }
             };
 
-            const createCustomerResult = await new Promise((resolve, reject) => {
-              qb.createCustomer(createCustomerData, (err: any, data: any) => {
-                if (err) {
-                  console.error("Erro ao criar cliente:", err);
-                  reject(err);
-                } else {
-                  resolve(data);
-                }
+            console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
+
+            try {
+              const createCustomerResult = await new Promise((resolve, reject) => {
+                qb.createCustomer(createCustomerData, (err: any, data: any) => {
+                  if (err) {
+                    console.error("❌ Erro ao criar cliente no QuickBooks:", err);
+                    console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
+                    reject(err);
+                  } else {
+                    console.log("✅ Cliente criado com sucesso no QuickBooks");
+                    resolve(data);
+                  }
+                });
               });
-            });
 
-            const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
-            
-            if (!createdCustomer || !createdCustomer.Id) {
-              throw new Error("Failed to create customer in QuickBooks");
+              const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
+              
+              console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
+              
+              if (!createdCustomer || !createdCustomer.Id) {
+                console.error("❌ Resposta inválida do QuickBooks ao criar cliente");
+                throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
+              }
+
+              clientId = createdCustomer.Id;
+              console.log(`✅ Novo cliente criado no QBO com ID: ${clientId}`);
+
+              // Atualizar cliente local com o novo idQuickbooks
+              try {
+                await prisma.client.update({
+                  where: { id: project.client!.id },
+                  data: { idQuickbooks: clientId }
+                });
+                console.log(`✅ Cliente local atualizado com idQuickbooks: ${clientId}`);
+              } catch (updateError: any) {
+                console.error("⚠️ Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
+                // Não falhar a criação do invoice por causa disso
+              }
+            } catch (createError: any) {
+              console.error("❌ Erro crítico ao criar cliente no QuickBooks:", createError);
+              throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
             }
-
-            clientId = createdCustomer.Id;
-            console.log(`Novo cliente criado no QBO com ID: ${clientId}`);
-
-            // Atualizar cliente local com o novo idQuickbooks
-            await prisma.client.update({
-              where: { id: project.client!.id },
-              data: { idQuickbooks: clientId }
-            });
-            console.log(`Cliente local atualizado com idQuickbooks: ${clientId}`);
           }
+
+          // 3) Validação final: garantir que temos um clientId válido
+          if (!clientId) {
+            console.error("❌ ERRO CRÍTICO: clientId não foi definido após processamento");
+            throw new Error("Failed to obtain valid QuickBooks customer ID");
+          }
+
+          console.log(`✅ Cliente QuickBooks confirmado - ID: ${clientId}`);
+
+        } catch (clientError: any) {
+          console.error("❌ ERRO ao processar cliente no QuickBooks:", clientError);
+          console.error("Stack trace:", clientError?.stack);
+          throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
+        }
 
         // Verificar se há itens processados
         if (processedLineItems.length === 0) {
           throw new Error("No valid items to include in the invoice. Please check the services data.");
         }
 
+        // Limpar campos internos antes de enviar para QuickBooks
+        const cleanLineItems = processedLineItems.map((item: any) => {
+          const { _realQuantity, _realPrice, ...cleanItem } = item;
+          return cleanItem;
+        });
+
         // Preparar dados da fatura
         const invoiceData = {
-          Line: processedLineItems,
+          Line: cleanLineItems, // Usar itens limpos sem campos internos
           CustomerRef: {
             value: clientId
           },
@@ -511,8 +560,8 @@ export class QuickBooksInvoiceController {
                   price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
                   totalAmount: item.Amount,
                   // Valores ajustados enviados ao QuickBooks
-                  quickbooksQuantity: item?.SalesItemLineDetail?.Qty || 1,
-                  quickbooksPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
+                  qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
+                  qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
                 }))
               }
             },
@@ -536,12 +585,18 @@ export class QuickBooksInvoiceController {
           };
         }
 
-      } catch (clientError: any) {
-        console.error("Erro ao processar cliente:", clientError);
-        throw new Error(`Error processing client in QuickBooks: ${clientError.message}`);
-      }
     } catch (error: any) {
       console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
+
+      // Extrair mensagem de erro do QuickBooks
+      let errorMessage = error.message || error.toString();
+      
+      // Se for um erro do QuickBooks com estrutura Fault
+      if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
+        const qbError = error.Fault.Error[0];
+        errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error("❌ Erro do QuickBooks:", errorMessage);
+      }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -568,7 +623,7 @@ export class QuickBooksInvoiceController {
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
       }
 
-      throw new Error(`QuickBooks API Error: ${error.message}`);
+      throw new Error(`QuickBooks API Error: ${errorMessage}`);
     }
   }
 
@@ -856,7 +911,10 @@ export class QuickBooksInvoiceController {
               ItemRef: { value: itemId, name: qboItemName },
               Qty: qtyForQBUpdate, // Sempre 1 para evitar limitação de arredondamento
               UnitPrice: unitPrice // Rate = valor total do serviço
-            }
+            },
+            // Armazenar valores reais para salvar no banco
+            _realQuantity: calc.qty,
+            _realPrice: calc.priceParsed
           });
 
           // Logs defensivos
@@ -885,11 +943,17 @@ export class QuickBooksInvoiceController {
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date(currentInvoice.DueDate);
 
+      // Limpar campos internos antes de enviar para QuickBooks
+      const cleanLineItemsUpdate = processedLineItems.map((item: any) => {
+        const { _realQuantity, _realPrice, ...cleanItem } = item;
+        return cleanItem;
+      });
+
       // Preparar dados da fatura para atualização
       const updateInvoiceData = {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken,
-        Line: processedLineItems,
+        Line: cleanLineItemsUpdate, // Usar itens limpos sem campos internos
         CustomerRef: currentInvoice.CustomerRef, // Manter o cliente atual
         DueDate: dueDateObj.toISOString().split('T')[0],
         PrivateNote: description || currentInvoice.PrivateNote || `Updated Invoice for Project ${project.id}`,
@@ -979,8 +1043,8 @@ export class QuickBooksInvoiceController {
               price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
               totalAmount: item.Amount,
               // Valores ajustados enviados ao QuickBooks
-              quickbooksQuantity: item?.SalesItemLineDetail?.Qty || 1,
-              quickbooksPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
+              qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
+              qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
             }))
           });
         }
@@ -997,6 +1061,16 @@ export class QuickBooksInvoiceController {
 
     } catch (error: any) {
       console.error("Erro detalhado ao atualizar fatura no QuickBooks:", error);
+
+      // Extrair mensagem de erro do QuickBooks
+      let errorMessage = error.message || error.toString();
+      
+      // Se for um erro do QuickBooks com estrutura Fault
+      if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
+        const qbError = error.Fault.Error[0];
+        errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error("❌ Erro do QuickBooks (Update):", errorMessage);
+      }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -1023,7 +1097,7 @@ export class QuickBooksInvoiceController {
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
       }
 
-      throw new Error(`QuickBooks API Error: ${error.message}`);
+      throw new Error(`QuickBooks API Error: ${errorMessage}`);
     }
   }
 
