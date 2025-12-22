@@ -12,7 +12,8 @@ interface Subcontractor {
 interface CreateSubserviceRequest {
     name: string
     description?: string
-    serviceId: string
+    serviceId?: string
+    customServiceId?: string
     start_date?: string
     deadline?: string
     price?: number
@@ -28,10 +29,10 @@ export class CreateSubserviceController {
             if (!body.name
                 || !body.start_date
                 || !body.deadline
-                || !body.serviceId
+                || !body.serviceId && !body.customServiceId
             ) {
                 return res.status(400).json({
-                    error: "Name, start_date, deadline and serviceId are required"
+                    error: "Name, start_date, deadline and serviceId or customServiceId are required"
                 });
             }
 
@@ -50,17 +51,35 @@ export class CreateSubserviceController {
                 }
             })
 
-            if (!service) {
-                return res.status(404).json({
-                    error: "Service not found"
-                });
+            const customService = await prisma.customServiceSchedule.findUnique({
+                where: {
+                    id: body.customServiceId
+                },
+                select: {
+                    id: true,
+                }
+            })
+
+            if (body.serviceId) {
+                if (!service) {
+                    return res.status(404).json({
+                        error: "Service not found"
+                    });
+                }
+            } else if (body.customServiceId) {
+                if (!customService) {
+                    return res.status(404).json({
+                        error: "Custom service not found"
+                    });
+                }
             }
 
             const subservice = await prisma.subServicesProject.create({
                 data: {
                     name: body.name,
                     description: body.description || null,
-                    serviceProjectId: body.serviceId,
+                    serviceProjectId: body.serviceId || null,
+                    custom_service_schedule_id: body.customServiceId || null,
                     start_date: body.start_date || null,
                     deadline: body.deadline || null,
                     price: body.price || 0,
