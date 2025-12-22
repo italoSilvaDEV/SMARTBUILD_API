@@ -158,6 +158,9 @@ model Company {
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
   Subcontractors Subcontractor[]
+  
+  // NOVO: Pagamentos QBO
+  paymentTransactions PaymentTransaction[]
 
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
@@ -925,13 +928,19 @@ model Invoice {
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
-  status            String // Status do invoice: draft, open, paid, void, uncollectible
+  status            String // Status: draft, open, paid, partial (QBO only), void, uncollectible
   totalAmount       Decimal
   currency          String    @default("usd") // NOVO: suporte a múltiplas moedas
   dueDate           DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   invoiceUrl        String?
+  
+  // ===== CAMPOS PARA PAGAMENTOS PARCIAIS QBO (Fonte de verdade: QuickBooks) =====
+  balanceRemaining          Decimal?  // Saldo restante (Balance do QBO)
+  totalAmountPaidQbo        Decimal?  // Total já pago (TotalAmt - Balance do QBO)
+  amountChangedAfterPayment Boolean   @default(false) // Se o valor foi alterado após pagamento
+  lastPaymentAt             DateTime? // Data do último pagamento recebido
 
   type_invoicebase TypeInvoiceBase? @default(project)
   multi_emails     String?          @db.Text
@@ -979,6 +988,10 @@ model Invoice {
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment    InvoicePayment?
+  
+  // NOVO: Pagamentos parciais QBO
+  paymentApplications PaymentApplication[]
+  
   PdfProject PdfProject[]
 
   // Relacionamento com fildsPdfProject
@@ -1066,6 +1079,47 @@ model InvoicePayment {
   // Relação com Invoice (um pagamento pertence a uma fatura)
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
+}
+
+// ===== PAGAMENTOS PARCIAIS QUICKBOOKS =====
+// PaymentTransaction: Representa um pagamento recebido no QuickBooks
+model PaymentTransaction {
+  id                String   @id @default(uuid())
+  provider          String   // "qbo"
+  externalPaymentId String   // Payment.Id do QBO
+  currency          String   @default("USD")
+  totalAmount       Decimal  // Valor total do pagamento
+  paymentMethodType String?  // Tipo de método de pagamento (Cash, Check, CreditCard, etc.)
+  txnDate           DateTime? // Data da transação no QBO
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relacionamento com Company
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  
+  // Relacionamento com PaymentApplication (um pagamento pode ser aplicado a várias invoices)
+  applications PaymentApplication[]
+  
+  @@unique([provider, externalPaymentId])
+  @@index([companyId])
+}
+
+// PaymentApplication: Representa quanto de um pagamento foi aplicado a uma invoice
+model PaymentApplication {
+  id                    String   @id @default(uuid())
+  paymentTransactionId  String
+  invoiceId             String
+  amountApplied         Decimal  // Valor aplicado a esta invoice específica
+  appliedAt             DateTime @default(now())
+  
+  // Relacionamentos
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  invoice            Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@unique([paymentTransactionId, invoiceId])
+  @@index([invoiceId])
+  @@index([paymentTransactionId])
 }
 
 enum TypeEstimate {
