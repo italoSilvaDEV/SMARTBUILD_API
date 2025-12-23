@@ -172,6 +172,8 @@ export class CreateJobCompanyController {
                         Thank you for your business!
                         ${company.name || ''}`.trim()
                     })
+
+                    console.log("Email sent successfully")
                 }
             } catch (emailError: any) {
                 console.error("Error sending project schedule email:", emailError);
