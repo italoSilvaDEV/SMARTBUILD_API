@@ -173,8 +173,8 @@ export const projectScheduleEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#F4EAD7;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4EAD7;">
+<body style="margin:0;padding:0;background-color:#FAF6EE;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF6EE;">
         <tr>
             <td align="center">
                 
