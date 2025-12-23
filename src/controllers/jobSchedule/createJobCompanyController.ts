@@ -101,6 +101,8 @@ export class CreateJobCompanyController {
                 const clientName = project.workContext?.Name || project.client?.name
                 const clientEmail = project.workContext?.Email || project.client?.email
 
+                console.log(clientEmail)
+
                 if (!clientEmail || !clientName) {
                     console.log("Client email or name not found, skipping email send");
                 } else {
@@ -143,7 +145,7 @@ export class CreateJobCompanyController {
 
                     await transporter.sendMail({
                         from: SMTP_CONFIG.user,
-                        to: clientEmail,
+                        to: "rian.goncallves@gmail.com",
                         subject: emailSubject,
                         html: emailHtml,
                         text: `
