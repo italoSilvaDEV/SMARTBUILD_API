@@ -153,7 +153,7 @@ export const projectScheduleEmail = (
             margin: 0; 
             padding: 0; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #F9FAFB;
+            background-color: #E1E1E;
         }
         table { border-spacing: 0; border-collapse: collapse; }
         img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
@@ -164,8 +164,8 @@ export const projectScheduleEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#FAF6EE;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF6EE;">
+<body style="margin:0;padding:0;background-color:#E1E1E;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E1E1E;">
         <tr>
             <td align="center">
                 
