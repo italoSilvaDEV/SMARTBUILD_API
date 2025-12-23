@@ -342,7 +342,8 @@ export class CompanyController {
             webSiteUrl,
             name,
             workStartTime,
-            workEndTime
+            workEndTime,
+            attendanceMode
         } = req.body;
         const file = req.file;
 
@@ -377,6 +378,10 @@ export class CompanyController {
                 }
             }
 
+            if (attendanceMode && !["manual", "auto"].includes(attendanceMode)) {
+                return res.status(400).json({ error: "Invalid attendance mode. Use manual or auto." });
+            }
+
             let avatarUrl = company.avatar;
 
             if (file) {
@@ -396,6 +401,7 @@ export class CompanyController {
                     avatar: avatarUrl,
                     workStartTime,
                     workEndTime,
+                    ...(attendanceMode ? { attendanceMode } : {})
                 },
             });
 
@@ -426,7 +432,8 @@ export class CompanyController {
                     webSiteUrl: true,
                     name: true,
                     workStartTime: true,
-                    workEndTime: true
+                    workEndTime: true,
+                    attendanceMode: true
                 }
             });
 
