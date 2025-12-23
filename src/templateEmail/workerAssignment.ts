@@ -87,7 +87,7 @@ export const workerAssignmentEmail = (
             margin: 0; 
             padding: 0; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #E1E1E1;
+            background-color: #F2F2F2;
         }
         table { border-spacing: 0; border-collapse: collapse; }
         img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
@@ -98,8 +98,8 @@ export const workerAssignmentEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#E1E1E1;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E1E1E1;">
+<body style="margin:0;padding:0;background-color:#F2F2F2;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F2F2F2;">
         <tr>
             <td align="center">
                 
