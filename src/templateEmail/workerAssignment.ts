@@ -6,9 +6,11 @@ export const workerAssignmentEmail = (
     projectLocation: string,
     workerEmail?: string,
     latitude?: number | null,
-    longitude?: number | null
+    longitude?: number | null,
+    isScheduleChange?: boolean,
+    oldStartDate?: string,
+    oldDeadline?: string
 ) => {
-    // Formatar as datas com hora para o formato "Dec 16, 2025 (8:00 AM)"
     const formattedStartDate = new Date(startDate).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -33,10 +35,40 @@ export const workerAssignmentEmail = (
         hour12: true
     });
 
-    // URL do Google Maps - preferência por coordenadas, fallback para endereço
+    const formattedOldStartDate = oldStartDate ? new Date(oldStartDate).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    }) : null;
+
+    const formattedOldStartTime = oldStartDate ? new Date(oldStartDate).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    }) : null;
+
+    const formattedOldDeadline = oldDeadline ? new Date(oldDeadline).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    }) : null;
+
+    const formattedOldDeadlineTime = oldDeadline ? new Date(oldDeadline).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    }) : null;
+
     const mapsUrl = (latitude && longitude)
         ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
+
+    const badgeText = isScheduleChange ? 'UPDATED' : 'ASSIGNED';
+    const badgeColor = isScheduleChange ? '#1E90FF' : '#1E9B5C';
+    const greeting = `Hello, ${workerName}${isScheduleChange ? '.' : '.'}`;
+    const mainMessage = isScheduleChange
+        ? 'The schedule for your assignment has been updated:'
+        : 'You have been assigned to the following service:';
 
     return `
 <!DOCTYPE html>
@@ -86,8 +118,8 @@ export const workerAssignmentEmail = (
                     <!-- Badge e Título -->
                     <tr>
                         <td class="content-padding" style="padding:32px 24px;">
-                            <div style="display:inline-block;background-color:#1E9B5C;color:#FFFFFF;padding:4px 12px;border-radius:999px;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">
-                                ASSIGNED
+                            <div style="display:inline-block;background-color:${badgeColor};color:#FFFFFF;padding:4px 12px;border-radius:999px;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">
+                                ${badgeText}
                             </div>
                             <h1 style="font-family:'Inter',-apple-system,sans-serif;font-size:24px;font-weight:600;color:#121212;margin:0;line-height:1.4;">
                                 ${serviceName}
@@ -99,10 +131,10 @@ export const workerAssignmentEmail = (
                     <tr>
                         <td class="content-padding" style="padding:0 24px 32px;">
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0 0 16px 0;font-weight:600;">
-                                Hello, ${workerName}.
+                                ${greeting}
                             </p>
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0;line-height:1.5;font-weight:400;">
-                                You have been assigned to the following service:
+                                ${mainMessage}
                             </p>
                         </td>
                     </tr>
@@ -116,6 +148,33 @@ export const workerAssignmentEmail = (
                                     ${serviceName}
                                 </p>
                                 
+                                ${isScheduleChange && formattedOldStartDate && formattedOldStartTime ? `
+                                <!-- Start Date Update -->
+                                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
+                                    <tr>
+                                        <td style="padding:0;vertical-align:middle;width:auto;">
+                                            <table cellpadding="0" cellspacing="0" border="0">
+                                                <tr>
+                                                    <td style="padding:0 8px 0 0;vertical-align:middle;">
+                                                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d="M17.5 8.33333H2.5M13.3333 1.66667V5M6.66667 1.66667V5M6.5 18.3333H13.5C14.9001 18.3333 15.6002 18.3333 16.135 18.0608C16.6054 17.8212 16.9878 17.4387 17.2275 16.9683C17.5 16.4335 17.5 15.7335 17.5 14.3333V7.33333C17.5 5.93319 17.5 5.23312 17.2275 4.69836C16.9878 4.22795 16.6054 3.8455 16.135 3.60582C15.6002 3.33333 14.9001 3.33333 13.5 3.33333H6.5C5.09987 3.33333 4.3998 3.33333 3.86504 3.60582C3.39462 3.8455 3.01218 4.22795 2.77248 4.69836C2.5 5.23312 2.5 5.93319 2.5 7.33333V14.3333C2.5 15.7335 2.5 16.4335 2.77248 16.9683C3.01218 17.4387 3.39462 17.8212 3.86504 18.0608C4.3998 18.3333 5.09987 18.3333 6.5 18.3333Z" stroke="#595959" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        </svg>
+                                                    </td>
+                                                    <td style="padding:0;vertical-align:middle;">
+                                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#D92D20;margin:0;text-decoration:line-through;white-space:nowrap;font-weight:600;">${formattedOldStartDate} (${formattedOldStartTime})</p>
+                                                    </td>
+                                                    <td style="padding:0 6px;vertical-align:middle;">
+                                                        <span style="color:#595959;font-size:14px;">⇒</span>
+                                                    </td>
+                                                    <td style="padding:0;vertical-align:middle;">
+                                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;white-space:nowrap;font-weight:600;">${formattedStartDate} (${formattedStartTime})</p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                                ` : `
                                 <!-- Start Date -->
                                 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
                                     <tr>
@@ -132,7 +191,35 @@ export const workerAssignmentEmail = (
                                         </td>
                                     </tr>
                                 </table>
+                                `}
                                 
+                                ${isScheduleChange && formattedOldDeadline && formattedOldDeadlineTime ? `
+                                <!-- Deadline Update -->
+                                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+                                    <tr>
+                                        <td style="padding:0;vertical-align:middle;width:auto;">
+                                            <table cellpadding="0" cellspacing="0" border="0">
+                                                <tr>
+                                                    <td style="padding:0 8px 0 0;vertical-align:middle;">
+                                                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d="M2.5 7.5L2.5 6.5C2.5 5.09987 2.5 4.3998 2.77248 3.86502C3.01217 3.39462 3.39462 3.01217 3.86502 2.77248C4.3998 2.5 5.09987 2.5 6.5 2.5H7.08333M2.5 7.5V13.5C2.5 14.9001 2.5 15.6002 2.77248 16.135C3.01217 16.6054 3.39462 16.9878 3.86502 17.2275C4.3998 17.5 5.09987 17.5 6.5 17.5H13.5C14.9001 17.5 15.6002 17.5 16.135 17.2275C16.6054 16.9878 16.9878 16.6054 17.2275 16.135C17.5 15.6002 17.5 14.9001 17.5 13.5V7.5M2.5 7.5H17.5M17.5 7.5V6.5C17.5 5.09987 17.5 4.3998 17.2275 3.86502C16.9878 3.39462 16.6054 3.01217 16.135 2.77248C15.6002 2.5 14.9001 2.5 13.5 2.5H12.9167M7.08333 2.5V1.66667M7.08333 2.5V5M7.08333 2.5H12.9167M12.9167 2.5V1.66667M12.9167 2.5V5" stroke="#595959" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        </svg>
+                                                    </td>
+                                                    <td style="padding:0;vertical-align:middle;">
+                                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#D92D20;margin:0;text-decoration:line-through;white-space:nowrap;font-weight:600;">${formattedOldDeadline} (${formattedOldDeadlineTime})</p>
+                                                    </td>
+                                                    <td style="padding:0 6px;vertical-align:middle;">
+                                                        <span style="color:#595959;font-size:14px;">⇒</span>
+                                                    </td>
+                                                    <td style="padding:0;vertical-align:middle;">
+                                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;white-space:nowrap;font-weight:600;">${formattedDeadline} (${formattedDeadlineTime})</p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                                ` : `
                                 <!-- Deadline -->
                                 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
                                     <tr>
@@ -149,6 +236,7 @@ export const workerAssignmentEmail = (
                                         </td>
                                     </tr>
                                 </table>
+                                `}
                                 
                                 <!-- Divider -->
                                 <div style="height:1px;background-color:#E5E7EB;margin:0 0 20px 0;"></div>

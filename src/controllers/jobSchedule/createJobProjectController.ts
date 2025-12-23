@@ -81,6 +81,8 @@ export class CreateJobProjectController {
                 },
                 select: {
                     id: true,
+                    start_date: true,
+                    deadline: true,
                 }
             })
 
@@ -90,7 +92,9 @@ export class CreateJobProjectController {
                 })
             }
 
-            const newlyAssignedUsers: string[] = [];
+            const isScheduleChange = !!(serviceProject.start_date && serviceProject.deadline);
+            const oldStartDate = serviceProject.start_date;
+            const oldDeadline = serviceProject.deadline;
 
             if (body.users) {
                 for (const user of body.users) {
@@ -132,12 +136,9 @@ export class CreateJobProjectController {
                                 assigned_at: new Date().toISOString()
                             }
                         })
-                        newlyAssignedUsers.push(user.id);
                     }
                 }
             }
-
-            const newlyAssignedSubcontractors: string[] = [];
 
             if (body.subcontractors) {
                 for (const subcontractor of body.subcontractors) {
@@ -170,7 +171,6 @@ export class CreateJobProjectController {
                                 service_project_id: serviceProject.id
                             }
                         })
-                        newlyAssignedSubcontractors.push(subcontractor.id);
                     }
                 }
             }
@@ -185,6 +185,66 @@ export class CreateJobProjectController {
                     deadline: new Date(body.deadline).toISOString()
                 }
             })
+
+            const serviceProjectData = await prisma.serviceProject.findUnique({
+                where: {
+                    id: serviceProject.id
+                },
+                select: {
+                    name: true,
+                    start_date: true,
+                    deadline: true
+                }
+            });
+
+            const projectData = await prisma.project.findUnique({
+                where: {
+                    id: project.id
+                },
+                select: {
+                    location: true,
+                    lat: true,
+                    log: true,
+                    contract_number: true
+                }
+            });
+
+            const serviceName = serviceProjectData?.name || 'Service';
+            const projectLocation = projectData?.location || 'Not specified';
+            const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
+            const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+            const startDate = serviceProjectData?.start_date || body.startDate;
+            const deadline = serviceProjectData?.deadline || body.deadline;
+
+            const allUserServiceProjects = await prisma.userServiceProject.findMany({
+                where: {
+                    service_project_id: serviceProject.id
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
+                    }
+                }
+            });
+
+            const allSubcontractorServiceProjects = await prisma.subContractorServiceProject.findMany({
+                where: {
+                    service_project_id: serviceProject.id
+                },
+                include: {
+                    subcontractor: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
+                    }
+                }
+            });
 
             try {
                 const SMTP_CONFIG = require("../../config/smtp");
@@ -201,47 +261,12 @@ export class CreateJobProjectController {
                     },
                 })
 
-                const serviceProjectData = await prisma.serviceProject.findUnique({
-                    where: {
-                        id: serviceProject.id
-                    },
-                    select: {
-                        name: true,
-                        start_date: true,
-                        deadline: true
-                    }
-                });
+                const emailSubject = isScheduleChange
+                    ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
+                    : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
 
-                const projectData = await prisma.project.findUnique({
-                    where: {
-                        id: project.id
-                    },
-                    select: {
-                        location: true,
-                        lat: true,
-                        log: true,
-                        contract_number: true
-                    }
-                });
-
-                const serviceName = serviceProjectData?.name || 'Service';
-                const projectLocation = projectData?.location || 'Not specified';
-                const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
-                const longitude = projectData?.log ? parseFloat(projectData.log) : null;
-                const startDate = serviceProjectData?.start_date || body.startDate;
-                const deadline = serviceProjectData?.deadline || body.deadline;
-
-                for (const userId of newlyAssignedUsers) {
-                    const user = await prisma.user.findUnique({
-                        where: {
-                            id: userId
-                        },
-                        select: {
-                            name: true,
-                            email: true
-                        }
-                    });
-
+                for (const userServiceProject of allUserServiceProjects) {
+                    const user = userServiceProject.user;
                     if (user && user.email && user.name) {
                         const emailHtml = workerAssignmentEmail(
                             user.name,
@@ -251,24 +276,24 @@ export class CreateJobProjectController {
                             projectLocation,
                             user.email,
                             latitude,
-                            longitude
+                            longitude,
+                            isScheduleChange,
+                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined
                         );
 
                         await transporter.sendMail({
                             from: SMTP_CONFIG.user,
-                            to: "rian.goncallves@gmail.com",
-                            subject: `New Assignment - ${serviceName} - #${projectData?.contract_number}`,
+                            to: user.email,
+                            subject: emailSubject,
                             html: emailHtml,
-                            text: `Hello ${user.name},\n\nYou have been assigned to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
                         });
                     }
                 }
-                for (const subcontractorId of newlyAssignedSubcontractors) {
-                    const subcontractor = await prisma.subcontractor.findUnique({
-                        where: { id: subcontractorId },
-                        select: { name: true, email: true }
-                    });
 
+                for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
+                    const subcontractor = subcontractorServiceProject.subcontractor;
                     if (subcontractor && subcontractor.email && subcontractor.name) {
                         const emailHtml = workerAssignmentEmail(
                             subcontractor.name,
@@ -278,15 +303,18 @@ export class CreateJobProjectController {
                             projectLocation,
                             subcontractor.email,
                             latitude,
-                            longitude
+                            longitude,
+                            isScheduleChange,
+                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined
                         );
 
                         await transporter.sendMail({
                             from: SMTP_CONFIG.user,
-                            to: "rian.goncallves@gmail.com",
-                            subject: `New Assignment - ${serviceName} - #${projectData?.contract_number}`,
+                            to: subcontractor.email,
+                            subject: emailSubject,
                             html: emailHtml,
-                            text: `Hello ${subcontractor.name},\n\nYou have been assigned to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
                         });
                     }
                 }
