@@ -111,8 +111,8 @@ export class CreateJobCompanyController {
                         : ""
 
                     const emailSubject = hadPreviousSchedule
-                        ? `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
-                        : `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
+                        ? `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
+                        : `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
 
                     const emailHtml = projectScheduleEmail(
                         clientName,
