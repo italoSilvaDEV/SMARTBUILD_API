@@ -131,17 +131,8 @@ export const projectScheduleEmail = (
                 </tr>
             </table>
             
-            <!-- Divider -->
-            <div style="height:1px;background-color:#E5E7EB;margin:16px 0;"></div>
-            
             <!-- Location -->
             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0 0 16px 0;"><span style="font-weight:600;">Location:</span> <span style="font-weight:400;">${projectLocation}</span></p>
-            
-            <!-- Divider -->
-            <div style="height:1px;background-color:#E5E7EB;margin:16px 0;"></div>
-            
-            <!-- Contract -->
-            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0;"><span style="font-weight:600;">Contract:</span> Project #${contractNumber}</p>
         </div>
     `;
 
