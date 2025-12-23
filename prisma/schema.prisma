@@ -113,6 +113,7 @@ model Company {
   webSiteUrl    String?
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String? // Format: "HH:mm" (24-hour)
+  attendanceMode AttendanceMode @default(manual)
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -954,6 +955,11 @@ model TimeLine {
 enum TypeInvoiceBase {
   project
   estimate
+}
+
+enum AttendanceMode {
+  manual
+  auto
 }
 
 model Invoice {

@@ -586,6 +586,7 @@ export class UserController {
           company: {
             id: user.company?.id,
             name: user.company?.name,
+            attendanceMode: user.company?.attendanceMode
           },
           plan: planInfo,
           permissions: permissions,
@@ -2047,4 +2048,3 @@ export class UserController {
     }
   }
 }
-

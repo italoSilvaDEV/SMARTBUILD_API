@@ -735,6 +735,7 @@ export class UserAttendanceController {
                             location: true,
                             lat: true,
                             log: true,
+                            radius: true,
                             cover_photo: true,
                             client: {
                                 select: {
@@ -792,7 +793,8 @@ export class UserAttendanceController {
                                 location: sp.Project!.location || sp.Project!.client?.location || null,
                                 coordinates: {
                                     lat: sp.Project!.lat,
-                                    lng: sp.Project!.log
+                                    lng: sp.Project!.log,
+                                    radius: sp.Project!.radius
                                 },
                                 cover_photo: coverPhotoUrl,
                                 client: {
@@ -994,4 +996,3 @@ export class UserAttendanceController {
         }
     }
 }
-
