@@ -225,7 +225,7 @@ export class QuickBooksWebhookWorker {
     // refresh se preciso
     let acc = account;
     if (acc.expiresAt && new Date() > acc.expiresAt) {
-      const r = await refreshAccessToken(acc.refreshToken, acc.user_id);
+      const r = await refreshAccessToken(acc.refreshToken, acc.id);
       if (!r.success) throw new Error("Falha ao renovar token: " + r.error);
       // re-carrega
       acc = await prisma.quickBooksAccount.findUnique({ where: { id: acc.id } });
