@@ -297,13 +297,13 @@ export const workerAssignmentEmail = (
                             <table cellpadding="0" cellspacing="0" border="0">
                                 <tr>
                                     <td style="padding:0 16px 0 0;vertical-align:middle;">
-                                        <a href="https://play.google.com/store" style="display:block;">
+                                        <a href="https://play.google.com/store/apps/details?id=com.smartbuild.app" style="display:block;">
                                             <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height:60px;width:auto;display:block;">
                                         </a>
                                     </td>
                                     <td style="padding:0;vertical-align:middle;">
-                                        <a href="https://apps.apple.com" style="display:block;">
-                                            <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83&amp;releaseDate=1301011200" alt="Download on the App Store" style="height:60px;width:auto;display:block;">
+                                        <a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" style="display:block;">
+                                            <img src="https://i.ibb.co/WN38DHh7/apple.png" alt="Download on the App Store" style="height:60px;width:auto;display:block;">
                                         </a>
                                     </td>
                                 </tr>
