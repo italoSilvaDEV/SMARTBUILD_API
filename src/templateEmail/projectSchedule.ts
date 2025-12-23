@@ -192,7 +192,7 @@ export const projectScheduleEmail = (
                     
                     <!-- Título -->
                     <tr>
-                        <td class="content-padding" style="padding:16px 40px 24px;">
+                        <td class="content-padding" style="padding:24px 32px 32px;">
                             <h1 style="font-family:'Inter',-apple-system,sans-serif;font-size:24px;font-weight:600;color:#121212;margin:0;line-height:1.4;">
                                 ${title}
                             </h1>
@@ -239,7 +239,7 @@ export const projectScheduleEmail = (
                     
                     <!-- Footer Info -->
                     <tr>
-                        <td class="content-padding" style="padding:24px 32px;">
+                        <td class="content-padding" style="padding:24px 24px;">
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0 0 14px 0;line-height:1.4;">
                                 This email was sent to <a href="mailto:${companyEmail || ''}" style="color:#A6855C;text-decoration:none;">${companyEmail || 'your email'}</a>. If you'd rather not receive this kind of email, you can <a href="#" style="color:#A6855C;text-decoration:none;">unsubscribe</a> or manage your email.
                             </p>
