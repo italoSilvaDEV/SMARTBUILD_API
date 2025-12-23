@@ -111,7 +111,7 @@ export class CreateJobCompanyController {
                         : ""
 
                     const emailSubject = hadPreviousSchedule
-                        ? `Update: Project #${project.contract_number} Rescheduled`
+                        ? `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
                         : `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
 
                     const emailHtml = projectScheduleEmail(
@@ -143,14 +143,6 @@ export class CreateJobCompanyController {
                         },
                     })
 
-                    console.log(`Sending email to: ${clientEmail}`);
-                    console.log(`Email subject: ${emailSubject}`);
-                    console.log(`Is schedule change: ${hadPreviousSchedule}`);
-                    console.log(`Old start date: ${oldStartDate}`);
-                    console.log(`Old deadline: ${oldDeadline}`);
-                    console.log(`New start date: ${startDate.toISOString()}`);
-                    console.log(`New deadline: ${deadline.toISOString()}`);
-                    
                     await transporter.sendMail({
                         from: SMTP_CONFIG.user,
                         to: clientEmail,
