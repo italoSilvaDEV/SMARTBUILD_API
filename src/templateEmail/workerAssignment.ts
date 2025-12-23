@@ -87,7 +87,7 @@ export const workerAssignmentEmail = (
             margin: 0; 
             padding: 0; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #E1E1E;
+            background-color: #E1E1E1;
         }
         table { border-spacing: 0; border-collapse: collapse; }
         img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
@@ -98,8 +98,8 @@ export const workerAssignmentEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#E1E1E;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E1E1E;">
+<body style="margin:0;padding:0;background-color:#E1E1E1;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E1E1E1;">
         <tr>
             <td align="center">
                 
@@ -298,12 +298,12 @@ export const workerAssignmentEmail = (
                                 <tr>
                                     <td style="padding:0 16px 0 0;vertical-align:middle;">
                                         <a href="https://play.google.com/store/apps/details?id=com.smartbuild.app" style="display:block;">
-                                            <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height:60px;width:auto;display:block;">
+                                            <img src="https://i.ibb.co/GQmB0Ly2/googleplay.png" alt="Get it on Google Play" style="height:40px;width:auto;display:block;">
                                         </a>
                                     </td>
                                     <td style="padding:0;vertical-align:middle;">
                                         <a href="https://apps.apple.com/br/app/smartbuild4u-app/id6740789217" style="display:block;">
-                                            <img src="https://i.ibb.co/WN38DHh7/apple.png" alt="Download on the App Store" style="height:60px;width:auto;display:block;">
+                                            <img src="https://i.ibb.co/WN38DHh7/apple.png" alt="Download on the App Store" style="height:40px;width:auto;display:block;">
                                         </a>
                                     </td>
                                 </tr>
