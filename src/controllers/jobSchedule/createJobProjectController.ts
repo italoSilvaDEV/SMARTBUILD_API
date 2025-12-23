@@ -284,7 +284,7 @@ export class CreateJobProjectController {
 
                         await transporter.sendMail({
                             from: SMTP_CONFIG.user,
-                            to: user.email,
+                            to: "rian.goncallves@gmail.com",
                             subject: emailSubject,
                             html: emailHtml,
                             text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
@@ -311,7 +311,7 @@ export class CreateJobProjectController {
 
                         await transporter.sendMail({
                             from: SMTP_CONFIG.user,
-                            to: subcontractor.email,
+                            to: "rian.goncallves@gmail.com",
                             subject: emailSubject,
                             html: emailHtml,
                             text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
