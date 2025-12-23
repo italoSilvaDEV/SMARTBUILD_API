@@ -59,60 +59,139 @@ export const projectScheduleEmail = (
 
     // Conteúdo específico para atualização
     const updateContent = isScheduleChange && formattedOldStartDate && formattedOldDeadline ? `
-        <div style="background-color:#F9FAFB;border-radius:8px;padding:20px;margin:24px 0;">
+        <div style="background-color:#F9FAFB;border-radius:8px;padding:20px;margin:0;">
             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#6B7280;margin:0 0 16px 0;font-weight:500;">${serviceName} #${contractNumber.split('#')[1] || contractNumber}</p>
-            <div style="display:flex;align-items:center;margin-bottom:8px;">
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#DC2626;margin:0;text-decoration:line-through;">${formattedOldStartDate}</p>
-                <span style="margin:0 8px;color:#6B7280;">⇒</span>
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;">${formattedStartDate}</p>
-                <span style="width:40px;height:1px;background-color:#E5E7EB;margin:0 8px;"></span>
-                <span style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></span>
-            </div>
-            <div style="display:flex;align-items:center;">
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#DC2626;margin:0;text-decoration:line-through;">${formattedOldDeadline}</p>
-                <span style="margin:0 8px;color:#6B7280;">⇒</span>
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;">${formattedDeadline}</p>
-                <span style="width:40px;height:1px;background-color:#E5E7EB;margin:0 8px;"></span>
-                <span style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></span>
-            </div>
+            
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
+                <tr>
+                    <td style="padding:0;">
+                        <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="padding:0;">
+                                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#DC2626;margin:0;text-decoration:line-through;white-space:nowrap;">${formattedOldStartDate}</p>
+                                </td>
+                                <td style="padding:0 8px;">
+                                    <span style="color:#6B7280;font-size:14px;">⇒</span>
+                                </td>
+                                <td style="padding:0;">
+                                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;white-space:nowrap;">${formattedStartDate}</p>
+                                </td>
+                                <td style="padding:0 0 0 12px;">
+                                    <table cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td style="padding:0;vertical-align:middle;">
+                                                <div style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></div>
+                                            </td>
+                                            <td style="padding:0;vertical-align:middle;">
+                                                <div style="width:60px;height:2px;background-color:#E5E7EB;margin:0 4px;"></div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td style="padding:0;">
+                        <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="padding:0;">
+                                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#DC2626;margin:0;text-decoration:line-through;white-space:nowrap;">${formattedOldDeadline}</p>
+                                </td>
+                                <td style="padding:0 8px;">
+                                    <span style="color:#6B7280;font-size:14px;">⇒</span>
+                                </td>
+                                <td style="padding:0;">
+                                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;white-space:nowrap;">${formattedDeadline}</p>
+                                </td>
+                                <td style="padding:0 0 0 12px;">
+                                    <table cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td style="padding:0;vertical-align:middle;">
+                                                <div style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></div>
+                                            </td>
+                                            <td style="padding:0;vertical-align:middle;">
+                                                <div style="width:60px;height:2px;background-color:#E5E7EB;margin:0 4px;"></div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            
             <div style="margin-top:16px;padding-top:16px;border-top:1px solid #E5E7EB;">
                 <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#6B7280;margin:0;"><strong>Location:</strong> ${projectLocation}</p>
             </div>
         </div>
     ` : `
-        <div style="background-color:#FFFFFF;padding:24px 0;">
-            <div style="display:flex;align-items:center;margin-bottom:24px;">
-                <span style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></span>
-                <span style="flex:1;height:2px;background-color:#E5E7EB;margin:0 4px;"></span>
-                <span style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></span>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:24px;">
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;font-weight:600;">${formattedStartDate}</p>
-                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;font-weight:600;">${formattedDeadline}</p>
-            </div>
-            <div style="margin-bottom:16px;">
-                <div style="display:flex;align-items:center;margin-bottom:12px;">
-                    <div style="width:32px;height:32px;background-color:#3B82F6;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:12px;flex-shrink:0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                    </div>
-                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#6B7280;margin:0;"><strong>Location:</strong> ${projectLocation}</p>
-                </div>
-                <div style="display:flex;align-items:center;">
-                    <div style="width:32px;height:32px;background-color:#3B82F6;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:12px;flex-shrink:0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10 9 9 9 8 9"></polyline>
-                        </svg>
-                    </div>
-                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#6B7280;margin:0;"><strong>Contract:</strong> ${serviceName} #${contractNumber.split('#')[1] || contractNumber}</p>
-                </div>
-            </div>
+        <div style="background-color:#FFFFFF;padding:0;">
+            <!-- Timeline -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+                <tr>
+                    <td style="padding:0;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="width:8px;padding:0;">
+                                    <div style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></div>
+                                </td>
+                                <td style="padding:0;">
+                                    <div style="height:2px;background-color:#E5E7EB;"></div>
+                                </td>
+                                <td style="width:8px;padding:0;">
+                                    <div style="width:8px;height:8px;background-color:#374151;border-radius:50%;"></div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            
+            <!-- Datas -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+                <tr>
+                    <td align="left" style="padding:0;">
+                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;font-weight:600;">${formattedStartDate}</p>
+                    </td>
+                    <td align="right" style="padding:0;">
+                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#374151;margin:0;font-weight:600;">${formattedDeadline}</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <!-- Location -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
+                <tr>
+                    <td valign="middle" style="width:32px;padding:0 12px 0 0;">
+                        <div style="width:32px;height:32px;background-color:#3B82F6;border-radius:50%;text-align:center;line-height:32px;">
+                            <span style="color:#FFFFFF;font-size:18px;">📍</span>
+                        </div>
+                    </td>
+                    <td valign="middle" style="padding:0;">
+                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#6B7280;margin:0;"><strong>Location:</strong> ${projectLocation}</p>
+                    </td>
+                </tr>
+            </table>
+            
+            <!-- Contract -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td valign="middle" style="width:32px;padding:0 12px 0 0;">
+                        <div style="width:32px;height:32px;background-color:#3B82F6;border-radius:50%;text-align:center;line-height:32px;">
+                            <span style="color:#FFFFFF;font-size:18px;">📄</span>
+                        </div>
+                    </td>
+                    <td valign="middle" style="padding:0;">
+                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#6B7280;margin:0;"><strong>Contract:</strong> ${serviceName} #${contractNumber.split('#')[1] || contractNumber}</p>
+                    </td>
+                </tr>
+            </table>
         </div>
     `;
 
@@ -154,8 +233,8 @@ export const projectScheduleEmail = (
                     
                     <!-- Header com Logo -->
                     <tr>
-                        <td style="background-color:#1F2937;padding:16px 32px;">
-                            <img src="${logo}" alt="${company}" style="height:32px;display:block;">
+                        <td style="background-color:#1F2937;padding:16px 32px;text-align:left;">
+                            ${logo ? `<img src="${logo}" alt="${company}" style="height:32px;display:block;">` : `<span style="color:#CDA574;font-family:'Inter',-apple-system,sans-serif;font-size:20px;font-weight:600;">🏗 SmartBuild</span>`}
                         </td>
                     </tr>
                     
@@ -180,14 +259,20 @@ export const projectScheduleEmail = (
                     <!-- Greeting com Avatar -->
                     <tr>
                         <td class="content-padding" style="padding:0 32px 16px;">
-                            <div style="display:flex;align-items:center;">
-                                <div style="width:40px;height:40px;background-color:#3B82F6;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-right:12px;">
-                                    <span style="color:#FFFFFF;font-size:18px;font-weight:600;">${clientInitial}</span>
-                                </div>
-                                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:15px;color:#111827;margin:0;font-weight:500;">
-                                    ${greeting}
-                                </p>
-                            </div>
+                            <table cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td valign="middle" style="padding:0 12px 0 0;">
+                                        <div style="width:40px;height:40px;background-color:#3B82F6;border-radius:50%;text-align:center;line-height:40px;">
+                                            <span style="color:#FFFFFF;font-size:18px;font-weight:600;">${clientInitial}</span>
+                                        </div>
+                                    </td>
+                                    <td valign="middle" style="padding:0;">
+                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:15px;color:#111827;margin:0;font-weight:500;">
+                                            ${greeting}
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     
@@ -253,20 +338,36 @@ export const projectScheduleEmail = (
                             <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
                                     <td align="left" valign="middle" style="vertical-align:middle;">
-                                        <svg width="121" height="24" viewBox="0 0 121 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-                                            <path d="M18.75 0H0V24H18.75V0Z" fill="#CDA574"/>
-                                            <path d="M123 3.75H24.75V22.5H123V3.75Z" fill="#121212"/>
-                                        </svg>
+                                        <table cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td style="background-color:#CDA574;width:18px;height:24px;padding:0;"></td>
+                                                <td style="background-color:#121212;padding:0 8px;height:24px;">
+                                                    <span style="color:#FFFFFF;font-family:'Inter',-apple-system,sans-serif;font-size:14px;font-weight:600;line-height:24px;">SmartBuild</span>
+                                                </td>
+                                            </tr>
+                                        </table>
                                     </td>
                                     <td align="right" valign="middle" style="vertical-align:middle;">
-                                        <a href="https://www.instagram.com/${company.toLowerCase().replace(/\s+/g, '')}" style="display:inline-block;">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="#6B7280"/>
-                                            </svg>
+                                        <a href="https://www.instagram.com/${company.toLowerCase().replace(/\s+/g, '')}" style="text-decoration:none;display:inline-block;width:24px;height:24px;background-color:#E5E7EB;border-radius:4px;text-align:center;line-height:24px;">
+                                            <span style="font-size:16px;">📷</span>
                                         </a>
                                     </td>
                                 </tr>
                             </table>
+                        </td>
+                    </tr>
+                </table>
+                
+                <!-- Footer Text -->
+                <table width="600" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
+                    <tr>
+                        <td style="padding:0 32px;">
+                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#6B7280;margin:0 0 8px 0;">
+                                This email was sent to ${companyEmail || 'your email'}. If you'd rather not receive this kind of email, you can <a href="#" style="color:#3B82F6;text-decoration:underline;">unsubscribe</a> or manage your email.
+                            </p>
+                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#6B7280;margin:0;">
+                                © SmartBuild ${new Date().getFullYear()}
+                            </p>
                         </td>
                     </tr>
                 </table>
