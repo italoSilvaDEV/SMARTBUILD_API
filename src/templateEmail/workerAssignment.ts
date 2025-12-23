@@ -34,7 +34,7 @@ export const workerAssignmentEmail = (
     });
 
     // URL do Google Maps - preferência por coordenadas, fallback para endereço
-    const mapsUrl = (latitude && longitude) 
+    const mapsUrl = (latitude && longitude)
         ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
@@ -182,11 +182,6 @@ export const workerAssignmentEmail = (
                                                             <path d="M4.16669 12.5C3.39007 12.5 3.00176 12.5 2.69554 12.373C2.28726 12.204 1.96272 11.8795 1.79371 11.4712C1.66669 11.165 1.66669 10.7767 1.66669 10V4.33333C1.66669 3.39991 1.66669 2.9332 1.84834 2.57668C2.00813 2.26308 2.26311 2.00811 2.57671 1.84832C2.93323 1.66667 3.39994 1.66667 4.33335 1.66667H10C10.7767 1.66667 11.165 1.66667 11.4712 1.79369C11.8795 1.9627 12.204 2.28724 12.373 2.69552C12.5 3.00174 12.5 3.39005 12.5 4.16667M10 18.3333H15.6667C16.6001 18.3333 17.0668 18.3333 17.4233 18.1517C17.7369 17.9919 17.9919 17.7369 18.1517 17.4233C18.3334 17.0668 18.3334 16.6001 18.3334 15.6667V10C18.3334 9.06658 18.3334 8.59987 18.1517 8.24335C17.9919 7.92975 17.7369 7.67477 17.4233 7.51498C17.0668 7.33333 16.6001 7.33333 15.6667 7.33333H10C9.06659 7.33333 8.59988 7.33333 8.24336 7.51498C7.92976 7.67477 7.67478 7.92975 7.51499 8.24335C7.33334 8.59987 7.33334 9.06658 7.33334 10V15.6667C7.33334 16.6001 7.33334 17.0668 7.51499 17.4233C7.67478 17.7369 7.92976 17.9919 8.24336 18.1517C8.59988 18.3333 9.06659 18.3333 10 18.3333Z" stroke="#A6855C" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
                                                         </svg>
                                                     </td>
-                                                    <td style="padding:0;vertical-align:middle;">
-                                                        <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#A6855C;margin:0;font-weight:500;white-space:nowrap;">
-                                                            Copiar
-                                                        </p>
-                                                    </td>
                                                 </tr>
                                             </table>
                                         </td>
@@ -213,14 +208,14 @@ export const workerAssignmentEmail = (
                             </p>
                             <table cellpadding="0" cellspacing="0" border="0">
                                 <tr>
-                                    <td style="padding:0 16px 0 0;">
+                                    <td style="padding:0 16px 0 0;vertical-align:middle;">
                                         <a href="https://play.google.com/store" style="display:block;">
-                                            <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height:40px;width:135px;display:block;">
+                                            <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height:60px;width:auto;display:block;">
                                         </a>
                                     </td>
-                                    <td style="padding:0;">
+                                    <td style="padding:0;vertical-align:middle;">
                                         <a href="https://apps.apple.com" style="display:block;">
-                                            <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="height:40px;width:135px;display:block;">
+                                            <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83&amp;releaseDate=1301011200" alt="Download on the App Store" style="height:60px;width:auto;display:block;">
                                         </a>
                                     </td>
                                 </tr>
