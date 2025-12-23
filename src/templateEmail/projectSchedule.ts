@@ -37,39 +37,29 @@ export const projectScheduleEmail = (
         day: 'numeric'
     }) : null;
 
-    // Determinar título e badge baseado no contexto
-    const badgeText = isScheduleChange ? 'UPDATE' : 'SCHEDULED';
-    const badgeColor = isScheduleChange ? '#1E90FF' : '#1E9B5C';
-    
-    // Formatar datas para o título (ex: "Dec 21")
-    const shortStartDate = formattedStartDate.replace(/,.*$/, ''); // Remove ", 2025"
-    const shortDeadline = formattedDeadline.replace(/,.*$/, ''); // Remove ", 2025"
-    
-    const title = isScheduleChange 
-        ? `Project #${contractNumber} Rescheduled (${shortStartDate} - ${shortDeadline})`
-        : `Project #${contractNumber} at ${projectLocation.split(',')[0]} starts ${shortStartDate}`;
-    
+    const title = isScheduleChange
+        ? `Project Schedule Updated`
+        : `Project Schedule Confirmation`;
+
     const greeting = `Hello, ${clientName}${isScheduleChange ? '.' : ''}`;
-    
-    const mainMessage = isScheduleChange 
+
+    const mainMessage = isScheduleChange
         ? `There has been a change in the schedule for the project.`
         : 'Your project schedule has been confirmed.';
 
     // Conteúdo específico para atualização
     const updateContent = isScheduleChange && formattedOldStartDate && formattedOldDeadline ? `
         <div style="background-color:rgba(108,18,18,0.03);border-radius:0;padding:32px 24px;margin:0;">
-            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#595959;margin:0 0 24px 0;font-weight:600;">Project #${contractNumber}</p>
-            
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
                 <tr>
-                    <td style="padding:0;vertical-align:middle;">
+                    <td style="padding:0;vertical-align:middle;width:auto;">
                         <table cellpadding="0" cellspacing="0" border="0">
                             <tr>
                                 <td style="padding:0;vertical-align:middle;">
                                     <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#D92D20;margin:0;text-decoration:line-through;white-space:nowrap;font-weight:600;">${formattedOldStartDate}</p>
                                 </td>
-                                <td style="padding:0 4px;vertical-align:middle;">
-                                    <span style="color:#595959;font-size:12px;">⇒</span>
+                                <td style="padding:0 6px;vertical-align:middle;">
+                                    <span style="color:#595959;font-size:14px;">⇒</span>
                                 </td>
                                 <td style="padding:0;vertical-align:middle;">
                                     <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;white-space:nowrap;font-weight:600;">${formattedStartDate}</p>
@@ -77,29 +67,29 @@ export const projectScheduleEmail = (
                             </tr>
                         </table>
                     </td>
-                    <td style="padding:0 12px;vertical-align:middle;">
+                    <td style="padding:0 16px;vertical-align:middle;width:100%;">
                         <table cellpadding="0" cellspacing="0" border="0" width="100%">
                             <tr>
-                                <td style="padding:0;vertical-align:middle;width:8px;">
-                                    <div style="width:8px;height:8px;background-color:#121212;border-radius:50%;"></div>
+                                <td style="padding:0;vertical-align:middle;width:6px;">
+                                    <div style="width:6px;height:6px;background-color:#121212;border-radius:50%;"></div>
                                 </td>
                                 <td style="padding:0;vertical-align:middle;">
-                                    <div style="height:2px;background-color:#E5E7EB;"></div>
+                                    <div style="height:1px;background-color:#121212;"></div>
                                 </td>
-                                <td style="padding:0;vertical-align:middle;width:8px;">
-                                    <div style="width:8px;height:8px;background-color:#121212;border-radius:50%;"></div>
+                                <td style="padding:0;vertical-align:middle;width:6px;">
+                                    <div style="width:6px;height:6px;background-color:#121212;border-radius:50%;"></div>
                                 </td>
                             </tr>
                         </table>
                     </td>
-                    <td style="padding:0;vertical-align:middle;">
+                    <td style="padding:0;vertical-align:middle;width:auto;">
                         <table cellpadding="0" cellspacing="0" border="0">
                             <tr>
                                 <td style="padding:0;vertical-align:middle;">
                                     <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#D92D20;margin:0;text-decoration:line-through;white-space:nowrap;font-weight:600;">${formattedOldDeadline}</p>
                                 </td>
-                                <td style="padding:0 4px;vertical-align:middle;">
-                                    <span style="color:#595959;font-size:12px;">⇒</span>
+                                <td style="padding:0 6px;vertical-align:middle;">
+                                    <span style="color:#595959;font-size:14px;">⇒</span>
                                 </td>
                                 <td style="padding:0;vertical-align:middle;">
                                     <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;white-space:nowrap;font-weight:600;">${formattedDeadline}</p>
@@ -120,17 +110,17 @@ export const projectScheduleEmail = (
                     <td align="left" valign="middle" style="padding:0;width:auto;">
                         <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;font-weight:600;white-space:nowrap;">${formattedStartDate}</p>
                     </td>
-                    <td valign="middle" style="padding:0 12px;">
+                    <td valign="middle" style="padding:0 16px;width:100%;">
                         <table cellpadding="0" cellspacing="0" border="0" width="100%">
                             <tr>
-                                <td style="padding:0;vertical-align:middle;width:8px;">
-                                    <div style="width:8px;height:8px;background-color:#121212;border-radius:50%;"></div>
+                                <td style="padding:0;vertical-align:middle;width:6px;">
+                                    <div style="width:6px;height:6px;background-color:#121212;border-radius:50%;"></div>
                                 </td>
                                 <td style="padding:0;vertical-align:middle;">
-                                    <div style="height:2px;background-color:#E5E7EB;"></div>
+                                    <div style="height:1px;background-color:#121212;"></div>
                                 </td>
-                                <td style="padding:0;vertical-align:middle;width:8px;">
-                                    <div style="width:8px;height:8px;background-color:#121212;border-radius:50%;"></div>
+                                <td style="padding:0;vertical-align:middle;width:6px;">
+                                    <div style="width:6px;height:6px;background-color:#121212;border-radius:50%;"></div>
                                 </td>
                             </tr>
                         </table>
@@ -186,33 +176,24 @@ export const projectScheduleEmail = (
 <body style="margin:0;padding:0;background-color:#F9FAFB;">
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F9FAFB;">
         <tr>
-            <td align="center" style="padding:32px 16px;">
+            <td align="center">
                 
                 <!-- Main Container -->
-                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
                     
                     <!-- Header com Logo -->
                     <tr>
-                        <td style="background-color:#121212;padding:16px 32px;text-align:left;">
+                        <td style="background-color:#121212;padding:32px 32px;text-align:left;">
                             <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
                                 <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
                             </a>
                         </td>
                     </tr>
                     
-                    <!-- Badge -->
-                    <tr>
-                        <td class="content-padding" style="padding:32px 32px 0;">
-                            <div style="display:inline-block;background-color:${badgeColor};color:#FFFFFF;padding:6px 16px;border-radius:16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
-                                ${badgeText}
-                            </div>
-                        </td>
-                    </tr>
-                    
                     <!-- Título -->
                     <tr>
-                        <td class="content-padding" style="padding:16px 32px 24px;">
-                            <h1 style="font-family:'Inter',-apple-system,sans-serif;font-size:20px;font-weight:600;color:#111827;margin:0;line-height:1.4;">
+                        <td class="content-padding" style="padding:16px 40px 24px;">
+                            <h1 style="font-family:'Inter',-apple-system,sans-serif;font-size:24px;font-weight:600;color:#121212;margin:0;line-height:1.4;">
                                 ${title}
                             </h1>
                         </td>
@@ -224,7 +205,7 @@ export const projectScheduleEmail = (
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0 0 16px 0;font-weight:600;">
                                 ${greeting}
                             </p>
-                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0;line-height:1.5;">
+                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0;line-height:1.5;font-weight:400;">
                                 ${mainMessage}
                             </p>
                         </td>
@@ -300,16 +281,6 @@ export const projectScheduleEmail = (
                             </table>
                         </td>
                     </tr>
-
-                    <!-- Copyright -->
-                    <tr>
-                        <td class="content-padding" style="padding:16px 32px 32px;">
-                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#9CA3AF;margin:0;text-align:center;">
-                                © SmartBuild ${new Date().getFullYear()}
-                            </p>
-                        </td>
-                    </tr>
-                
             </td>
         </tr>
     </table>
