@@ -173,13 +173,13 @@ export const projectScheduleEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#FAF6EE;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF6EE;">
+<body style="margin:0;padding:0;background-color:#ff0000;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ff0000;">
         <tr>
             <td align="center">
                 
                 <!-- Main Container -->
-                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF6EE;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
                     
                     <!-- Header com Logo -->
                     <tr>
