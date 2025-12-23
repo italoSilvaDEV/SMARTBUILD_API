@@ -480,17 +480,46 @@ export class QuickBooksWebhookWorker {
         }),
       });
 
-      // Se o invoice foi pago ou recebeu pagamento parcial, enviar emails de confirmação
-      if (newStatus === "paid" && oldStatus !== "paid") {
-        console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} foi pago completamente, enviando emails...`);
-        
-        // Enviar emails de confirmação (similar ao Stripe)
-        await this.sendQuickBooksPaymentConfirmationEmails(localInvoice, qbInvoice);
-      } else if (newStatus === "partial" && oldStatus !== "partial") {
-        console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} recebeu pagamento parcial, enviando emails...`);
-        
-        // Enviar emails de pagamento parcial
-        await this.sendQuickBooksPartialPaymentEmails(localInvoice, qbInvoice);
+      // Se operation = "payment_applied", sempre enviar emails (cada pagamento deve gerar notificação)
+      if (operation === "payment_applied") {
+        // Recarregar invoice com relacionamentos completos para envio de email
+        const invoiceWithRelations = await prisma.invoice.findUnique({
+          where: { id: localInvoice.id },
+          include: {
+            project: {
+              include: {
+                client: true,
+                workContext: true
+              }
+            },
+            company: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                avatar: true
+              }
+            }
+          }
+        });
+
+        if (!invoiceWithRelations) {
+          console.warn(`[QBO Webhook] Não foi possível recarregar invoice ${localInvoice.id} para envio de email`);
+          return;
+        }
+
+        if (newStatus === "paid") {
+          console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} foi pago completamente, enviando emails com PDF...`);
+          
+          // Enviar emails de confirmação COM PDF (similar ao Stripe)
+          await this.sendQuickBooksFullPaymentEmailWithPdf(invoiceWithRelations, qbInvoice);
+        } else if (newStatus === "partial") {
+          console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} recebeu pagamento parcial, enviando emails...`);
+          
+          // Enviar emails de pagamento parcial (SEMPRE que houver pagamento parcial)
+          await this.sendQuickBooksPartialPaymentEmails(invoiceWithRelations, qbInvoice);
+        }
       }
 
     } catch (error: any) {
@@ -717,16 +746,50 @@ export class QuickBooksWebhookWorker {
         });
       }
 
-      // Email da empresa (notificação simples)
+      // Email da empresa (usando template melhorado com histórico)
       if (invoice.company?.email) {
-        const companyTemplate = `
-          <h2>Partial Payment Received</h2>
-          <p>A partial payment has been received for Invoice #${invoiceCode}</p>
-          <p><strong>Client:</strong> ${clientName || 'Client'}</p>
-          <p><strong>Amount Received:</strong> ${formattedPartial}</p>
-          <p><strong>Remaining Balance:</strong> ${formattedBalance}</p>
-          <p><strong>Total Invoice:</strong> ${formattedTotal}</p>
-        `;
+        const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
+        
+        // Buscar histórico de pagamentos do QBO
+        const paymentHistory = await prisma.paymentTransaction.findMany({
+          where: {
+            applications: {
+              some: {
+                invoiceId: invoice.id
+              }
+            }
+          },
+          include: {
+            applications: {
+              where: {
+                invoiceId: invoice.id
+              }
+            }
+          },
+          orderBy: {
+            txnDate: 'asc'
+          }
+        });
+
+        // Formatar histórico para o template
+        const formattedHistory = paymentHistory.map(payment => ({
+          date: payment.txnDate 
+            ? new Date(payment.txnDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+            : new Date(payment.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+          amount: `$${Number(payment.totalAmount).toFixed(2)}`,
+          method: payment.paymentMethodType || 'QuickBooks'
+        }));
+
+        const companyTemplate = quickBooksPaymentNotificationCompany(
+          invoice.company.name,
+          invoiceCode,
+          formattedPartial,
+          clientName || 'Client',
+          invoice.project?.contract_number || undefined,
+          formattedHistory.length > 1 ? formattedHistory : undefined, // Só mostrar histórico se houver múltiplos pagamentos
+          formattedBalance,
+          formattedTotal
+        );
 
         recipients.push({
           email: invoice.company.email,
@@ -741,7 +804,7 @@ export class QuickBooksWebhookWorker {
       // Enviar emails
       for (const recipient of recipients) {
         try {
-          const mailOptions = {
+          const mailOptions: any = {
             from: SMTP_CONFIG.user,
             to: recipient.email,
             subject: recipient.type === 'company'
@@ -749,6 +812,11 @@ export class QuickBooksWebhookWorker {
               : `Partial Payment Received - Invoice #${invoiceCode}`,
             html: recipient.template,
           };
+
+          // Se for email para o cliente, configurar reply-to para a empresa
+          if (recipient.type === 'client' && invoice.company?.email) {
+            mailOptions.replyTo = invoice.company.email;
+          }
 
           await transporter.sendMail(mailOptions);
           console.log(`[QBO Webhook] Email de pagamento parcial (${recipient.type}) enviado para ${recipient.email}`);
@@ -877,7 +945,7 @@ export class QuickBooksWebhookWorker {
       // Enviar emails
       for (const recipient of recipients) {
         try {
-          const mailOptions = {
+          const mailOptions: any = {
             from: SMTP_CONFIG.user,
             to: recipient.email,
             subject: recipient.type === 'company'
@@ -885,6 +953,11 @@ export class QuickBooksWebhookWorker {
               : `Payment Confirmation (QuickBooks) - Invoice #${invoiceCode}`,
             html: recipient.template,
           };
+
+          // Se for email para o cliente, configurar reply-to para a empresa
+          if (recipient.type === 'client' && invoice.company?.email) {
+            mailOptions.replyTo = invoice.company.email;
+          }
 
           await transporter.sendMail(mailOptions);
           console.log(`[QBO Webhook] Email de ${recipient.type} enviado para ${recipient.email}`);
@@ -915,6 +988,210 @@ export class QuickBooksWebhookWorker {
     } catch (error: any) {
       console.error("[QBO Webhook] Erro geral ao enviar emails:", error.message);
       // Não fazer throw para não interromper o processamento do webhook
+    }
+  }
+
+  /**
+   * Enviar email com PDF de confirmação de pagamento QuickBooks (pagamento total)
+   * Similar ao sendPaymentConfirmationEmailWithPdf do Stripe
+   */
+  private static async sendQuickBooksFullPaymentEmailWithPdf(invoice: any, qbInvoice: any) {
+    try {
+      console.log("[QBO Webhook] Iniciando envio de email com PDF de pagamento QuickBooks");
+
+      const nodemailer = require("nodemailer");
+      const SMTP_CONFIG = require("../../../config/smtp");
+      const { getPresignedUrl } = require("../../../utils/S3/getPresignedUrl");
+      const { invoicePaidPaymentEmail } = require("../../../templateEmail/invoicePaidPayment");
+
+      // Obter projeto com workContext
+      const project = invoice.project;
+      const client = invoice.project?.client;
+      const company = invoice.company;
+      const workContext = project?.workContext;
+
+      // Usar email do work context se disponível, senão usar email do cliente
+      const recipientEmail = workContext?.Email || client?.email;
+      const recipientName = workContext?.Name || client?.name || 'Client';
+
+      if (!recipientEmail) {
+        console.log("[QBO Webhook] Recipient email not found (neither work context nor client email), skipping email send");
+        return;
+      }
+
+      // Buscar o PDF de invoice pago (opcional - pode não existir)
+      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+        where: {
+          invoiceId: invoice.id
+        }
+      });
+
+      // Configurar SMTP
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      const companyAvatar = company?.avatar
+        ? await getPresignedUrl(company.avatar)
+        : "";
+
+      // Buscar o PDF do S3 (apenas se existir)
+      const attachments = [];
+      if (pdfInvoicePaid?.uri) {
+        try {
+          const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+          const pdfResponse = await fetch(pdfUrl);
+          if (pdfResponse.ok) {
+            const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_qbo_${invoice.externalInvoiceId || invoice.id}.pdf`;
+            attachments.push({
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            });
+            console.log(`[QBO Webhook] PDF paid anexado ao email: ${fileName}`);
+          }
+        } catch (error) {
+          console.warn("[QBO Webhook] Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
+          // Continua sem o PDF anexado
+        }
+      } else {
+        console.log("[QBO Webhook] PDF invoice paid não encontrado, enviando email sem anexo");
+      }
+
+      const paymentDate = new Date();
+      const totalAmount = Number(qbInvoice.TotalAmt || invoice.totalAmount);
+      const formattedAmount = `$${totalAmount.toFixed(2)}`;
+      const invoiceCode = invoice.externalInvoiceId || invoice.id;
+      const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation (QuickBooks)`;
+
+      const emailHtml = invoicePaidPaymentEmail(
+        recipientName,
+        companyAvatar || "",
+        company?.name || '',
+        invoiceCode,
+        totalAmount,
+        paymentDate.toISOString(),
+        'QuickBooks Payment',
+        undefined,
+        company?.phone || '',
+        company?.email || ''
+      );
+
+      await transporter.sendMail({
+        from: SMTP_CONFIG.user,
+        to: recipientEmail,
+        replyTo: company?.email || undefined, // Resposta vai para o email da empresa
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        text: `
+Dear ${recipientName},
+
+We are pleased to confirm that Invoice #${invoiceCode} has been paid successfully via QuickBooks.
+
+Payment Details:
+- Invoice Number: #${invoiceCode}
+- Payment Amount: ${formattedAmount}
+- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Payment Method: QuickBooks Payment
+
+Thank you for your prompt payment. If you have any questions, please feel free to contact us.
+
+Have a great day!
+${company?.name || ''}
+        `.trim()
+      });
+
+      console.log(`[QBO Webhook] Email com PDF enviado para ${recipientEmail}`);
+
+      // Log do envio de email
+      await prisma.invoiceEmailLog.create({
+        data: {
+          invoiceId: invoice.id,
+          recipient: recipientEmail,
+          status: 'success'
+        }
+      });
+
+      // Também enviar email para a empresa (notificação de pagamento completo com histórico)
+      if (company?.email) {
+        try {
+          const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
+          
+          // Buscar histórico de pagamentos do QBO
+          const paymentHistory = await prisma.paymentTransaction.findMany({
+            where: {
+              applications: {
+                some: {
+                  invoiceId: invoice.id
+                }
+              }
+            },
+            include: {
+              applications: {
+                where: {
+                  invoiceId: invoice.id
+                }
+              }
+            },
+            orderBy: {
+              txnDate: 'asc'
+            }
+          });
+
+          // Formatar histórico para o template
+          const formattedHistory = paymentHistory.map(payment => ({
+            date: payment.txnDate 
+              ? new Date(payment.txnDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+              : new Date(payment.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+            amount: `$${Number(payment.totalAmount).toFixed(2)}`,
+            method: payment.paymentMethodType || 'QuickBooks'
+          }));
+          
+          const companyTemplate = quickBooksPaymentNotificationCompany(
+            company.name,
+            invoiceCode,
+            formattedAmount,
+            recipientName || 'Client',
+            project?.contract_number || undefined,
+            formattedHistory.length > 1 ? formattedHistory : undefined // Só mostrar histórico se houver múltiplos pagamentos
+          );
+
+          await transporter.sendMail({
+            from: SMTP_CONFIG.user,
+            to: company.email,
+            subject: `Payment Received (QuickBooks) - Invoice #${invoiceCode}`,
+            html: companyTemplate,
+          });
+
+          console.log(`[QBO Webhook] Email de notificação enviado para empresa ${company.email}`);
+
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoiceId: invoice.id,
+              recipient: company.email,
+              status: 'success'
+            }
+          });
+
+        } catch (companyEmailError: any) {
+          console.error(`[QBO Webhook] Erro ao enviar email para empresa:`, companyEmailError.message);
+        }
+      }
+
+    } catch (error: any) {
+      console.error("[QBO Webhook] Erro ao enviar email com PDF:", error.message);
+      // Não fazer throw para não interromper o fluxo principal
     }
   }
 }

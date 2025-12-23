@@ -38,9 +38,9 @@ export const invoicePaidPaymentEmail = (
         .join(' ');
 
     const emailContent = customBody ? processMarkdown(customBody) : `
-        <p style="font-size:16px;color:#333333;margin:10px 0 0 0;line-height:1.6;">Great news! Your payment of <strong>${formattedAmount}</strong> has been successfully processed for Invoice #${invoiceNumber}. 🎉</p>
+        <p style="font-size:16px;color:#333333;margin:10px 0 0 0;line-height:1.6;">Great news! Your payment of <strong>${formattedAmount}</strong> has been successfully processed for Invoice #${invoiceNumber}. </p>
         <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">Thank you for your prompt payment!</p>
-        <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">If you have any questions, we're here to help! 😊</p>
+        <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">If you have any questions, we're here to help! </p>
         <p style="font-size:16px;color:#333333;margin:16px 0 0 0;line-height:1.6;">Have a great day!</p>
     `;
 

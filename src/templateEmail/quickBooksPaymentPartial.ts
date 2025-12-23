@@ -43,13 +43,7 @@ export function quickBooksPaymentPartial(
                     </tr>
                     
                     <!-- Info Icon -->
-                    <tr>
-                        <td style="padding: 30px 40px; text-align: center;">
-                            <div style="display: inline-block; width: 80px; height: 80px; background-color: #FF9800; border-radius: 50%; margin-bottom: 20px; line-height: 80px; font-size: 40px;">
-                                ℹ️
-                            </div>
-                        </td>
-                    </tr>
+                   
                     
                     <!-- Content -->
                     <tr>
