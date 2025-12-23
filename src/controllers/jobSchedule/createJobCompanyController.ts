@@ -145,7 +145,7 @@ export class CreateJobCompanyController {
 
                     await transporter.sendMail({
                         from: SMTP_CONFIG.user,
-                        to: "rian.goncallves@gmail.com",
+                        to: clientEmail,
                         subject: emailSubject,
                         html: emailHtml,
                         text: `
