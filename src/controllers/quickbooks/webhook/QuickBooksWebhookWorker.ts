@@ -422,16 +422,45 @@ export class QuickBooksWebhookWorker {
         return;
       }
 
-      // ETAPA 6: Usar função de derivação de status (QuickBooks = fonte de verdade)
-      const newStatus = deriveQboInvoiceStatus(qbInvoice);
-      const oldStatus = localInvoice.status;
-
       // Calcular valores do QBO
       const totalAmt = Number(qbInvoice.TotalAmt || 0);
       const balance = Number(qbInvoice.Balance || 0);
       const totalPaid = totalAmt - balance;
+      const oldStatus = localInvoice.status;
+
+      //  Verificar se é um cancelamento ANTES de derivar o status
+      // O QuickBooks pode não retornar TxnStatus="Voided" em algumas respostas, mas o operation será "void"
+      const isVoidOperation = operation === "void" || 
+                             qbInvoice.TxnStatus === "Voided" || 
+                             (qbInvoice.PrivateNote && qbInvoice.PrivateNote.includes("Voided"));
+
+      //  Usar função de derivação de status 
+      // Mas se for operação de void, forçar o status para "void"
+      let newStatus: "void" | "paid" | "partial" | "open";
+      if (isVoidOperation) {
+        newStatus = "void";
+        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} detectado como VOID (operation: ${operation})`);
+      } else {
+        newStatus = deriveQboInvoiceStatus(qbInvoice);
+      }
 
       console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} - Status: ${oldStatus} → ${newStatus}, Total: ${totalAmt}, Balance: ${balance}, Paid: ${totalPaid}`);
+
+      //  Se o invoice está void, SEMPRE preservar o valor original no banco local
+      const localAmount = Number(localInvoice.totalAmount);
+      const shouldPreserveAmount = newStatus === "void" && localAmount > 0 && totalAmt === 0;
+
+      // Determinar qual valor usar para totalAmount
+      let finalTotalAmount = totalAmt;
+      if (shouldPreserveAmount) {
+        // Manter o valor original quando está cancelado
+        finalTotalAmount = localAmount;
+        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} está void - preservando valor original: $${finalTotalAmount} (QBO retornou: $${totalAmt})`);
+      } else if (newStatus === "void" && localAmount > 0) {
+        // Se já estava void e temos valor local, manter o valor local
+        finalTotalAmount = localAmount;
+        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} mantendo valor void existente: $${finalTotalAmount}`);
+      }
 
       // ETAPA 7: Detectar alteração de valor após pagamento
       let amountChanged = localInvoice.amountChangedAfterPayment;
@@ -443,14 +472,19 @@ export class QuickBooksWebhookWorker {
         console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} amount changed after payment!`);
       }
 
+      // Se foi cancelado, adicionar mensagem específica na timeline
+      if (isVoidOperation && oldStatus !== "void") {
+        timelineMessage = `Invoice voided in QuickBooks (original amount preserved: $${finalTotalAmount})`;
+      }
+
       // Atualizar invoice local com todos os novos campos
       await prisma.invoice.update({
         where: { id: localInvoice.id },
         data: {
           status: newStatus,
-          totalAmount: totalAmt,
-          balanceRemaining: balance,
-          totalAmountPaidQbo: totalPaid,
+          totalAmount: finalTotalAmount, // Usar valor preservado se foi cancelado
+          balanceRemaining: isVoidOperation ? 0 : balance, // Se void, balance deve ser 0
+          totalAmountPaidQbo: isVoidOperation ? 0 : totalPaid, // Se void, não há pagamento
           amountChangedAfterPayment: amountChanged,
           docNumberQuickBooksContabio: qbInvoice.DocNumber || localInvoice.docNumberQuickBooksContabio,
           updatedAt: new Date()

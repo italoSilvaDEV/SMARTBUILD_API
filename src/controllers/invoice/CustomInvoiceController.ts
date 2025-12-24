@@ -81,7 +81,7 @@ export class CustomInvoiceController {
         where: {
           companyId: project.company_id,
           invoiceType: {
-            in: ["custom", "stripe"]
+            in: ["custom", "stripe", "quickbooks"]
           },
           externalInvoiceId: {
             not: null
@@ -1490,7 +1490,7 @@ export class CustomInvoiceController {
       const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId: project.company_id,
-          invoiceType: { in: ["custom", "stripe"] },
+          // invoiceType: { in: ["custom", "quickbooks"] },
           externalInvoiceId: { not: null }
         },
         select: {

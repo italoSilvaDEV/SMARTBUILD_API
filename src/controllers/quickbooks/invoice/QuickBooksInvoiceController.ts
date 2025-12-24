@@ -1674,11 +1674,24 @@ export class QuickBooksInvoiceController {
         });
 
         if (localInvoice) {
+          // IMPORTANTE: Manter o valor original (totalAmount) no banco local
+          // QuickBooks pode zerar o valor ao fazer void, mas queremos preservar o histórico
+          console.log(`Mantendo totalAmount original: ${localInvoice.totalAmount}`);
+          
           await prisma.invoice.update({
             where: { id: localInvoice.id },
             data: { 
               status: "void",
               updatedAt: new Date()
+              // NÃO atualizar totalAmount - manter o valor original
+            }
+          });
+
+          // Registrar na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Invoice voided in QuickBooks (original amount: $${localInvoice.totalAmount})`,
+              invoiceId: localInvoice.id
             }
           });
         }
@@ -1750,21 +1763,65 @@ export class QuickBooksInvoiceController {
 
       // Buscar a fatura atual para obter o SyncToken
       console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
-      const currentInvoiceData = await new Promise((resolve, reject) => {
-        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
-          if (err) {
-            console.error("Erro ao buscar fatura:", err);
-            reject(err);
-          } else {
-            resolve(data);
-          }
+      let currentInvoiceData;
+      try {
+        currentInvoiceData = await new Promise((resolve, reject) => {
+          qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+            if (err) {
+              // Verificar se é erro de "not found" (404 ou erro específico)
+              if (err.statusCode === 404 || err.statusCode === 400 || 
+                  (err.Fault && err.Fault.Error && Array.isArray(err.Fault.Error) && 
+                   err.Fault.Error.some((e: any) => e.code === '610' || e.code === '100'))) {
+                console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks (pode ter sido deletado manualmente)`);
+                resolve(null); // Retornar null ao invés de rejeitar
+              } else {
+                console.error("Erro ao buscar fatura:", err);
+                reject(err);
+              }
+            } else {
+              resolve(data);
+            }
+          });
         });
-      });
+      } catch (error: any) {
+        // Se der erro na busca, verificar se é "not found"
+        if (error.statusCode === 404 || error.message?.includes('not found')) {
+          console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks`);
+          // Retornar um objeto especial indicando que não foi encontrado
+          return {
+            success: true,
+            message: "Invoice not found in QuickBooks (may have been deleted manually)",
+            quickbooksId: quickBooksInvoiceId,
+            status: "not_found",
+            notFound: true
+          };
+        }
+        throw error;
+      }
+
+      // Se não encontrou o invoice no QBO, retornar indicando isso
+      if (!currentInvoiceData) {
+        console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks - pode ter sido deletado manualmente`);
+        return {
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually)",
+          quickbooksId: quickBooksInvoiceId,
+          status: "not_found",
+          notFound: true
+        };
+      }
 
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
       
       if (!currentInvoice || !currentInvoice.Id) {
-        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+        console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
+        return {
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually)",
+          quickbooksId: quickBooksInvoiceId,
+          status: "not_found",
+          notFound: true
+        };
       }
 
       console.log(`Invoice encontrado para deleção. SyncToken: ${currentInvoice.SyncToken}`);
@@ -1777,13 +1834,20 @@ export class QuickBooksInvoiceController {
       }
 
       // Deletar a fatura no QuickBooks usando deleteInvoice do SDK
+      // O método deleteInvoice espera um objeto com Id e SyncToken
       console.log("Deletando fatura no QuickBooks usando SDK...");
+      const deletePayload = {
+        Id: quickBooksInvoiceId,
+        SyncToken: currentInvoice.SyncToken
+      };
+      
       const deleteResult = await new Promise((resolve, reject) => {
-        qb.deleteInvoice(quickBooksInvoiceId, currentInvoice.SyncToken, (err: any, data: any) => {
+        qb.deleteInvoice(deletePayload, (err: any, data: any) => {
           if (err) {
             console.error("Erro ao deletar fatura:", err);
             reject(err);
           } else {
+            console.log("✅ Resposta do QuickBooks delete:", JSON.stringify(data, null, 2));
             resolve(data);
           }
         });
@@ -2007,6 +2071,169 @@ export class QuickBooksInvoiceController {
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to update invoice",
+        details: error.toString()
+      });
+    }
+  }
+
+  async deleteInvoice(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { userId } = req.body;
+
+    try {
+      console.log(`🗑️ Iniciando deleção de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      console.log(`🗑️ Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
+
+      if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({ error: "Not a QuickBooks invoice" });
+      }
+
+      if (!invoice.idQuickbookContabio) {
+        // Se não tem ID do QuickBooks, apenas deletar localmente
+        console.log("Invoice não sincronizado com QuickBooks, deletando apenas localmente...");
+        await prisma.invoice.delete({
+          where: { id: invoice.id }
+        });
+        return res.status(200).json({
+          success: true,
+          message: "Invoice deleted successfully (local only)"
+        });
+      }
+
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({ error: "Company not found for this invoice" });
+      }
+
+      // Verificar se o invoice está pago
+      if (invoice.status === "paid") {
+        return res.status(400).json({
+          error: "Cannot delete paid invoice",
+          message: "Cannot delete a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
+      // Verificar se o invoice tem pagamento parcial
+      if (invoice.status === "partial") {
+        return res.status(400).json({
+          error: "Cannot delete partially paid invoice",
+          message: "Cannot delete an invoice with partial payment."
+        });
+      }
+
+      console.log(`🗑️ Deletando invoice QB ID ${invoice.idQuickbookContabio}...`);
+
+      // Deletar no QuickBooks
+      const result = await this.deleteInvoiceInternal({
+        quickBooksInvoiceId: invoice.idQuickbookContabio,
+        userId: userId,
+        companyId: invoice.project.company_id,
+        calledFromStripe: false
+      });
+
+      // Se o invoice não foi encontrado no QBO, deletar apenas localmente
+      if (result.notFound) {
+        console.log(`⚠️ Invoice não encontrado no QuickBooks, deletando apenas localmente...`);
+        await prisma.invoice.delete({
+          where: { id: invoice.id }
+        });
+        return res.status(200).json({
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually), deleted locally",
+          quickbooksResult: result,
+          warning: "Invoice was not found in QuickBooks"
+        });
+      }
+
+      // Deletar localmente após sucesso no QuickBooks
+      await prisma.invoice.delete({
+        where: { id: invoice.id }
+      });
+
+      console.log(`✅ Invoice deletado com sucesso (local e QuickBooks): ${invoice.id}`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Invoice deleted successfully from both local database and QuickBooks",
+        quickbooksResult: result
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao deletar QuickBooks invoice:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account with additional permissions",
+          action: "reauthorize"
+        });
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        return res.status(400).json({
+          error: "Cannot delete paid invoice",
+          message: "Cannot delete a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
+      if (error.message && error.message.includes("not found")) {
+        // Se não encontrou no QuickBooks, deletar apenas localmente
+        try {
+          const invoice = await prisma.invoice.findFirst({
+            where: { 
+              OR: [
+                { id: invoiceId },
+                { externalInvoiceId: invoiceId }
+              ]
+            }
+          });
+          
+          if (invoice) {
+            await prisma.invoice.delete({
+              where: { id: invoice.id }
+            });
+            return res.status(200).json({
+              success: true,
+              message: "Invoice not found in QuickBooks, deleted locally only",
+              warning: "Invoice was not found in QuickBooks"
+            });
+          }
+        } catch (deleteError) {
+          console.error("Error deleting invoice locally:", deleteError);
+        }
+      }
+
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to delete invoice",
         details: error.toString()
       });
     }
