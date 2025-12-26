@@ -323,7 +323,7 @@ export class StripeController {
             const allInvoices = await prisma.invoice.findMany({
                 where: {
                     companyId: project.company_id,
-                    invoiceType: { in: ["custom", "stripe"] },
+                    // invoiceType: { in: ["custom", "stripe"] },
                     externalInvoiceId: { not: null }
                 },
                 select: {
