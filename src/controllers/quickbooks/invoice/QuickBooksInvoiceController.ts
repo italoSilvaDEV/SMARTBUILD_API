@@ -469,13 +469,8 @@ export class QuickBooksInvoiceController {
         const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
         const createdId = created?.Id;
 
-        // 3) Leia o invoice completo (garante Balance/TotalAmt/TxnStatus atualizados)
-        const fetched = await new Promise((resolve, reject) => {
-          qb.getInvoice(createdId, (err: any, data: any) => {
-            if (err) return reject(err);
-            resolve(data);
-          });
-        });
+        // 3) Leia o invoice completo COM include=invoiceLink (garante Balance/TotalAmt/TxnStatus atualizados + link de pagamento)
+        const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId);
         let inv = (fetched as any)?.Invoice ?? (fetched as any);
         
         // 4) Tentar obter DocNumber com retry robusto
@@ -494,6 +489,24 @@ export class QuickBooksInvoiceController {
         // (opcional) status de entrega
         const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
         const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
+
+        //  Capturar o link público de pagamento do QuickBooks
+        // const invoiceLink = inv?.InvoiceLink || null;
+
+        //temporario ate o teste real
+        let invoiceLink = inv?.InvoiceLink || null;
+        
+        if (invoiceLink) {
+          console.log(` Link de pagamento QuickBooks capturado com sucesso!`);
+          console.log(` URL: ${invoiceLink}`);
+        } else {
+          console.warn(` ATENÇÃO: InvoiceLink não disponível na resposta da API`);
+          // temporario ate o teste real depois excluir a linha abaixo
+          invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
+        }
+        
+        const invoiceUrl = invoiceLink;
+        
 
         // 5) Persistir no banco - comportamento baseado na origem da chamada
         if (calledFromStripe) {
@@ -534,6 +547,7 @@ export class QuickBooksInvoiceController {
             data: {
               externalInvoiceId: nextInvoiceNumber.toString(), // Número sequencial
               invoiceType: "quickbooks",
+              invoiceUrl: invoiceUrl, // Link público de pagamento do QuickBooks
               externalDocNumber: inv.DocNumber,
               idQuickbookContabio: inv.Id, // ID real do QuickBooks
               idQuickBooksRef: inv.Id, // Referência duplicada
@@ -891,7 +905,7 @@ export class QuickBooksInvoiceController {
 
         // Validação melhorada
         if (qtyForQBUpdate <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQBUpdate) || !Number.isFinite(exactAmount)) {
-          console.warn(`⚠️ Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
+          console.warn(`Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
@@ -987,13 +1001,8 @@ export class QuickBooksInvoiceController {
       const updated = (updateResult as any)?.Invoice ?? (updateResult as any);
       const updatedId = updated?.Id;
 
-      // Buscar o invoice atualizado completo
-      const fetchedUpdated = await new Promise((resolve, reject) => {
-        qb.getInvoice(updatedId, (err: any, data: any) => {
-          if (err) return reject(err);
-          resolve(data);
-        });
-      });
+      // Buscar o invoice atualizado completo COM include=invoiceLink
+      const fetchedUpdated = await this.getInvoiceWithPaymentLink(qb, account.realmId, updatedId);
       const updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
 
       // Derive o status de pagamento
@@ -1005,6 +1014,18 @@ export class QuickBooksInvoiceController {
         if (bal > 0 && bal < total) return "partial";
         return "open";
       }
+
+      // Capturar o link público de pagamento do QuickBooks atualizado
+      const invoiceLink = updatedInv?.InvoiceLink || null;
+      
+      if (invoiceLink) {
+        console.log(` Link de pagamento QuickBooks atualizado com sucesso!`);
+        console.log(` URL: ${invoiceLink}`);
+      } else {
+        console.warn(` InvoiceLink não disponível após atualização`);
+      }
+      
+      const invoiceUrl = invoiceLink;
 
       console.log(`Invoice ${quickBooksInvoiceId} atualizado com sucesso no QuickBooks`);
 
@@ -1034,6 +1055,7 @@ export class QuickBooksInvoiceController {
               type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
+              invoiceUrl: invoiceUrl, // Atualizar URL do invoice
               updatedAt: new Date()
             }
           });
@@ -1786,7 +1808,7 @@ export class QuickBooksInvoiceController {
       } catch (error: any) {
         // Se der erro na busca, verificar se é "not found"
         if (error.statusCode === 404 || error.message?.includes('not found')) {
-          console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks`);
+          console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks`);
           // Retornar um objeto especial indicando que não foi encontrado
           return {
             success: true,
@@ -1801,7 +1823,7 @@ export class QuickBooksInvoiceController {
 
       // Se não encontrou o invoice no QBO, retornar indicando isso
       if (!currentInvoiceData) {
-        console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks - pode ter sido deletado manualmente`);
+        console.warn(`Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks - pode ter sido deletado manualmente`);
         return {
           success: true,
           message: "Invoice not found in QuickBooks (may have been deleted manually)",
@@ -1814,7 +1836,7 @@ export class QuickBooksInvoiceController {
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
       
       if (!currentInvoice || !currentInvoice.Id) {
-        console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
+        console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
         return {
           success: true,
           message: "Invoice not found in QuickBooks (may have been deleted manually)",
@@ -1847,7 +1869,7 @@ export class QuickBooksInvoiceController {
             console.error("Erro ao deletar fatura:", err);
             reject(err);
           } else {
-            console.log("✅ Resposta do QuickBooks delete:", JSON.stringify(data, null, 2));
+            console.log("Resposta do QuickBooks delete:", JSON.stringify(data, null, 2));
             resolve(data);
           }
         });
@@ -2574,6 +2596,57 @@ export class QuickBooksInvoiceController {
     
     // Retornar o invoice sem DocNumber (será null)
     return fallbackInvoice;
+  }
+
+  /**
+   * Função para obter invoice do QuickBooks COM link de pagamento
+   * Usa o parâmetro include=invoiceLink para forçar a API a retornar o InvoiceLink
+   * 
+   * @param qb - Cliente QuickBooks
+   * @param realmId - ID da empresa no QuickBooks
+   * @param invoiceId - ID do invoice
+   * @returns Invoice completo com InvoiceLink
+   */
+  async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
+    try {
+      console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
+      
+      // Fazer requisição direta à API com include=invoiceLink
+      const axios = require('axios');
+      const token = qb.token.access_token;
+      
+      const isProduction = process.env.QUICKBOOKS_ENVIRONMENT === 'production';
+      const apiUrl = isProduction 
+        ? 'https://quickbooks.api.intuit.com' 
+        : 'https://sandbox-quickbooks.api.intuit.com';
+      
+      const url = `${apiUrl}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=65&include=invoiceLink`;
+      
+      console.log(` Chamando URL: ${url}`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(` Invoice obtido com sucesso (include=invoiceLink)`);
+      
+      return response.data;
+    } catch (error: any) {
+      console.error(` Erro ao buscar invoice com link de pagamento:`, error.response?.data || error.message);
+      
+      // Fallback: tentar buscar sem o parâmetro include
+      console.log(` Tentando fallback sem include=invoiceLink...`);
+      return new Promise((resolve, reject) => {
+        qb.getInvoice(invoiceId, (err: any, data: any) => {
+          if (err) return reject(err);
+          resolve(data);
+        });
+      });
+    }
   }
 
 } 

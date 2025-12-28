@@ -445,7 +445,7 @@ export class CustomInvoiceController {
         where: {
           externalInvoiceId: invoiceId,
           companyId: companyId,
-          invoiceType: { in: ["custom", "stripe"] }
+          invoiceType: { in: ["custom", "stripe", "quickbooks"] }
         },
         include: {
           project: {
@@ -467,8 +467,8 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (invoice.invoiceType !== "custom" && invoice.invoiceType !== "stripe") {
-        return res.status(400).json({ error: "Not a custom invoice" });
+      if (invoice.invoiceType !== "custom" && invoice.invoiceType !== "stripe" && invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({ error: "Invoice type not supported for email sending" });
       }
 
       if (!invoice.project?.client) {
