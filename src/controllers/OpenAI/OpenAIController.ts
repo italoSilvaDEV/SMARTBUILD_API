@@ -363,4 +363,57 @@ export class OpenAIController {
             });
         }
     }
+
+    async improveDescriptionForWorker(req: Request, res: Response) {
+        const { serviceName, description } = req.body;
+
+        if (!serviceName || !description) {
+            return res.status(400).json({
+                error: "Service name and description are required"
+            });
+        }
+
+        if (typeof serviceName !== 'string' || typeof description !== 'string') {
+            return res.status(400).json({
+                error: "Service name and description must be strings"
+            });
+        }
+
+        if (serviceName.trim().length === 0 || description.trim().length === 0) {
+            return res.status(400).json({
+                error: "Service name and description cannot be empty"
+            });
+        }
+
+        try {
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [{
+                    role: "user",
+                    content: OpenIaPrompt.improveDescriptionForWorker(serviceName, description)
+                }],
+                temperature: 0.7,
+                max_tokens: 500
+            });
+
+            const improvedText = response.choices[0].message.content;
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    original: description,
+                    improved: improvedText,
+                    serviceName: serviceName,
+                    model: "gpt-4o-mini",
+                    tokensUsed: response.usage?.total_tokens || 0
+                }
+            });
+        } catch (error) {
+            console.error('❌ Erro ao melhorar descrição para worker:', error);
+            return res.status(500).json({
+                error: "Internal server error",
+                message: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
 }

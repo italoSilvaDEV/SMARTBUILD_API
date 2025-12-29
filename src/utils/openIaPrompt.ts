@@ -166,6 +166,50 @@ Output (English):
 Keep it professional but concise. Return ONLY the bullet points in English, no explanations or headers.`;
     }
 
+    static improveDescriptionForWorker(serviceName: string, description: string) {
+        return `You are a construction project supervisor preparing clear work instructions for field workers and subcontractors. 
+
+Your task is to improve and clarify a service description that will be sent via email to workers/subcontractors.
+
+Service Name: "${serviceName}"
+Current Description: "${description}"
+
+CONTEXT:
+- This is a work assignment from supervisor to worker/subcontractor
+- The description will be sent via email
+- Workers need clear, actionable instructions
+- Keep the language simple and direct
+
+REQUIREMENTS:
+1. Keep it CONCISE and TO THE POINT (max 150 words)
+2. Use simple, clear language that any worker can understand
+3. Focus on WHAT needs to be done, not HOW to do it
+4. Remove any HTML tags or technical jargon from the original
+5. If the description is vague, make it more specific based on the service name
+6. Organize information logically (main task → key details → important notes)
+
+OUTPUT FORMAT:
+- Write in plain text, NO HTML tags
+- Use simple paragraphs or bullet points with plain text dashes (-)
+- Be direct and professional but friendly
+- Keep sentences short and clear
+
+WHAT TO INCLUDE:
+✓ Main work to be performed
+✓ Key materials or equipment if mentioned
+✓ Important specifications or requirements
+✓ Any safety or quality notes if relevant
+
+WHAT TO AVOID:
+✗ Overly technical language
+✗ HTML tags or formatting codes
+✗ Excessive details or procedures
+✗ Vague or ambiguous statements
+✗ Making assumptions beyond what's stated
+
+Return ONLY the improved description in plain text. No introductions, no explanations, just the clear work description.`;
+    }
+
     static transcribeAudio() {
         return "You are transcribing a construction work report or description. The speaker may use Portuguese, Spanish, English or any other language. Transcribe EXACTLY what is said, including: technical construction terms, measurements, quantities, materials, equipment names, room/area names, worker names, dates, times, locations, and all project details. Preserve numbers, technical vocabulary, and industry jargon. Add appropriate punctuation for clarity. Capture every detail mentioned.";
     }
@@ -203,6 +247,12 @@ Keep it professional but concise. Return ONLY the bullet points in English, no e
                 }
 
                 return this.incrementDescriptionCategory(serviceName, description, categoryName, quantity, price);
+            case "improveDescriptionForWorker":
+                if (!serviceName || !description) {
+                    throw new Error("Service name and description are required");
+                }
+
+                return this.improveDescriptionForWorker(serviceName, description);
             default:
                 throw new Error("Invalid type");
         }

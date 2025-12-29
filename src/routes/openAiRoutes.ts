@@ -14,5 +14,6 @@ openAiRoutes.post('/ai/transcribe-and-enhance', checkToken, openAIController.tra
 openAiRoutes.post("/transcription", checkToken, audioUpload.single("file"), openAIController.transcribeAudio2.bind(openAIController));
 openAiRoutes.post("/description/generate", checkToken, openAIController.generateDescription.bind(openAIController));
 openAiRoutes.post("/description/increment", checkToken, openAIController.incrementDescription.bind(openAIController));
+openAiRoutes.post("/description/improve-for-worker", checkToken, openAIController.improveDescriptionForWorker.bind(openAIController));
 
 export { openAiRoutes };
