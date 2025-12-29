@@ -701,6 +701,162 @@ export class StripeController {
         }
     }
 
+    async deleteInvoice(req: Request, res: Response) {
+        const { invoiceId } = req.params;
+
+        try {
+            const invoice = await prisma.invoice.findUnique({
+                where: {
+                    id: invoiceId
+                },
+                select: {
+                    id: true,
+                    status: true,
+                    invoiceType: true,
+                    invoiceTypeStripe: true,
+                    stripeInvoiceId: true,
+                    user_id: true,
+                    idQuickbookContabio: true,
+                    docNumberQuickBooksContabio: true,
+                    companyId: true,
+                    project: {
+                        include: {
+                            company: true,
+                        },
+                    },
+                },
+            });
+
+            if (!invoice || !invoice.project || !invoice.project.company) {
+                return res.status(404).json({ error: "Invoice, project, or company not found" });
+            }
+
+            // Verificar se o invoice já foi pago 
+            if (invoice.status === "paid") {
+                return res.status(400).json({ error: "Cannot delete a paid invoice" });
+            }
+
+            // Verificar se o invoice tem pagamento parcial
+            if (invoice.status === "partial") {
+                return res.status(400).json({ error: "Cannot delete an invoice with partial payment" });
+            }
+
+            // Cancelar PaymentIntents pendentes do tipo Payment Element
+            if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
+                try {
+                    console.log("Checking and canceling pending PaymentIntents...");
+
+                    // Buscar PaymentIntents que podem ser cancelados
+                    const pendingPaymentIntents = await prisma.paymentIntentRecord.findMany({
+                        where: {
+                            invoiceId: invoice.id,
+                            status: {
+                                in: ['requires_payment_method', 'requires_confirmation', 'requires_action', 'requires_capture']
+                            }
+                        }
+                    });
+
+                    if (pendingPaymentIntents.length > 0) {
+                        const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
+
+                        for (const paymentIntent of pendingPaymentIntents) {
+                            try {
+                                // Verificar status atual no Stripe antes de cancelar
+                                const stripePI = await stripe.paymentIntents.retrieve(
+                                    paymentIntent.stripePaymentIntentId,
+                                    { stripeAccount: stripeAccountId }
+                                );
+
+                                // Só cancelar se estiver em status que permite cancelamento
+                                const cancelableStatuses = ['requires_payment_method', 'requires_confirmation', 'requires_action', 'requires_capture'];
+                                if (cancelableStatuses.includes(stripePI.status)) {
+                                    await stripe.paymentIntents.cancel(
+                                        paymentIntent.stripePaymentIntentId,
+                                        { stripeAccount: stripeAccountId }
+                                    );
+
+                                    // Atualizar status no banco
+                                    await prisma.paymentIntentRecord.update({
+                                        where: { id: paymentIntent.id },
+                                        data: { status: 'canceled', updatedAt: new Date() }
+                                    });
+
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
+                                } else {
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
+                                }
+                            } catch (piError: any) {
+                                console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
+                                // Continue to next PaymentIntent
+                            }
+                        }
+                    } else {
+                        console.log("No pending PaymentIntents found to cancel");
+                    }
+                } catch (paymentIntentError) {
+                    console.warn("Error processing PaymentIntent cancellation:", paymentIntentError);
+                    // Don't fail the deletion process
+                }
+            }
+
+            // If stripe invoice has administrative QB invoice, delete it too
+            let quickBooksDeleteResult = null;
+            let quickBooksDeleteError = null;
+
+            if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+                console.log("Stripe invoice has administrative QB invoice - deleting it...");
+                console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+
+                try {
+                    const qbController = this.quickBooksController;
+                    if (qbController && invoice.user_id && invoice.companyId) {
+                        quickBooksDeleteResult = await qbController.deleteInvoiceInternal({
+                            quickBooksInvoiceId: invoice.idQuickbookContabio,
+                            userId: invoice.user_id,
+                            companyId: invoice.companyId,
+                            calledFromStripe: true // Internal operation, don't delete from local DB
+                        });
+
+                        if (quickBooksDeleteResult.success || quickBooksDeleteResult.notFound) {
+                            console.log("Administrative QB invoice deleted successfully");
+                        } else {
+                            console.warn("Failed to delete administrative QB invoice, continuing anyway...");
+                        }
+                    }
+                } catch (qbError: any) {
+                    console.warn("Error deleting administrative QB invoice:", qbError.message);
+                    quickBooksDeleteError = qbError.message;
+                    // Continue with local deletion despite QB error
+                }
+            }
+
+            // Delete invoice from database
+            await prisma.invoice.delete({
+                where: {
+                    id: invoiceId
+                }
+            });
+
+            console.log("Invoice deleted successfully:", invoiceId);
+
+            return res.status(200).json({
+                message: "Invoice deleted successfully",
+                quickBooks: quickBooksDeleteResult ? {
+                    success: true,
+                    result: quickBooksDeleteResult
+                } : undefined,
+                quickBooksError: quickBooksDeleteError
+            });
+
+        } catch (error: any) {
+            console.error("Error deleting invoice:", error);
+            return res.status(500).json({ 
+                error: "Internal Server Error",
+                message: error.message 
+            });
+        }
+    }
+
     async cancelInvoice(req: Request, res: Response) {
         const { invoiceId } = req.params;
 
