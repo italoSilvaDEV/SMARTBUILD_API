@@ -141,44 +141,44 @@ export class QuickBooksWebhookWorker {
         }
       }
 
-      // Processar Invoice events (SEM validação de sincronização)
-      const invoiceEvents = entities.filter((e: any) => e.name?.toLowerCase() === "invoice");
-      for (const evt of invoiceEvents) {
-        const id = evt.id;
-        const op = (evt.operation || "").toLowerCase();
+      // Processar Invoice events (SEM validação de sincronização) isso apenas quando quiser a sincronização cruzada entre qbo e banco local 
+      // const invoiceEvents = entities.filter((e: any) => e.name?.toLowerCase() === "invoice");
+      // for (const evt of invoiceEvents) {
+      //   const id = evt.id;
+      //   const op = (evt.operation || "").toLowerCase();
 
-        try {
-          console.log(`[QBO Webhook] Processando Invoice event: ${op} - ID: ${id}`);
+      //   try {
+      //     console.log(`[QBO Webhook] Processando Invoice event: ${op} - ID: ${id}`);
 
-          // Buscar o Invoice completo do QuickBooks
-          const invoiceData: any = await limiter.schedule(
-            () =>
-              new Promise((resolve, reject) => {
-                qb.getInvoice(id, (err: any, data: any) => (err ? reject(err) : resolve(data)));
-              })
-          );
+      //     // Buscar o Invoice completo do QuickBooks
+      //     const invoiceData: any = await limiter.schedule(
+      //       () =>
+      //         new Promise((resolve, reject) => {
+      //           qb.getInvoice(id, (err: any, data: any) => (err ? reject(err) : resolve(data)));
+      //         })
+      //     );
 
-          const qbInvoice = invoiceData?.Invoice || invoiceData;
+      //     const qbInvoice = invoiceData?.Invoice || invoiceData;
 
-          if (!qbInvoice || !qbInvoice.Id) {
-            console.warn("[QBO Webhook] Invoice não encontrado:", id);
-            continue;
-          }
+      //     if (!qbInvoice || !qbInvoice.Id) {
+      //       console.warn("[QBO Webhook] Invoice não encontrado:", id);
+      //       continue;
+      //     }
 
-          // Processar o invoice
-          await this.handleInvoiceEvent(companyId, account.user_id, qbInvoice, op, qb);
+      //     // Processar o invoice
+      //     await this.handleInvoiceEvent(companyId, account.user_id, qbInvoice, op, qb);
 
-        } catch (e: any) {
-          console.error("[QBO Webhook] erro ao processar Invoice:", id, e?.message || e);
-          await createSyncLog({
-            entity: "invoices",
-            action: "WebhookError",
-            entityId: id,
-            companyId,
-            details: jsonSafe({ message: e?.message || String(e), op }),
-          });
-        }
-      }
+      //   } catch (e: any) {
+      //     console.error("[QBO Webhook] erro ao processar Invoice:", id, e?.message || e);
+      //     await createSyncLog({
+      //       entity: "invoices",
+      //       action: "WebhookError",
+      //       entityId: id,
+      //       companyId,
+      //       details: jsonSafe({ message: e?.message || String(e), op }),
+      //     });
+      //   }
+      // }
 
       // Processar Payment events (SEM validação de sincronização - sempre processa pagamentos)
       const paymentEvents = entities.filter((e: any) => e.name?.toLowerCase() === "payment");
@@ -482,6 +482,7 @@ export class QuickBooksWebhookWorker {
         where: { id: localInvoice.id },
         data: {
           status: newStatus,
+          checked: true,
           totalAmount: finalTotalAmount, // Usar valor preservado se foi cancelado
           balanceRemaining: isVoidOperation ? 0 : balance, // Se void, balance deve ser 0
           totalAmountPaidQbo: isVoidOperation ? 0 : totalPaid, // Se void, não há pagamento
