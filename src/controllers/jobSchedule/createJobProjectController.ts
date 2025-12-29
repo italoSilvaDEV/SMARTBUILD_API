@@ -19,6 +19,7 @@ interface CreateJobProject {
     subcontractors?: Subcontractor[]
     startDate: string
     deadline: string
+    skipEmail?: boolean
 }
 
 export class CreateJobProjectController {
@@ -246,80 +247,86 @@ export class CreateJobProjectController {
                 }
             });
 
-            try {
-                const SMTP_CONFIG = require("../../config/smtp");
-                const transporter = nodemailer.createTransport({
-                    host: SMTP_CONFIG.host,
-                    port: SMTP_CONFIG.port,
-                    secure: SMTP_CONFIG.port === 465,
-                    auth: {
-                        user: SMTP_CONFIG.user,
-                        pass: SMTP_CONFIG.pass,
-                    },
-                    tls: {
-                        rejectUnauthorized: false,
-                    },
-                })
+            if (!body.skipEmail) {
+                try {
+                    const SMTP_CONFIG = require("../../config/smtp");
+                    const transporter = nodemailer.createTransport({
+                        host: SMTP_CONFIG.host,
+                        port: SMTP_CONFIG.port,
+                        secure: SMTP_CONFIG.port === 465,
+                        auth: {
+                            user: SMTP_CONFIG.user,
+                            pass: SMTP_CONFIG.pass,
+                        },
+                        tls: {
+                            rejectUnauthorized: false,
+                        },
+                    })
 
-                const emailSubject = isScheduleChange
-                    ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
-                    : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
+                    const emailSubject = isScheduleChange
+                        ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
+                        : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
 
-                for (const userServiceProject of allUserServiceProjects) {
-                    const user = userServiceProject.user;
-                    if (user && user.email && user.name) {
-                        const emailHtml = workerAssignmentEmail(
-                            user.name,
-                            serviceName,
-                            new Date(startDate).toISOString(),
-                            new Date(deadline).toISOString(),
-                            projectLocation,
-                            user.email,
-                            latitude,
-                            longitude,
-                            isScheduleChange,
-                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined
-                        );
+                    for (const userServiceProject of allUserServiceProjects) {
+                        const user = userServiceProject.user;
+                        if (user && user.email && user.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                user.name,
+                                serviceName,
+                                new Date(startDate).toISOString(),
+                                new Date(deadline).toISOString(),
+                                projectLocation,
+                                user.email,
+                                latitude,
+                                longitude,
+                                isScheduleChange,
+                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined
+                            );
 
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
-                            to: "rian.goncallves@gmail.com",
-                            subject: emailSubject,
-                            html: emailHtml,
-                            text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
-                        });
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: "rian.goncallves@gmail.com",
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+                        }
                     }
-                }
 
-                for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
-                    const subcontractor = subcontractorServiceProject.subcontractor;
-                    if (subcontractor && subcontractor.email && subcontractor.name) {
-                        const emailHtml = workerAssignmentEmail(
-                            subcontractor.name,
-                            serviceName,
-                            new Date(startDate).toISOString(),
-                            new Date(deadline).toISOString(),
-                            projectLocation,
-                            subcontractor.email,
-                            latitude,
-                            longitude,
-                            isScheduleChange,
-                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined
-                        );
+                    for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
+                        const subcontractor = subcontractorServiceProject.subcontractor;
+                        if (subcontractor && subcontractor.email && subcontractor.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                subcontractor.name,
+                                serviceName,
+                                new Date(startDate).toISOString(),
+                                new Date(deadline).toISOString(),
+                                projectLocation,
+                                subcontractor.email,
+                                latitude,
+                                longitude,
+                                isScheduleChange,
+                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined
+                            );
 
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
-                            to: "rian.goncallves@gmail.com",
-                            subject: emailSubject,
-                            html: emailHtml,
-                            text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
-                        });
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: "rian.goncallves@gmail.com",
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+
+                            console.log("Email sent successfully")
+                        }
                     }
+                } catch (emailError: any) {
+                    console.error("Error sending assignment emails:", emailError);
                 }
-            } catch (emailError: any) {
-                console.error("Error sending assignment emails:", emailError);
+            } else {
+                console.log("Email skipped")
             }
 
             return res.status(201).json({
