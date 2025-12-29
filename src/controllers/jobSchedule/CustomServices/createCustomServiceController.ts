@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
+import nodemailer from "nodemailer";
+import { workerAssignmentEmail } from "../../../templateEmail/workerAssignment";
 
 interface User {
     id: string
@@ -19,6 +21,7 @@ interface CreateCustomService {
     subcontractors?: Subcontractor[]
     projectId: string
     companyId: string
+    skipEmail?: boolean
 }
 
 export class CreateCustomServiceController {
@@ -143,6 +146,102 @@ export class CreateCustomServiceController {
                             }
                         })
                     }
+                }
+            }
+
+            if (!body.skipEmail) {
+                try {
+                    const projectData = await prisma.project.findUnique({
+                        where: { id: body.projectId },
+                        select: {
+                            location: true,
+                            lat: true,
+                            log: true,
+                            contract_number: true
+                        }
+                    });
+
+                    const projectLocation = projectData?.location || 'Not specified';
+                    const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
+                    const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+                    const startDate = customService.start_date || body.start_date;
+                    const deadline = customService.deadline || body.deadline;
+
+                    const SMTP_CONFIG = require("../../../config/smtp");
+                    const transporter = nodemailer.createTransport({
+                        host: SMTP_CONFIG.host,
+                        port: SMTP_CONFIG.port,
+                        secure: SMTP_CONFIG.port === 465,
+                        auth: {
+                            user: SMTP_CONFIG.user,
+                            pass: SMTP_CONFIG.pass,
+                        },
+                        tls: {
+                            rejectUnauthorized: false,
+                        },
+                    });
+
+                    const emailSubject = `New Assignment - ${customService.name} - #${projectData?.contract_number}`;
+
+                    const allUserServiceProjects = await prisma.userServiceProject.findMany({
+                        where: { custom_service_schedule_id: customService.id },
+                        include: { user: { select: { name: true, email: true } } }
+                    });
+
+                    const allSubcontractorServiceProjects = await prisma.subContractorServiceProject.findMany({
+                        where: { custom_service_schedule_id: customService.id },
+                        include: { subcontractor: { select: { name: true, email: true } } }
+                    });
+
+                    for (const usp of allUserServiceProjects) {
+                        if (usp.user?.email && usp.user?.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                usp.user.name,
+                                customService.name,
+                                new Date(startDate!).toISOString(),
+                                new Date(deadline!).toISOString(),
+                                projectLocation,
+                                usp.user.email,
+                                latitude,
+                                longitude,
+                                false
+                            );
+
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: "rian.goncallves@gmail.com",
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${usp.user.name},\n\nYou have been assigned to the following service: ${customService.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+                        }
+                    }
+
+                    for (const ssp of allSubcontractorServiceProjects) {
+                        if (ssp.subcontractor?.email && ssp.subcontractor?.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                ssp.subcontractor.name,
+                                customService.name,
+                                new Date(startDate!).toISOString(),
+                                new Date(deadline!).toISOString(),
+                                projectLocation,
+                                ssp.subcontractor.email,
+                                latitude,
+                                longitude,
+                                false
+                            );
+
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: "rian.goncallves@gmail.com",
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${ssp.subcontractor.name},\n\nYou have been assigned to the following service: ${customService.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+                        }
+                    }
+                } catch (emailError) {
+                    console.error('Error sending custom service assignment emails:', emailError);
                 }
             }
 

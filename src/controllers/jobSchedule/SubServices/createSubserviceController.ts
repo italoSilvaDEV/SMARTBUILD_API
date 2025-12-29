@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
+import nodemailer from "nodemailer";
+import { workerAssignmentEmail } from "../../../templateEmail/workerAssignment";
 
 interface User {
     id: string
@@ -19,6 +21,7 @@ interface CreateSubserviceRequest {
     price?: number
     users?: User[]
     subcontractors?: Subcontractor[]
+    skipEmail?: boolean
 }
 
 export class CreateSubserviceController {
@@ -153,6 +156,120 @@ export class CreateSubserviceController {
                             }
                         })
                     }
+                }
+            }
+
+            if (!body.skipEmail) {
+                try {
+                    let projectId: string | null = null;
+
+                    if (body.serviceId) {
+                        const service = await prisma.serviceProject.findUnique({
+                            where: { id: body.serviceId },
+                            select: { projectId: true }
+                        });
+                        projectId = service?.projectId || null;
+                    } else if (body.customServiceId) {
+                        const customService = await prisma.customServiceSchedule.findUnique({
+                            where: { id: body.customServiceId },
+                            select: { projectId: true }
+                        });
+                        projectId = customService?.projectId || null;
+                    }
+
+                    if (projectId) {
+                        const projectData = await prisma.project.findUnique({
+                            where: { id: projectId },
+                            select: {
+                                location: true,
+                                lat: true,
+                                log: true,
+                                contract_number: true
+                            }
+                        });
+
+                        const projectLocation = projectData?.location || 'Not specified';
+                        const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
+                        const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+                        const startDate = subservice.start_date || body.start_date;
+                        const deadline = subservice.deadline || body.deadline;
+
+                        const SMTP_CONFIG = require("../../../config/smtp");
+                        const transporter = nodemailer.createTransport({
+                            host: SMTP_CONFIG.host,
+                            port: SMTP_CONFIG.port,
+                            secure: SMTP_CONFIG.port === 465,
+                            auth: {
+                                user: SMTP_CONFIG.user,
+                                pass: SMTP_CONFIG.pass,
+                            },
+                            tls: {
+                                rejectUnauthorized: false,
+                            },
+                        });
+
+                        const emailSubject = `New Assignment - ${subservice.name} - #${projectData?.contract_number}`;
+
+                        const allUserServiceProjects = await prisma.userServiceProject.findMany({
+                            where: { sub_service_project_id: subservice.id },
+                            include: { user: { select: { name: true, email: true } } }
+                        });
+
+                        const allSubcontractorServiceProjects = await prisma.subContractorServiceProject.findMany({
+                            where: { sub_service_project_id: subservice.id },
+                            include: { subcontractor: { select: { name: true, email: true } } }
+                        });
+
+                        for (const usp of allUserServiceProjects) {
+                            if (usp.user?.email && usp.user?.name) {
+                                const emailHtml = workerAssignmentEmail(
+                                    usp.user.name,
+                                    subservice.name,
+                                    new Date(startDate!).toISOString(),
+                                    new Date(deadline!).toISOString(),
+                                    projectLocation,
+                                    usp.user.email,
+                                    latitude,
+                                    longitude,
+                                    false
+                                );
+
+                                await transporter.sendMail({
+                                    from: SMTP_CONFIG.user,
+                                    to: "rian.goncallves@gmail.com",
+                                    subject: emailSubject,
+                                    html: emailHtml,
+                                    text: `Hello ${usp.user.name},\n\nYou have been assigned to the following service: ${subservice.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                });
+                            }
+                        }
+
+                        for (const ssp of allSubcontractorServiceProjects) {
+                            if (ssp.subcontractor?.email && ssp.subcontractor?.name) {
+                                const emailHtml = workerAssignmentEmail(
+                                    ssp.subcontractor.name,
+                                    subservice.name,
+                                    new Date(startDate!).toISOString(),
+                                    new Date(deadline!).toISOString(),
+                                    projectLocation,
+                                    ssp.subcontractor.email,
+                                    latitude,
+                                    longitude,
+                                    false
+                                );
+
+                                await transporter.sendMail({
+                                    from: SMTP_CONFIG.user,
+                                    to: "rian.goncallves@gmail.com",
+                                    subject: emailSubject,
+                                    html: emailHtml,
+                                    text: `Hello ${ssp.subcontractor.name},\n\nYou have been assigned to the following service: ${subservice.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                });
+                            }
+                        }
+                    }
+                } catch (emailError) {
+                    console.error('Error sending subservice assignment emails:', emailError);
                 }
             }
 

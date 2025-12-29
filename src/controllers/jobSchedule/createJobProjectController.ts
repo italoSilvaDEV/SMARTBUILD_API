@@ -318,15 +318,11 @@ export class CreateJobProjectController {
                                 html: emailHtml,
                                 text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
                             });
-
-                            console.log("Email sent successfully")
                         }
                     }
                 } catch (emailError: any) {
                     console.error("Error sending assignment emails:", emailError);
                 }
-            } else {
-                console.log("Email skipped")
             }
 
             return res.status(201).json({
