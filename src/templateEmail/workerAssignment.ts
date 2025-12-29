@@ -9,7 +9,8 @@ export const workerAssignmentEmail = (
     longitude?: number | null,
     isScheduleChange?: boolean,
     oldStartDate?: string,
-    oldDeadline?: string
+    oldDeadline?: string,
+    description?: string
 ) => {
     const formattedStartDate = new Date(startDate).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -278,6 +279,20 @@ export const workerAssignmentEmail = (
                             </div>
                         </td>
                     </tr>
+                    
+                    ${description ? `
+                    <!-- Service Description -->
+                    <tr>
+                        <td class="content-padding" style="padding:0 24px 32px;">
+                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0 0 8px 0;font-weight:600;">
+                                Service description
+                            </p>
+                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0;line-height:1.6;font-weight:400;">
+                                ${description}
+                            </p>
+                        </td>
+                    </tr>
+                    ` : ''}
                     
                     <!-- CTA Button - Open in Maps -->
                     <tr>

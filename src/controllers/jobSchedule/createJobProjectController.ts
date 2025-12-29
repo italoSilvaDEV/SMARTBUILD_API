@@ -194,7 +194,8 @@ export class CreateJobProjectController {
                 select: {
                     name: true,
                     start_date: true,
-                    deadline: true
+                    deadline: true,
+                    description: true
                 }
             });
 
@@ -210,7 +211,12 @@ export class CreateJobProjectController {
                 }
             });
 
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
             const serviceName = serviceProjectData?.name || 'Service';
+            const serviceDescription = serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
             const projectLocation = projectData?.location || 'Not specified';
             const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
             const longitude = projectData?.log ? parseFloat(projectData.log) : null;
@@ -281,7 +287,8 @@ export class CreateJobProjectController {
                                 longitude,
                                 isScheduleChange,
                                 oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
+                                serviceDescription
                             );
 
                             await transporter.sendMail({
@@ -308,7 +315,8 @@ export class CreateJobProjectController {
                                 longitude,
                                 isScheduleChange,
                                 oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
+                                serviceDescription
                             );
 
                             await transporter.sendMail({

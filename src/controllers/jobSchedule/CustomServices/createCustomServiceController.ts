@@ -161,11 +161,16 @@ export class CreateCustomServiceController {
                         }
                     });
 
+                    const removeHtml = (text: string): string => {
+                        return text.replace(/<[^>]*>/g, '').trim();
+                    };
+
                     const projectLocation = projectData?.location || 'Not specified';
                     const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
                     const longitude = projectData?.log ? parseFloat(projectData.log) : null;
                     const startDate = customService.start_date || body.start_date;
                     const deadline = customService.deadline || body.deadline;
+                    const customServiceDescription = customService.description ? removeHtml(customService.description) : undefined;
 
                     const SMTP_CONFIG = require("../../../config/smtp");
                     const transporter = nodemailer.createTransport({
@@ -204,7 +209,10 @@ export class CreateCustomServiceController {
                                 usp.user.email,
                                 latitude,
                                 longitude,
-                                false
+                                false,
+                                undefined,
+                                undefined,
+                                customServiceDescription
                             );
 
                             await transporter.sendMail({
@@ -228,7 +236,10 @@ export class CreateCustomServiceController {
                                 ssp.subcontractor.email,
                                 latitude,
                                 longitude,
-                                false
+                                false,
+                                undefined,
+                                undefined,
+                                customServiceDescription
                             );
 
                             await transporter.sendMail({
