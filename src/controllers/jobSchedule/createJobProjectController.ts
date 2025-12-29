@@ -20,6 +20,7 @@ interface CreateJobProject {
     startDate: string
     deadline: string
     skipEmail?: boolean
+    description?: string
 }
 
 export class CreateJobProjectController {
@@ -216,7 +217,7 @@ export class CreateJobProjectController {
             };
 
             const serviceName = serviceProjectData?.name || 'Service';
-            const serviceDescription = serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
+            const serviceDescription = body.description ? removeHtml(body.description) : serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
             const projectLocation = projectData?.location || 'Not specified';
             const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
             const longitude = projectData?.log ? parseFloat(projectData.log) : null;
