@@ -1047,6 +1047,44 @@ export class CustomInvoiceController {
         }
       }
 
+      // If custom invoice has administrative QB invoice, void it too
+      let quickBooksVoidResult = null;
+      let quickBooksVoidError = null;
+
+      if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio && companyId) {
+        console.log("Custom invoice has administrative QB invoice - voiding it...");
+        console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+
+        try {
+          const qbController = this.quickBooksController;
+          if (qbController) {
+            // Use userId from request body or try to get from invoice
+            const userId = req.body.userId || invoice.user_id;
+            
+            if (userId) {
+              quickBooksVoidResult = await qbController.cancelInvoiceInternal({
+                quickBooksInvoiceId: invoice.idQuickbookContabio,
+                userId: userId,
+                companyId: companyId,
+                calledFromStripe: true // Internal operation, don't update local DB
+              });
+
+              if (quickBooksVoidResult.success) {
+                console.log("Administrative QB invoice voided successfully");
+              } else {
+                console.warn("Failed to void administrative QB invoice, continuing anyway...");
+              }
+            } else {
+              console.warn("UserId not available, skipping QB void");
+            }
+          }
+        } catch (qbError: any) {
+          console.warn("Error voiding administrative QB invoice:", qbError.message);
+          quickBooksVoidError = qbError.message;
+          // Continue with local cancellation despite QB error
+        }
+      }
+
       await prisma.invoice.update({
         where: {
           id: invoiceId
@@ -1058,7 +1096,7 @@ export class CustomInvoiceController {
 
       await prisma.invoiceTimeline.create({
         data: {
-          description: `Canceled`,
+          description: `Canceled${quickBooksVoidResult ? ' (QB invoice also voided)' : ''}`,
           invoice: {
             connect: { id: invoice.id }
           }
@@ -1066,7 +1104,12 @@ export class CustomInvoiceController {
       });
 
       return res.status(200).json({
-        message: "Invoice cancelled successfully"
+        message: "Invoice cancelled successfully",
+        quickBooks: quickBooksVoidResult ? {
+          success: true,
+          result: quickBooksVoidResult
+        } : undefined,
+        quickBooksError: quickBooksVoidError
       });
     } catch (error: any) {
       console.error("Error cancelling custom invoice:", error);
@@ -1764,6 +1807,37 @@ export class CustomInvoiceController {
     }
 
     try {
+      // If custom invoice has administrative QB invoice, delete it too
+      let quickBooksDeleteResult = null;
+      let quickBooksDeleteError = null;
+
+      if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+        console.log("Custom invoice has administrative QB invoice - deleting it...");
+        console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+
+        try {
+          const qbController = this.quickBooksController;
+          if (qbController && invoice.user_id && invoice.companyId) {
+            quickBooksDeleteResult = await qbController.deleteInvoiceInternal({
+              quickBooksInvoiceId: invoice.idQuickbookContabio,
+              userId: invoice.user_id,
+              companyId: invoice.companyId,
+              calledFromStripe: true // Internal operation, don't delete from local DB
+            });
+
+            if (quickBooksDeleteResult.success || quickBooksDeleteResult.notFound) {
+              console.log("Administrative QB invoice deleted successfully");
+            } else {
+              console.warn("Failed to delete administrative QB invoice, continuing anyway...");
+            }
+          }
+        } catch (qbError: any) {
+          console.warn("Error deleting administrative QB invoice:", qbError.message);
+          quickBooksDeleteError = qbError.message;
+          // Continue with local deletion despite QB error
+        }
+      }
+
       await prisma.invoice.delete({
         where: {
           id
@@ -1772,6 +1846,11 @@ export class CustomInvoiceController {
 
       return res.status(200).json({
         message: "Invoice deleted successfully",
+        quickBooks: quickBooksDeleteResult ? {
+          success: true,
+          result: quickBooksDeleteResult
+        } : undefined,
+        quickBooksError: quickBooksDeleteError
       })
     } catch (error) {
       return res.status(500).json({
