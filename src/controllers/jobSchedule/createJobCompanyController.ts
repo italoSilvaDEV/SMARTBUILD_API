@@ -9,6 +9,7 @@ interface CreateSchedule {
     projectId: string
     startDate: string
     deadline: string
+    skipEmail?: boolean
 }
 
 export class CreateJobCompanyController {
@@ -97,86 +98,86 @@ export class CreateJobCompanyController {
                 }
             })
 
-            try {
-                const clientName = project.workContext?.Name || project.client?.name
-                const clientEmail = project.workContext?.Email || project.client?.email
+            if (!body.skipEmail) {
+                try {
+                    const clientName = project.workContext?.Name || project.client?.name
+                    const clientEmail = project.workContext?.Email || project.client?.email
 
-                console.log(clientEmail)
+                    if (!clientEmail || !clientName) {
+                        console.log("Client email or name not found, skipping email send");
+                    } else {
+                        const companyAvatar = company.avatar
+                            ? await getPresignedUrl(company.avatar)
+                            : ""
 
-                if (!clientEmail || !clientName) {
-                    console.log("Client email or name not found, skipping email send");
-                } else {
-                    const companyAvatar = company.avatar
-                        ? await getPresignedUrl(company.avatar)
-                        : ""
+                        const emailSubject = hadPreviousSchedule
+                            ? `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
+                            : `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
 
-                    const emailSubject = hadPreviousSchedule
-                        ? `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
-                        : `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
+                        const emailHtml = projectScheduleEmail(
+                            clientName,
+                            companyAvatar || "",
+                            company.name || '',
+                            String(project.contract_number || 'N/A'),
+                            project.location || 'Not specified',
+                            startDate.toISOString(),
+                            deadline.toISOString(),
+                            hadPreviousSchedule,
+                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
+                            company.phone || undefined,
+                            company.email || undefined
+                        )
 
-                    const emailHtml = projectScheduleEmail(
-                        clientName,
-                        companyAvatar || "",
-                        company.name || '',
-                        String(project.contract_number || 'N/A'),
-                        project.location || 'Not specified',
-                        startDate.toISOString(),
-                        deadline.toISOString(),
-                        hadPreviousSchedule,
-                        oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                        oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                        company.phone || undefined,
-                        company.email || undefined
-                    )
+                        const SMTP_CONFIG = require("../../config/smtp");
+                        const transporter = nodemailer.createTransport({
+                            host: SMTP_CONFIG.host,
+                            port: SMTP_CONFIG.port,
+                            secure: SMTP_CONFIG.port === 465,
+                            auth: {
+                                user: SMTP_CONFIG.user,
+                                pass: SMTP_CONFIG.pass,
+                            },
+                            tls: {
+                                rejectUnauthorized: false,
+                            },
+                        })
 
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    })
+                        await transporter.sendMail({
+                            from: SMTP_CONFIG.user,
+                            to: clientEmail,
+                            subject: emailSubject,
+                            html: emailHtml,
+                            text: `
+                            Dear ${clientName},
+    
+                            ${hadPreviousSchedule
+                                    ? `We wanted to inform you that there has been an update to your project schedule.`
+                                    : `Great news! Your project has been successfully scheduled and we're excited to get started!`}
+    
+                            Project Details:
+                            - Contract Number: ${project.contract_number || 'N/A'}
+                            - Project Location: ${project.location || 'Not specified'}
+                            - Start Date: ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            - Deadline: ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+    
+                            ${hadPreviousSchedule && oldStartDate && oldDeadline ? `
+                            Previous Schedule:
+                            - Start Date: ${new Date(oldStartDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            - Deadline: ${new Date(oldDeadline).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            ` : ''}
+    
+                            If you have any questions or need to discuss any adjustments, please don't hesitate to contact us. We're here to ensure everything runs smoothly.
+    
+                            Thank you for your business!
+                            ${company.name || ''}`.trim()
+                        })
 
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
-                        to: clientEmail,
-                        subject: emailSubject,
-                        html: emailHtml,
-                        text: `
-                        Dear ${clientName},
-
-                        ${hadPreviousSchedule
-                                ? `We wanted to inform you that there has been an update to your project schedule.`
-                                : `Great news! Your project has been successfully scheduled and we're excited to get started!`}
-
-                        Project Details:
-                        - Contract Number: ${project.contract_number || 'N/A'}
-                        - Project Location: ${project.location || 'Not specified'}
-                        - Start Date: ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                        - Deadline: ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-
-                        ${hadPreviousSchedule && oldStartDate && oldDeadline ? `
-                        Previous Schedule:
-                        - Start Date: ${new Date(oldStartDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                        - Deadline: ${new Date(oldDeadline).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                        ` : ''}
-
-                        If you have any questions or need to discuss any adjustments, please don't hesitate to contact us. We're here to ensure everything runs smoothly.
-
-                        Thank you for your business!
-                        ${company.name || ''}`.trim()
-                    })
-
-                    console.log("Email sent successfully")
+                        console.log("Email sent successfully")
+                    }
+                } catch (emailError: any) {
+                    console.error("Error sending project schedule email:", emailError);
                 }
-            } catch (emailError: any) {
-                console.error("Error sending project schedule email:", emailError);
             }
 
             return res.status(200).json({
