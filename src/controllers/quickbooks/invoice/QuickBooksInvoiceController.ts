@@ -516,6 +516,7 @@ export class QuickBooksInvoiceController {
             message: "QuickBooks invoice created successfully",
             quickbooksId: inv.Id,
             docNumber: inv.DocNumber,
+            invoiceUrl: invoiceUrl, // Incluir URL de pagamento
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
             status: deriveQboInvoicePaymentStatus(inv)
           };
@@ -1992,14 +1993,30 @@ export class QuickBooksInvoiceController {
         });
       }
 
-      if (invoice.invoiceType !== "quickbooks") {
+      // RULE 1: Handle conversion from stripe/custom to quickbooks
+      let isConvertingToQuickbooks = false;
+      let hadAdministrativeQboInvoice = false;
+      
+      if (invoice.invoiceType === "stripe" || invoice.invoiceType === "custom") {
+        console.log(" Invoice is being converted from", invoice.invoiceType, "to quickbooks");
+        isConvertingToQuickbooks = true;
+        
+        // Check if there was an administrative QBO invoice that needs to be deleted
+        if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+          console.log(" Found administrative QBO invoice that needs to be deleted");
+          console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+          console.log("QB DocNumber:", invoice.docNumberQuickBooksContabio);
+          hadAdministrativeQboInvoice = true;
+        }
+      } else if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({
-          error: "Not a QuickBooks invoice",
-          message: "This invoice is not a QuickBooks invoice"
+          error: "Invalid invoice type",
+          message: "Invoice type not supported for QuickBooks conversion"
         });
       }
 
-      if (!invoice.idQuickbookContabio) {
+      // For existing QBO invoices, require QB invoice ID
+      if (!isConvertingToQuickbooks && !invoice.idQuickbookContabio) {
         return res.status(400).json({
           error: "QuickBooks invoice ID missing",
           message: "This invoice has not been synced with QuickBooks yet"
@@ -2026,6 +2043,37 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      // Delete administrative QBO invoice if converting from stripe/custom
+      if (hadAdministrativeQboInvoice && invoice.idQuickbookContabio) {
+        console.log(" Deleting administrative QBO invoice before conversion...");
+        try {
+          const deleteResult = await this.deleteInvoiceInternal({
+            quickBooksInvoiceId: invoice.idQuickbookContabio,
+            userId: userId,
+            companyId: invoice.project.company_id!,
+            calledFromStripe: true // Internal deletion, don't delete from local DB
+          });
+
+          if (deleteResult.success || deleteResult.notFound) {
+            console.log(" Administrative QBO invoice deleted successfully");
+            
+            // Clear QB references from local invoice
+            await prisma.invoice.update({
+              where: { id: invoice.id },
+              data: {
+                idQuickbookContabio: null,
+                docNumberQuickBooksContabio: null
+              }
+            });
+          } else {
+            console.warn(" Failed to delete administrative QBO invoice, continuing anyway...");
+          }
+        } catch (deleteError: any) {
+          console.warn(" Error deleting administrative QBO invoice:", deleteError.message);
+          console.log(" Continuing with conversion despite deletion error...");
+        }
+      }
+
       // Calcular o total amount se não fornecido
       let calculatedTotalAmount = totalAmount;
       if (!calculatedTotalAmount && services && Array.isArray(services)) {
@@ -2035,23 +2083,121 @@ export class QuickBooksInvoiceController {
         }, 0);
       }
 
-      console.log(" Delegando atualização para updateInvoiceInternal...");
+      console.log(" Delegando atualização para", isConvertingToQuickbooks ? "createInvoiceInternal" : "updateInvoiceInternal...");
 
-      // Chamar updateInvoiceInternal
-      const result = await this.updateInvoiceInternal({
-        quickBooksInvoiceId: invoice.idQuickbookContabio, 
-        projectId: invoice.projectId,
-        description,
-        dueDate,
-        userId,
-        coefficientPerfentage,
-        type_value,
-        services,
-        totalAmountTarget: calculatedTotalAmount,
-        calledFromStripe: false // Atualizar como invoice completo (banco + QB)
-      });
+      let result;
+      
+      if (isConvertingToQuickbooks) {
+        // Create new QBO invoice (conversion from stripe/custom)
+        // Use calledFromStripe: true to only create in QBO, not in local DB
+        const qboResult = await this.createInvoiceInternal({
+          projectId: invoice.projectId,
+          description,
+          type_invoicebase: (invoice as any).type_invoicebase,
+          dueDate,
+          userId,
+          coefficientPerfentage,
+          services,
+          type_value,
+          totalAmountTarget: calculatedTotalAmount,
+          calledFromStripe: true // Only create in QBO, return QBO data
+        });
 
-      console.log(" Invoice atualizado com sucesso:", invoice.id);
+        console.log(" QBO invoice created, updating existing local invoice...");
+        console.log("QB Invoice ID:", qboResult.quickbooksId);
+        console.log("QB DocNumber:", qboResult.docNumber);
+        console.log("Invoice URL:", qboResult.invoiceUrl);
+
+        // Update the existing local invoice with QBO data
+        const updatedInvoice = await prisma.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            invoiceType: "quickbooks",
+            idQuickbookContabio: qboResult.quickbooksId,
+            docNumberQuickBooksContabio: qboResult.docNumber || null,
+            invoiceUrl: qboResult.invoiceUrl || null,
+            status: qboResult.status || invoice.status,
+            totalAmount: calculatedTotalAmount || invoice.totalAmount,
+            dueDate: dueDate ? new Date(dueDate) : invoice.dueDate,
+            description: description || invoice.description,
+            type_value: type_value || invoice.type_value,
+            percentageCoefficient: coefficientPerfentage || invoice.percentageCoefficient,
+            updatedAt: new Date()
+          },
+          include: {
+            project: {
+              include: {
+                client: true,
+                company: true
+              }
+            },
+            InvoiceItems: true
+          }
+        });
+
+        // Update invoice items if services provided
+        if (services && Array.isArray(services) && services.length > 0) {
+          // Delete old items
+          await prisma.invoiceItem.deleteMany({
+            where: { invoiceId: invoice.id }
+          });
+
+          // Create new items with correct quantity/price mapping
+          const lineItems = services.map((service: any) => {
+            const quantity = Number(service.quantity) || 1;
+            const price = Number(service.price) || 0;
+            const total = service.total || (quantity * price);
+
+            return {
+              invoiceId: invoice.id,
+              name: service.name || "Service",
+              description: service.description || "",
+              quantity: quantity,
+              price: price,
+              totalAmount: total,
+              qboQuantity: 1, // QBO sempre recebe 1
+              qboPrice: total // QBO recebe o total como preço
+            };
+          });
+
+          await prisma.invoiceItem.createMany({
+            data: lineItems
+          });
+        }
+
+        // Add timeline event
+        await prisma.invoiceTimeline.create({
+          data: {
+            description: `Converted to QuickBooks invoice (QB ID: ${qboResult.quickbooksId})`,
+            invoice: {
+              connect: { id: invoice.id }
+            }
+          }
+        });
+
+        console.log(" Existing invoice updated successfully with QBO data");
+
+        result = {
+          ...qboResult,
+          localInvoice: updatedInvoice
+        };
+      } else {
+        // Update existing QBO invoice
+        result = await this.updateInvoiceInternal({
+          quickBooksInvoiceId: invoice.idQuickbookContabio!, 
+          projectId: invoice.projectId,
+          description,
+          dueDate,
+          userId,
+          coefficientPerfentage,
+          type_value,
+          services,
+          totalAmountTarget: calculatedTotalAmount,
+          calledFromStripe: false // Update local invoice
+        });
+      }
+
+      console.log(" Invoice update completed successfully:", invoice.id);
 
       return res.status(200).json({
         success: true,
@@ -2103,7 +2249,7 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
-      console.log(`🗑️ Iniciando deleção de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
+      console.log(` Iniciando deleção de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
@@ -2126,7 +2272,7 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      console.log(`🗑️ Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
 
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
@@ -2164,7 +2310,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
-      console.log(`🗑️ Deletando invoice QB ID ${invoice.idQuickbookContabio}...`);
+      console.log(` Deletando invoice QB ID ${invoice.idQuickbookContabio}...`);
 
       // Deletar no QuickBooks
       const result = await this.deleteInvoiceInternal({

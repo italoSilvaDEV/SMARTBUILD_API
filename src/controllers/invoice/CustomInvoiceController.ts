@@ -6,12 +6,102 @@ import fs from "fs";
 import { generatePdf } from "../../utils/generatePdf";
 import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdfProjectEstimateInvoiceController";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
+import { stripeConfig } from "../../config/stripe";
+
+const stripe = stripeConfig.getClient();
 
 export class CustomInvoiceController {
   private quickBooksController: QuickBooksInvoiceController; 
 
   constructor() {
     this.quickBooksController = new QuickBooksInvoiceController();
+  }
+
+  /**
+   * Helper function to validate and cancel PaymentIntents when converting invoice type
+   * Returns error message if there are pending/processing PaymentIntents that block conversion
+   */
+  private async validateAndCancelPaymentIntents(
+    invoiceId: string,
+    stripeAccountId: string | undefined
+  ): Promise<{ canConvert: boolean; error?: string }> {
+    try {
+      // Find all PaymentIntents for this invoice
+      const paymentIntents = await prisma.paymentIntentRecord.findMany({
+        where: { invoiceId: invoiceId }
+      });
+
+      if (paymentIntents.length === 0) {
+        return { canConvert: true };
+      }
+
+      // Check for processing or requires_action states that block conversion
+      const blockingStatuses = ['processing', 'requires_action'];
+      const blockingPaymentIntents = paymentIntents.filter(pi => 
+        blockingStatuses.includes(pi.status)
+      );
+
+      if (blockingPaymentIntents.length > 0) {
+        console.log("Found blocking PaymentIntents:", blockingPaymentIntents.map(pi => ({
+          id: pi.stripePaymentIntentId,
+          status: pi.status
+        })));
+
+        return {
+          canConvert: false,
+          error: `Cannot convert invoice type while payment is ${blockingPaymentIntents[0].status}. Please wait for payment to complete or cancel it first.`
+        };
+      }
+
+      // Cancel any PaymentIntents that are in cancelable states
+      const cancelableStatuses = ['requires_payment_method', 'requires_confirmation', 'requires_capture'];
+      const cancelablePaymentIntents = paymentIntents.filter(pi => 
+        cancelableStatuses.includes(pi.status)
+      );
+
+      if (cancelablePaymentIntents.length > 0) {
+        console.log("Canceling PaymentIntents before conversion...");
+
+        for (const paymentIntent of cancelablePaymentIntents) {
+          try {
+            // Verify current status in Stripe before canceling
+            const stripePI = await stripe.paymentIntents.retrieve(
+              paymentIntent.stripePaymentIntentId,
+              { stripeAccount: stripeAccountId }
+            );
+
+            if (cancelableStatuses.includes(stripePI.status)) {
+              await stripe.paymentIntents.cancel(
+                paymentIntent.stripePaymentIntentId,
+                { stripeAccount: stripeAccountId }
+              );
+
+              // Update status in DB
+              await prisma.paymentIntentRecord.update({
+                where: { id: paymentIntent.id },
+                data: { status: 'canceled', updatedAt: new Date() }
+              });
+
+              console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
+            } else {
+              console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
+            }
+          } catch (piError: any) {
+            console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
+            // Continue with other PaymentIntents
+          }
+        }
+      }
+
+      return { canConvert: true };
+
+    } catch (error: any) {
+      console.error("Error validating PaymentIntents:", error);
+      return {
+        canConvert: false,
+        error: `Error checking payment status: ${error.message}`
+      };
+    }
   }
   async createInvoice(req: Request, res: Response) {
     const {
@@ -1161,7 +1251,7 @@ export class CustomInvoiceController {
     }
   }
 
-  async updateInvoice(req: Request, res: Response) {
+  async updateInvoice(req: Request, res: Response) { 
     const {
       invoiceId
     } = req.params;
@@ -1213,8 +1303,62 @@ export class CustomInvoiceController {
 
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
 
-      let newInvoiceType
+      // RULE 3: If converting FROM stripe to custom/quickbooks, validate PaymentIntents first
       if (existingInvoice.invoiceType === "stripe") {
+        console.log(" Invoice is being converted from stripe to custom");
+        console.log(" Validating PaymentIntents before conversion...");
+
+        const validation = await this.validateAndCancelPaymentIntents(
+          invoiceId,
+          existingInvoice.project?.company?.stripeAccountId ?? undefined
+        );
+
+        if (!validation.canConvert) {
+          return res.status(400).json({
+            error: "Cannot convert invoice type",
+            message: validation.error || "There are pending payments that prevent conversion"
+          });
+        }
+
+        console.log(" PaymentIntents validated - conversion can proceed");
+      }
+
+      // RULE 2: Handle conversion from quickbooks to custom
+      let isConvertingFromQuickbooks = false;
+      if (existingInvoice.invoiceType === "quickbooks") {
+        console.log(" Invoice is being converted from quickbooks to custom");
+        isConvertingFromQuickbooks = true;
+
+        // Delete invoice from QuickBooks before conversion
+        if (existingInvoice.idQuickbookContabio && companyId) {
+          console.log(" Deleting QuickBooks invoice before conversion to custom");
+          console.log("QB Invoice ID:", existingInvoice.idQuickbookContabio);
+          
+          try {
+            const qbController = this.quickBooksController;
+            if (qbController) {
+              const deleteResult = await qbController.deleteInvoiceInternal({
+                quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
+                userId: userId,
+                companyId: companyId,
+                calledFromStripe: true // Internal deletion, don't delete from local DB
+              });
+
+              if (deleteResult.success || deleteResult.notFound) {
+                console.log(" QuickBooks invoice deleted successfully during conversion");
+              } else {
+                console.warn(" Failed to delete QuickBooks invoice, continuing anyway...");
+              }
+            }
+          } catch (deleteError: any) {
+            console.warn(" Error deleting QuickBooks invoice:", deleteError.message);
+            console.log(" Continuing with conversion despite deletion error...");
+          }
+        }
+      }
+
+      let newInvoiceType
+      if (existingInvoice.invoiceType === "stripe" || existingInvoice.invoiceType === "quickbooks") {
         newInvoiceType = "custom";
       } else {
         newInvoiceType = existingInvoice.invoiceType;
@@ -1237,6 +1381,12 @@ export class CustomInvoiceController {
             multi_emails: multi_emails || existingInvoice.multi_emails,
             updatedAt: new Date(),
             createdAt: date_creation ? new Date(date_creation) : existingInvoice.createdAt,
+            // Clear QB references when converting from QBO to Custom
+            ...(isConvertingFromQuickbooks && {
+              idQuickbookContabio: null,
+              docNumberQuickBooksContabio: null,
+              invoiceUrl: null
+            })
           },
           include: {
             InvoiceItems: true
@@ -1315,8 +1465,73 @@ export class CustomInvoiceController {
             where: { company_id: companyId },
           });
 
+          // If converting from QBO to Custom, create administrative invoice
+          if (isConvertingFromQuickbooks && quickBooksAccount) {
+            console.log("Converting from QBO to Custom - creating administrative QB invoice...");
+
+            // Prepare services for QB format
+            const qbServicesSource =
+              Array.isArray(services) && services.length > 0
+                ? services
+                : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
+                    name: ii.name || "Service",
+                    description: ii.description || "",
+                    quantity: Number(ii.quantity || 1),
+                    price: Number(ii.price || 0),
+                    total: Number(ii.totalAmount || 0),
+                  }));
+
+            const qbServicesForCreate = qbServicesSource.map((s: any) => ({
+              name: s.name || "Service",
+              description: s.description || "",
+              quantity: Number(s.quantity || 1),
+              price: Number(s.price || 0),
+              total: Number(
+                s.total != null ? s.total : (Number(s.quantity || 0) * Number(s.price || 0))
+              ),
+            }));
+
+            const qbController = this.quickBooksController;
+            if (!qbController) throw new Error("QuickBooksController is not initialized");
+
+            const createResult = await qbController.createInvoiceInternal({
+              projectId: project.id,
+              description: description || `Invoice for Project ${project.id}`,
+              type_invoicebase: (existingInvoice as any).type_invoicebase,
+              dueDate: dueDate,
+              userId: userId,
+              coefficientPerfentage: coefficientPerfentage,
+              services: qbServicesForCreate,
+              type_value: type_value,
+              totalAmountTarget: totalAmount ?? 0,
+              calledFromStripe: true, // Only create in QB, return QB data
+            });
+
+            console.log("Administrative QB invoice created:", createResult?.quickbooksId);
+
+            // Update local invoice with QB references
+            if (createResult?.quickbooksId) {
+              await prisma.invoice.update({
+                where: { id: invoiceId },
+                data: {
+                  idQuickbookContabio: createResult.quickbooksId,
+                  docNumberQuickBooksContabio: createResult.docNumber || null,
+                },
+              });
+
+              quickBooksUpdateResult = createResult;
+
+              // Add timeline event
+              await prisma.invoiceTimeline.create({
+                data: {
+                  description: `Administrative QuickBooks invoice created after conversion (ID: ${createResult.quickbooksId}, DocNumber: ${createResult.docNumber})`,
+                  invoice: { connect: { id: invoiceId } },
+                },
+              });
+            }
+          } 
           // Verificar se o invoice original tinha referência do QuickBooks
-          if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
+          else if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
             // Preparar serviços para o formato esperado pelo QuickBooks
             const qbServices = services.map((service: any) => ({
               name: service.name || "Service",
