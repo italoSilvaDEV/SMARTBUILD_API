@@ -54,6 +54,7 @@ export class GetServicesByProjectController {
                     id: true,
                     name: true,
                     start_date: true,
+                    description: true,
                     hours: true,
                     price: true,
                     deadline: true,
