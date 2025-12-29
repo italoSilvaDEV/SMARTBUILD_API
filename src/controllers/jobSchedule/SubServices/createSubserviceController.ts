@@ -244,7 +244,7 @@ export class CreateSubserviceController {
 
                                 await transporter.sendMail({
                                     from: SMTP_CONFIG.user,
-                                    to: "rian.goncallves@gmail.com",
+                                    to: usp.user.email,
                                     subject: emailSubject,
                                     html: emailHtml,
                                     text: `Hello ${usp.user.name},\n\nYou have been assigned to the following service: ${subservice.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
@@ -271,7 +271,7 @@ export class CreateSubserviceController {
 
                                 await transporter.sendMail({
                                     from: SMTP_CONFIG.user,
-                                    to: "rian.goncallves@gmail.com",
+                                    to: ssp.subcontractor.email,
                                     subject: emailSubject,
                                     html: emailHtml,
                                     text: `Hello ${ssp.subcontractor.name},\n\nYou have been assigned to the following service: ${subservice.name}\n\nStart: ${new Date(startDate!).toLocaleDateString()}\nDeadline: ${new Date(deadline!).toLocaleDateString()}\nLocation: ${projectLocation}`
