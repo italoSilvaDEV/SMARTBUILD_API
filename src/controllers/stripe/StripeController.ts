@@ -741,6 +741,25 @@ export class StripeController {
                 return res.status(400).json({ error: "Cannot delete an invoice with partial payment" });
             }
 
+            // Check if there are PaymentIntents with requires_action or processing status
+            if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
+                const activePaymentIntents = await prisma.paymentIntentRecord.findMany({
+                    where: {
+                        invoiceId: invoice.id,
+                        status: {
+                            in: ['requires_action', 'processing']
+                        }
+                    }
+                });
+
+                if (activePaymentIntents.length > 0) {
+                    const statuses = activePaymentIntents.map(pi => pi.status).join(', ');
+                    return res.status(400).json({ 
+                        error: `Cannot delete invoice with active payment in progress (status: ${statuses}). Please wait for the payment to complete or fail before deleting.` 
+                    });
+                }
+            }
+
             // Cancelar PaymentIntents pendentes do tipo Payment Element
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
                 try {
