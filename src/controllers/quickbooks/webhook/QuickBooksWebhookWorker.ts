@@ -646,12 +646,51 @@ export class QuickBooksWebhookWorker {
               });
 
               // Atualizar lastPaymentAt do invoice
-              await prisma.invoice.update({
+              const updatedInvoice = await prisma.invoice.update({
                 where: { id: localInvoice.id },
                 data: {
                   lastPaymentAt: paymentTransaction.txnDate || new Date()
+                },
+                include: {
+                  project: true
                 }
               });
+
+              // Criar entrada no InvoicePaymentTimeLine para o histórico de pagamentos
+              if (updatedInvoice.type_invoicebase === "project" && updatedInvoice.projectId) {
+                const paymentDateUTC = paymentTransaction.txnDate || new Date();
+                const paymentDate = paymentDateUTC.toLocaleDateString('en-US', {
+                  timeZone: 'America/New_York'
+                });
+
+                // Verificar se é pagamento parcial ou total
+                const invoiceTotalAmount = Number(updatedInvoice.totalAmount || 0);
+                const isPartialPayment = amountApplied < invoiceTotalAmount;
+
+                let description: string;
+                if (isPartialPayment) {
+                  // Pagamento parcial
+                  description = `Partial payment of ${new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                  }).format(amountApplied)} applied to invoice #${updatedInvoice.externalInvoiceId} on ${paymentDate}`;
+                } else {
+                  // Pagamento total
+                  description = `Payment invoice #${updatedInvoice.externalInvoiceId} of ${new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                  }).format(amountApplied)} on ${paymentDate}`;
+                }
+
+                await prisma.invoicePaymentTimeLine.create({
+                  data: {
+                    description,
+                    projectId: updatedInvoice.projectId
+                  }
+                });
+
+                console.log(`[QBO Webhook] InvoicePaymentTimeLine criado para invoice ${localInvoice.id} - ${isPartialPayment ? 'Parcial' : 'Total'}`);
+              }
 
               processedInvoices++;
 
@@ -809,8 +848,18 @@ export class QuickBooksWebhookWorker {
         // Formatar histórico para o template
         const formattedHistory = paymentHistory.map(payment => ({
           date: payment.txnDate 
-            ? new Date(payment.txnDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-            : new Date(payment.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+            ? new Date(payment.txnDate).toLocaleDateString('en-US', { 
+                timeZone: 'America/New_York',
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric'
+              })
+            : new Date(payment.createdAt).toLocaleDateString('en-US', { 
+                timeZone: 'America/New_York',
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric'
+              }),
           amount: `$${Number(payment.totalAmount).toFixed(2)}`,
           method: payment.paymentMethodType || 'QuickBooks'
         }));
@@ -1187,8 +1236,18 @@ ${company?.name || ''}
           // Formatar histórico para o template
           const formattedHistory = paymentHistory.map(payment => ({
             date: payment.txnDate 
-              ? new Date(payment.txnDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-              : new Date(payment.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+              ? new Date(payment.txnDate).toLocaleDateString('en-US', { 
+                  timeZone: 'America/New_York',
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric'
+                })
+              : new Date(payment.createdAt).toLocaleDateString('en-US', { 
+                  timeZone: 'America/New_York',
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric'
+                }),
             amount: `$${Number(payment.totalAmount).toFixed(2)}`,
             method: payment.paymentMethodType || 'QuickBooks'
           }));
