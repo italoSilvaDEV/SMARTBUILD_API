@@ -1167,6 +1167,24 @@ export class StripeController {
                             amount: true
                         }
                     },
+                    paymentApplications: {
+                        select: {
+                            id: true,
+                            amountApplied: true,
+                            appliedAt: true,
+                            paymentTransaction: {
+                                select: {
+                                    id: true,
+                                    externalPaymentId: true,
+                                    paymentMethodType: true,
+                                    txnDate: true
+                                }
+                            }
+                        },
+                        orderBy: {
+                            appliedAt: "desc"
+                        }
+                    },
                     imagesAttachments: {
                         select: {
                             id: true,
@@ -1371,6 +1389,24 @@ export class StripeController {
                             paymentMethodType: true,
                         }
 
+                    },
+                    paymentApplications: {
+                        select: {
+                            id: true,
+                            amountApplied: true,
+                            appliedAt: true,
+                            paymentTransaction: {
+                                select: {
+                                    id: true,
+                                    externalPaymentId: true,
+                                    paymentMethodType: true,
+                                    txnDate: true
+                                }
+                            }
+                        },
+                        orderBy: {
+                            appliedAt: "desc"
+                        }
                     },
                     InvoiceItems: true,
                     InvoiceTimeline: {
