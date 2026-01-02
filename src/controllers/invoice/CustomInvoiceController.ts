@@ -498,7 +498,7 @@ export class CustomInvoiceController {
   }
 
   // enviar o pdf para o cliente atravez de email
-  async sendInvoice(req: Request, res: Response) {
+  async sendInvoice(req: Request, res: Response) { 
     const { invoiceId } = req.params;
     const { userId, companyId, idPdfProject, customSubject, customBody, customEmails } = req.body;
 
@@ -1559,6 +1559,8 @@ export class CustomInvoiceController {
                 data: {
                   idQuickbookContabio: createResult.quickbooksId,
                   docNumberQuickBooksContabio: createResult.docNumber || null,
+                  idQuickBooksRef: createResult.quickbooksId,
+                  externalDocNumber: createResult.docNumber || null,
                 },
               });
 
@@ -1677,6 +1679,8 @@ export class CustomInvoiceController {
                   data: {
                     idQuickbookContabio: createResult.quickbooksId,
                     docNumberQuickBooksContabio: createResult.docNumber || null,
+                    idQuickBooksRef: createResult.quickbooksId,
+                    externalDocNumber: createResult.docNumber || null,
                   },
                 });
               }

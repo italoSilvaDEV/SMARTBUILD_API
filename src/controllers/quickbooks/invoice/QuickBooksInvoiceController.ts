@@ -2113,8 +2113,11 @@ export class QuickBooksInvoiceController {
           where: { id: invoice.id },
           data: {
             invoiceType: "quickbooks",
+            invoiceTypeStripe: null, // Clear Stripe type when converting to QuickBooks
             idQuickbookContabio: qboResult.quickbooksId,
+            idQuickBooksRef: qboResult.quickbooksId, // Preencher referência duplicada
             docNumberQuickBooksContabio: qboResult.docNumber || null,
+            externalDocNumber: qboResult.docNumber || null, // Preencher DocNumber externo
             invoiceUrl: qboResult.invoiceUrl || null,
             status: qboResult.status || invoice.status,
             totalAmount: calculatedTotalAmount || invoice.totalAmount,

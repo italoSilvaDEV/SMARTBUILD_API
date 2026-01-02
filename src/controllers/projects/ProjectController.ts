@@ -717,6 +717,10 @@ export class ProjectController {
 
         const balanceDue = priceProject - totalAmountPaid;
 
+        // Usar apenas as entradas de InvoicePaymentTimeLine que já foram salvas (criadas pelo webhook)
+        const allPaymentTimeline = (project.InvoicePaymentTimeLine || [])
+          .sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+
         // Processar as URLs das fotos para adicionar uriTreated
         if (project.serviceProject) {
           for (const service of project.serviceProject) {
@@ -744,6 +748,7 @@ export class ProjectController {
           cover_photo: coverPhotoUrl,
           balanceDue: balanceDue,
           amountPaid: totalAmountPaid,
+          InvoicePaymentTimeLine: allPaymentTimeline,
 
           client: {
             ...project.client,

@@ -1807,6 +1807,8 @@ export class StripeController {
                                 data: {
                                     idQuickbookContabio: createResult.quickbooksId,
                                     docNumberQuickBooksContabio: createResult.docNumber || null,
+                                    idQuickBooksRef: createResult.quickbooksId,
+                                    externalDocNumber: createResult.docNumber || null,
                                 },
                             });
 
@@ -1925,6 +1927,8 @@ export class StripeController {
                                     data: {
                                         idQuickbookContabio: createResult.quickbooksId,
                                         docNumberQuickBooksContabio: createResult.docNumber || null,
+                                        idQuickBooksRef: createResult.quickbooksId,
+                                        externalDocNumber: createResult.docNumber || null,
                                     },
                                 });
                             }
