@@ -552,7 +552,7 @@ export class StripeController {
 
                         quickBooksResult = await qbController.createInvoiceInternal({
                             projectId: project.id,
-                            description: description || `Invoice for Project ${project.id}`,
+                            description: description || `Invoice for Project ${project.contract_number}`,
                             type_invoicebase: type_invoicebase,
                             dueDate: dueDate,
                             userId: userId,
@@ -1787,7 +1787,7 @@ export class StripeController {
 
                         const createResult = await qbController.createInvoiceInternal({
                             projectId: existingInvoice.project.id,
-                            description: description || `Invoice for Project ${existingInvoice.project.id}`,
+                            description: description || `Invoice for Project ${existingInvoice.project.contract_number}`,
                             type_invoicebase: (existingInvoice as any).type_invoicebase,
                             dueDate: dueDate,
                             userId: userId,
@@ -1847,7 +1847,7 @@ export class StripeController {
                         quickBooksUpdateResult = await qbController.updateInvoiceInternal({
                             quickBooksInvoiceId: existingInvoice.idQuickbookContabio,
                             projectId: existingInvoice.project.id,
-                            description: description || `Updated Invoice for Project ${existingInvoice.project.id}`,
+                            description: description || `Updated Invoice for Project ${existingInvoice.project.contract_number}`,
                             dueDate: dueDate,
                             userId: userId,
                             coefficientPerfentage: coefficientPerfentage,
@@ -1907,7 +1907,7 @@ export class StripeController {
 
                             const createResult = await qbController.createInvoiceInternal({
                                 projectId: existingInvoice.project.id,
-                                description: description || `Invoice for Project ${existingInvoice.project.id}`,
+                                description: description || `Invoice for Project ${existingInvoice.project.contract_number}`,
                                 type_invoicebase: (existingInvoice as any).type_invoicebase, // se existir no modelo
                                 dueDate: dueDate,
                                 userId: userId,

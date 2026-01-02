@@ -448,7 +448,7 @@ export class QuickBooksInvoiceController {
             value: clientId
           },
           DueDate: dueDateObj.toISOString().split('T')[0],
-          PrivateNote: description || `Invoice for Project ${project.id}`,
+          PrivateNote: description || `Invoice for Project ${project.contract_number}`,
           AllowOnlineCreditCardPayment: true,
           AllowOnlineACHPayment: true
         };
@@ -556,7 +556,7 @@ export class QuickBooksInvoiceController {
               status: deriveQboInvoicePaymentStatus(inv), // Status real do QB
               totalAmount: Number(inv?.TotalAmt ?? totalAmount),
               dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
-              description: description || `Invoice for Project ${project.id}`,
+              description: description || `Invoice for Project ${project.contract_number}`,
               projectId: project.id,
               companyId: project.company_id,
               user_id: userId,
@@ -1004,7 +1004,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice atualizado completo COM include=invoiceLink
       const fetchedUpdated = await this.getInvoiceWithPaymentLink(qb, account.realmId, updatedId);
-      const updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
+      let updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
 
       // Derive o status de pagamento
       function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
@@ -1017,12 +1017,14 @@ export class QuickBooksInvoiceController {
       }
 
       // Capturar o link público de pagamento do QuickBooks atualizado
-      const invoiceLink = updatedInv?.InvoiceLink || null;
+      let invoiceLink = updatedInv?.InvoiceLink || null;
       
       if (invoiceLink) {
         console.log(` Link de pagamento QuickBooks atualizado com sucesso!`);
         console.log(` URL: ${invoiceLink}`);
       } else {
+        // temporario ate o teste real depois excluir a linha abaixo
+        invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${updatedInv.Id}`;
         console.warn(` InvoiceLink não disponível após atualização`);
       }
       

@@ -578,12 +578,11 @@ export class QuickBooksWebhookWorker {
       console.log(`[QBO Webhook] Processando payment ${qbPayment.Id} - Operation: ${operation}`);
 
       // ETAPA 5.1: Verificar se já existe PaymentTransaction (idempotência)
-      const existingPayment = await prisma.paymentTransaction.findUnique({
+      const existingPayment = await prisma.paymentTransaction.findFirst({
         where: {
-          provider_externalPaymentId: {
-            provider: "qbo",
-            externalPaymentId: qbPayment.Id
-          }
+          provider: "qbo",
+          externalPaymentId: qbPayment.Id,
+          companyId: companyId 
         },
         include: {
           applications: true
@@ -591,7 +590,7 @@ export class QuickBooksWebhookWorker {
       });
 
       if (existingPayment) {
-        console.log(`[QBO Webhook] Payment ${qbPayment.Id} já processado anteriormente, pulando`);
+        console.log(`[QBO Webhook] Payment ${qbPayment.Id} já processado anteriormente para company ${companyId}, pulando`);
         return;
       }
 
