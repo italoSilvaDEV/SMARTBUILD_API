@@ -16,6 +16,7 @@ stripeRoutes.get("/stripe/status/:companyId", checkToken, stripeController.check
 stripeRoutes.post("/stripe/invoice/:projectId", checkToken, stripeController.createInvoice.bind(stripeController));
 stripeRoutes.post("/stripe/invoice/:invoiceId/send", checkToken, stripeController.sendInvoice.bind(stripeController));
 stripeRoutes.post("/stripe/invoice/:invoiceId/cancel", checkToken, stripeController.cancelInvoice.bind(stripeController));
+stripeRoutes.delete("/stripe/invoice/delete/:invoiceId", checkToken, stripeController.deleteInvoice.bind(stripeController));
 
 // Buscar Invoices relacionadas a um ProjectId
 stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.getInvoicesByProject.bind(stripeController));

@@ -248,4 +248,68 @@ export class UnifiedInvoiceController {
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
+
+  async getQboPayments(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      console.log(` Buscando pagamentos QBO para invoice: ${invoiceId}`);
+
+      // Buscar o invoice
+      const invoice = await prisma.invoice.findFirst({
+        where: {
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({ error: "Not a QuickBooks invoice" });
+      }
+
+      // Buscar os pagamentos aplicados a este invoice
+      const paymentApplications = await prisma.paymentApplication.findMany({
+        where: {
+          invoiceId: invoice.id
+        },
+        include: {
+          paymentTransaction: true
+        },
+        orderBy: {
+          appliedAt: 'desc'
+        }
+      });
+
+      // Formatar os dados para o frontend
+      const payments = paymentApplications.map(app => ({
+        id: app.id,
+        externalPaymentId: app.paymentTransaction.externalPaymentId,
+        totalAmount: app.paymentTransaction.totalAmount,
+        amountApplied: app.amountApplied,
+        txnDate: app.paymentTransaction.txnDate,
+        paymentMethodType: app.paymentTransaction.paymentMethodType,
+        appliedAt: app.appliedAt
+      }));
+
+      console.log(` Encontrados ${payments.length} pagamentos para o invoice`);
+
+      return res.status(200).json({
+        success: true,
+        payments
+      });
+
+    } catch (error: any) {
+      console.error(" Erro ao buscar pagamentos QBO:", error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to fetch QBO payments"
+      });
+    }
+  }
 } 

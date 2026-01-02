@@ -43,7 +43,7 @@ export class QuickBooksInvoiceController {
 
 
   // Método interno para criação de invoice sem req/res
-  async createInvoiceInternal(params: { 
+  async createInvoiceInternal(params: {  
     projectId: string;
     description?: string;
     type_invoicebase?: string;
@@ -54,8 +54,10 @@ export class QuickBooksInvoiceController {
     type_value?: string;
     totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
     calledFromStripe?: boolean; // Novo parâmetro para identificar origem
+    multi_emails?: string; // Emails adicionais para envio
+    date_creation?: string; // Data customizada de criação
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation } = params;
 
     try {
       // Buscar o projeto
@@ -275,17 +277,20 @@ export class QuickBooksInvoiceController {
             throw new Error("ERR_ITEM_NOT_FOUND_AND_ERR_TO_CREATE");
           }
 
-          // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
-          processedLineItems.push({
-            DetailType: "SalesItemLineDetail",
-            Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
-            Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
-            SalesItemLineDetail: {
-              ItemRef: { value: itemId, name: qboItemName },
-              Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
-              UnitPrice: unitPrice // Rate = valor total do serviço
-            }
-          });
+        // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
+        processedLineItems.push({
+          DetailType: "SalesItemLineDetail",
+          Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
+          Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
+          SalesItemLineDetail: {
+            ItemRef: { value: itemId, name: qboItemName },
+            Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
+            UnitPrice: unitPrice // Rate = valor total do serviço
+          },
+          // Armazenar valores reais para salvar no banco
+          _realQuantity: calc.qty,
+          _realPrice: calc.priceParsed
+        });
 
           // Logs defensivos
           console.log(
@@ -310,21 +315,23 @@ export class QuickBooksInvoiceController {
       // dueDateObj.setDate(dueDateObj.getDate() + 30);
 
         // Verificar cliente no QuickBooks - abordagem conservadora
+        let clientId;
+        
         try {
-          console.log("Verificando cliente no QuickBooks...");
-
-          let clientId;
+          console.log(" Verificando cliente no QuickBooks...");
+          console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
+          console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
 
           // 1) Primeiro verificar se o cliente local já tem idQuickbooks
           if (project.client!.idQuickbooks) {
-            console.log(`Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
+            console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
             
             // Verificar se o cliente ainda existe no QuickBooks
             try {
               const existingCustomer = await new Promise((resolve, reject) => {
                 qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
                   if (err) {
-                    console.warn("Cliente com idQuickbooks não encontrado no QBO, será criado novo");
+                    console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
                     resolve(null);
                   } else {
                     resolve(data);
@@ -335,66 +342,113 @@ export class QuickBooksInvoiceController {
               if (existingCustomer) {
                 const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
                 clientId = customer.Id;
-                console.log(`Cliente existente confirmado no QBO com ID: ${clientId}`);
+                console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
               }
-            } catch (getError) {
-              console.warn("Erro ao verificar cliente existente, criando novo:", getError);
+            } catch (getError: any) {
+              console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
+              console.log("Continuando para criação de novo cliente...");
             }
           }
 
-          // 2) Se não tem idQuickbooks válido, criar novo cliente (abordagem conservadora)
+          // 2) Se não tem idQuickbooks válido, criar novo cliente
           if (!clientId) {
-            console.log(`Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+            
+            // Validar dados do cliente antes de criar
+            const clientName = project.client!.name?.trim();
+            if (!clientName || clientName.length === 0) {
+              throw new Error("Client name is required to create QuickBooks customer");
+            }
+
+            const clientEmail = project.client!.email?.trim() || "noemail@example.com";
+            console.log(`Email do cliente: ${clientEmail}`);
             
             const createCustomerData = {
-              DisplayName: project.client!.name,
-              CompanyName: project.client!.name,
+              DisplayName: clientName,
+              CompanyName: clientName,
               PrimaryEmailAddr: {
-                Address: project.client!.email || "cliente@exemplo.com"
+                Address: clientEmail
               }
             };
 
-            const createCustomerResult = await new Promise((resolve, reject) => {
-              qb.createCustomer(createCustomerData, (err: any, data: any) => {
-                if (err) {
-                  console.error("Erro ao criar cliente:", err);
-                  reject(err);
-                } else {
-                  resolve(data);
-                }
+            console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
+
+            try {
+              const createCustomerResult = await new Promise((resolve, reject) => {
+                qb.createCustomer(createCustomerData, (err: any, data: any) => {
+                  if (err) {
+                    console.error(" Erro ao criar cliente no QuickBooks:", err);
+                    console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
+                    reject(err);
+                  } else {
+                    console.log(" Cliente criado com sucesso no QuickBooks");
+                    resolve(data);
+                  }
+                });
               });
-            });
 
-            const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
-            
-            if (!createdCustomer || !createdCustomer.Id) {
-              throw new Error("Failed to create customer in QuickBooks");
+              const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
+              
+              console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
+              
+              if (!createdCustomer || !createdCustomer.Id) {
+                console.error(" Resposta inválida do QuickBooks ao criar cliente");
+                throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
+              }
+
+              clientId = createdCustomer.Id;
+              console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
+
+              // Atualizar cliente local com o novo idQuickbooks
+              try {
+                await prisma.client.update({
+                  where: { id: project.client!.id },
+                  data: { idQuickbooks: clientId }
+                });
+                console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
+              } catch (updateError: any) {
+                console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
+                // Não falhar a criação do invoice por causa disso
+              }
+            } catch (createError: any) {
+              console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
+              throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
             }
-
-            clientId = createdCustomer.Id;
-            console.log(`Novo cliente criado no QBO com ID: ${clientId}`);
-
-            // Atualizar cliente local com o novo idQuickbooks
-            await prisma.client.update({
-              where: { id: project.client!.id },
-              data: { idQuickbooks: clientId }
-            });
-            console.log(`Cliente local atualizado com idQuickbooks: ${clientId}`);
           }
+
+          // 3) Validação final: garantir que temos um clientId válido
+          if (!clientId) {
+            console.error(" ERRO CRÍTICO: clientId não foi definido após processamento");
+            throw new Error("Failed to obtain valid QuickBooks customer ID");
+          }
+
+          console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
+
+        } catch (clientError: any) {
+          console.error(" ERRO ao processar cliente no QuickBooks:", clientError);
+          console.error("Stack trace:", clientError?.stack);
+          throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
+        }
 
         // Verificar se há itens processados
         if (processedLineItems.length === 0) {
           throw new Error("No valid items to include in the invoice. Please check the services data.");
         }
 
+        // Limpar campos internos antes de enviar para QuickBooks
+        const cleanLineItems = processedLineItems.map((item: any) => {
+          const { _realQuantity, _realPrice, ...cleanItem } = item;
+          return cleanItem;
+        });
+
         // Preparar dados da fatura
         const invoiceData = {
-          Line: processedLineItems,
+          Line: cleanLineItems, // Usar itens limpos sem campos internos
           CustomerRef: {
             value: clientId
           },
           DueDate: dueDateObj.toISOString().split('T')[0],
-          PrivateNote: description || `Invoice for Project ${project.id}`,
+          PrivateNote: description || `Invoice for Project ${project.contract_number}`,
           AllowOnlineCreditCardPayment: true,
           AllowOnlineACHPayment: true
         };
@@ -415,13 +469,8 @@ export class QuickBooksInvoiceController {
         const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
         const createdId = created?.Id;
 
-        // 3) Leia o invoice completo (garante Balance/TotalAmt/TxnStatus atualizados)
-        const fetched = await new Promise((resolve, reject) => {
-          qb.getInvoice(createdId, (err: any, data: any) => {
-            if (err) return reject(err);
-            resolve(data);
-          });
-        });
+        // 3) Leia o invoice completo COM include=invoiceLink (garante Balance/TotalAmt/TxnStatus atualizados + link de pagamento)
+        const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId);
         let inv = (fetched as any)?.Invoice ?? (fetched as any);
         
         // 4) Tentar obter DocNumber com retry robusto
@@ -441,6 +490,24 @@ export class QuickBooksInvoiceController {
         const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
         const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
 
+        //  Capturar o link público de pagamento do QuickBooks
+        // const invoiceLink = inv?.InvoiceLink || null;
+
+        //temporario ate o teste real
+        let invoiceLink = inv?.InvoiceLink || null;
+        
+        if (invoiceLink) {
+          console.log(` Link de pagamento QuickBooks capturado com sucesso!`);
+          console.log(` URL: ${invoiceLink}`);
+        } else {
+          console.warn(` ATENÇÃO: InvoiceLink não disponível na resposta da API`);
+          // temporario ate o teste real depois excluir a linha abaixo
+          invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
+        }
+        
+        const invoiceUrl = invoiceLink;
+        
+
         // 5) Persistir no banco - comportamento baseado na origem da chamada
         if (calledFromStripe) {
           // Quando chamado pelo StripeController, retornar apenas IDs do QuickBooks
@@ -449,46 +516,82 @@ export class QuickBooksInvoiceController {
             message: "QuickBooks invoice created successfully",
             quickbooksId: inv.Id,
             docNumber: inv.DocNumber,
+            invoiceUrl: invoiceUrl, // Incluir URL de pagamento
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
             status: deriveQboInvoicePaymentStatus(inv)
           };
         } else {
           // Quando chamado diretamente (rota QuickBooks), persistir no banco local
+          // Primeiro, gerar número sequencial para o invoice
+          const allInvoices = await prisma.invoice.findMany({
+            where: {
+              companyId: project.company_id
+            },
+            select: {
+              externalInvoiceId: true
+            }
+          });
+
+          const numericIds = allInvoices
+            .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+            .filter(num => !isNaN(num) && num > 0);
+
+          let nextInvoiceNumber = 1000;
+          if (numericIds.length > 0) {
+            const maxNumber = Math.max(...numericIds);
+            nextInvoiceNumber = maxNumber + 1;
+          }
+
+          console.log(` Número sequencial do invoice: ${nextInvoiceNumber}`);
+
           const newInvoice = await prisma.invoice.create({
             data: {
-              stripeInvoiceId: `qb-${Date.now()}`,
-              externalInvoiceId: inv.Id,
+              externalInvoiceId: nextInvoiceNumber.toString(), // Número sequencial
               invoiceType: "quickbooks",
+              invoiceUrl: invoiceUrl, // Link público de pagamento do QuickBooks
               externalDocNumber: inv.DocNumber,
-              idQuickBooksRef: inv.Id, // Novo campo para referência QB
-              status: deriveQboInvoicePaymentStatus(inv), // << status real
-              // use o valor vindo do QBO, se existir
+              idQuickbookContabio: inv.Id, // ID real do QuickBooks
+              idQuickBooksRef: inv.Id, // Referência duplicada
+              docNumberQuickBooksContabio: inv.DocNumber, // DocNumber do QB
+              status: deriveQboInvoicePaymentStatus(inv), // Status real do QB
               totalAmount: Number(inv?.TotalAmt ?? totalAmount),
               dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
-              description: description || `Invoice for Project ${project.id}`,
+              description: description || `Invoice for Project ${project.contract_number}`,
               projectId: project.id,
               companyId: project.company_id,
               user_id: userId,
               percentageCoefficient: coefficientPerfentage || 1,
               type_value: type_value,
               type_invoicebase: type_invoicebase as "project" | "estimate" | null,
-
-              // (opcional) guarde os status de envio/impressão se quiser
-              // emailStatusQbo: emailStatus,
-              // printStatusQbo: printStatus,
+              multi_emails: multi_emails || project.client?.email,
+              createdAt: date_creation ? new Date(date_creation) : new Date(),
 
               InvoiceItems: {
                 create: processedLineItems.map((item: any) => ({
                   name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
                   description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
-                  quantity: item?.SalesItemLineDetail?.Qty || 1,
-                  price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-                  totalAmount: item.Amount
+                  // Valores reais para exibição/cálculo local
+                  quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
+                  price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+                  totalAmount: item.Amount,
+                  // Valores ajustados enviados ao QuickBooks
+                  qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
+                  qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
                 }))
               }
             },
             include: { InvoiceItems: true }
           });
+
+          // Registrar na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `QuickBooks invoice created successfully (Invoice #${nextInvoiceNumber}, QB ID: ${inv.Id}, DocNumber: ${inv.DocNumber || 'N/A'})`,
+              invoiceId: newInvoice.id
+            }
+          });
+
+          console.log(` Invoice criado com sucesso: ${newInvoice.id}`);
 
           return {
             success: true,
@@ -497,12 +600,18 @@ export class QuickBooksInvoiceController {
           };
         }
 
-      } catch (clientError: any) {
-        console.error("Erro ao processar cliente:", clientError);
-        throw new Error(`Error processing client in QuickBooks: ${clientError.message}`);
-      }
     } catch (error: any) {
       console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
+
+      // Extrair mensagem de erro do QuickBooks
+      let errorMessage = error.message || error.toString();
+      
+      // Se for um erro do QuickBooks com estrutura Fault
+      if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
+        const qbError = error.Fault.Error[0];
+        errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error(" Erro do QuickBooks:", errorMessage);
+      }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -529,7 +638,7 @@ export class QuickBooksInvoiceController {
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
       }
 
-      throw new Error(`QuickBooks API Error: ${error.message}`);
+      throw new Error(`QuickBooks API Error: ${errorMessage}`);
     }
   }
 
@@ -541,6 +650,7 @@ export class QuickBooksInvoiceController {
     dueDate?: string;
     userId: string;
     coefficientPerfentage?: number;
+    type_value?: string;
     services: any[];
     totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
     calledFromStripe?: boolean; // Parâmetro para identificar origem
@@ -552,6 +662,7 @@ export class QuickBooksInvoiceController {
       dueDate, 
       userId, 
       coefficientPerfentage, 
+      type_value, 
       services, 
       totalAmountTarget,
       calledFromStripe = false 
@@ -636,7 +747,8 @@ export class QuickBooksInvoiceController {
 
       console.log(`Invoice encontrado. SyncToken: ${currentInvoice.SyncToken}`);
 
-      // Verificar se a fatura pode ser editada (não pode estar paga ou cancelada)
+      // ETAPA 8: Validações de edição
+      // Verificar se a fatura pode ser editada (não pode estar paga, cancelada ou com pagamento parcial)
       if (currentInvoice.TxnStatus === "Voided") {
         throw new Error("Cannot update a voided invoice");
       }
@@ -646,6 +758,11 @@ export class QuickBooksInvoiceController {
       const balance = Number(currentInvoice.Balance || 0);
       if (totalAmt > 0 && balance === 0) {
         throw new Error("Cannot update a paid invoice");
+      }
+
+      // ETAPA 8: Verificar pagamento parcial (bloqueio de edição)
+      if (balance > 0 && balance < totalAmt) {
+        throw new Error("Invoice partially paid and locked. Cannot edit invoice with partial payment.");
       }
 
       // Preparar os itens da fatura com logs detalhados
@@ -789,7 +906,7 @@ export class QuickBooksInvoiceController {
 
         // Validação melhorada
         if (qtyForQBUpdate <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQBUpdate) || !Number.isFinite(exactAmount)) {
-          console.warn(`⚠️ Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
+          console.warn(`Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
@@ -817,7 +934,10 @@ export class QuickBooksInvoiceController {
               ItemRef: { value: itemId, name: qboItemName },
               Qty: qtyForQBUpdate, // Sempre 1 para evitar limitação de arredondamento
               UnitPrice: unitPrice // Rate = valor total do serviço
-            }
+            },
+            // Armazenar valores reais para salvar no banco
+            _realQuantity: calc.qty,
+            _realPrice: calc.priceParsed
           });
 
           // Logs defensivos
@@ -846,11 +966,17 @@ export class QuickBooksInvoiceController {
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date(currentInvoice.DueDate);
 
+      // Limpar campos internos antes de enviar para QuickBooks
+      const cleanLineItemsUpdate = processedLineItems.map((item: any) => {
+        const { _realQuantity, _realPrice, ...cleanItem } = item;
+        return cleanItem;
+      });
+
       // Preparar dados da fatura para atualização
       const updateInvoiceData = {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken,
-        Line: processedLineItems,
+        Line: cleanLineItemsUpdate, // Usar itens limpos sem campos internos
         CustomerRef: currentInvoice.CustomerRef, // Manter o cliente atual
         DueDate: dueDateObj.toISOString().split('T')[0],
         PrivateNote: description || currentInvoice.PrivateNote || `Updated Invoice for Project ${project.id}`,
@@ -876,14 +1002,9 @@ export class QuickBooksInvoiceController {
       const updated = (updateResult as any)?.Invoice ?? (updateResult as any);
       const updatedId = updated?.Id;
 
-      // Buscar o invoice atualizado completo
-      const fetchedUpdated = await new Promise((resolve, reject) => {
-        qb.getInvoice(updatedId, (err: any, data: any) => {
-          if (err) return reject(err);
-          resolve(data);
-        });
-      });
-      const updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
+      // Buscar o invoice atualizado completo COM include=invoiceLink
+      const fetchedUpdated = await this.getInvoiceWithPaymentLink(qb, account.realmId, updatedId);
+      let updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
 
       // Derive o status de pagamento
       function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
@@ -894,6 +1015,20 @@ export class QuickBooksInvoiceController {
         if (bal > 0 && bal < total) return "partial";
         return "open";
       }
+
+      // Capturar o link público de pagamento do QuickBooks atualizado
+      let invoiceLink = updatedInv?.InvoiceLink || null;
+      
+      if (invoiceLink) {
+        console.log(` Link de pagamento QuickBooks atualizado com sucesso!`);
+        console.log(` URL: ${invoiceLink}`);
+      } else {
+        // temporario ate o teste real depois excluir a linha abaixo
+        invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${updatedInv.Id}`;
+        console.warn(` InvoiceLink não disponível após atualização`);
+      }
+      
+      const invoiceUrl = invoiceLink;
 
       console.log(`Invoice ${quickBooksInvoiceId} atualizado com sucesso no QuickBooks`);
 
@@ -919,8 +1054,11 @@ export class QuickBooksInvoiceController {
             data: {
               totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
               status: deriveQboInvoicePaymentStatus(updatedInv),
+              percentageCoefficient: coefficientPerfentage,
+              type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
+              invoiceUrl: invoiceUrl, // Atualizar URL do invoice
               updatedAt: new Date()
             }
           });
@@ -935,9 +1073,13 @@ export class QuickBooksInvoiceController {
               invoiceId: localInvoice.id,
               name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
               description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
-              quantity: item?.SalesItemLineDetail?.Qty || 1,
-              price: item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-              totalAmount: item.Amount
+              // Valores reais para exibição/cálculo local
+              quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
+              price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+              totalAmount: item.Amount,
+              // Valores ajustados enviados ao QuickBooks
+              qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
+              qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
             }))
           });
         }
@@ -954,6 +1096,16 @@ export class QuickBooksInvoiceController {
 
     } catch (error: any) {
       console.error("Erro detalhado ao atualizar fatura no QuickBooks:", error);
+
+      // Extrair mensagem de erro do QuickBooks
+      let errorMessage = error.message || error.toString();
+      
+      // Se for um erro do QuickBooks com estrutura Fault
+      if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
+        const qbError = error.Fault.Error[0];
+        errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error(" Erro do QuickBooks (Update):", errorMessage);
+      }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -980,15 +1132,76 @@ export class QuickBooksInvoiceController {
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
       }
 
-      throw new Error(`QuickBooks API Error: ${error.message}`);
+      throw new Error(`QuickBooks API Error: ${errorMessage}`);
     }
   }
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value } = req.body;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation } = req.body;
 
     try {
+      console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
+      console.log("ProjectId:", projectId);
+      console.log("UserId:", userId);
+      console.log("TotalAmount:", totalAmount);
+
+      // Validações básicas
+      if (!projectId || !userId) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "projectId and userId are required"
+        });
+      }
+
+      // Buscar o projeto para obter company_id e fazer validações
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: true,
+          company: true,
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          error: "Project not found",
+          message: "The specified project does not exist"
+        });
+      }
+
+      if (!project.company_id) {
+        return res.status(400).json({
+          error: "Company not found",
+          message: "Project does not have an associated company"
+        });
+      }
+
+      // Verificar se o QuickBooks está conectado
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: project.company_id },
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(400).json({
+          error: "QuickBooks not connected",
+          message: "Please connect your QuickBooks account first",
+          action: "connect_quickbooks"
+        });
+      }
+
+      // Calcular o total amount se não fornecido
+      let calculatedTotalAmount = totalAmount;
+      if (!calculatedTotalAmount && services && Array.isArray(services)) {
+        calculatedTotalAmount = services.reduce((sum: number, service: any) => {
+          const total = service.total || (service.quantity * service.price);
+          return sum + total;
+        }, 0);
+      }
+
+      console.log(" Delegando criação para createInvoiceInternal...");
+
+      // Chamar createInvoiceInternal que vai criar o invoice e sincronizar com QuickBooks
       const result = await this.createInvoiceInternal({
         projectId,
         description,
@@ -997,15 +1210,42 @@ export class QuickBooksInvoiceController {
         userId,
         coefficientPerfentage,
         services,
-        type_value
+        type_value,
+        totalAmountTarget: calculatedTotalAmount,
+        calledFromStripe: false, // Criar como invoice completo (banco + QB)
+        multi_emails,
+        date_creation
       });
 
-      return res.status(201).json(result);
-    } catch (error: any) {
-      console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
+      if (result?.invoice) {
+        console.log(" Invoice criado com sucesso:", result.invoice.id);
 
-      // Verificar se é um erro de autorização
-      if (error.message && (error.message.includes("401") || error.message.includes("403") || error.message.includes("Insufficient permissions"))) {
+        return res.status(201).json({
+          success: true,
+          message: "QuickBooks invoice created successfully",
+          invoice: result.invoice,
+          databaseInvoice: result.invoice, // Para compatibilidade com frontend
+          quickBooks: {
+            success: true,
+            result: result
+          }
+        });
+      } else {
+        // Caso não retorne invoice (não deveria acontecer)
+        throw new Error("createInvoiceInternal did not return an invoice");
+      }
+
+    } catch (error: any) {
+      console.error(" Erro detalhado ao criar fatura:", error);
+
+      // Verificar se é erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
         return res.status(403).json({
           error: "Insufficient permissions",
           message: "You need to reconnect your QuickBooks account with additional permissions",
@@ -1014,8 +1254,8 @@ export class QuickBooksInvoiceController {
       }
 
       return res.status(500).json({
-        error: "QuickBooks API Error",
-        message: error.message,
+        error: "Internal Server Error",
+        message: error.message || "Failed to create invoice",
         details: error.toString()
       });
     }
@@ -1165,12 +1405,22 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando envio de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { externalInvoiceId: invoiceId },
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
         include: {
           project: {
             include: {
-              client: true
+              client: true,
+              company: true,
+              workContext: true // Incluir work context do projeto
             }
           }
         }
@@ -1180,108 +1430,134 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
+
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
       }
 
-      if (!invoice.externalInvoiceId) {
-        return res.status(400).json({ error: "QuickBooks invoice ID missing" });
+      if (!invoice.idQuickbookContabio) {
+        return res.status(400).json({ 
+          error: "QuickBooks invoice ID missing",
+          message: "This invoice has not been synced with QuickBooks yet" 
+        });
       }
 
-      if (!invoice.project?.client) {
-        return res.status(400).json({ error: "Client not found for this invoice" });
+      if (!invoice.project) {
+        return res.status(400).json({ error: "Project not found for this invoice" });
       }
 
-      if (!invoice.project.client.email) {
-        return res.status(400).json({ error: "Client email is required" });
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({ error: "Company not found for this project" });
       }
 
-
-      const project = await prisma.project.findUnique({
-        where: { id: invoice.project.id },
-        include: {
-          client: true,
-          company: true,
-        },
-      });
-
-      if (!project) {
-        throw new Error("Project not found");
-      }
-
-      if (!project.client) {
-        throw new Error("Client not found for this project");
-      }
-
-      if (!project.company || !project.company_id) {
-        throw new Error("Company not found for this project");
-      }
-
-
+      // Obter email do destinatário: prioridade para work context, fallback para cliente
+      const workContext = invoice.project?.workContext;
+      const client = invoice.project?.client;
       
+      const recipientEmail = workContext?.Email || client?.email;
+      const recipientName = workContext?.Name || client?.name || 'Client';
+      
+      if (!recipientEmail) {
+        return res.status(400).json({ 
+          error: "Recipient email not found",
+          message: "Neither work context nor client has a valid email address" 
+        });
+      }
 
-      // Buscar conta QuickBooks para obter company_id
+      const emailSource = workContext?.Email ? "work context" : "client";
+      console.log(` Email do destinatário obtido do ${emailSource}: ${recipientEmail} (${recipientName})`);
+
+      // Buscar conta QuickBooks
       const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: { company_id: project.company_id }
+        where: { company_id: invoice.project.company_id }
       });
 
-      if (!quickBooksAccount || !project.company_id) {
-        return res.status(404).json({ error: "QuickBooks account not found or missing company ID" });
+      if (!quickBooksAccount) {
+        return res.status(404).json({ 
+          error: "QuickBooks account not found",
+          message: "Please connect your QuickBooks account first" 
+        });
       }
 
-      // Obter cliente QuickBooks configurado com método robusto
-      const { qb } = await getQbClientWithAccountOrThrow(userId, project.company_id);
+      // Verificar se precisa de reautorização
+      if (quickBooksAccount.needsReauthorization) {
+        return res.status(403).json({
+          error: "Reauthorization required",
+          message: "You need to reconnect your QuickBooks account",
+          action: "reauthorize"
+        });
+      }
 
-      // Enviar a fatura pelo QuickBooks usando SDK
-      const sendInvoiceData = {
-        sendTo: invoice.project.client.email,
-        email: {
-          subject: `Invoice ${invoice.externalDocNumber} from ${invoice.project.client.name}`,
-          message: `Please find attached invoice ${invoice.externalDocNumber} for your recent services.`
-        }
-      };
+      // Obter cliente QuickBooks configurado
+      const { qb } = await getQbClientWithAccountOrThrow(userId, invoice.project.company_id);
 
-      if (invoice?.project?.client?.id) {
-        await new Promise((resolve, reject) => {
-          qb.sendInvoicePdf(invoiceId, invoice?.project?.client?.email, (err: any, data: any) => {
-            if (err) return reject(err);
+      console.log(` Enviando invoice QB ID ${invoice.idQuickbookContabio} para ${recipientEmail}`);
+
+      // Enviar a fatura pelo QuickBooks usando o ID real do QuickBooks
+      await new Promise((resolve, reject) => {
+        qb.sendInvoicePdf(
+          invoice.idQuickbookContabio, 
+          recipientEmail, 
+          (err: any, data: any) => {
+            if (err) {
+              console.error("Erro ao enviar invoice pelo QuickBooks SDK:", err);
+              return reject(err);
+            }
+            console.log("✅ Invoice enviado com sucesso pelo QuickBooks");
             resolve(data);
-          });
-        });
-
-      } else {
-        console.log("Erro ao enviar fatura para o cliente:", invoice?.project?.client?.email);
-
-        return res.status(400).json({
-          error: "ERR_SEND_INVOICE",
-          details: ""
-        });
-      }
+          }
+        );
+      });
 
       // Registrar o envio no histórico
       await prisma.invoiceSendHistory.create({
         data: {
           invoiceId: invoice.id,
-          recipient: invoice.project.client.email,
+          recipient: recipientEmail,
           user_id: userId
         }
       });
 
-      // Atualizar o status da fatura
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: "sent" }
+      // Registrar na timeline
+      await prisma.invoiceTimeline.create({
+        data: {
+          description: `Invoice sent to ${recipientName} (${recipientEmail}) via ${emailSource}`,
+          invoiceId: invoice.id
+        }
       });
 
+      console.log(` Invoice enviado com sucesso para ${recipientName} (${recipientEmail})`);
+
       return res.status(200).json({
+        success: true,
         message: "Invoice sent successfully",
-        recipient: invoice.project.client.email
+        recipient: recipientEmail,
+        recipientName: recipientName,
+        emailSource: emailSource
       });
     } catch (error: any) {
-      console.error("Error sending QuickBooks invoice:", error);
+      console.error(" Erro ao enviar QuickBooks invoice:", error);
+
+      // Verificar se é erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account",
+          action: "reauthorize"
+        });
+      }
+
       return res.status(500).json({
         error: "Internal Server Error",
-        details: error.message
+        message: error.message || "Failed to send invoice",
+        details: error.toString()
       });
     }
   }
@@ -1423,11 +1699,24 @@ export class QuickBooksInvoiceController {
         });
 
         if (localInvoice) {
+          // IMPORTANTE: Manter o valor original (totalAmount) no banco local
+          // QuickBooks pode zerar o valor ao fazer void, mas queremos preservar o histórico
+          console.log(`Mantendo totalAmount original: ${localInvoice.totalAmount}`);
+          
           await prisma.invoice.update({
             where: { id: localInvoice.id },
             data: { 
               status: "void",
               updatedAt: new Date()
+              // NÃO atualizar totalAmount - manter o valor original
+            }
+          });
+
+          // Registrar na timeline
+          await prisma.invoiceTimeline.create({
+            data: {
+              description: `Invoice voided in QuickBooks (original amount: $${localInvoice.totalAmount})`,
+              invoiceId: localInvoice.id
             }
           });
         }
@@ -1499,21 +1788,65 @@ export class QuickBooksInvoiceController {
 
       // Buscar a fatura atual para obter o SyncToken
       console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
-      const currentInvoiceData = await new Promise((resolve, reject) => {
-        qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
-          if (err) {
-            console.error("Erro ao buscar fatura:", err);
-            reject(err);
-          } else {
-            resolve(data);
-          }
+      let currentInvoiceData;
+      try {
+        currentInvoiceData = await new Promise((resolve, reject) => {
+          qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
+            if (err) {
+              // Verificar se é erro de "not found" (404 ou erro específico)
+              if (err.statusCode === 404 || err.statusCode === 400 || 
+                  (err.Fault && err.Fault.Error && Array.isArray(err.Fault.Error) && 
+                   err.Fault.Error.some((e: any) => e.code === '610' || e.code === '100'))) {
+                console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks (pode ter sido deletado manualmente)`);
+                resolve(null); // Retornar null ao invés de rejeitar
+              } else {
+                console.error("Erro ao buscar fatura:", err);
+                reject(err);
+              }
+            } else {
+              resolve(data);
+            }
+          });
         });
-      });
+      } catch (error: any) {
+        // Se der erro na busca, verificar se é "not found"
+        if (error.statusCode === 404 || error.message?.includes('not found')) {
+          console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks`);
+          // Retornar um objeto especial indicando que não foi encontrado
+          return {
+            success: true,
+            message: "Invoice not found in QuickBooks (may have been deleted manually)",
+            quickbooksId: quickBooksInvoiceId,
+            status: "not_found",
+            notFound: true
+          };
+        }
+        throw error;
+      }
+
+      // Se não encontrou o invoice no QBO, retornar indicando isso
+      if (!currentInvoiceData) {
+        console.warn(`Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks - pode ter sido deletado manualmente`);
+        return {
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually)",
+          quickbooksId: quickBooksInvoiceId,
+          status: "not_found",
+          notFound: true
+        };
+      }
 
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
       
       if (!currentInvoice || !currentInvoice.Id) {
-        throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
+        console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
+        return {
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually)",
+          quickbooksId: quickBooksInvoiceId,
+          status: "not_found",
+          notFound: true
+        };
       }
 
       console.log(`Invoice encontrado para deleção. SyncToken: ${currentInvoice.SyncToken}`);
@@ -1526,13 +1859,20 @@ export class QuickBooksInvoiceController {
       }
 
       // Deletar a fatura no QuickBooks usando deleteInvoice do SDK
+      // O método deleteInvoice espera um objeto com Id e SyncToken
       console.log("Deletando fatura no QuickBooks usando SDK...");
+      const deletePayload = {
+        Id: quickBooksInvoiceId,
+        SyncToken: currentInvoice.SyncToken
+      };
+      
       const deleteResult = await new Promise((resolve, reject) => {
-        qb.deleteInvoice(quickBooksInvoiceId, currentInvoice.SyncToken, (err: any, data: any) => {
+        qb.deleteInvoice(deletePayload, (err: any, data: any) => {
           if (err) {
             console.error("Erro ao deletar fatura:", err);
             reject(err);
           } else {
+            console.log("Resposta do QuickBooks delete:", JSON.stringify(data, null, 2));
             resolve(data);
           }
         });
@@ -1614,17 +1954,322 @@ export class QuickBooksInvoiceController {
     }
   }
 
-  async cancelInvoice(req: Request, res: Response) {
+  async updateInvoice(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { description, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount } = req.body;
+
+    try {
+      console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
+      console.log("InvoiceId:", invoiceId);
+      console.log("UserId:", userId);
+
+      // Validações básicas
+      if (!invoiceId || !userId) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "invoiceId and userId are required"
+        });
+      }
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({
+          error: "Invoice not found",
+          message: "The specified invoice does not exist"
+        });
+      }
+
+      // RULE 1: Handle conversion from stripe/custom to quickbooks
+      let isConvertingToQuickbooks = false;
+      let hadAdministrativeQboInvoice = false;
+      
+      if (invoice.invoiceType === "stripe" || invoice.invoiceType === "custom") {
+        console.log(" Invoice is being converted from", invoice.invoiceType, "to quickbooks");
+        isConvertingToQuickbooks = true;
+        
+        // Check if there was an administrative QBO invoice that needs to be deleted
+        if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+          console.log(" Found administrative QBO invoice that needs to be deleted");
+          console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+          console.log("QB DocNumber:", invoice.docNumberQuickBooksContabio);
+          hadAdministrativeQboInvoice = true;
+        }
+      } else if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({
+          error: "Invalid invoice type",
+          message: "Invoice type not supported for QuickBooks conversion"
+        });
+      }
+
+      // For existing QBO invoices, require QB invoice ID
+      if (!isConvertingToQuickbooks && !invoice.idQuickbookContabio) {
+        return res.status(400).json({
+          error: "QuickBooks invoice ID missing",
+          message: "This invoice has not been synced with QuickBooks yet"
+        });
+      }
+
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({
+          error: "Company not found",
+          message: "Invoice does not have an associated company"
+        });
+      }
+
+      // Verificar se o QuickBooks está conectado
+      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: invoice.project.company_id },
+      });
+
+      if (!quickBooksAccount) {
+        return res.status(400).json({
+          error: "QuickBooks not connected",
+          message: "Please connect your QuickBooks account first",
+          action: "connect_quickbooks"
+        });
+      }
+
+      // Delete administrative QBO invoice if converting from stripe/custom
+      if (hadAdministrativeQboInvoice && invoice.idQuickbookContabio) {
+        console.log(" Deleting administrative QBO invoice before conversion...");
+        try {
+          const deleteResult = await this.deleteInvoiceInternal({
+            quickBooksInvoiceId: invoice.idQuickbookContabio,
+            userId: userId,
+            companyId: invoice.project.company_id!,
+            calledFromStripe: true // Internal deletion, don't delete from local DB
+          });
+
+          if (deleteResult.success || deleteResult.notFound) {
+            console.log(" Administrative QBO invoice deleted successfully");
+            
+            // Clear QB references from local invoice
+            await prisma.invoice.update({
+              where: { id: invoice.id },
+              data: {
+                idQuickbookContabio: null,
+                docNumberQuickBooksContabio: null
+              }
+            });
+          } else {
+            console.warn(" Failed to delete administrative QBO invoice, continuing anyway...");
+          }
+        } catch (deleteError: any) {
+          console.warn(" Error deleting administrative QBO invoice:", deleteError.message);
+          console.log(" Continuing with conversion despite deletion error...");
+        }
+      }
+
+      // Calcular o total amount se não fornecido
+      let calculatedTotalAmount = totalAmount;
+      if (!calculatedTotalAmount && services && Array.isArray(services)) {
+        calculatedTotalAmount = services.reduce((sum: number, service: any) => {
+          const total = service.total || (service.quantity * service.price);
+          return sum + total;
+        }, 0);
+      }
+
+      console.log(" Delegando atualização para", isConvertingToQuickbooks ? "createInvoiceInternal" : "updateInvoiceInternal...");
+
+      let result;
+      
+      if (isConvertingToQuickbooks) {
+        // Create new QBO invoice (conversion from stripe/custom)
+        // Use calledFromStripe: true to only create in QBO, not in local DB
+        const qboResult = await this.createInvoiceInternal({
+          projectId: invoice.projectId,
+          description,
+          type_invoicebase: (invoice as any).type_invoicebase,
+          dueDate,
+          userId,
+          coefficientPerfentage,
+          services,
+          type_value,
+          totalAmountTarget: calculatedTotalAmount,
+          calledFromStripe: true // Only create in QBO, return QBO data
+        });
+
+        console.log(" QBO invoice created, updating existing local invoice...");
+        console.log("QB Invoice ID:", qboResult.quickbooksId);
+        console.log("QB DocNumber:", qboResult.docNumber);
+        console.log("Invoice URL:", qboResult.invoiceUrl);
+
+        // Update the existing local invoice with QBO data
+        const updatedInvoice = await prisma.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            invoiceType: "quickbooks",
+            invoiceTypeStripe: null, // Clear Stripe type when converting to QuickBooks
+            idQuickbookContabio: qboResult.quickbooksId,
+            idQuickBooksRef: qboResult.quickbooksId, // Preencher referência duplicada
+            docNumberQuickBooksContabio: qboResult.docNumber || null,
+            externalDocNumber: qboResult.docNumber || null, // Preencher DocNumber externo
+            invoiceUrl: qboResult.invoiceUrl || null,
+            status: qboResult.status || invoice.status,
+            totalAmount: calculatedTotalAmount || invoice.totalAmount,
+            dueDate: dueDate ? new Date(dueDate) : invoice.dueDate,
+            description: description || invoice.description,
+            type_value: type_value || invoice.type_value,
+            percentageCoefficient: coefficientPerfentage || invoice.percentageCoefficient,
+            updatedAt: new Date()
+          },
+          include: {
+            project: {
+              include: {
+                client: true,
+                company: true
+              }
+            },
+            InvoiceItems: true
+          }
+        });
+
+        // Update invoice items if services provided
+        if (services && Array.isArray(services) && services.length > 0) {
+          // Delete old items
+          await prisma.invoiceItem.deleteMany({
+            where: { invoiceId: invoice.id }
+          });
+
+          // Create new items with correct quantity/price mapping
+          const lineItems = services.map((service: any) => {
+            const quantity = Number(service.quantity) || 1;
+            const price = Number(service.price) || 0;
+            const total = service.total || (quantity * price);
+
+            return {
+              invoiceId: invoice.id,
+              name: service.name || "Service",
+              description: service.description || "",
+              quantity: quantity,
+              price: price,
+              totalAmount: total,
+              qboQuantity: 1, // QBO sempre recebe 1
+              qboPrice: total // QBO recebe o total como preço
+            };
+          });
+
+          await prisma.invoiceItem.createMany({
+            data: lineItems
+          });
+        }
+
+        // Add timeline event
+        await prisma.invoiceTimeline.create({
+          data: {
+            description: `Converted to QuickBooks invoice (QB ID: ${qboResult.quickbooksId})`,
+            invoice: {
+              connect: { id: invoice.id }
+            }
+          }
+        });
+
+        console.log(" Existing invoice updated successfully with QBO data");
+
+        result = {
+          ...qboResult,
+          localInvoice: updatedInvoice
+        };
+      } else {
+        // Update existing QBO invoice
+        result = await this.updateInvoiceInternal({
+          quickBooksInvoiceId: invoice.idQuickbookContabio!, 
+          projectId: invoice.projectId,
+          description,
+          dueDate,
+          userId,
+          coefficientPerfentage,
+          type_value,
+          services,
+          totalAmountTarget: calculatedTotalAmount,
+          calledFromStripe: false // Update local invoice
+        });
+      }
+
+      console.log(" Invoice update completed successfully:", invoice.id);
+
+      return res.status(200).json({
+        success: true,
+        message: "QuickBooks invoice updated successfully",
+        invoice: result,
+        quickBooks: {
+          success: true,
+          result: result
+        }
+      });
+
+    } catch (error: any) {
+      console.error(" Erro detalhado ao atualizar fatura:", error);
+
+      // Verificar se é erro de invoice parcialmente pago
+      if (error.message && error.message.includes("partially paid and locked")) {
+        return res.status(409).json({
+          error: "Invoice partially paid",
+          message: "Cannot edit an invoice with partial payment",
+          details: error.message
+        });
+      }
+
+      // Verificar se é erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account with additional permissions",
+          action: "reauthorize"
+        });
+      }
+
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to update invoice",
+        details: error.toString()
+      });
+    }
+  }
+
+  async deleteInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando deleção de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { externalInvoiceId: invoiceId },
-        select: {
-          id: true,
-          externalInvoiceId: true,
-          invoiceType: true,
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true
+            }
+          }
         }
       });
 
@@ -1632,25 +2277,226 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
+
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
       }
 
-      if (!invoice.externalInvoiceId) {
-        return res.status(400).json({ error: "QuickBooks invoice ID missing" });
+      if (!invoice.idQuickbookContabio) {
+        // Se não tem ID do QuickBooks, apenas deletar localmente
+        console.log("Invoice não sincronizado com QuickBooks, deletando apenas localmente...");
+        await prisma.invoice.delete({
+          where: { id: invoice.id }
+        });
+        return res.status(200).json({
+          success: true,
+          message: "Invoice deleted successfully (local only)"
+        });
       }
 
-      const result = await this.cancelInvoiceInternal({
-        quickBooksInvoiceId: invoice.externalInvoiceId,
-        userId: userId
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({ error: "Company not found for this invoice" });
+      }
+
+      // Verificar se o invoice está pago
+      if (invoice.status === "paid") {
+        return res.status(400).json({
+          error: "Cannot delete paid invoice",
+          message: "Cannot delete a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
+      // Verificar se o invoice tem pagamento parcial
+      if (invoice.status === "partial") {
+        return res.status(400).json({
+          error: "Cannot delete partially paid invoice",
+          message: "Cannot delete an invoice with partial payment."
+        });
+      }
+
+      console.log(` Deletando invoice QB ID ${invoice.idQuickbookContabio}...`);
+
+      // Deletar no QuickBooks
+      const result = await this.deleteInvoiceInternal({
+        quickBooksInvoiceId: invoice.idQuickbookContabio,
+        userId: userId,
+        companyId: invoice.project.company_id,
+        calledFromStripe: false
       });
+
+      // Se o invoice não foi encontrado no QBO, deletar apenas localmente
+      if (result.notFound) {
+        console.log(`⚠️ Invoice não encontrado no QuickBooks, deletando apenas localmente...`);
+        await prisma.invoice.delete({
+          where: { id: invoice.id }
+        });
+        return res.status(200).json({
+          success: true,
+          message: "Invoice not found in QuickBooks (may have been deleted manually), deleted locally",
+          quickbooksResult: result,
+          warning: "Invoice was not found in QuickBooks"
+        });
+      }
+
+      // Deletar localmente após sucesso no QuickBooks
+      await prisma.invoice.delete({
+        where: { id: invoice.id }
+      });
+
+      console.log(`✅ Invoice deletado com sucesso (local e QuickBooks): ${invoice.id}`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Invoice deleted successfully from both local database and QuickBooks",
+        quickbooksResult: result
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao deletar QuickBooks invoice:", error);
+
+      // Verificar se é um erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account with additional permissions",
+          action: "reauthorize"
+        });
+      }
+
+      // Verificar erros específicos do QuickBooks
+      if (error.message && error.message.includes("paid invoice")) {
+        return res.status(400).json({
+          error: "Cannot delete paid invoice",
+          message: "Cannot delete a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
+      if (error.message && error.message.includes("not found")) {
+        // Se não encontrou no QuickBooks, deletar apenas localmente
+        try {
+          const invoice = await prisma.invoice.findFirst({
+            where: { 
+              OR: [
+                { id: invoiceId },
+                { externalInvoiceId: invoiceId }
+              ]
+            }
+          });
+          
+          if (invoice) {
+            await prisma.invoice.delete({
+              where: { id: invoice.id }
+            });
+            return res.status(200).json({
+              success: true,
+              message: "Invoice not found in QuickBooks, deleted locally only",
+              warning: "Invoice was not found in QuickBooks"
+            });
+          }
+        } catch (deleteError) {
+          console.error("Error deleting invoice locally:", deleteError);
+        }
+      }
+
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to delete invoice",
+        details: error.toString()
+      });
+    }
+  }
+
+  async cancelInvoice(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { userId } = req.body;
+
+    try {
+      console.log(` Iniciando cancelamento de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
+
+      // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
+
+      if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({ error: "Not a QuickBooks invoice" });
+      }
+
+      if (!invoice.idQuickbookContabio) {
+        return res.status(400).json({ 
+          error: "QuickBooks invoice ID missing",
+          message: "This invoice has not been synced with QuickBooks yet" 
+        });
+      }
+
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({ error: "Company not found for this invoice" });
+      }
+
+      // Verificar se o invoice já está cancelado
+      if (invoice.status === "void") {
+        return res.status(200).json({
+          success: true,
+          message: "Invoice was already voided",
+          alreadyVoided: true
+        });
+      }
+
+      // Verificar se o invoice está pago
+      if (invoice.status === "paid") {
+        return res.status(400).json({
+          error: "Cannot void paid invoice",
+          message: "Cannot void a paid invoice. You may need to create a credit memo instead."
+        });
+      }
+
+      console.log(` Cancelando invoice QB ID ${invoice.idQuickbookContabio}...`);
+
+      const result = await this.cancelInvoiceInternal({
+        quickBooksInvoiceId: invoice.idQuickbookContabio,
+        userId: userId,
+        companyId: invoice.project.company_id,
+        calledFromStripe: false
+      });
+
+      console.log(` Invoice cancelado com sucesso: ${invoice.id}`);
 
       return res.status(200).json(result);
     } catch (error: any) {
-      console.error("Error voiding QuickBooks invoice:", error);
+      console.error(" Erro ao cancelar QuickBooks invoice:", error);
 
       // Verificar se é um erro de autorização
-      if (error.message && (error.message.includes("401") || error.message.includes("403") || error.message.includes("Insufficient permissions"))) {
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
         return res.status(403).json({
           error: "Insufficient permissions",
           message: "You need to reconnect your QuickBooks account with additional permissions",
@@ -1666,9 +2512,17 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      if (error.message && error.message.includes("already voided")) {
+        return res.status(200).json({
+          success: true,
+          message: "Invoice was already voided in QuickBooks",
+          alreadyVoided: true
+        });
+      }
+
       return res.status(500).json({
         error: "Internal Server Error",
-        message: error.message,
+        message: error.message || "Failed to void invoice",
         details: error.toString()
       });
     }
@@ -1893,6 +2747,57 @@ export class QuickBooksInvoiceController {
     
     // Retornar o invoice sem DocNumber (será null)
     return fallbackInvoice;
+  }
+
+  /**
+   * Função para obter invoice do QuickBooks COM link de pagamento
+   * Usa o parâmetro include=invoiceLink para forçar a API a retornar o InvoiceLink
+   * 
+   * @param qb - Cliente QuickBooks
+   * @param realmId - ID da empresa no QuickBooks
+   * @param invoiceId - ID do invoice
+   * @returns Invoice completo com InvoiceLink
+   */
+  async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
+    try {
+      console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
+      
+      // Fazer requisição direta à API com include=invoiceLink
+      const axios = require('axios');
+      const token = qb.token.access_token;
+      
+      const isProduction = process.env.QUICKBOOKS_ENVIRONMENT === 'production';
+      const apiUrl = isProduction 
+        ? 'https://quickbooks.api.intuit.com' 
+        : 'https://sandbox-quickbooks.api.intuit.com';
+      
+      const url = `${apiUrl}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=65&include=invoiceLink`;
+      
+      console.log(` Chamando URL: ${url}`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(` Invoice obtido com sucesso (include=invoiceLink)`);
+      
+      return response.data;
+    } catch (error: any) {
+      console.error(` Erro ao buscar invoice com link de pagamento:`, error.response?.data || error.message);
+      
+      // Fallback: tentar buscar sem o parâmetro include
+      console.log(` Tentando fallback sem include=invoiceLink...`);
+      return new Promise((resolve, reject) => {
+        qb.getInvoice(invoiceId, (err: any, data: any) => {
+          if (err) return reject(err);
+          resolve(data);
+        });
+      });
+    }
   }
 
 } 
