@@ -158,6 +158,16 @@ export class GetAllEstimatesByCompanyController {
                             templateNumber: true
                         }
                     },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true,
+                            date_creation: true,
+                            date_update: true
+                        }
+                    },
                     InvoicePaymentTimeLine: true,
                 },
                 orderBy: {
@@ -200,6 +210,22 @@ export class GetAllEstimatesByCompanyController {
                     };
                 }
 
+                let imagesAttachmentsData: any[] = [];
+                if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+                    imagesAttachmentsData = await Promise.all(
+                        estimate.imagesAttachments.map(async (image) => {
+                            return {
+                                id: image.id,
+                                url: image.url ? await getPresignedUrl(image.url) : null,
+                                original_filename: image.original_filename,
+                                title: image.title,
+                                date_creation: image.date_creation,
+                                date_update: image.date_update
+                            }
+                        })
+                    );
+                }
+
                 let clientAvatar = null;
                 if (estimate.project.client?.avatar) {
                     clientAvatar = await getPresignedUrl(estimate.project.client.avatar);
@@ -232,6 +258,7 @@ export class GetAllEstimatesByCompanyController {
                         }
                     },
                     PdfProject: pdfProjectData,
+                    imagesAttachments: imagesAttachmentsData,
                     serviceProjects: estimate.serviceProjects.map((service) => {
                         return {
                             ...service,

@@ -25,7 +25,7 @@ app.use(cors({
 
 app.use('/public', express.static(path.join(__dirname, '../public')));
 
-// Webhook deve vir antes do express.json() para não interferir na verificação da assinatura
+//  Webhooks devem vir ANTES do express.json() para não interferir na verificação da assinatura
 app.use("/webhook", express.raw({ type: 'application/json' }), router);
 app.use("/webhook/connect", express.raw({ type: 'application/json' }), router);
 

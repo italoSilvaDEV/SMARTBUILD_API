@@ -83,8 +83,8 @@ model User {
   tutorialProgress TutorialProgress[]
 
   // Sales CRM
-  salesDeals       SalesDeal[]      @relation("AssignedDeals")
-  salesActivities   SalesActivity[]  // Atividades realizadas pelo usuário
+  salesDeals      SalesDeal[]     @relation("AssignedDeals")
+  salesActivities SalesActivity[] // Atividades realizadas pelo usuário
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -113,6 +113,7 @@ model Company {
   webSiteUrl    String?
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String? // Format: "HH:mm" (24-hour)
+  attendanceMode AttendanceMode @default(manual)
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -147,10 +148,10 @@ model Company {
   SyncPreferences   SyncPreferences[]  @relation("SyncPreferences")
   QuickBooksAccount QuickBooksAccount?
 
-  SyncLog          SyncLog[]          @relation("synclog")
-  SyncStatus       SyncStatus[]       @relation("SyncStatus")
-  ContractTerms    ContractTerms[]
-  QuickBooksConfig QuickBooksConfig[]
+  SyncLog                SyncLog[]               @relation("synclog")
+  SyncStatus             SyncStatus[]            @relation("SyncStatus")
+  ContractTerms          ContractTerms[]
+  QuickBooksConfig       QuickBooksConfig[]
   InvoiceAutoEmailConfig InvoiceAutoEmailConfig?
 
   workContexts WorkContext[]
@@ -158,9 +159,12 @@ model Company {
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
   Subcontractors Subcontractor[]
+  
+  // NOVO: Pagamentos QBO
+  paymentTransactions PaymentTransaction[]
 
   // Sales CRM
-  salesDeals     SalesDeal[] // Deals relacionados à empresa
+  salesDeals SalesDeal[] // Deals relacionados à empresa
 }
 
 model ContractNotes {
@@ -290,8 +294,63 @@ model ServiceProject {
   company_id         String?
   TimeLine           TimeLine[]
 
-  estimateServiceId String?                 @unique
-  estimateService   EstimateServiceProject? @relation(fields: [estimateServiceId], references: [id])
+  scheduleCompleted Boolean? @default(false)
+
+  estimateServiceId            String?                       @unique
+  estimateService              EstimateServiceProject?       @relation(fields: [estimateServiceId], references: [id])
+  subServicesProjects          SubServicesProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+}
+
+model SubServicesProject {
+  id String @id @default(uuid())
+
+  name        String
+  description String? @db.Text
+  quantity    Int     @default(1)
+  price       Decimal
+  status      String
+  start_date  String?
+  deadline    String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  scheduleCompleted Boolean? @default(false)
+
+  serviceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: Cascade)
+  serviceProjectId String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
+
+  userServiceProject           UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+
+  @@map("sub_services_project")
+}
+
+model CustomServiceSchedule {
+  id String @id @default(uuid())
+
+  name        String
+  description String? @db.Text
+  start_date  String?
+  deadline    String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  scheduleCompleted Boolean? @default(false)
+
+  subServicesProjects          SubServicesProject[]
+  userServiceProjects          UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String?
+
+  @@map("custom_service_schedule")
 }
 
 model Activities {
@@ -504,6 +563,8 @@ model Project {
   projectPastes          ProjectPastes[]
   PublicFeedLinks        PublicFeedLink[]
   PublicFeedLinkProjects PublicFeedLinkProject[]
+  imagesAttachments      ImagesAttachments[]
+  customServiceSchedules CustomServiceSchedule[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -757,8 +818,9 @@ model Subcontractor {
 
   workedHours Workedhours[]
 
-  company    Company? @relation(fields: [company_id], references: [id])
-  company_id String?
+  company                      Company?                      @relation(fields: [company_id], references: [id])
+  company_id                   String?
+  subContractorServiceProjects SubContractorServiceProject[]
 
   @@map("subcontractors")
 }
@@ -798,16 +860,54 @@ model UserServiceProject {
   user    User   @relation(fields: [user_id], references: [id])
   user_id String
 
-  service_project    ServiceProject @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
-  service_project_id String
+  service_project    ServiceProject? @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
+  service_project_id String?
+
+  sub_service_project    SubServicesProject? @relation(fields: [sub_service_project_id], references: [id], onDelete: Cascade)
+  sub_service_project_id String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
 
   user_attendances UserAttendance[]
   TimeLine         TimeLine[]
 
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
+  @@unique([user_id, sub_service_project_id], map: "user_service_project_unique_sub_service_unique")
+  @@unique([user_id, custom_service_schedule_id], map: "user_service_project_unique_custom_schedule")
   @@index([user_id], map: "user_service_project_user_id_fkey")
   @@index([service_project_id], map: "user_service_project_service_project_id_fkey")
+  @@index([sub_service_project_id], map: "user_service_project_sub_service_project_id_fkey")
+  @@index([custom_service_schedule_id], map: "user_service_project_custom_schedule_id_fkey")
   @@map("user_service_project")
+}
+
+model SubContractorServiceProject {
+  id String @id @default(uuid())
+
+  subcontractor    Subcontractor @relation(fields: [subcontractor_id], references: [id], onDelete: Cascade)
+  subcontractor_id String
+
+  service_project    ServiceProject? @relation(fields: [service_project_id], references: [id], onDelete: Cascade)
+  service_project_id String?
+
+  sub_service_project    SubServicesProject? @relation(fields: [sub_service_project_id], references: [id], onDelete: Cascade)
+  sub_service_project_id String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id], onDelete: Cascade)
+  custom_service_schedule_id String?
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
+  @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
+  @@unique([subcontractor_id, custom_service_schedule_id], map: "sub_contractor_service_project_unique_custom_schedule")
+  @@index([subcontractor_id], map: "sub_contractor_service_project_subcontractor_id_fkey")
+  @@index([service_project_id], map: "sub_contractor_service_project_service_project_id_fkey")
+  @@index([sub_service_project_id], map: "sub_contractor_service_project_sub_service_project_id_fkey")
+  @@index([custom_service_schedule_id], map: "sub_contractor_service_project_custom_schedule_id_fkey")
+  @@map("sub_contractor_service_project")
 }
 
 model UserAttendance {
@@ -860,6 +960,11 @@ enum TypeInvoiceBase {
   estimate
 }
 
+enum AttendanceMode {
+  manual
+  auto
+}
+
 model Invoice {
   id                    String  @id @default(uuid())
   stripeInvoiceId       String? @unique
@@ -871,13 +976,19 @@ model Invoice {
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
-  status            String // Status do invoice: draft, open, paid, void, uncollectible
+  status            String // Status: draft, open, paid, partial (QBO only), void, uncollectible
   totalAmount       Decimal
   currency          String    @default("usd") // NOVO: suporte a múltiplas moedas
   dueDate           DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   invoiceUrl        String?
+  
+  // ===== CAMPOS PARA PAGAMENTOS PARCIAIS QBO (Fonte de verdade: QuickBooks) =====
+  balanceRemaining          Decimal?  // Saldo restante (Balance do QBO)
+  totalAmountPaidQbo        Decimal?  // Total já pago (TotalAmt - Balance do QBO)
+  amountChangedAfterPayment Boolean   @default(false) // Se o valor foi alterado após pagamento
+  lastPaymentAt             DateTime? // Data do último pagamento recebido
 
   type_invoicebase TypeInvoiceBase? @default(project)
   multi_emails     String?          @db.Text
@@ -919,20 +1030,25 @@ model Invoice {
   InvoiceSendHistory InvoiceSendHistory[]
   InvoiceItems       InvoiceItem[] // Nova relação com InvoiceItem
 
-  InvoiceTimeline InvoiceTimeline[]
-  InvoiceEmailLog InvoiceEmailLog[]
+  InvoiceTimeline     InvoiceTimeline[]
+  InvoiceEmailLog     InvoiceEmailLog[]
   InvoiceAutoEmailLog InvoiceAutoEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
   payment    InvoicePayment?
+  
+  // NOVO: Pagamentos parciais QBO
+  paymentApplications PaymentApplication[]
+  
   PdfProject PdfProject[]
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects fildsPdfProject[]
 
   // NOVO: Relacionamento com PaymentIntentRecord (para Payment Element)
-  PaymentIntents  PaymentIntentRecord[]
-  pdfInvoicePaids PdfInvoicePaid?
+  PaymentIntents    PaymentIntentRecord[]
+  pdfInvoicePaids   PdfInvoicePaid?
+  imagesAttachments ImagesAttachments[]
 
   @@index([externalInvoiceId, invoiceType])
 }
@@ -979,9 +1095,16 @@ model InvoiceItem {
   id          String   @id @default(uuid())
   name        String // Nome do serviço ou item
   description String?  @db.Text // Descrição opcional do item
-  quantity    Decimal // Quantidade
-  price       Decimal // Preço unitário
+  quantity    Decimal // Quantidade REAL (ex: 30) - usado para exibição e edição
+  price       Decimal // Preço unitário REAL (ex: 200) - usado para exibição e edição
   totalAmount Decimal // Valor total (quantidade * preço)
+  
+  //  Campos para guardar o que foi enviado especificamente para QuickBooks
+  // Quando invoice é QuickBooks, estes campos guardam os valores ajustados enviados ao QBO
+  // Para Custom/Stripe, estes campos ficam NULL
+  qboQuantity Decimal? // Quantidade enviada para QBO (sempre 1)
+  qboPrice    Decimal? // Preço ajustado enviado para QBO (ex: 6000 = 30 * 200)
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1004,6 +1127,47 @@ model InvoicePayment {
   // Relação com Invoice (um pagamento pertence a uma fatura)
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
+}
+
+// ===== PAGAMENTOS PARCIAIS QUICKBOOKS =====
+// PaymentTransaction: Representa um pagamento recebido no QuickBooks
+model PaymentTransaction {
+  id                String   @id @default(uuid())
+  provider          String   // "qbo"
+  externalPaymentId String   // Payment.Id do QBO
+  currency          String   @default("USD")
+  totalAmount       Decimal  // Valor total do pagamento
+  paymentMethodType String?  // Tipo de método de pagamento (Cash, Check, CreditCard, etc.)
+  txnDate           DateTime? // Data da transação no QBO
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relacionamento com Company
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  
+  // Relacionamento com PaymentApplication (um pagamento pode ser aplicado a várias invoices)
+  applications PaymentApplication[]
+  
+  @@unique([provider, externalPaymentId])
+  @@index([companyId])
+}
+
+// PaymentApplication: Representa quanto de um pagamento foi aplicado a uma invoice
+model PaymentApplication {
+  id                    String   @id @default(uuid())
+  paymentTransactionId  String
+  invoiceId             String
+  amountApplied         Decimal  // Valor aplicado a esta invoice específica
+  appliedAt             DateTime @default(now())
+  
+  // Relacionamentos
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  invoice            Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@unique([paymentTransactionId, invoiceId])
+  @@index([invoiceId])
+  @@index([paymentTransactionId])
 }
 
 enum TypeEstimate {
@@ -1051,6 +1215,7 @@ model Estimate {
   Invoice                Invoice[]
   InvoicePaymentTimeLine InvoicePaymentTimeLine[]
   changeOrders           ChangeOrder[]
+  imagesAttachments      ImagesAttachments[]
 
   @@unique([number, projectId])
 }
@@ -1167,74 +1332,74 @@ model Plan {
   allowedEmployees Int?
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
-  isCampaign       Boolean  @default(false) // Indica se o plano pode ser usado em campanhas
+  isCampaign       Boolean @default(false) // Indica se o plano pode ser usado em campanhas
 }
 
 model Campaign {
-  id           String         @id @default(uuid())
-  name         String // Nome da campanha
-  description  String?        @db.Text // Descrição da campanha
-  planId       String // ID do plano associado
-  plan         Plan           @relation(fields: [planId], references: [id])
-  startDate    DateTime? // Data e hora de início da campanha (opcional)
-  endDate      DateTime // Data e hora de término da campanha
-  isActive     Boolean        @default(true) // Indica se a campanha está ativa
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(uuid())
+  name          String // Nome da campanha
+  description   String?        @db.Text // Descrição da campanha
+  planId        String // ID do plano associado
+  plan          Plan           @relation(fields: [planId], references: [id])
+  startDate     DateTime? // Data e hora de início da campanha (opcional)
+  endDate       DateTime // Data e hora de término da campanha
+  isActive      Boolean        @default(true) // Indica se a campanha está ativa
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   subscriptions Subscription[] // Assinaturas criadas através desta campanha
 }
 
 model SalesPipeline {
   id          String       @id @default(uuid())
-  name        String       // Nome do pipeline (ex: "Sales Pipeline", "Onboarding")
+  name        String // Nome do pipeline (ex: "Sales Pipeline", "Onboarding")
   description String?      @db.Text
   isDefault   Boolean      @default(false) // Pipeline padrão
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   stages      SalesStage[] // Estágios do pipeline
-  deals       SalesDeal[]  // Deals neste pipeline
+  deals       SalesDeal[] // Deals neste pipeline
 }
 
 model SalesStage {
-  id          String       @id @default(uuid())
-  name        String       // Nome do estágio (ex: "Lead", "Proposta Enviada")
-  position    Int          // Posição do estágio no pipeline (ordem)
-  color       String?      // Cor do estágio no Kanban
-  pipelineId  String
-  pipeline    SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  deals       SalesDeal[]  // Deals neste estágio
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id         String        @id @default(uuid())
+  name       String // Nome do estágio (ex: "Lead", "Proposta Enviada")
+  position   Int // Posição do estágio no pipeline (ordem)
+  color      String? // Cor do estágio no Kanban
+  pipelineId String
+  pipeline   SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals      SalesDeal[] // Deals neste estágio
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
   @@unique([pipelineId, position])
   @@map("sales_stage")
 }
 
 model SalesDeal {
-  id              String          @id @default(uuid())
-  title           String          // Título do deal (geralmente nome da empresa)
-  estimatedValue  Decimal?        @db.Decimal(10, 2) // Valor estimado do deal
-  companyId       String?         // ID da Company (se já existe)
-  company         Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  pipelineId      String
-  pipeline        SalesPipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stageId         String
-  stage           SalesStage      @relation(fields: [stageId], references: [id])
-  position        Int             @default(0) // Posição do deal dentro do stage (para ordenação)
-  assignedToId   String?         // ID do vendedor responsável
-  assignedTo      User?          @relation("AssignedDeals", fields: [assignedToId], references: [id], onDelete: SetNull)
-  notes           String?        @db.Text // Notas sobre o deal
-  contactName     String?        // Nome do contato
-  contactEmail    String?        // Email do contato
-  contactPhone    String?        // Telefone do contato
-  expectedCloseDate DateTime?    // Data esperada de fechamento
-  actualCloseDate   DateTime?    // Data real de fechamento (quando convertido)
-  isConverted      Boolean       @default(false) // Se foi convertido em cliente ativo
-  convertedAt      DateTime?     // Quando foi convertido
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  activities       SalesActivity[] // Histórico de atividades/interações (inclui comentários com type="comment")
+  id                String          @id @default(uuid())
+  title             String // Título do deal (geralmente nome da empresa)
+  estimatedValue    Decimal?        @db.Decimal(10, 2) // Valor estimado do deal
+  companyId         String? // ID da Company (se já existe)
+  company           Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  pipelineId        String
+  pipeline          SalesPipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageId           String
+  stage             SalesStage      @relation(fields: [stageId], references: [id])
+  position          Int             @default(0) // Posição do deal dentro do stage (para ordenação)
+  assignedToId      String? // ID do vendedor responsável
+  assignedTo        User?           @relation("AssignedDeals", fields: [assignedToId], references: [id], onDelete: SetNull)
+  notes             String?         @db.Text // Notas sobre o deal
+  contactName       String? // Nome do contato
+  contactEmail      String? // Email do contato
+  contactPhone      String? // Telefone do contato
+  expectedCloseDate DateTime? // Data esperada de fechamento
+  actualCloseDate   DateTime? // Data real de fechamento (quando convertido)
+  isConverted       Boolean         @default(false) // Se foi convertido em cliente ativo
+  convertedAt       DateTime? // Quando foi convertido
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  activities        SalesActivity[] // Histórico de atividades/interações (inclui comentários com type="comment")
 
   @@index([pipelineId])
   @@index([stageId])
@@ -1244,15 +1409,15 @@ model SalesDeal {
 }
 
 model SalesActivity {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   dealId      String
-  deal        SalesDeal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  type        String      // Tipo de atividade: "call", "email", "meeting", "note", "stage_change"
-  description String?     @db.Text
-  userId      String?     // Usuário que realizou a atividade
-  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  metadata    Json?       // Dados adicionais (ex: duração de call, participantes de meeting)
-  createdAt   DateTime    @default(now())
+  deal        SalesDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  type        String // Tipo de atividade: "call", "email", "meeting", "note", "stage_change"
+  description String?   @db.Text
+  userId      String? // Usuário que realizou a atividade
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  metadata    Json? // Dados adicionais (ex: duração de call, participantes de meeting)
+  createdAt   DateTime  @default(now())
 
   @@index([dealId])
   @@index([userId])
@@ -1505,7 +1670,7 @@ model QuickBooksOAuthState {
   @@map("quickbooks_oauth_state")
 }
 
-model InvoicePaymentTimeLine { 
+model InvoicePaymentTimeLine {
   id String @id @default(uuid())
 
   description   String   @db.Text
@@ -1660,12 +1825,11 @@ model ChangeOrderService {
   @@map("change_order_service")
 }
 
-
 // Configurações de envio automático de emails para invoices
 model InvoiceAutoEmailConfig {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   // Ativar/desativar funcionalidade
   isActive Boolean @default(false)
@@ -1692,9 +1856,9 @@ model InvoiceAutoEmailConfig {
 
 // Histórico de envios automáticos de emails
 model InvoiceAutoEmailLog {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   invoiceId String
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   recipient    String // Email do destinatário
   emailType    String // "before_7", "before_3", "before_1", "on_due", "after_1", "after_3", "after_7"
@@ -1723,17 +1887,45 @@ model TutorialProgress {
   @@index([tutorialCode], map: "idx_tutorial_progress_tutorial")
   @@index([completed], map: "idx_tutorial_progress_completed")
   @@map("tutorial_progress")
-
 }
 
 model AppVersion {
   id             String   @id @default(uuid())
-  minimumVersion String   // Versão mínima requerida (ex: "1.83")
-  currentVersion String?  // Versão atual mais recente (ex: "1.84")
+  minimumVersion String // Versão mínima requerida (ex: "1.83")
+  currentVersion String? // Versão atual mais recente (ex: "1.84")
   forceUpdate    Boolean  @default(false) // Se true, força atualização obrigatória
   message        String?  @db.Text // Mensagem personalizada para o modal
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("app_version")
+}
+
+enum TypeImagesAttachments {
+  image
+  document
+}
+
+model ImagesAttachments {
+  id String @id @default(uuid())
+
+  original_filename String? @db.Text
+  url               String  @db.Text
+  title             String? @db.Text
+
+  type_images_attachments TypeImagesAttachments @default(image)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  estimateId String?
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@map("images_attachments")
 }

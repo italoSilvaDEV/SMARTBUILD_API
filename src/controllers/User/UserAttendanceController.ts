@@ -51,6 +51,11 @@ export class UserAttendanceController {
                 return;
             }
 
+            if (!serviceProjectExists.service_project) {
+                res.status(400).json({ error: 'Service project not found.' });
+                return;
+            }
+
             const project = serviceProjectExists.service_project.Project;
             if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
                 res.status(400).json({
@@ -110,7 +115,7 @@ export class UserAttendanceController {
             }
 
             await prisma.serviceProject.update({
-                where: { id: serviceProjectExists.service_project_id },
+                where: { id: serviceProjectExists.service_project?.id },
                 data: {
                     status: 'In Progress'
                 }
@@ -543,6 +548,12 @@ export class UserAttendanceController {
                     }
                 });
             } else {
+                if (!userServiceProject.service_project) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Service project not found"
+                    });
+                }
                 const project = userServiceProject.service_project.Project;
                 if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
                     return res.status(400).json({
@@ -724,6 +735,7 @@ export class UserAttendanceController {
                             location: true,
                             lat: true,
                             log: true,
+                            radius: true,
                             cover_photo: true,
                             client: {
                                 select: {
@@ -781,7 +793,8 @@ export class UserAttendanceController {
                                 location: sp.Project!.location || sp.Project!.client?.location || null,
                                 coordinates: {
                                     lat: sp.Project!.lat,
-                                    lng: sp.Project!.log
+                                    lng: sp.Project!.log,
+                                    radius: sp.Project!.radius
                                 },
                                 cover_photo: coverPhotoUrl,
                                 client: {
@@ -983,4 +996,3 @@ export class UserAttendanceController {
         }
     }
 }
-

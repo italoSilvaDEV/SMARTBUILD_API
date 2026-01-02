@@ -36,20 +36,22 @@ export class QuickBooksController {
       // emite nonce seguro e salva contexto
       const nonce = await issueState(userId, companyId);
 
-      // Parâmetros para autorização
-      const authParams = {
-        client_id: clientId,
-        response_type: 'code',
-        scope: [
-          'com.intuit.quickbooks.accounting', // FORÇAR accounting como obrigatório
-        ],
-        redirect_uri: redirectUri,
-        state: nonce
-      };
+      //  scopes necessários para InvoiceLink / online payments
+      const scopes = [
+        "com.intuit.quickbooks.accounting",
+        "com.intuit.quickbooks.payment",
+        "openid",
+        "profile",
+        "email",
+      ];
 
-      // Construir URL de autorização
-      const authorizationUri = oauthClient.authorizeUri(authParams);
-      // console.log("valor do authorizationUri", authorizationUri)
+      const authorizationUri = oauthClient.authorizeUri({
+        client_id: process.env.QUICKBOOKS_CLIENT_ID!,
+        response_type: "code",
+        redirect_uri: redirectUri,
+        scope: scopes.join(" "), // string
+        state: nonce,
+      });
 
       return res.status(200).json({ url: authorizationUri });
     } catch (error) {
@@ -112,6 +114,9 @@ export class QuickBooksController {
         x_refresh_token_expires_in, // pode vir
       } = tokenResp.data;
 
+      // console.log("token scope: ", tokenResp.data.scope)
+      // console.log("tokenResp.data =", tokenResp.data);
+      // console.log("keys =", Object.keys(tokenResp.data || {}));
 
       // calcula expiração do access token
       const expiresAt = new Date(Date.now() + Number(expires_in) * 1000);

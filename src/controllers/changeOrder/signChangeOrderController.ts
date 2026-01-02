@@ -243,6 +243,7 @@ export class SignChangeOrderController {
                 }
             });
 
+            // Enviar email para a company quando o change order for aceito
             try {
                 const changeOrderWithDetails = await prisma.changeOrder.findUnique({
                     where: { id: changeOrder.id },

@@ -369,6 +369,7 @@ export class UserMultiCompanyController {
             id: company?.id,
             name: company?.name,
             avatar: company?.avatar ? await getPresignedUrl(company?.avatar) : null,
+            attendanceMode: company?.attendanceMode
           },
           plan: planInfo,
           permissions: permissions,

@@ -407,15 +407,32 @@ export class ProjectController {
         const invoices = await prisma.invoice.findMany({
           where: {
             projectId: project.id,
-            status: "paid"
+            status: { in: ["paid", "partial"] }
+          },
+          include: {
+            paymentApplications: {
+              select: {
+                amountApplied: true
+              }
+            }
           }
         });
 
-        const totalAmountPaid = invoices.reduce((total, invoice) => {
-          return total + Number(invoice.totalAmount);
-        }, 0);
+        let totalAmountPaid = 0;
+        for (const invoice of invoices) {
+          if (invoice.status === "paid") {
+            // Invoice totalmente pago - usar o totalAmount
+            totalAmountPaid += Number(invoice.totalAmount);
+          } else if (invoice.status === "partial" && invoice.invoiceType === "quickbooks") {
+            // Invoice parcialmente pago do QBO - somar os pagamentos registrados
+            const partialPayments = invoice.paymentApplications.reduce((sum: number, payment: any) => {
+              return sum + Number(payment.amountApplied);
+            }, 0);
+            totalAmountPaid += partialPayments;
+          }
+        }
 
-        const balanceDue = priceProject - Number(totalAmountPaid);
+        const balanceDue = priceProject - totalAmountPaid;
 
         // Converter cover_photo para URL presignada
         const coverPhotoUrl = project.cover_photo
@@ -425,8 +442,10 @@ export class ProjectController {
         return {
           ...project,
           cover_photo: coverPhotoUrl,
-          balanceDue: balanceDue,
-          amountPaid: Number(totalAmountPaid),
+          balanceDue: 1200,
+          amountPaid: 3250,
+          // balanceDue: balanceDue,
+          // amountPaid: Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location,
@@ -667,6 +686,41 @@ export class ProjectController {
           return total + Number(service.hours) * Number(service.price);
         }, 0);
 
+        // Calcular valor total pago considerando pagamentos parciais do QBO
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            projectId: project.id,
+            status: { in: ["paid", "partial"] }
+          },
+          include: {
+            paymentApplications: {
+              select: {
+                amountApplied: true
+              }
+            }
+          }
+        });
+
+        let totalAmountPaid = 0;
+        for (const invoice of invoices) {
+          if (invoice.status === "paid") {
+            // Invoice totalmente pago - usar o totalAmount
+            totalAmountPaid += Number(invoice.totalAmount);
+          } else if (invoice.status === "partial" && invoice.invoiceType === "quickbooks") {
+            // Invoice parcialmente pago do QBO - somar os pagamentos registrados
+            const partialPayments = invoice.paymentApplications.reduce((sum: number, payment: any) => {
+              return sum + Number(payment.amountApplied);
+            }, 0);
+            totalAmountPaid += partialPayments;
+          }
+        }
+
+        const balanceDue = priceProject - totalAmountPaid;
+
+        // Usar apenas as entradas de InvoicePaymentTimeLine que já foram salvas (criadas pelo webhook)
+        const allPaymentTimeline = (project.InvoicePaymentTimeLine || [])
+          .sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+
         // Processar as URLs das fotos para adicionar uriTreated
         if (project.serviceProject) {
           for (const service of project.serviceProject) {
@@ -692,8 +746,10 @@ export class ProjectController {
         res.json({
           ...project,
           cover_photo: coverPhotoUrl,
-          balanceDue: totalAmount - Number(totalAmountPaid),
-          amountPaid: Number(totalAmountPaid),
+          balanceDue: balanceDue,
+          amountPaid: totalAmountPaid,
+          InvoicePaymentTimeLine: allPaymentTimeline,
+
           client: {
             ...project.client,
             location: project.location, // Substitui client.location por project.location
@@ -2016,20 +2072,20 @@ export class ProjectController {
       const events = userServiceProjects
         .filter((userServiceProject) => {
           const service = userServiceProject.service_project;
-          return service.start_date && service.deadline; // Filtra serviços com ambas as datas presentes
+          return service?.start_date && service?.deadline; // Filtra serviços com ambas as datas presentes
         })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
 
-          const initial = service.start_date; // Formato 'YYYY-MM-DD'
-          const end = service.deadline; // Formato 'YYYY-MM-DD'
-          const description = service.Project?.location
-            ? service.Project.location
+          const initial = service?.start_date; // Formato 'YYYY-MM-DD'
+          const end = service?.deadline; // Formato 'YYYY-MM-DD'
+          const description = service?.Project?.location
+            ? service?.Project.location
             : "No address available";
 
           return {
-            id: service.Project?.id || service.id, // Garantir que há um ID válido
-            service: service.name,
+            id: service?.Project?.id || service?.id, // Garantir que há um ID válido
+            service: service?.name,
             initial,
             end,
             description,

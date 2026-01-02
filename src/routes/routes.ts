@@ -50,6 +50,8 @@ import pdfInvoicePaidRoutes from './pdfInvoicePaidRoutes'
 import { tutorialRoutes } from './tutorialRoutes'
 import { salesRoutes } from './salesRoutes'
 import { appVersionRoutes } from './appVersionRoutes'
+import { imagesAttachmentsRoutes } from './imagesAttachments'
+import jobScheduleRoutes from './jobScheduleRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -114,6 +116,8 @@ router.use("/changeorder", changeOrderRoutes)
 router.use(pdfInvoicePaidRoutes)
 router.use(tutorialRoutes)
 router.use(salesRoutes)
+router.use(imagesAttachmentsRoutes)
+router.use(jobScheduleRoutes)
 
 export { router }
 

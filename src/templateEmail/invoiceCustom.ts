@@ -14,7 +14,13 @@ export const invoiceCustom = (
 ) => {
     // Formatar o valor para mostrar em dólares
 
-    const urlPaymentElement = `${process.env.URL_FRONT}/pay/${invoiceId}`; 
+    // Determinar a URL correta baseada no tipo de invoice
+    let paymentUrl = '';
+    if (invoiceType === 'stripe') {
+        paymentUrl = `${process.env.URL_FRONT}/pay/${invoiceId}`;
+    } else if (invoiceType === 'quickbooks' && invoiceUrl) {
+        paymentUrl = invoiceUrl; // URL do QuickBooks Online
+    }
 
     const formattedValue = invoiceAmount.includes('$') 
         ? invoiceAmount 
@@ -166,10 +172,10 @@ export const invoiceCustom = (
                     </tr>
                     
                     <!-- CTA Button -->
-                    ${invoiceType === 'stripe' ? `
+                    ${(invoiceType === 'stripe' || invoiceType === 'quickbooks') && paymentUrl ? `
                     <tr>
                         <td align="center" style="padding:0 32px 40px;">
-                            <a href="${urlPaymentElement}" class="btn-primary" style="background:linear-gradient(135deg, #BC9C6B 0%, #A68B5B 100%);color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:600;display:inline-block;font-size:15px;box-shadow:0 4px 12px rgba(188,156,107,0.25);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;">
+                            <a href="${paymentUrl}" class="btn-primary" style="background:linear-gradient(135deg, #BC9C6B 0%, #A68B5B 100%);color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:600;display:inline-block;font-size:15px;box-shadow:0 4px 12px rgba(188,156,107,0.25);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;">
                                 View & Pay Invoice
                             </a>
                         </td>

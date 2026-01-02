@@ -129,6 +129,16 @@ export class GetEstimateByProjectIdController {
                             templateNumber: true
                         }
                     },
+                    imagesAttachments: {
+                        select: {
+                            id: true,
+                            url: true,
+                            original_filename: true,
+                            title: true,
+                            date_creation: true,
+                            date_update: true
+                        }
+                    },
                     InvoicePaymentTimeLine: true
                 },
             })
@@ -163,6 +173,22 @@ export class GetEstimateByProjectIdController {
 
             const totalAmountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
 
+            let imagesAttachmentsData: any[] = [];
+            if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+                imagesAttachmentsData = await Promise.all(
+                    estimate.imagesAttachments.map(async (image) => {
+                        return {
+                            id: image.id,
+                            url: image.url ? await getPresignedUrl(image.url) : null,
+                            original_filename: image.original_filename,
+                            title: image.title,
+                            date_creation: image.date_creation,
+                            date_update: image.date_update
+                        }
+                    })
+                );
+            }
+
             let pdfProjectData = null;
             if (estimate.PdfProject && estimate.PdfProject.length > 0) {
                 const pdf = estimate.PdfProject[0];
@@ -183,6 +209,7 @@ export class GetEstimateByProjectIdController {
                     balanceDue: totalAmount - Number(totalAmountPaid),
                     amountPaid: Number(totalAmountPaid),
                     PdfProject: pdfProjectData,
+                    imagesAttachments: imagesAttachmentsData,
                     project: {
                         ...estimate.project,
                         user: {
