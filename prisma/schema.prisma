@@ -982,7 +982,7 @@ model Invoice {
   dueDate           DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  invoiceUrl        String?
+  invoiceUrl        String?   @db.Text // Suporta URLs longas do QuickBooks
   
   // ===== CAMPOS PARA PAGAMENTOS PARCIAIS QBO (Fonte de verdade: QuickBooks) =====
   balanceRemaining          Decimal?  // Saldo restante (Balance do QBO)

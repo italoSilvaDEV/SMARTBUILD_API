@@ -137,8 +137,9 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
   }
 
   try {
-    // Minor version fixada para previsibilidade entre deploys
-    const MINOR_VERSION = process.env.QB_MINOR_VERSION ?? '65';
+    // Remover minorversion conforme recomendação (comportamento mudou em 2025 - deprecação versões 1-74, default 75)
+    // Deixar undefined para usar o comportamento padrão mais recente da API
+    const MINOR_VERSION = undefined;
     
     // Instancia QB SDK com configurações robustas
     const qb = new QuickBooks(
@@ -149,7 +150,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
       account.realmId,
       process.env.QUICKBOOKS_ENVIRONMENT !== 'production', // Use sandbox apenas se não for produção
       true, // usar nova API
-      MINOR_VERSION, // versão minor fixada
+      MINOR_VERSION, // undefined = usa default mais recente (75+ em 2025)
       "2.0", // versão da API
       account.refreshToken
     );

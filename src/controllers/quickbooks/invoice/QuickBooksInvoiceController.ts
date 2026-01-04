@@ -487,7 +487,7 @@ export class QuickBooksInvoiceController {
         inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
 
         // 5) Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
-        console.log(` Iniciando busca do InvoiceLink com retry...`);
+        console.log(` Iniciando busca do InvoiceLink com retry...`); 
         const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, createdId);
         
         // 6) Derive o status de pagamento
@@ -2775,45 +2775,19 @@ export class QuickBooksInvoiceController {
    * @returns Invoice completo com InvoiceLink
    */
   async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
-    try {
-      console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
-      
-      // Fazer requisição direta à API com include=invoiceLink
-      const axios = require('axios');
-      const token = qb.token.access_token;
-      
-      const isProduction = process.env.QUICKBOOKS_ENVIRONMENT === 'production';
-      const apiUrl = isProduction 
-        ? 'https://quickbooks.api.intuit.com' 
-        : 'https://sandbox-quickbooks.api.intuit.com';
-      
-      const url = `${apiUrl}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=65&include=invoiceLink`;
-      
-      console.log(` Chamando URL: ${url}`);
-      
-      const response = await axios.get(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
+    console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
+    
+    // Usar o SDK do QuickBooks diretamente (mais confiável que axios para autenticação)
+    return new Promise((resolve, reject) => {
+      qb.getInvoice(invoiceId, (err: any, data: any) => {
+        if (err) {
+          console.error(` Erro ao buscar invoice:`, err?.message || err);
+          return reject(err);
         }
+        console.log(` Invoice obtido com sucesso via SDK`);
+        resolve(data);
       });
-      
-      console.log(` Invoice obtido com sucesso (include=invoiceLink)`);
-      
-      return response.data;
-    } catch (error: any) {
-      console.error(` Erro ao buscar invoice com link de pagamento:`, error.response?.data || error.message);
-      
-      // Fallback: tentar buscar sem o parâmetro include
-      console.log(` Tentando fallback sem include=invoiceLink...`);
-      return new Promise((resolve, reject) => {
-        qb.getInvoice(invoiceId, (err: any, data: any) => {
-          if (err) return reject(err);
-          resolve(data);
-        });
-      });
-    }
+    });
   }
 
   /**
@@ -2826,48 +2800,41 @@ export class QuickBooksInvoiceController {
    * @returns InvoiceLink ou null se não disponível
    */
   async getInvoiceLinkWithRetry(qb: any, realmId: string, invoiceId: string): Promise<string | null> {
-    const axios = require('axios');
-    const token = qb.token.access_token;
-    
-    const isProduction = process.env.QUICKBOOKS_ENVIRONMENT === 'production';
-    const apiUrl = isProduction 
-      ? 'https://quickbooks.api.intuit.com' 
-      : 'https://sandbox-quickbooks.api.intuit.com';
-    
-    // Remover minorversion ou usar 75+ conforme recomendação
-    const url = `${apiUrl}/v3/company/${realmId}/invoice/${invoiceId}?include=invoiceLink`;
-    
     console.log(` [Retry] Iniciando polling para InvoiceLink: ${invoiceId}`);
-    console.log(` [Retry] URL: ${url}`);
     
-    // Tentar até 6 vezes com backoff exponencial
+    // Tentar até 6 vezes com backoff exponencial usando o SDK do QuickBooks
     for (let attempt = 1; attempt <= 6; attempt++) {
       try {
-        console.log(` [Retry] Tentativa ${attempt}/6 para obter InvoiceLink...`);
+        console.log(` [Retry] Tentativa ${attempt}/6 para obter InvoiceLink usando SDK...`);
         
-        const response = await axios.get(url, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
+        // Usar o SDK do QuickBooks em vez de axios direto (resolve problemas de autenticação)
+        const result: any = await new Promise((resolve, reject) => {
+          qb.getInvoice(invoiceId, (err: any, invoice: any) => {
+            if (err) return reject(err);
+            resolve(invoice);
+          });
         });
         
-        // Log completo da resposta para debug
-        if (attempt === 1) {
-          console.log(` [Retry] Resposta completa da API (primeira tentativa):`);
-          console.log(JSON.stringify(response.data, null, 2));
-        }
-        
-        const inv = response.data?.Invoice ?? response.data;
+        const inv = result?.Invoice ?? result;
         const link = inv?.InvoiceLink;
         
-        if (link) {
+        // Log completo da resposta para debug na primeira tentativa
+        if (attempt === 1) {
+          console.log(` [Retry] Resposta do SDK (primeira tentativa):`);
+          console.log(JSON.stringify(inv, null, 2));
+        }
+        
+        if (link && !link.includes('comingSoonview')) {
+          // Só aceitar se o link for válido (não for o placeholder do sandbox)
           console.log(` [Retry]  InvoiceLink encontrado na tentativa ${attempt}: ${link}`);
           return link;
         }
         
-        console.log(` [Retry]  InvoiceLink não disponível na tentativa ${attempt}`);
+        if (link) {
+          console.log(` [Retry]  InvoiceLink encontrado mas é placeholder do Sandbox: ${link}`);
+        } else {
+          console.log(` [Retry]  InvoiceLink não disponível na tentativa ${attempt}`);
+        }
         
         // Backoff exponencial: 500ms, 1s, 1.5s, 2s, 2.5s, 3s
         const delay = 500 * attempt;
@@ -2875,7 +2842,7 @@ export class QuickBooksInvoiceController {
         await new Promise(resolve => setTimeout(resolve, delay));
         
       } catch (error: any) {
-        console.error(` [Retry] Erro na tentativa ${attempt}:`, error.response?.data || error.message);
+        console.warn(` [Retry] Erro na tentativa ${attempt}:`, error?.message || error);
         
         // Se não for a última tentativa, continuar
         if (attempt < 6) {
