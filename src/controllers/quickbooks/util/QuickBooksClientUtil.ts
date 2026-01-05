@@ -137,9 +137,12 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
   }
 
   try {
-    // Remover minorversion conforme recomendação (comportamento mudou em 2025 - deprecação versões 1-74, default 75)
+
+
     // Deixar undefined para usar o comportamento padrão mais recente da API
     const MINOR_VERSION = undefined;
+
+
     
     // Instancia QB SDK com configurações robustas
     const qb = new QuickBooks(
