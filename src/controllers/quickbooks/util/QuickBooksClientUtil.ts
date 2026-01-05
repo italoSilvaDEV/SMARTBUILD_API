@@ -137,8 +137,10 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
   }
 
   try {
-    // Minor version fixada para previsibilidade entre deploys
-    const MINOR_VERSION = process.env.QB_MINOR_VERSION ?? '65';
+
+    // Deixar undefined para usar o comportamento padrão mais recente da API
+    const MINOR_VERSION = undefined;
+
     
     // Instancia QB SDK com configurações robustas
     const qb = new QuickBooks(

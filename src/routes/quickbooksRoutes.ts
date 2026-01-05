@@ -32,6 +32,7 @@ quickbooksRoutes.get("/quickbooks/invoices/:projectId", checkToken, quickbooksIn
 quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/send", checkToken, quickbooksInvoiceController.sendInvoice.bind(quickbooksInvoiceController));
 quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/cancel", checkToken, quickbooksInvoiceController.cancelInvoice.bind(quickbooksInvoiceController));
 quickbooksRoutes.delete("/quickbooks/invoice/delete/:invoiceId", checkToken, quickbooksInvoiceController.deleteInvoice.bind(quickbooksInvoiceController));
+quickbooksRoutes.post("/quickbooks/invoice/:invoiceId/payment-link", checkToken, quickbooksInvoiceController.getPaymentLink.bind(quickbooksInvoiceController));
 
 // Rotas de syncPreference
 quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quickbooksSyncPreferenceController.listByCompany);
