@@ -66,6 +66,7 @@ export class QuickBooksInvoiceController {
         include: {
           client: true,
           company: true,
+          workContext: true, // Incluir work context para obter email correto
         },
       });
 
@@ -441,11 +442,20 @@ export class QuickBooksInvoiceController {
           return cleanItem;
         });
 
+        // Obter email do destinatário: prioridade work context, fallback client
+        const workContext = project.workContext;
+        const recipientEmail = workContext?.Email || project.client?.email || "noemail@example.com";
+        
+        console.log(` Email de cobrança que será usado: ${recipientEmail}`);
+
         // Preparar dados da fatura
         const invoiceData = {
           Line: cleanLineItems, // Usar itens limpos sem campos internos
           CustomerRef: {
             value: clientId
+          },
+          BillEmail: { 
+            Address: recipientEmail // CRÍTICO: necessário para gerar InvoiceLink
           },
           DueDate: dueDateObj.toISOString().split('T')[0],
           PrivateNote: description || `Invoice for Project ${project.contract_number}`,
@@ -470,13 +480,17 @@ export class QuickBooksInvoiceController {
         const createdId = created?.Id;
 
         // 3) Leia o invoice completo COM include=invoiceLink (garante Balance/TotalAmt/TxnStatus atualizados + link de pagamento)
-        const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId);
+        const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId); 
         let inv = (fetched as any)?.Invoice ?? (fetched as any);
         
         // 4) Tentar obter DocNumber com retry robusto
         inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
 
-        // 4) Derive o status de pagamento
+        // 5) Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
+        console.log(` Iniciando busca do InvoiceLink com retry...`); 
+        const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, createdId);
+        
+        // 6) Derive o status de pagamento
         function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
           if (i?.TxnStatus === "Voided") return "voided";
           const total = Number(i?.TotalAmt ?? 0);
@@ -490,17 +504,19 @@ export class QuickBooksInvoiceController {
         const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
         const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
 
-        //  Capturar o link público de pagamento do QuickBooks
-        // const invoiceLink = inv?.InvoiceLink || null;
-
-        //temporario ate o teste real
-        let invoiceLink = inv?.InvoiceLink || null;
+        // Usar o link obtido via retry (mais confiável) ou fallback para o da resposta inicial
+        let invoiceLink = invoiceLinkFromRetry || inv?.InvoiceLink || null;
         
         if (invoiceLink) {
-          console.log(` Link de pagamento QuickBooks capturado com sucesso!`);
+          console.log(`  Link de pagamento QuickBooks capturado com sucesso!`);
           console.log(` URL: ${invoiceLink}`);
+          console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
         } else {
-          console.warn(` ATENÇÃO: InvoiceLink não disponível na resposta da API`);
+          console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas`);
+          console.warn(` Isso pode indicar:`);
+          console.warn(` 1) Pagamentos online não estão habilitados para esta empresa no QuickBooks`);
+          console.warn(` 2) Email de cobrança (BillEmail) pode estar inválido ou ausente`);
+          console.warn(` 3) Configurações de pagamento precisam ser revisadas no QuickBooks`);
           // temporario ate o teste real depois excluir a linha abaixo
           invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
         }
@@ -1520,7 +1536,7 @@ export class QuickBooksInvoiceController {
               console.error("Erro ao enviar invoice pelo QuickBooks SDK:", err);
               return reject(err);
             }
-            console.log("✅ Invoice enviado com sucesso pelo QuickBooks");
+            console.log(" Invoice enviado com sucesso pelo QuickBooks");
             resolve(data);
           }
         );
@@ -2775,6 +2791,7 @@ export class QuickBooksInvoiceController {
    * @returns Invoice completo com InvoiceLink
    */
   async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
+
     try {
       console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
       
@@ -2796,24 +2813,78 @@ export class QuickBooksInvoiceController {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json'
+
         }
+        console.log(` Invoice obtido com sucesso via SDK`);
+        resolve(data);
       });
-      
-      console.log(` Invoice obtido com sucesso (include=invoiceLink)`);
-      
-      return response.data;
-    } catch (error: any) {
-      console.error(` Erro ao buscar invoice com link de pagamento:`, error.response?.data || error.message);
-      
-      // Fallback: tentar buscar sem o parâmetro include
-      console.log(` Tentando fallback sem include=invoiceLink...`);
-      return new Promise((resolve, reject) => {
-        qb.getInvoice(invoiceId, (err: any, data: any) => {
-          if (err) return reject(err);
-          resolve(data);
+    });
+  }
+
+  /**
+   * Função para buscar InvoiceLink com retry/polling
+   * O link pode não estar disponível imediatamente após a criação do invoice
+   * 
+   * @param qb - Cliente QuickBooks
+   * @param realmId - ID da empresa no QuickBooks
+   * @param invoiceId - ID do invoice
+   * @returns InvoiceLink ou null se não disponível
+   */
+  async getInvoiceLinkWithRetry(qb: any, realmId: string, invoiceId: string): Promise<string | null> {
+    console.log(` [Retry] Iniciando polling para InvoiceLink: ${invoiceId}`);
+    
+    // Tentar até 6 vezes com backoff exponencial usando o SDK do QuickBooks
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      try {
+        console.log(` [Retry] Tentativa ${attempt}/6 para obter InvoiceLink usando SDK...`);
+        
+        // Usar o SDK do QuickBooks em vez de axios direto (resolve problemas de autenticação)
+        const result: any = await new Promise((resolve, reject) => {
+          qb.getInvoice(invoiceId, (err: any, invoice: any) => {
+            if (err) return reject(err);
+            resolve(invoice);
+          });
         });
-      });
+        
+        const inv = result?.Invoice ?? result;
+        const link = inv?.InvoiceLink;
+        
+        // Log completo da resposta para debug na primeira tentativa
+        if (attempt === 1) {
+          console.log(` [Retry] Resposta do SDK (primeira tentativa):`);
+          console.log(JSON.stringify(inv, null, 2));
+        }
+        
+        if (link && !link.includes('comingSoonview')) {
+          // Só aceitar se o link for válido (não for o placeholder do sandbox)
+          console.log(` [Retry]  InvoiceLink encontrado na tentativa ${attempt}: ${link}`);
+          return link;
+        }
+        
+        if (link) {
+          console.log(` [Retry]  InvoiceLink encontrado mas é placeholder do Sandbox: ${link}`);
+        } else {
+          console.log(` [Retry]  InvoiceLink não disponível na tentativa ${attempt}`);
+        }
+        
+        // Backoff exponencial: 500ms, 1s, 1.5s, 2s, 2.5s, 3s
+        const delay = 500 * attempt;
+        console.log(` [Retry] Aguardando ${delay}ms antes da próxima tentativa...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+      } catch (error: any) {
+        console.warn(` [Retry] Erro na tentativa ${attempt}:`, error?.message || error);
+        
+        // Se não for a última tentativa, continuar
+        if (attempt < 6) {
+          const delay = 500 * attempt;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+    
+    console.warn(` [Retry]  InvoiceLink não disponível após 6 tentativas`);
+    return null;
   }
 
   /**

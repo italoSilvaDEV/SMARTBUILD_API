@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import nodemailer from "nodemailer";
+import { workerAssignmentEmail } from "../../templateEmail/workerAssignment";
 
 interface User {
     id: string
@@ -17,6 +19,8 @@ interface CreateJobProject {
     subcontractors?: Subcontractor[]
     startDate: string
     deadline: string
+    skipEmail?: boolean
+    description?: string
 }
 
 export class CreateJobProjectController {
@@ -79,6 +83,8 @@ export class CreateJobProjectController {
                 },
                 select: {
                     id: true,
+                    start_date: true,
+                    deadline: true,
                 }
             })
 
@@ -87,6 +93,10 @@ export class CreateJobProjectController {
                     error: "Service project not found"
                 })
             }
+
+            const isScheduleChange = !!(serviceProject.start_date && serviceProject.deadline);
+            const oldStartDate = serviceProject.start_date;
+            const oldDeadline = serviceProject.deadline;
 
             if (body.users) {
                 for (const user of body.users) {
@@ -177,6 +187,152 @@ export class CreateJobProjectController {
                     deadline: new Date(body.deadline).toISOString()
                 }
             })
+
+            const serviceProjectData = await prisma.serviceProject.findUnique({
+                where: {
+                    id: serviceProject.id
+                },
+                select: {
+                    name: true,
+                    start_date: true,
+                    deadline: true,
+                    description: true
+                }
+            });
+
+            const projectData = await prisma.project.findUnique({
+                where: {
+                    id: project.id
+                },
+                select: {
+                    location: true,
+                    lat: true,
+                    log: true,
+                    contract_number: true
+                }
+            });
+
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
+            const serviceName = serviceProjectData?.name || 'Service';
+            const serviceDescription = body.description ? removeHtml(body.description) : serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
+            const projectLocation = projectData?.location || 'Not specified';
+            const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
+            const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+            const startDate = serviceProjectData?.start_date || body.startDate;
+            const deadline = serviceProjectData?.deadline || body.deadline;
+
+            const allUserServiceProjects = await prisma.userServiceProject.findMany({
+                where: {
+                    service_project_id: serviceProject.id
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
+                    }
+                }
+            });
+
+            const allSubcontractorServiceProjects = await prisma.subContractorServiceProject.findMany({
+                where: {
+                    service_project_id: serviceProject.id
+                },
+                include: {
+                    subcontractor: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
+                    }
+                }
+            });
+
+            if (!body.skipEmail) {
+                try {
+                    const SMTP_CONFIG = require("../../config/smtp");
+                    const transporter = nodemailer.createTransport({
+                        host: SMTP_CONFIG.host,
+                        port: SMTP_CONFIG.port,
+                        secure: SMTP_CONFIG.port === 465,
+                        auth: {
+                            user: SMTP_CONFIG.user,
+                            pass: SMTP_CONFIG.pass,
+                        },
+                        tls: {
+                            rejectUnauthorized: false,
+                        },
+                    })
+
+                    const emailSubject = isScheduleChange
+                        ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
+                        : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
+
+                    for (const userServiceProject of allUserServiceProjects) {
+                        const user = userServiceProject.user;
+                        if (user && user.email && user.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                user.name,
+                                serviceName,
+                                new Date(startDate).toISOString(),
+                                new Date(deadline).toISOString(),
+                                projectLocation,
+                                user.email,
+                                latitude,
+                                longitude,
+                                isScheduleChange,
+                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
+                                serviceDescription
+                            );
+
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: user.email,
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+                        }
+                    }
+
+                    for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
+                        const subcontractor = subcontractorServiceProject.subcontractor;
+                        if (subcontractor && subcontractor.email && subcontractor.name) {
+                            const emailHtml = workerAssignmentEmail(
+                                subcontractor.name,
+                                serviceName,
+                                new Date(startDate).toISOString(),
+                                new Date(deadline).toISOString(),
+                                projectLocation,
+                                subcontractor.email,
+                                latitude,
+                                longitude,
+                                isScheduleChange,
+                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
+                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
+                                serviceDescription
+                            );
+
+                            await transporter.sendMail({
+                                from: SMTP_CONFIG.user,
+                                to: subcontractor.email,
+                                subject: emailSubject,
+                                html: emailHtml,
+                                text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                            });
+                        }
+                    }
+                } catch (emailError: any) {
+                    console.error("Error sending assignment emails:", emailError);
+                }
+            }
 
             return res.status(201).json({
                 message: "Job created successfully",

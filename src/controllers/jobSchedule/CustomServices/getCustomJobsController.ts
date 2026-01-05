@@ -1,21 +1,37 @@
 import { Request, Response } from "express";
-import { prisma } from "../../utils/prisma";
-import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { prisma } from "../../../utils/prisma";
+import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 
-export class GetJobsByProjectController {
+export class GetCustomJobsController {
     async handle(req: Request, res: Response) {
-        const { projectId } = req.params
+        const { projectId, companyId } = req.params
 
         try {
-            if (!projectId) {
+            if (!projectId || !companyId) {
                 return res.status(400).json({
-                    error: "Project ID is required"
+                    error: "Project ID and company ID are required"
+                })
+            }
+
+            const company = await prisma.company.findUnique({
+                where: {
+                    id: companyId
+                },
+                select: {
+                    id: true,
+                }
+            })
+
+            if (!company) {
+                return res.status(404).json({
+                    error: "Company not found"
                 })
             }
 
             const project = await prisma.project.findUnique({
                 where: {
-                    id: projectId
+                    id: projectId,
+                    company_id: company.id
                 },
                 select: {
                     id: true,
@@ -28,15 +44,9 @@ export class GetJobsByProjectController {
                 })
             }
 
-            const jobs = await prisma.serviceProject.findMany({
+            const customJobs = await prisma.customServiceSchedule.findMany({
                 where: {
-                    projectId: projectId,
-                    start_date: {
-                        not: null
-                    },
-                    deadline: {
-                        not: null
-                    }
+                    projectId: project.id
                 },
                 select: {
                     id: true,
@@ -45,7 +55,7 @@ export class GetJobsByProjectController {
                     deadline: true,
                     description: true,
                     scheduleCompleted: true,
-                    UserServiceProject: {
+                    userServiceProjects: {
                         select: {
                             user: {
                                 select: {
@@ -72,48 +82,14 @@ export class GetJobsByProjectController {
                             }
                         }
                     },
-                    Project: {
-                        select: {
-                            id: true,
-                            workContext: {
-                                select: {
-                                    Name: true,
-                                }
-                            },
-                            client: {
-                                select: {
-                                    name: true,
-                                }
-                            }
-                        }
-                    },
                     subServicesProjects: {
                         select: {
                             id: true,
                             name: true,
                             start_date: true,
-                            description: true,
                             deadline: true,
+                            description: true,
                             scheduleCompleted: true,
-                            userServiceProject: {
-                                select: {
-                                    user: {
-                                        select: {
-                                            id: true,
-                                            avatar: true,
-                                            name: true,
-                                            hourly_price: true,
-                                            isOverTime: true,
-                                            profession: true,
-                                            office: {
-                                                select: {
-                                                    name: true,
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
                             subContractorServiceProjects: {
                                 select: {
                                     subcontractor: {
@@ -126,14 +102,28 @@ export class GetJobsByProjectController {
                                         }
                                     }
                                 }
+                            },
+                            userServiceProject: {
+                                select: {
+                                    user: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            avatar: true,
+                                            hourly_price: true,
+                                            isOverTime: true,
+                                            profession: true,
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             })
 
-            const jobsFormatted = await Promise.all(jobs.map(async (job) => {
-                const users = await Promise.all(job.UserServiceProject.map(async (user) => {
+            const customJobsFormatted = await Promise.all(customJobs.map(async (customJob) => {
+                const users = await Promise.all(customJob.userServiceProjects.map(async (user) => {
                     const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
 
                     return {
@@ -142,11 +132,12 @@ export class GetJobsByProjectController {
                         avatar: avatar,
                         hourly_price: user.user.hourly_price,
                         isOverTime: user.user.isOverTime,
+                        profession: user.user.profession,
                     }
                 }))
 
-                const subServicesProjects = await Promise.all(job.subServicesProjects.map(async (subServiceProject) => {
-                    const users = await Promise.all(subServiceProject.userServiceProject.map(async (user) => {
+                const subServices = await Promise.all(customJob.subServicesProjects.map(async (subService) => {
+                    const users = await Promise.all(subService.userServiceProject.map(async (user) => {
                         const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
 
                         return {
@@ -156,40 +147,37 @@ export class GetJobsByProjectController {
                             hourly_price: user.user.hourly_price,
                             isOverTime: user.user.isOverTime,
                             profession: user.user.profession,
-                            office: user.user.office?.name,
                         }
                     }))
 
                     return {
-                        id: subServiceProject.id,
-                        name: subServiceProject.name,
-                        description: subServiceProject.description,
-                        start_date: subServiceProject.start_date,
-                        scheduleCompleted: subServiceProject.scheduleCompleted,
-                        deadline: subServiceProject.deadline,
+                        id: subService.id,
+                        name: subService.name,
+                        description: subService.description,
+                        start_date: subService.start_date,
+                        deadline: subService.deadline,
+                        scheduleCompleted: subService.scheduleCompleted,
                         users: users,
-                        subContractors: subServiceProject.subContractorServiceProjects,
+                        subContractors: subService.subContractorServiceProjects,
                     }
                 }))
 
                 return {
-                    id: job.id,
-                    name: job.name,
-                    start_date: job.start_date,
-                    description: job.description,
-                    deadline: job.deadline,
-                    clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
-                    projectId: job.Project?.id,
-                    scheduleCompleted: job.scheduleCompleted,
+                    id: customJob.id,
+                    name: customJob.name,
+                    start_date: customJob.start_date,
+                    deadline: customJob.deadline,
+                    description: customJob.description,
+                    scheduleCompleted: customJob.scheduleCompleted,
                     users: users,
-                    subServicesProjects: subServicesProjects,
-                    subContractors: job.subContractorServiceProjects,
+                    subContractors: customJob.subContractorServiceProjects,
+                    subServices: subServices,
                 }
             }))
 
             return res.status(200).json({
-                message: "Jobs fetched successfully",
-                data: jobsFormatted
+                message: "Custom jobs fetched successfully",
+                data: customJobsFormatted
             })
         } catch (error) {
             return res.status(500).json({

@@ -4,10 +4,12 @@ import { DeleteImagesAttachmentsController } from "../controllers/imagesAttachme
 import { checkToken } from "../middlewares/checkToken";
 import multer from "multer";
 import uploadConfig from "../config/upload";
+import { GetDocumentsController } from "../controllers/imagesAttachments/getDocumentsController";
 
 const imagesAttachmentsRoutes = Router();
 const uploadController = new UploadController();
 const deleteController = new DeleteImagesAttachmentsController();
+const getDocumentsController = new GetDocumentsController();
 
 const upload = multer(uploadConfig.upload("./public/tmp/images-attachments"));
 
@@ -22,6 +24,12 @@ imagesAttachmentsRoutes.delete(
     "/images-attachments/:imageId",
     checkToken,
     deleteController.handle.bind(deleteController)
+);
+
+imagesAttachmentsRoutes.get(
+    "/images-attachments/documents/:invoiceId",
+    checkToken,
+    getDocumentsController.handle.bind(getDocumentsController)
 );
 
 export { imagesAttachmentsRoutes };

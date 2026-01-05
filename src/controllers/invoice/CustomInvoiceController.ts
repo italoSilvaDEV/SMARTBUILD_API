@@ -11,7 +11,7 @@ import { stripeConfig } from "../../config/stripe";
 const stripe = stripeConfig.getClient();
 
 export class CustomInvoiceController {
-  private quickBooksController: QuickBooksInvoiceController; 
+  private quickBooksController: QuickBooksInvoiceController;
 
   constructor() {
     this.quickBooksController = new QuickBooksInvoiceController();
@@ -293,7 +293,7 @@ export class CustomInvoiceController {
             }));
 
             // Usar o controller instanciado no constructor
-            const qbController = this.quickBooksController; 
+            const qbController = this.quickBooksController;
 
             if (!qbController) {
               throw new Error("QuickBooksController is not initialized");
@@ -588,6 +588,13 @@ export class CustomInvoiceController {
         where: { id: idPdfProject }
       });
 
+      const documentsAttachments = await prisma.imagesAttachments.findMany({
+        where: {
+          invoiceId: invoice.id,
+          type_images_attachments: "document"
+        }
+      })
+
       if (!pdfProject || !pdfProject.uri) {
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
@@ -601,6 +608,32 @@ export class CustomInvoiceController {
         throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+      const documentAttachments = [];
+      if (documentsAttachments && documentsAttachments.length > 0) {
+        for (const document of documentsAttachments) {
+          try {
+            if (document.url) {
+              const documentUrl = await getPresignedUrl(document.url);
+              const documentResponse = await fetch(documentUrl);
+
+              if (documentResponse.ok) {
+                const documentBuffer = Buffer.from(await documentResponse.arrayBuffer());
+                const fileName = document.original_filename || document.title || `document_${document.id}`;
+                const contentType = documentResponse.headers.get('content-type') || 'application/octet-stream';
+
+                documentAttachments.push({
+                  filename: fileName,
+                  content: documentBuffer,
+                  contentType: contentType
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching document attachment ${document.id}:`, error);
+          }
+        }
+      }
 
       // Configurar o envio de email
       const SMTP_CONFIG = require("../../config/smtp");
@@ -653,19 +686,21 @@ export class CustomInvoiceController {
       // Processar todos os emails
       for (const email of emailsToSend) {
         try {
-          // Enviar o email com o PDF anexado
+          const attachments = [
+            {
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            },
+            ...documentAttachments
+          ];
+
           await transporter.sendMail({
             from: SMTP_CONFIG.user,
             to: email,
             subject: emailSubject,
             html: emailTemplate,
-            attachments: [
-              {
-                filename: fileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf'
-              }
-            ]
+            attachments: attachments
           });
 
           // Se chegou aqui, o envio foi bem-sucedido
@@ -1637,12 +1672,12 @@ export class CustomInvoiceController {
                 Array.isArray(services) && services.length > 0
                   ? services
                   : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
-                      name: ii.name || "Service",
-                      description: ii.description || "",
-                      quantity: Number(ii.quantity || 1),
-                      price: Number(ii.price || 0),
-                      total: Number(ii.totalAmount || 0),
-                    }));
+                    name: ii.name || "Service",
+                    description: ii.description || "",
+                    quantity: Number(ii.quantity || 1),
+                    price: Number(ii.price || 0),
+                    total: Number(ii.totalAmount || 0),
+                  }));
 
               const qbServicesForCreate = qbServicesSource.map((s: any) => ({
                 name: s.name || "Service",
@@ -2130,6 +2165,13 @@ export class CustomInvoiceController {
         return res.status(404).json({ error: "PDF Invoice Paid not found or has no URI" });
       }
 
+      const documentsAttachments = await prisma.imagesAttachments.findMany({
+        where: {
+          invoiceId: invoice.id,
+          type_images_attachments: "document"
+        }
+      });
+
       // Gerar URL presigned para o PDF
       const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
 
@@ -2139,6 +2181,32 @@ export class CustomInvoiceController {
         throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+      const documentAttachments = [];
+      if (documentsAttachments && documentsAttachments.length > 0) {
+        for (const document of documentsAttachments) {
+          try {
+            if (document.url) {
+              const documentUrl = await getPresignedUrl(document.url);
+              const documentResponse = await fetch(documentUrl);
+
+              if (documentResponse.ok) {
+                const documentBuffer = Buffer.from(await documentResponse.arrayBuffer());
+                const fileName = document.original_filename || document.title || `document_${document.id}`;
+                const contentType = documentResponse.headers.get('content-type') || 'application/octet-stream';
+
+                documentAttachments.push({
+                  filename: fileName,
+                  content: documentBuffer,
+                  contentType: contentType
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching document attachment ${document.id}:`, error);
+          }
+        }
+      }
 
       // Configurar o envio de email
       const SMTP_CONFIG = require("../../config/smtp");
@@ -2191,19 +2259,21 @@ export class CustomInvoiceController {
       // Processar todos os emails
       for (const email of emailsToSend) {
         try {
-          // Enviar o email com o PDF anexado
+          const attachments = [
+            {
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            },
+            ...documentAttachments
+          ];
+
           await transporter.sendMail({
             from: SMTP_CONFIG.user,
             to: email,
             subject: emailSubject,
             html: emailTemplate,
-            attachments: [
-              {
-                filename: fileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf'
-              }
-            ]
+            attachments: attachments
           });
 
           // Se chegou aqui, o envio foi bem-sucedido

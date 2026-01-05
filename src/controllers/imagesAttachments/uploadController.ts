@@ -9,10 +9,13 @@ export class UploadController {
                 projectId,
                 estimateId,
                 invoiceId,
-                title
+                title,
+                type_images_attachments
             } = req.body;
 
             const file = req.file;
+
+            console.log(type_images_attachments);
 
             if (!file) {
                 return res.status(400).json({
@@ -77,7 +80,8 @@ export class UploadController {
                     estimateId: estimateId,
                     invoiceId: invoiceId,
                     original_filename: file.originalname,
-                    title: title
+                    title: title,
+                    type_images_attachments: type_images_attachments
                 }
             })
 

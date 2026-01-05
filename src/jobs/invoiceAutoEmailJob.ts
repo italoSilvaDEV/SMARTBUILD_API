@@ -553,7 +553,7 @@ export function setupInvoiceAutoEmailJob() {
 
   // Agendar para executar todos os dias às 19:09
   cron.schedule("0 9 * * *", () => {
-    console.log("Executando job agendado de envio automático de emails de invoices às 19:09");
+    console.log("Executando job agendado de envio automático de emails de invoices às 09:00");
     checkAndSendAutoEmails();
   });
 
