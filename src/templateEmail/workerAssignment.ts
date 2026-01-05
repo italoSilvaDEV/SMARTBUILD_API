@@ -10,7 +10,8 @@ export const workerAssignmentEmail = (
     isScheduleChange?: boolean,
     oldStartDate?: string,
     oldDeadline?: string,
-    description?: string
+    description?: string,
+    isReminder?: boolean
 ) => {
     const formattedStartDate = new Date(startDate).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -64,12 +65,18 @@ export const workerAssignmentEmail = (
         ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-    const badgeText = isScheduleChange ? 'UPDATED' : 'ASSIGNED';
-    const badgeColor = isScheduleChange ? '#1E90FF' : '#1E9B5C';
-    const greeting = `Hello, ${workerName}${isScheduleChange ? '.' : '.'}`;
-    const mainMessage = isScheduleChange
-        ? 'The schedule for your assignment has been updated:'
-        : 'You have been assigned to the following service:';
+    const badgeText = isReminder ? 'REMINDER' : isScheduleChange ? 'UPDATED' : 'ASSIGNED';
+    const badgeColor = isReminder ? '#A6855C' : isScheduleChange ? '#1E90FF' : '#1E9B5C';
+    const greeting = `Hello, ${workerName}.`;
+    
+    let mainMessage = '';
+    if (isReminder) {
+        mainMessage = "This is a reminder about your upcoming task. Don't forget the details below:";
+    } else if (isScheduleChange) {
+        mainMessage = 'The schedule for your assignment has been updated:';
+    } else {
+        mainMessage = 'You have been assigned to the following service:';
+    }
 
     return `
 <!DOCTYPE html>
@@ -79,7 +86,7 @@ export const workerAssignmentEmail = (
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="x-apple-disable-message-reformatting">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>New Assignment - ${serviceName}</title>
+    <title>${isReminder ? 'Reminder' : isScheduleChange ? 'Schedule Updated' : 'New Assignment'} - ${serviceName}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style type="text/css">
