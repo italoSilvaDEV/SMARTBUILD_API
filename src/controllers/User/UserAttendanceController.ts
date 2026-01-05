@@ -224,7 +224,7 @@ export class UserAttendanceController {
                 service_project_name:
                     attendance.UserServiceProject?.service_project?.name || null,
             }));
-            console.log('formattedAttendances', formattedAttendances)
+            // console.log('formattedAttendances', formattedAttendances)
             res.status(200).json(formattedAttendances);
         } catch (error) {
             console.error(error);
