@@ -51,6 +51,9 @@ export class GetChangeOrderController {
                 })
             }
 
+
+            const companyAvatar = changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null;
+
             const changeOrderWithPresignedUrls = {
                 ...changeOrder,
                 pdfProjects: await Promise.all(changeOrder.pdfProjects.map(async (pdfProject) => {
@@ -59,12 +62,15 @@ export class GetChangeOrderController {
                         uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null
                     }
                 })),
-                company: {
-                    id: changeOrder.estimate?.project?.company?.id || "",
-                    name: changeOrder.estimate?.project?.company?.name || "",
-                    avatar: changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null,
-                    email: changeOrder.estimate?.project?.company?.email || "",
-                    phone: changeOrder.estimate?.project?.company?.phone || ""
+                estimate: {
+                    ...changeOrder.estimate,
+                    project: {
+                        ...changeOrder.estimate?.project,
+                        company: {
+                            ...changeOrder.estimate?.project?.company,
+                            avatar: companyAvatar
+                        }
+                    },
                 }
             }
 
