@@ -29,7 +29,15 @@ export class GetChangeOrderController {
                                     id: true,
                                     client: true,
                                     workContextId: true,
-                                    company: true,
+                                    company: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            avatar: true,
+                                            email: true,
+                                            phone: true,
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -43,9 +51,6 @@ export class GetChangeOrderController {
                 })
             }
 
-            const companyData = changeOrder.estimate?.project?.company;
-            const companyAvatar = companyData?.avatar ? await getPresignedUrl(companyData.avatar) : "";
-
             const changeOrderWithPresignedUrls = {
                 ...changeOrder,
                 pdfProjects: await Promise.all(changeOrder.pdfProjects.map(async (pdfProject) => {
@@ -55,11 +60,11 @@ export class GetChangeOrderController {
                     }
                 })),
                 company: {
-                    id: companyData?.id || "",
-                    name: companyData?.name || "",
-                    avatar: companyAvatar,
-                    email: companyData?.email || "",
-                    phone: companyData?.phone || ""
+                    id: changeOrder.estimate?.project?.company?.id || "",
+                    name: changeOrder.estimate?.project?.company?.name || "",
+                    avatar: changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null,
+                    email: changeOrder.estimate?.project?.company?.email || "",
+                    phone: changeOrder.estimate?.project?.company?.phone || ""
                 }
             }
 
