@@ -155,7 +155,7 @@ export class SendEmailChangeOrderController {
             // Função para remover HTML mas manter formatação básica
             const formatScopeOfWork = (htmlContent: string | null): string => {
                 if (!htmlContent) return '';
-                
+
                 return htmlContent
                     .replace(/<br\s*\/?>/gi, '\n')
                     .replace(/<\/p>/gi, '\n\n')
@@ -252,10 +252,10 @@ export class SendEmailChangeOrderController {
                     }
                 }
 
-                const projectName = project?.contract_number 
-                    ? `Project #${project.contract_number}` 
+                const projectName = project?.contract_number
+                    ? `Project #${project.contract_number}`
                     : (project?.location || 'the project');
-                
+
                 const emailSubject = `Change Order Request: Additional items for ${projectName}`;
 
                 const mailOptions = {
@@ -299,6 +299,8 @@ ${project?.company?.name || ''}
 
                 await transporter.sendMail(mailOptions);
 
+                console.log('✅ Email sent to:', toEmails);
+
                 for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "success" });
                 }
@@ -313,8 +315,8 @@ ${project?.company?.name || ''}
                 cleanupTempFiles(attachmentFiles);
             }
 
-            const projectName = project?.contract_number 
-                ? `Project #${project.contract_number}` 
+            const projectName = project?.contract_number
+                ? `Project #${project.contract_number}`
                 : (project?.location || 'the project');
 
             return res.json({
