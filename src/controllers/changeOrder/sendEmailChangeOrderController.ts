@@ -146,13 +146,11 @@ export class SendEmailChangeOrderController {
                 });
             }
 
-            // Determinar cliente e localização (workContext ou client)
             const project = changeOrder.estimate?.project;
             const clientName = project?.workContext?.Name || project?.client?.name || '';
             const clientEmail = project?.workContext?.Email || project?.client?.email || '';
             const projectLocation = project?.workContext?.addressOffice || project?.client?.addressOffice || project?.location || '';
 
-            // Função para remover HTML mas manter formatação básica
             const formatScopeOfWork = (htmlContent: string | null): string => {
                 if (!htmlContent) return '';
 
