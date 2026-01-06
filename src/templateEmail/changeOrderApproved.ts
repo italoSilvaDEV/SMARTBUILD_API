@@ -5,7 +5,8 @@ export const changeOrderApprovedEmail = (
     estimateNumber: string,
     additionalAmount: number,
     changeOrderId: string,
-    companyOwnerEmail: string
+    companyOwnerEmail: string,
+    projectId: string
 ) => {
     const formattedAmount = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -88,7 +89,8 @@ export const changeOrderApprovedEmail = (
                     <!-- CTA Button -->
                     <tr>
                         <td class="content-padding" style="padding:0 24px 32px;">
-                            <a href="${process.env.URL_FRONT}/change-order/${changeOrderId}" style="display:block;background-color:#A6855C;color:#FFFFFF;padding:12px 18px;border-radius:4px;text-decoration:none;font-family:'Inter',-apple-system,sans-serif;font-size:16px;font-weight:600;text-align:center;box-shadow:0 1px 2px rgba(16,24,40,0.05);">
+                            <a href="${process.env.URL_FRONT}/seller/project/details/${projectId}?tab=ChangeOrders" 
+                            style="display:block;background-color:#A6855C;color:#FFFFFF;padding:12px 18px;border-radius:4px;text-decoration:none;font-family:'Inter',-apple-system,sans-serif;font-size:16px;font-weight:600;text-align:center;box-shadow:0 1px 2px rgba(16,24,40,0.05);">
                                 View Change Order
                             </a>
                         </td>
