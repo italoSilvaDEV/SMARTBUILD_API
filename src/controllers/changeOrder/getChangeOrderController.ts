@@ -43,6 +43,9 @@ export class GetChangeOrderController {
                 })
             }
 
+            const companyData = changeOrder.estimate?.project?.company;
+            const companyAvatar = companyData?.avatar ? await getPresignedUrl(companyData.avatar) : "";
+
             const changeOrderWithPresignedUrls = {
                 ...changeOrder,
                 pdfProjects: await Promise.all(changeOrder.pdfProjects.map(async (pdfProject) => {
@@ -52,8 +55,11 @@ export class GetChangeOrderController {
                     }
                 })),
                 company: {
-                    ...changeOrder.estimate?.project?.company,
-                    avatar: changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null
+                    id: companyData?.id || "",
+                    name: companyData?.name || "",
+                    avatar: companyAvatar,
+                    email: companyData?.email || "",
+                    phone: companyData?.phone || ""
                 }
             }
 
