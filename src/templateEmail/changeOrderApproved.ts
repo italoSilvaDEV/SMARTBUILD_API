@@ -57,16 +57,9 @@ export const changeOrderApprovedEmail = (
                         </td>
                     </tr>
                     
-                    <!-- Ícone de Sucesso e Título -->
+                    <!-- Título -->
                     <tr>
                         <td class="content-padding" style="padding:32px 24px;">
-                            <!-- Ícone de Check Circle -->
-                            <div style="background-color:rgba(166,133,92,0.1);width:64px;height:64px;border-radius:999px;display:flex;align-items:center;justify-content:center;margin-bottom:32px;">
-                                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M10.6667 16L14 19.3333L21.3333 12M29.3333 16C29.3333 23.3638 23.3638 29.3333 16 29.3333C8.63621 29.3333 2.66667 23.3638 2.66667 16C2.66667 8.63619 8.63621 2.66666 16 2.66666C23.3638 2.66666 29.3333 8.63619 29.3333 16Z" stroke="#A6855C" stroke-width="2.66667" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            
                             <h1 style="font-family:'Inter',-apple-system,sans-serif;font-size:24px;font-weight:600;color:#121212;margin:0;line-height:1.4;">
                                 Change Order Confirmed!
                             </h1>
