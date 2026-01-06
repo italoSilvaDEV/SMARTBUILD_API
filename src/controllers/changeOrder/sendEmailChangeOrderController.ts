@@ -266,7 +266,7 @@ export class SendEmailChangeOrderController {
                         clientName,
                         companyAvatar,
                         project?.company?.name || '',
-                        changeOrder.id,
+                        changeOrder.number.toString(),
                         changeOrder.estimate?.number || '',
                         Number(changeOrder.total_amount),
                         changeOrder.id,
@@ -299,7 +299,7 @@ ${project?.company?.name || ''}
 
                 await transporter.sendMail(mailOptions);
 
-                console.log('✅ Email sent to:', toEmails);
+                console.log('Email sent to:', toEmails);
 
                 for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "success" });

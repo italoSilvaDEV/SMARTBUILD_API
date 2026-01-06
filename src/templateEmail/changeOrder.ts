@@ -32,7 +32,7 @@ export const changeOrderEmail = (
             margin: 0; 
             padding: 0; 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #FAF6EE;
+            background-color: #F2F2F2;
         }
         table { border-spacing: 0; border-collapse: collapse; }
         img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
@@ -43,19 +43,19 @@ export const changeOrderEmail = (
         }
     </style>
 </head>
-<body style="margin:0;padding:0;background-color:#FAF6EE;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF6EE;">
+<body style="margin:0;padding:0;background-color:#F2F2F2;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F2F2F2;">
         <tr>
-            <td align="center" style="padding:32px;">
+            <td align="center">
                 
                 <!-- Main Container -->
-                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;overflow:hidden;">
+                <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
                     
                     <!-- Header com Logo -->
                     <tr>
-                        <td style="background-color:#121212;padding:24px;text-align:left;">
+                        <td style="background-color:#121212;padding:32px 32px;text-align:left;">
                             <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:161px;">
+                                <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
                             </a>
                         </td>
                     </tr>
@@ -132,19 +132,32 @@ ${scopeOfWork}
                     
                     <!-- Footer Info -->
                     <tr>
-                        <td class="content-padding" style="padding:32px 24px 14px;">
+                        <td class="content-padding" style="padding:0 24px 14px;">
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0 0 14px 0;line-height:1.4;">
                                 This email was sent to <a href="mailto:${email}" style="color:#A6855C;text-decoration:none;">${email}</a>. If you'd rather not receive this kind of email, you can <a href="#" style="color:#A6855C;text-decoration:none;">unsubscribe</a> or manage your email.
                             </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Copyright -->
+                    <tr>
+                        <td class="content-padding" style="padding:0 24px 40px;">
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#595959;margin:0;">
                                 © SmartBuild ${new Date().getFullYear()}
                             </p>
                         </td>
                     </tr>
                     
+                    <!-- Divider -->
+                    <tr>
+                        <td style="padding:0 24px;">
+                            <div style="height:1px;background-color:#E5E7EB;"></div>
+                        </td>
+                    </tr>
+                    
                     <!-- Footer Logo e Social -->
                     <tr>
-                        <td class="content-padding" style="padding:48px 24px 32px;">
+                        <td class="content-padding" style="padding:40px 24px 24px;">
                             <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
                                     <td align="left" valign="middle" style="vertical-align:middle;">
@@ -166,6 +179,7 @@ ${scopeOfWork}
                             </table>
                         </td>
                     </tr>
+                    
                 </table>
             </td>
         </tr>
