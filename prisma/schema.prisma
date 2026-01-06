@@ -99,20 +99,20 @@ model Audit {
 }
 
 model Company {
-  id            String   @id @default(uuid())
-  avatar        String?
-  name          String
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
-  address       String?
-  district      String?
-  numberHouse   String?
-  complement    String?
-  email         String?
-  phone         String?
-  webSiteUrl    String?
-  workStartTime String? // Format: "HH:mm" (24-hour)
-  workEndTime   String? // Format: "HH:mm" (24-hour)
+  id             String         @id @default(uuid())
+  avatar         String?
+  name           String
+  date_creation  DateTime       @default(now())
+  date_update    DateTime       @updatedAt
+  address        String?
+  district       String?
+  numberHouse    String?
+  complement     String?
+  email          String?
+  phone          String?
+  webSiteUrl     String?
+  workStartTime  String? // Format: "HH:mm" (24-hour)
+  workEndTime    String? // Format: "HH:mm" (24-hour)
   attendanceMode AttendanceMode @default(manual)
 
   // Relacionamento original 1:N (mantido)
@@ -159,7 +159,7 @@ model Company {
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
   Subcontractors Subcontractor[]
-  
+
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
 
@@ -983,10 +983,10 @@ model Invoice {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   invoiceUrl        String?   @db.Text // Suporta URLs longas do QuickBooks
-  
+
   // ===== CAMPOS PARA PAGAMENTOS PARCIAIS QBO (Fonte de verdade: QuickBooks) =====
-  balanceRemaining          Decimal?  // Saldo restante (Balance do QBO)
-  totalAmountPaidQbo        Decimal?  // Total já pago (TotalAmt - Balance do QBO)
+  balanceRemaining          Decimal? // Saldo restante (Balance do QBO)
+  totalAmountPaidQbo        Decimal? // Total já pago (TotalAmt - Balance do QBO)
   amountChangedAfterPayment Boolean   @default(false) // Se o valor foi alterado após pagamento
   lastPaymentAt             DateTime? // Data do último pagamento recebido
 
@@ -1035,11 +1035,11 @@ model Invoice {
   InvoiceAutoEmailLog InvoiceAutoEmailLog[]
 
   // Relação com CustomInvoicePayment (uma fatura pode ter um pagamento)
-  payment    InvoicePayment?
-  
+  payment InvoicePayment?
+
   // NOVO: Pagamentos parciais QBO
   paymentApplications PaymentApplication[]
-  
+
   PdfProject PdfProject[]
 
   // Relacionamento com fildsPdfProject
@@ -1092,21 +1092,21 @@ model QuickBooksAccount {
 }
 
 model InvoiceItem {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String // Nome do serviço ou item
-  description String?  @db.Text // Descrição opcional do item
+  description String? @db.Text // Descrição opcional do item
   quantity    Decimal // Quantidade REAL (ex: 30) - usado para exibição e edição
   price       Decimal // Preço unitário REAL (ex: 200) - usado para exibição e edição
   totalAmount Decimal // Valor total (quantidade * preço)
-  
+
   //  Campos para guardar o que foi enviado especificamente para QuickBooks
   // Quando invoice é QuickBooks, estes campos guardam os valores ajustados enviados ao QBO
   // Para Custom/Stripe, estes campos ficam NULL
   qboQuantity Decimal? // Quantidade enviada para QBO (sempre 1)
   qboPrice    Decimal? // Preço ajustado enviado para QBO (ex: 6000 = 30 * 200)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relacionamento com Invoice
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -1132,39 +1132,39 @@ model InvoicePayment {
 // ===== PAGAMENTOS PARCIAIS QUICKBOOKS =====
 // PaymentTransaction: Representa um pagamento recebido no QuickBooks
 model PaymentTransaction {
-  id                String   @id @default(uuid())
-  provider          String   // "qbo"
-  externalPaymentId String   // Payment.Id do QBO
-  currency          String   @default("USD")
-  totalAmount       Decimal  // Valor total do pagamento
-  paymentMethodType String?  // Tipo de método de pagamento (Cash, Check, CreditCard, etc.)
+  id                String    @id @default(uuid())
+  provider          String // "qbo"
+  externalPaymentId String // Payment.Id do QBO
+  currency          String    @default("USD")
+  totalAmount       Decimal // Valor total do pagamento
+  paymentMethodType String? // Tipo de método de pagamento (Cash, Check, CreditCard, etc.)
   txnDate           DateTime? // Data da transação no QBO
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
   // Relacionamento com Company
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id])
-  
+
   // Relacionamento com PaymentApplication (um pagamento pode ser aplicado a várias invoices)
   applications PaymentApplication[]
-  
+
   @@unique([provider, externalPaymentId])
   @@index([companyId])
 }
 
 // PaymentApplication: Representa quanto de um pagamento foi aplicado a uma invoice
 model PaymentApplication {
-  id                    String   @id @default(uuid())
-  paymentTransactionId  String
-  invoiceId             String
-  amountApplied         Decimal  // Valor aplicado a esta invoice específica
-  appliedAt             DateTime @default(now())
-  
+  id                   String   @id @default(uuid())
+  paymentTransactionId String
+  invoiceId            String
+  amountApplied        Decimal // Valor aplicado a esta invoice específica
+  appliedAt            DateTime @default(now())
+
   // Relacionamentos
   paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
   invoice            Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
+
   @@unique([paymentTransactionId, invoiceId])
   @@index([invoiceId])
   @@index([paymentTransactionId])
@@ -1928,4 +1928,60 @@ model ImagesAttachments {
   date_update   DateTime @updatedAt
 
   @@map("images_attachments")
+}
+
+enum PermissionsKeysStatus {
+  pending
+  approved
+  revoked
+}
+
+model PermissionUserKey {
+  id String @id @default(uuid())
+
+  name  String
+  email String
+
+  date_creation          DateTime               @default(now())
+  date_update            DateTime               @updatedAt
+  permissionsKeys        PermissionsKeys[]
+  masterActionsHistories MasterActionsHistory[]
+
+  @@map("permission_user_key")
+}
+
+model PermissionsKeys {
+  id String @id @default(uuid())
+
+  key    String                @unique @db.VarChar(255)
+  status PermissionsKeysStatus @default(pending)
+
+  date_request  DateTime  @default(now())
+  date_approved DateTime?
+  date_revoked  DateTime?
+
+  permissionUserKeyId    String
+  permissionUserKey      PermissionUserKey      @relation(fields: [permissionUserKeyId], references: [id], onDelete: Cascade)
+  masterActionsHistories MasterActionsHistory[]
+
+  @@map("permissions_keys")
+}
+
+model MasterActionsHistory {
+  id String @id @default(uuid())
+
+  action String @db.Text
+  reason String @db.Text
+
+  targetName    String? @db.Text
+  targetContact String? @db.Text
+
+  userPermissionId    String
+  userPermission      PermissionUserKey @relation(fields: [userPermissionId], references: [id], onDelete: Cascade)
+  userPermissionKeyId String
+  userPermissionKey   PermissionsKeys   @relation(fields: [userPermissionKeyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+
+  @@map("master_actions_history")
 }

@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { compressImage } from "../config/compressImage";
 import { CompanyController } from "../controllers/company/CompanyController";
+import { DeleteCompanyMasterController } from "../controllers/company/deleteCompanyMasterController";
 import { checkToken } from "../middlewares/checkToken"
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
@@ -8,6 +9,7 @@ import uploadConfig from "../config/uploadUtf8";
 const companyRoutes = Router()
 
 const Company = new CompanyController()
+const deleteMasterController = new DeleteCompanyMasterController();
 
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/company"))
 //criar
@@ -47,6 +49,9 @@ companyRoutes.get("/company/proxy/image", Company.proxyImage);
 
 // Proxy de imagem por URI
 companyRoutes.get("/service/proxy/image-by-uri", Company.proxyImageByUri);
+
+companyRoutes.post("/company/master-delete/request", checkToken, deleteMasterController.requestDeletion);
+companyRoutes.post("/company/master-delete/confirm", checkToken, deleteMasterController.confirmDeletion);
 
 // Atualizar company e usuário administrador
 companyRoutes.put(
