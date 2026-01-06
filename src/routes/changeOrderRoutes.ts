@@ -13,7 +13,6 @@ import { GetChangeOrderServicesController } from "../controllers/changeOrder/cha
 import { UpdateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/updateChangeOrderServiceController";
 import { UpdatePdfChangeOrderController } from "../controllers/changeOrder/updatePdfChangeOrderController";
 import { SendEmailChangeOrderController } from "../controllers/changeOrder/sendEmailChangeOrderController";
-import { SendApprovedEmailController } from "../controllers/changeOrder/sendApprovedEmailController";
 
 const changeOrderRoutes = Router();
 
@@ -26,7 +25,6 @@ const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
 const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
 const sendEmailChangeOrderController = new SendEmailChangeOrderController();
-const sendApprovedEmailController = new SendApprovedEmailController();
 
 const createChangeOrderServiceController = new CreateChangeOrderServiceController();
 const deleteChangeOrderServiceController = new DeleteChangeOrderServiceController();
@@ -97,12 +95,6 @@ changeOrderRoutes.post(
     checkToken,
     uploadAttachments.array("attachments", 10),
     sendEmailChangeOrderController.handle
-);
-
-changeOrderRoutes.post(
-    "/:id/send-approved",
-    checkToken,
-    sendApprovedEmailController.handle
 );
 
 export default changeOrderRoutes;
