@@ -29,6 +29,7 @@ export class GetChangeOrderController {
                                     id: true,
                                     client: true,
                                     workContextId: true,
+                                    company: true,
                                 }
                             }
                         }
@@ -49,7 +50,11 @@ export class GetChangeOrderController {
                         ...pdfProject,
                         uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null
                     }
-                }))
+                })),
+                company: {
+                    ...changeOrder.estimate?.project?.company,
+                    avatar: changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null
+                }
             }
 
             return res.status(200).json({
