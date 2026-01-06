@@ -53,14 +53,7 @@ export class SendEmailChangeOrderController {
             attachmentFiles = req.files as Express.Multer.File[];
 
             const {
-                from,
-                to,
-                cc,
-                bcc,
-                subject,
-                body,
-                sendMeCopy,
-                numberPerson
+                to
             } = req.body;
 
             if (!to) {
@@ -120,17 +113,9 @@ export class SendEmailChangeOrderController {
                 return [];
             };
 
-            const dataEmail = {
-                from: from || '',
-                to: parseEmailList(to),
-                cc: parseEmailList(cc),
-                bcc: parseEmailList(bcc),
-                sendMeCopy: sendMeCopy === 'true' || sendMeCopy === true,
-                subject: subject || '',
-                body: body || ''
-            };
+            const toEmails = parseEmailList(to);
 
-            if (!dataEmail.to || dataEmail.to.length === 0) {
+            if (!toEmails || toEmails.length === 0) {
                 cleanupTempFiles(attachmentFiles);
                 return res.status(400).json({
                     error: "Please provide at least one recipient email address"
@@ -145,7 +130,8 @@ export class SendEmailChangeOrderController {
                             project: {
                                 include: {
                                     client: true,
-                                    company: true
+                                    company: true,
+                                    workContext: true
                                 }
                             }
                         }
@@ -159,6 +145,37 @@ export class SendEmailChangeOrderController {
                     error: "Change order not found"
                 });
             }
+
+            // Determinar cliente e localização (workContext ou client)
+            const project = changeOrder.estimate?.project;
+            const clientName = project?.workContext?.Name || project?.client?.name || '';
+            const clientEmail = project?.workContext?.Email || project?.client?.email || '';
+            const projectLocation = project?.workContext?.addressOffice || project?.client?.addressOffice || project?.location || '';
+
+            // Função para remover HTML mas manter formatação básica
+            const formatScopeOfWork = (htmlContent: string | null): string => {
+                if (!htmlContent) return '';
+                
+                return htmlContent
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<\/p>/gi, '\n\n')
+                    .replace(/<p[^>]*>/gi, '')
+                    .replace(/<\/li>/gi, '\n')
+                    .replace(/<li[^>]*>/gi, '• ')
+                    .replace(/<\/ul>/gi, '\n')
+                    .replace(/<ul[^>]*>/gi, '\n')
+                    .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '$1')
+                    .replace(/<b[^>]*>(.*?)<\/b>/gi, '$1')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .trim();
+            };
+
+            const formattedScopeOfWork = formatScopeOfWork(changeOrder.scope_of_work);
 
             const pdfProject = await prisma.pdfProject.findFirst({
                 where: {
@@ -207,21 +224,9 @@ export class SendEmailChangeOrderController {
             });
 
             const results = [];
-            const companyAvatar = changeOrder.estimate?.project?.company?.avatar
-                ? await getPresignedUrl(changeOrder.estimate.project.company.avatar)
+            const companyAvatar = project?.company?.avatar
+                ? await getPresignedUrl(project.company.avatar)
                 : "";
-
-            const allRecipients = [
-                ...dataEmail.to,
-                ...dataEmail.cc,
-                ...dataEmail.bcc
-            ];
-
-            if (dataEmail.sendMeCopy && dataEmail.from) {
-                allRecipients.push(dataEmail.from);
-            }
-
-            const uniqueRecipients = [...new Set(allRecipients.filter(email => email && typeof email === 'string'))];
 
             try {
                 const attachments = [
@@ -247,81 +252,77 @@ export class SendEmailChangeOrderController {
                     }
                 }
 
+                const projectName = project?.contract_number 
+                    ? `Project #${project.contract_number}` 
+                    : (project?.location || 'the project');
+                
+                const emailSubject = `Change Order Request: Additional items for ${projectName}`;
+
                 const mailOptions = {
                     from: SMTP_CONFIG.user,
-                    replyTo: dataEmail.from,
-                    to: dataEmail.to,
-                    cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
-                    bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
-                    subject: dataEmail.subject || `${changeOrder.estimate?.project?.company?.name} - Change Order`,
+                    to: toEmails,
+                    subject: emailSubject,
                     html: changeOrderEmail(
-                        changeOrder.estimate?.project?.client?.name || '',
-                        companyAvatar || "",
-                        changeOrder.estimate?.project?.company?.name || '',
-                        numberPerson || changeOrder.id,
+                        clientName,
+                        companyAvatar,
+                        project?.company?.name || '',
+                        changeOrder.id,
                         changeOrder.estimate?.number || '',
                         Number(changeOrder.total_amount),
                         changeOrder.id,
-                        changeOrder.estimate?.project?.client?.email || '',
-                        dataEmail.body
+                        clientEmail,
+                        projectLocation,
+                        formattedScopeOfWork
                     ),
                     attachments,
-
-                    text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
-Dear ${changeOrder.estimate?.project?.client?.name || 'Client'},
+                    text: `
+Dear ${clientName},
 
 A change order has been created for your project estimate ${changeOrder.estimate?.number || ''}.
 
-Change Order: ${numberPerson || changeOrder.id}
+Change Order ID: ${changeOrder.id}
 Additional Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(changeOrder.total_amount))}
+Project Location: ${projectLocation}
+
+Scope of Work:
+${formattedScopeOfWork}
 
 Please access the link to view details and approve the change order:
-${process.env.URL_FRONT}/changeorder-response/${changeOrder.id}}
+${process.env.URL_FRONT}/changeorder-response/${changeOrder.id}
 
 We appreciate your business. Feel free to contact us if you have any questions.
 
 Have a great day!
-${changeOrder.estimate?.project?.company?.name || ''}
+${project?.company?.name || ''}
                     `.trim()
                 };
 
-                if (dataEmail.sendMeCopy && dataEmail.from) {
-                    if (mailOptions.bcc) {
-                        if (Array.isArray(mailOptions.bcc)) {
-                            mailOptions.bcc.push(dataEmail.from);
-                        } else {
-                            mailOptions.bcc = [mailOptions.bcc, dataEmail.from];
-                        }
-                    } else {
-                        mailOptions.bcc = [dataEmail.from];
-                    }
-                }
-
                 await transporter.sendMail(mailOptions);
 
-                for (const recipient of uniqueRecipients) {
+                for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "success" });
                 }
 
             } catch (error: any) {
                 console.error('❌ Error sending change order email:', error);
 
-                for (const recipient of uniqueRecipients) {
+                for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "error", message: error.message });
                 }
             } finally {
                 cleanupTempFiles(attachmentFiles);
             }
 
+            const projectName = project?.contract_number 
+                ? `Project #${project.contract_number}` 
+                : (project?.location || 'the project');
+
             return res.json({
                 success: results.some(r => r.status === "success"),
                 results,
                 dataEmail: {
-                    to: dataEmail.to,
-                    cc: dataEmail.cc,
-                    bcc: dataEmail.bcc,
-                    subject: dataEmail.subject,
-                    sendMeCopy: dataEmail.sendMeCopy,
+                    to: toEmails,
+                    subject: `Change Order Request: Additional items for ${projectName}`,
                     attachmentCount: attachmentFiles ? attachmentFiles.length : 0
                 }
             });
