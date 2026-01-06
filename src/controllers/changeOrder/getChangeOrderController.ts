@@ -22,6 +22,17 @@ export class GetChangeOrderController {
                 include: {
                     changeOrderServices: true,
                     pdfProjects: true,
+                    estimate: {
+                        select: {
+                            project: {
+                                select: {
+                                    id: true,
+                                    client: true,
+                                    workContextId: true,
+                                }
+                            }
+                        }
+                    }
                 }
             })
 
