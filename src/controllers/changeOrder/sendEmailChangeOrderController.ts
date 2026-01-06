@@ -260,7 +260,7 @@ export class SendEmailChangeOrderController {
 
                 const mailOptions = {
                     from: SMTP_CONFIG.user,
-                    to: toEmails,
+                    to: toEmails || [clientEmail],
                     subject: emailSubject,
                     html: changeOrderEmail(
                         clientName,
