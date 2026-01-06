@@ -433,7 +433,7 @@ export class OpenAIController {
                     role: "user",
                     content: OpenIaPrompt.enhanceChangeOrderScope(currentScope || "", services)
                 }],
-                temperature: 0.4,
+                temperature: 0.3,
                 max_tokens: 1000
             });
 
