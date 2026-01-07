@@ -93,22 +93,34 @@ export class DeleteCompanyMasterController {
                     select: { id: true }
                 })).map(p => p.id);
 
-                await tx.category.deleteMany({ where: { company_id: companyId } });
-                await tx.subCategory.deleteMany({ where: { company_id: companyId } });
-                await tx.service.deleteMany({ where: { company_id: companyId } });
-                await tx.catalog.deleteMany({ where: { company_id: companyId } });
+                const catalogIds = (await tx.catalog.findMany({
+                    where: { company_id: companyId },
+                    select: { id: true }
+                })).map(c => c.id);
+
+                await tx.imagesAttachments.deleteMany({ where: { projectId: { in: projectIds } } });
+                await tx.projectFiles.deleteMany({ where: { companyId: companyId } });
+                await tx.projectPastes.deleteMany({ where: { companyId: companyId } });
+                await tx.quickBooksCustomerRaw.deleteMany({ where: { companyId: companyId } });
+
+                await tx.project.deleteMany({ where: { company_id: companyId } });
+
                 await tx.client.deleteMany({ where: { company_id: companyId } });
                 await tx.subcontractor.deleteMany({ where: { company_id: companyId } });
+
+                await tx.imgCatalog.deleteMany({ where: { catalog_id: { in: catalogIds } } });
+                await tx.catalog.deleteMany({ where: { company_id: companyId } });
+                await tx.service.deleteMany({ where: { company_id: companyId } });
+                await tx.subCategory.deleteMany({ where: { company_id: companyId } });
+                await tx.category.deleteMany({ where: { company_id: companyId } });
+
                 await tx.syncPreferences.deleteMany({ where: { companyId: companyId } });
                 await tx.syncStatus.deleteMany({ where: { companyId: companyId } });
                 await tx.contractTerms.deleteMany({ where: { companyId: companyId } });
                 await tx.quickBooksConfig.deleteMany({ where: { companyId: companyId } });
-                await tx.projectFiles.deleteMany({ where: { companyId: companyId } });
-                await tx.projectPastes.deleteMany({ where: { companyId: companyId } });
-                await tx.imagesAttachments.deleteMany({ where: { projectId: { in: projectIds } } });
                 await tx.quickBooksAccount.deleteMany({ where: { company_id: companyId } });
                 await tx.subscription.deleteMany({ where: { companyId: companyId } });
-                await tx.project.deleteMany({ where: { company_id: companyId } });
+                
                 await tx.company.delete({ where: { id: companyId } });
 
                 await tx.masterActionsHistory.create({
