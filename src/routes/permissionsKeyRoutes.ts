@@ -14,16 +14,15 @@ const revokeController = new RevokeKeyController();
 const listActiveKeysController = new ListActiveKeysController();
 const getKeyController = new GetKeyController();
 
-permissionsKeyRoutes.post("/create", checkToken, createNewKeyController.handle);
-
+// Public routes (No checkToken)
 permissionsKeyRoutes.get("/:keyId/approve", responseController.handle);
 permissionsKeyRoutes.get("/:keyId/reject", responseController.handle);
-
-permissionsKeyRoutes.post("/:keyId/revoke-request", checkToken, revokeController.handle);
 permissionsKeyRoutes.get("/:keyId/confirm-revoke", revokeController.confirm);
-
-permissionsKeyRoutes.get("/active", checkToken, listActiveKeysController.handle);
-
 permissionsKeyRoutes.get("/:keyId/view", getKeyController.handle);
+
+// Protected routes (Requires checkToken)
+permissionsKeyRoutes.post("/create", checkToken, createNewKeyController.handle);
+permissionsKeyRoutes.post("/:keyId/revoke-request", checkToken, revokeController.handle);
+permissionsKeyRoutes.get("/active", checkToken, listActiveKeysController.handle);
 
 export { permissionsKeyRoutes };

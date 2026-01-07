@@ -65,6 +65,10 @@ router.get('/config', async (req, res) => {
 })
 // Rota pública para versão do app (deve estar antes das rotas protegidas)
 router.use(appVersionRoutes);
+
+// Rotas de chaves de permissão (devem estar antes de rotas genéricas que podem usar checkToken)
+router.use("/permissions-key", permissionsKeyRoutes)
+
 router.post(
   "/upload-image",
   checkToken,
@@ -119,7 +123,6 @@ router.use(tutorialRoutes)
 router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)
 router.use(jobScheduleRoutes)
-router.use("/permissions-key", permissionsKeyRoutes)
 
 export { router }
 

@@ -2,7 +2,6 @@ export const permissionKeyApprovalEmail = (
     requesterName: string,
     requesterEmail: string,
     keyId: string,
-    rawKey: string,
     secret: string
 ) => {
     const approveUrl = `${process.env.URL_API}/permissions-key/${keyId}/approve?secret=${secret}`;
@@ -75,17 +74,9 @@ export const permissionKeyApprovalEmail = (
                                 <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0 0 8px 0;">
                                     <span style="font-weight:600;">Name:</span> ${requesterName}
                                 </p>
-                                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0 0 16px 0;">
+                                <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#121212;margin:0;line-height:1.5;">
                                     <span style="font-weight:600;">Email:</span> ${requesterEmail}
                                 </p>
-                                <div style="border-top:1px solid #E5E7EB;padding-top:16px;">
-                                    <p style="font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#6B6B6B;margin:0 0 4px 0;text-transform:uppercase;font-weight:600;">
-                                        Generated Key (Copy and share only after approval)
-                                    </p>
-                                    <p style="font-family:'Courier New', monospace;font-size:14px;color:#121212;background-color:#FFFFFF;padding:12px;border:1px dashed #A6855C;border-radius:4px;word-break:break-all;">
-                                        ${rawKey}
-                                    </p>
-                                </div>
                             </div>
                         </td>
                     </tr>

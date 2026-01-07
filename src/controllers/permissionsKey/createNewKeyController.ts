@@ -98,10 +98,9 @@ export class CreateNewKeyController {
                             userName,
                             userEmail,
                             newKeyRecord.id,
-                            rawKey,
                             process.env.KEY_RESPONSE_EMAIL || ""
                         ),
-                        text: `A new permission key has been requested by ${userName} (${userEmail}). Key: ${rawKey}. Please approve or reject at the dashboard.`
+                        text: `A new permission key has been requested by ${userName} (${userEmail}). Please approve or reject at the dashboard.`
                     };
 
                     await transporter.sendMail(mailOptions);
