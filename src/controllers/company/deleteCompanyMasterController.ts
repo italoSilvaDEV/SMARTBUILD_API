@@ -122,7 +122,18 @@ export class DeleteCompanyMasterController {
                 await tx.subcontractor.deleteMany({ where: { company_id: companyId } });
                 await tx.imgCatalog.deleteMany({ where: { catalog_id: { in: catalogIds } } });
                 await tx.catalog.deleteMany({ where: { company_id: companyId } });
-                await tx.service.deleteMany({ where: { company_id: companyId } });
+
+                const subCategoryIds = (await tx.subCategory.findMany({
+                    where: { company_id: companyId },
+                    select: { id: true }
+                })).map(sc => sc.id);
+
+                await tx.service.deleteMany({ 
+                    where: { 
+                        sub_category_id: { in: subCategoryIds } 
+                    } 
+                });
+
                 await tx.subCategory.deleteMany({ where: { company_id: companyId } });
                 await tx.category.deleteMany({ where: { company_id: companyId } });
                 await tx.paymentTransaction.deleteMany({ where: { companyId: companyId } });
