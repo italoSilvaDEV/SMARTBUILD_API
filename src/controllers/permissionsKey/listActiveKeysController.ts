@@ -11,6 +11,7 @@ export class ListActiveKeysController {
                     }
                 },
                 select: {
+                    id: true,
                     status: true,
                     permissionUserKey: {
                         select: {
@@ -22,7 +23,8 @@ export class ListActiveKeysController {
 
             const formattedKeys = activeKeys.map(item => ({
                 name: item.permissionUserKey.name,
-                status: item.status
+                status: item.status,
+                id: item.id
             }));
 
             return res.json(formattedKeys);
