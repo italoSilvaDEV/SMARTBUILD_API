@@ -22,6 +22,26 @@ export class GetChangeOrderController {
                 include: {
                     changeOrderServices: true,
                     pdfProjects: true,
+                    estimate: {
+                        select: {
+                            project: {
+                                select: {
+                                    id: true,
+                                    client: true,
+                                    workContextId: true,
+                                    company: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            avatar: true,
+                                            email: true,
+                                            phone: true,
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             })
 
@@ -31,6 +51,9 @@ export class GetChangeOrderController {
                 })
             }
 
+
+            const companyAvatar = changeOrder.estimate?.project?.company?.avatar ? await getPresignedUrl(changeOrder.estimate?.project?.company?.avatar) : null;
+
             const changeOrderWithPresignedUrls = {
                 ...changeOrder,
                 pdfProjects: await Promise.all(changeOrder.pdfProjects.map(async (pdfProject) => {
@@ -38,7 +61,17 @@ export class GetChangeOrderController {
                         ...pdfProject,
                         uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null
                     }
-                }))
+                })),
+                estimate: {
+                    ...changeOrder.estimate,
+                    project: {
+                        ...changeOrder.estimate?.project,
+                        company: {
+                            ...changeOrder.estimate?.project?.company,
+                            avatar: companyAvatar
+                        }
+                    },
+                }
             }
 
             return res.status(200).json({

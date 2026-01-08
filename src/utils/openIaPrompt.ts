@@ -214,6 +214,38 @@ Return ONLY the improved description in plain text. No introductions, no explana
         return "You are transcribing a construction work report or description. The speaker may use Portuguese, Spanish, English or any other language. Transcribe EXACTLY what is said, including: technical construction terms, measurements, quantities, materials, equipment names, room/area names, worker names, dates, times, locations, and all project details. Preserve numbers, technical vocabulary, and industry jargon. Add appropriate punctuation for clarity. Capture every detail mentioned.";
     }
 
+    static enhanceChangeOrderScope(currentScope: string, services: any[]) {
+        const servicesJson = JSON.stringify(services, null, 2);
+
+        const scopeContext = currentScope && currentScope.trim().length > 0 
+            ? `Original Scope of Work: "${currentScope}"`
+            : "No previous scope was provided. Please generate a formal introduction for this Change Order.";
+
+        return `Act as an expert in construction contracts and project management. 
+Your task is to enhance the "Scope of Work" for a Change Order (CO) document.
+
+This Change Order document serves to officially add specific services to the project's original scope.
+
+${scopeContext}
+
+DATA TO BE INTEGRATED (JSON FORMAT):
+${servicesJson}
+
+INSTRUCTIONS:
+1. Use a formal, professional, and direct tone.
+2. Clearly explain that this Change Order document adds the services listed above to the project.
+3. FOR EACH ITEM in the JSON array, create exactly ONE <li> element inside a single <ul> list.
+4. DO NOT break a single service item into multiple list items or numbered lines. The name, description, and total of a single service must stay together within the same <li>.
+5. Format the list item as follows: <li><strong>Service Name</strong>: Service Description (Total: $Value)</li>.
+6. DO NOT invent any services, dates, or values. Use ONLY the information provided in the JSON.
+7. If the original scope was provided, improve its wording and integrate the new services professionally.
+8. If no previous scope was provided, start with a professional standard introduction for a Change Order.
+9. The output MUST be valid HTML ready for a React Quill editor.
+10. Respond ONLY with the HTML content. No conversational filler or markdown code blocks.
+
+LANGUAGE: Respond in English.`;
+    }
+
     static switch(
         type: string,
         serviceName?: string,

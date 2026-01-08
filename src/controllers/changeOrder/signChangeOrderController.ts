@@ -5,7 +5,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { PDFDocument, rgb } from 'pdf-lib';
 import nodemailer from "nodemailer";
-import { changeOrderApprovedEmail } from "../../templateEmail/changeOrder";
+import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -253,6 +253,7 @@ export class SignChangeOrderController {
                                 project: {
                                     include: {
                                         client: true,
+                                        workContext: true,
                                         company: true
                                     }
                                 }
@@ -283,52 +284,54 @@ export class SignChangeOrderController {
                         },
                     });
 
-                    const companyAvatar = company.avatar
-                        ? await getPresignedUrl(company.avatar)
-                        : "";
-
-                    const clientName = changeOrderWithDetails.estimate?.project?.client?.name || "the client";
+                    const project = changeOrderWithDetails.estimate?.project;
+                    const clientName = project?.workContext?.Name || project?.client?.name || "Client";
                     const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
                     const estimateNumber = changeOrderWithDetails.estimate?.number || "";
                     const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
-                    const projectId = changeOrderWithDetails.estimate?.project?.id || "";
+                    
+                    const formattedAmount = new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                    }).format(totalAmount);
+
+                    const emailSubject = `APPROVED: Change Order #${changeOrderNumber} added +${formattedAmount} to Estimate`;
 
                     const mailOptions = {
                         from: SMTP_CONFIG.user,
                         to: companyEmail,
-                        subject: `${company.name} - Change Order Approved`,
+                        subject: emailSubject,
                         html: changeOrderApprovedEmail(
-                            company.name,
-                            companyAvatar,
+                            clientName,
                             company.name,
                             changeOrderNumber,
                             estimateNumber,
                             totalAmount,
                             changeOrder.id,
-                            clientName,
-                            projectId
+                            companyEmail,
+                            project.id
                         ),
                         text: `
 Dear ${company.name},
 
-Great news! The change order you sent to ${clientName} has been approved.
+Great news! ${clientName} has approved Change Order #${changeOrderNumber}.
 
-Change Order: ${changeOrderNumber}
+Approved Additional Amount: ${formattedAmount}
 Estimate: ${estimateNumber}
-Additional Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalAmount)}
 
-The client has reviewed and accepted the additional work scope and costs.
+You can view the change order details at:
+${process.env.URL_FRONT}/change-order/${changeOrder.id}
 
-Have a great day!
-${company.name}
+Best regards,
+SmartBuild Team
                         `.trim()
                     };
 
                     await transporter.sendMail(mailOptions);
-                    console.log(`✅ Email sent to company: ${companyEmail}`);
+                    console.log(`Approved email sent to company: ${companyEmail}`);
                 }
             } catch (emailError) {
-                console.error('❌ Error sending approval email to company:', emailError);
+                console.error('Error sending approval email to company:', emailError);
             }
 
             return res.status(200).json({

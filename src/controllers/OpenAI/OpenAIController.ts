@@ -416,4 +416,43 @@ export class OpenAIController {
             });
         }
     }
+
+    async enhanceChangeOrderScope(req: Request, res: Response) {
+        const { currentScope, services } = req.body;
+
+        if (!Array.isArray(services) || services.length === 0) {
+            return res.status(400).json({
+                error: "Services array is required and cannot be empty"
+            });
+        }
+
+        try {
+            const response = await openai.chat.completions.create({
+                model: GPT_CONFIG.MODEL,
+                messages: [{
+                    role: "user",
+                    content: OpenIaPrompt.enhanceChangeOrderScope(currentScope || "", services)
+                }],
+                temperature: 0.3,
+                max_tokens: 1000
+            });
+
+            const enhancedScope = response.choices[0].message.content;
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    enhancedScope,
+                    model: GPT_CONFIG.MODEL,
+                    tokensUsed: response.usage?.total_tokens || 0
+                }
+            });
+        } catch (error) {
+            console.error('Erro ao melhorar escopo de Change Order:', error);
+            return res.status(500).json({
+                error: "Internal server error",
+                message: error instanceof Error ? error.message : 'Erro desconhecido'
+            });
+        }
+    }
 }

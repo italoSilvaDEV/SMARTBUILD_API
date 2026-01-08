@@ -12,6 +12,7 @@ import { GetSubContractorsController } from "../controllers/jobSchedule/getSubCo
 import { CompleteJobController } from "../controllers/jobSchedule/completeJobController";
 import { CreateCustomServiceController } from "../controllers/jobSchedule/CustomServices/createCustomServiceController";
 import { GetCustomJobsController } from "../controllers/jobSchedule/CustomServices/getCustomJobsController";
+import { ResendEmailController } from "../controllers/jobSchedule/resendEmailController";
 const jobScheduleRoutes = Router();
 
 const getJobsByProjectController = new GetJobsByProjectController();
@@ -26,6 +27,7 @@ const getSubContractorsController = new GetSubContractorsController();
 const completeJobController = new CompleteJobController();
 const createCustomServiceController = new CreateCustomServiceController();
 const getCustomJobsController = new GetCustomJobsController();
+const resendEmailController = new ResendEmailController();
 
 jobScheduleRoutes.get("/jobs/details/:projectId", checkToken, getJobsByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/users/:projectId/:companyId", checkToken, getUsersByProjectController.handle)
@@ -36,6 +38,10 @@ jobScheduleRoutes.get("/jobs/details/subcontractors/:companyId", checkToken, get
 jobScheduleRoutes.post("/jobs/details/complete", checkToken, completeJobController.handle)
 jobScheduleRoutes.post("/jobs/details/customservice", checkToken, createCustomServiceController.handle)
 jobScheduleRoutes.get("/jobs/details/customjobs/:projectId/:companyId", checkToken, getCustomJobsController.handle)
+
+jobScheduleRoutes.post("/jobs/details/resend/service/:id", checkToken, resendEmailController.forServiceProject)
+jobScheduleRoutes.post("/jobs/details/resend/subservice/:id", checkToken, resendEmailController.forSubService)
+jobScheduleRoutes.post("/jobs/details/resend/customservice/:id", checkToken, resendEmailController.forCustomService)
 
 jobScheduleRoutes.get("/jobs/main/jobs/:companyId", checkToken, getJobsByCompanyController.handle)
 jobScheduleRoutes.get("/jobs/main/projects/:companyId", checkToken, getProjectsByCompanyController.handle)

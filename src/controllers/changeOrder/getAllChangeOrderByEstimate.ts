@@ -36,6 +36,17 @@ export class GetAllChangeOrderByEstimateController {
                     include: {
                         changeOrderServices: true,
                         pdfProjects: true,
+                        estimate: {
+                            select: {
+                                project: {
+                                    select: {
+                                        id: true,
+                                        client: true,
+                                        workContextId: true,
+                                    }
+                                }
+                            }
+                        }
                     },
                     orderBy: {
                         date_creation: "desc"

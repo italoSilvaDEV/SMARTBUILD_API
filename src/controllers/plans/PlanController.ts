@@ -125,6 +125,9 @@ export class PlanController {
       const { grouped } = req.query;
       
       const plans = await prisma.plan.findMany({
+        where: {
+          isCampaign: false
+        },
         include: {
           permissionGroup: true
         }

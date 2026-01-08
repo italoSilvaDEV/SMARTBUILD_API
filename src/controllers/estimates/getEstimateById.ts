@@ -48,6 +48,7 @@ export class GetEstimateByProjectIdController {
                             status_project: true,
                             autorId: true,
                             location: true,
+                            workContextId: true,
                             client: {
                                 select: {
                                     id: true,

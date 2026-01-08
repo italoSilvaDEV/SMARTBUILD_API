@@ -9,7 +9,6 @@ import { subcontractorRoutes } from './subcontractor'
 import { serviceStageRoutes } from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
-import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { paymentElementRoutes } from './paymentElementRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { businessDashboard } from './businessDashboardRoutes'
@@ -38,7 +37,6 @@ import { checkToken } from '../middlewares/checkToken'
 import multer from 'multer'
 import uploadConfig from "../config/upload";
 import { UploadImageController } from '../controllers/projects/UploadImageController';
-import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
 import { timeCardsRouts } from './timeCardsRoutes'
 import { contractTermRoutes } from './contractTermRoutes'
 import { openAiRoutes } from './openAiRoutes'
@@ -52,6 +50,7 @@ import { salesRoutes } from './salesRoutes'
 import { appVersionRoutes } from './appVersionRoutes'
 import { imagesAttachmentsRoutes } from './imagesAttachments'
 import jobScheduleRoutes from './jobScheduleRoutes'
+import { permissionsKeyRoutes } from './permissionsKeyRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -64,14 +63,16 @@ router.get('/config', async (req, res) => {
 })
 // Rota pública para versão do app (deve estar antes das rotas protegidas)
 router.use(appVersionRoutes);
+
+// Rotas de chaves de permissão (devem estar antes de rotas genéricas que podem usar checkToken)
+router.use("/permissions-key", permissionsKeyRoutes)
+
 router.post(
   "/upload-image",
   checkToken,
   uploadImageGeneric.single("file"),
   uploadImageController.uploadImage
 );
-// Importante: Colocar o webhook antes dos middlewares JSON
-router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
 router.use(userRoutes)
 router.use(companyRoutes)
@@ -85,7 +86,6 @@ router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(paymentElementRoutes)
-router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
 router.use("/quickbooks-config", quickBooksConfigRoutes)
 router.use("/finance-dashboard", financeDashboard);

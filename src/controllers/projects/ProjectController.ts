@@ -13,6 +13,50 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
+function getDateRange(periodType: string) {
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date | undefined;
+
+  switch (periodType) {
+    case "thisYear":
+      startDate = new Date(now.getFullYear(), 0, 1);
+      break;
+
+    case "thisQuarter":
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+      break;
+
+    case "last3Months":
+      startDate = new Date();
+      startDate.setMonth(now.getMonth() - 3);
+      break;
+
+    case "lastMonth":
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+      break;
+
+    case "thisMonth":
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+
+    case "last30Days":
+      startDate = new Date();
+      startDate.setDate(now.getDate() - 30);
+      break;
+
+    case "allPeriod":
+      startDate = new Date(2020, 0, 1);
+      break;
+
+    default:
+      startDate = new Date(2020, 0, 1);
+  }
+
+  return { startDate, endDate };
+}
 
 export interface INewProject {
   seller_user_id: string;
@@ -83,11 +127,36 @@ export class ProjectController {
   }
 
   async getAllProjects(req: Request, res: Response) {
-    const { company_id, id_seller, status_project, page, search } = req.query;
+    const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
     const query: any = {};
 
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
+
+    const validPeriods = [
+      "thisYear",
+      "thisQuarter",
+      "last3Months",
+      "lastMonth",
+      "thisMonth",
+      "last30Days",
+      "allPeriod"
+    ];
+
+    if (!validPeriods.includes(period as string)) {
+      return res.status(400).json({
+        error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+      });
+    }
+
+    const { startDate, endDate } = getDateRange(period as string);
+
+    if (period !== "allPeriod") {
+      query.date_creation = {
+        gte: startDate,
+        ...(endDate && { lte: endDate })
+      };
+    }
 
     if (company_id) query.company_id = { equals: String(company_id) };
     if (id_seller) query.seller_user_id = { equals: id_seller };

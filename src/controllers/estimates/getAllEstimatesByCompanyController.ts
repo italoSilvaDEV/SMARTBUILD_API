@@ -2,16 +2,79 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
+function getDateRange(periodType: string) {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date | undefined;
+
+    switch (periodType) {
+        case "thisYear":
+            startDate = new Date(now.getFullYear(), 0, 1);
+            break;
+
+        case "thisQuarter":
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            break;
+
+        case "last3Months":
+            startDate = new Date();
+            startDate.setMonth(now.getMonth() - 3);
+            break;
+
+        case "lastMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+
+        case "thisMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+
+        case "last30Days":
+            startDate = new Date();
+            startDate.setDate(now.getDate() - 30);
+            break;
+
+        case "allPeriod":
+            startDate = new Date(2020, 0, 1);
+            break;
+
+        default:
+            startDate = new Date(2020, 0, 1);
+    }
+
+    return { startDate, endDate };
+}
+
 export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
         const {
             companyId
         } = req.params
 
+        const { period = "allPeriod" } = req.query;
+
         if (!companyId) {
             return res.status(400).json({
                 error: "Company ID is required"
             })
+        }
+
+        const validPeriods = [
+            "thisYear",
+            "thisQuarter",
+            "last3Months",
+            "lastMonth",
+            "thisMonth",
+            "last30Days",
+            "allPeriod"
+        ];
+
+        if (!validPeriods.includes(period as string)) {
+            return res.status(400).json({
+                error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+            });
         }
 
         const company = await prisma.company.findUnique({
@@ -26,12 +89,25 @@ export class GetAllEstimatesByCompanyController {
             })
         }
 
+        const { startDate, endDate } = getDateRange(period as string);
+
+        const dateFilter: any = {};
+        if (period !== "allPeriod") {
+            dateFilter.gte = startDate;
+            if (endDate) {
+                dateFilter.lte = endDate;
+            }
+        }
+
         try {
             const estimates = await prisma.estimate.findMany({
                 where: {
                     project: {
                         company_id: companyId,
                     },
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter
+                    })
                 },
                 select: {
                     id: true,
