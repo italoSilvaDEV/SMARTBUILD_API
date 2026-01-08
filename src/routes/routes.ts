@@ -9,7 +9,6 @@ import { subcontractorRoutes } from './subcontractor'
 import { serviceStageRoutes } from './serviceStagesRoutes'
 import { userAttendanceRoutes } from './userAttendanceRoutes'
 import { stripeRoutes } from './stripeRoutes'
-import { stripeWebHooksRoutes } from './stripeWebHooksRoutes'
 import { paymentElementRoutes } from './paymentElementRoutes'
 import { financeDashboard } from './financeDashboardRoutes'
 import { businessDashboard } from './businessDashboardRoutes'
@@ -38,7 +37,6 @@ import { checkToken } from '../middlewares/checkToken'
 import multer from 'multer'
 import uploadConfig from "../config/upload";
 import { UploadImageController } from '../controllers/projects/UploadImageController';
-import { quickbooksWebHooksRoutes } from './quickbooksWebhooksRoutes'
 import { timeCardsRouts } from './timeCardsRoutes'
 import { contractTermRoutes } from './contractTermRoutes'
 import { openAiRoutes } from './openAiRoutes'
@@ -75,8 +73,6 @@ router.post(
   uploadImageGeneric.single("file"),
   uploadImageController.uploadImage
 );
-// Importante: Colocar o webhook antes dos middlewares JSON
-router.use(stripeWebHooksRoutes); // 🟢 Webhook configurado aqui
 
 router.use(userRoutes)
 router.use(companyRoutes)
@@ -90,7 +86,6 @@ router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
 router.use(stripeRoutes)
 router.use(paymentElementRoutes)
-router.use(quickbooksWebHooksRoutes);
 router.use(quickbooksRoutes)
 router.use("/quickbooks-config", quickBooksConfigRoutes)
 router.use("/finance-dashboard", financeDashboard);

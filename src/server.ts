@@ -8,6 +8,8 @@ import { auditRoutes } from './routes/auditRoutes';
 import { setupConnectWebhook } from './config/stripeWebHookConnect';
 import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
 import { setupInvoiceAutoEmailJob } from './jobs/invoiceAutoEmailJob';
+import { StripeWebHooksController } from './controllers/stripe/WebHookController';
+import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
 const cors = require('cors');
 
 
@@ -25,13 +27,26 @@ app.use(cors({
 
 app.use('/public', express.static(path.join(__dirname, '../public')));
 
+// Instanciar controllers de webhook do Stripe
+const stripeWebhookController = new StripeWebHooksController();
+const stripeConnectWebhookController = new StripeWebHookControllerConnect();
+
 //  Webhooks devem vir ANTES do express.json() para não interferir na verificação da assinatura
-app.use("/webhook", express.raw({ type: 'application/json' }), router);
-app.use("/webhook/connect", express.raw({ type: 'application/json' }), router);
+//  Stripe webhooks: aplicar express.raw apenas para essas rotas específicas
+app.post('/webhook', 
+  express.raw({ type: 'application/json' }), 
+  (req, res) => stripeWebhookController.handleWebhook(req, res)
+);
 
-// Para o QBO, nesse caso, você PRECISA de um app.use raw genérico cobrindo /webhooks
-app.use("/webhooks", express.raw({ type: "*/*" }), router);
+app.post('/webhook/connect', 
+  express.raw({ type: 'application/json' }), 
+  (req, res) => stripeConnectWebhookController.handleConnectWebhook(req, res)
+);
 
+//  QuickBooks webhooks: aplicar express.raw para /webhooks/*
+app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
+
+//  DEPOIS registrar o express.json para as outras rotas
 app.use(express.json({ limit: '25mb' }));
 app.use(router)
 
