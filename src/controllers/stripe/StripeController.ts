@@ -1286,11 +1286,13 @@ export class StripeController {
 
             let startDate: Date;
             let endDate: Date | undefined;
+            let isCustomRange = false;
 
-            // Se startDate e endDate forem fornecidos, eles têm prioridade
+            // Se startDate e endDate forem fornecidos, eles têm prioridade total
             if (queryStartDate && queryEndDate) {
                 startDate = dayjs(queryStartDate as string).startOf('day').toDate();
                 endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+                isCustomRange = true;
             } else {
                 if (!validPeriods.includes(period as string)) {
                     return res.status(400).json({
@@ -1303,7 +1305,7 @@ export class StripeController {
             }
 
             const dateFilter: any = {};
-            if (queryStartDate && queryEndDate) {
+            if (isCustomRange) {
                 dateFilter.gte = startDate;
                 dateFilter.lte = endDate;
             } else if (period !== "allPeriod") {
