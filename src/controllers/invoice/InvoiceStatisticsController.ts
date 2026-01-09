@@ -52,7 +52,7 @@ export class InvoiceStatisticsController {
     const { companyId } = req.params;
 
     try {
-      const { period = "thisYear" } = req.query;
+      const { period = "thisYear", startDate: queryStartDate, endDate: queryEndDate } = req.query;
 
       const validPeriods = [
         "thisYear",
@@ -64,16 +64,29 @@ export class InvoiceStatisticsController {
         "allPeriod"
       ];
 
-      if (!validPeriods.includes(period as string)) {
-        return res.status(400).json({
-          error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
-        });
+      let startDate: Date;
+      let endDate: Date | undefined;
+
+      // Se startDate e endDate forem fornecidos, eles têm prioridade
+      if (queryStartDate && queryEndDate) {
+        startDate = dayjs(queryStartDate as string).startOf('day').toDate();
+        endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+      } else {
+        if (!validPeriods.includes(period as string)) {
+          return res.status(400).json({
+            error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+          });
+        }
+        const range = getDateRange(period as string);
+        startDate = range.startDate;
+        endDate = range.endDate;
       }
 
-      const { startDate, endDate } = getDateRange(period as string);
-
       const dateFilter: any = {};
-      if (period !== "allPeriod") {
+      if (queryStartDate && queryEndDate) {
+        dateFilter.gte = startDate;
+        dateFilter.lte = endDate;
+      } else if (period !== "allPeriod") {
         dateFilter.gte = startDate;
         if (endDate) {
           dateFilter.lte = endDate;
