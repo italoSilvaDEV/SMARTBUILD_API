@@ -2,7 +2,10 @@ export const permissionKeyApprovalEmail = (
     requesterName: string,
     requesterEmail: string,
     keyId: string,
-    secret: string
+    secret: string,
+    headerLogo: string,
+    footerLogo: string,
+    instagramIcon: string
 ) => {
     const approveUrl = `${process.env.URL_API}/permissions-key/${keyId}/approve?secret=${secret}`;
     const rejectUrl = `${process.env.URL_API}/permissions-key/${keyId}/reject?secret=${secret}`;
@@ -47,7 +50,7 @@ export const permissionKeyApprovalEmail = (
                     <tr>
                         <td style="background-color:#121212;padding:32px 32px;text-align:left;">
                             <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
+                                <img src="${headerLogo}" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
                             </a>
                         </td>
                     </tr>
@@ -134,12 +137,12 @@ export const permissionKeyApprovalEmail = (
                                 <tr>
                                     <td align="left" valign="middle" style="vertical-align:middle;">
                                         <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                            <img src="https://i.ibb.co/jPVYCxJr/logo-footer.png" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
+                                            <img src="${footerLogo}" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
                                         </a>
                                     </td>
                                     <td align="right" valign="middle" style="vertical-align:middle;">
                                         <a href="https://www.instagram.com/smartbuildapp/" style="text-decoration:none;display:inline-block;margin-right:16px;">
-                                            <img src="https://i.ibb.co/Swk8pH06/instragram-icon.png" alt="Instagram" style="width:20px;height:20px;display:block;">
+                                            <img src="${instagramIcon}" alt="Instagram" style="width:20px;height:20px;display:block;">
                                         </a>
                                         <a href="https://www.linkedin.com/company/smartbuildapp/" style="text-decoration:none;display:inline-block;">
                                             <svg width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">

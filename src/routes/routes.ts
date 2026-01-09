@@ -64,7 +64,6 @@ router.get('/config', async (req, res) => {
 // Rota pública para versão do app (deve estar antes das rotas protegidas)
 router.use(appVersionRoutes);
 
-// Rotas de chaves de permissão (devem estar antes de rotas genéricas que podem usar checkToken)
 router.use("/permissions-key", permissionsKeyRoutes)
 
 router.post(

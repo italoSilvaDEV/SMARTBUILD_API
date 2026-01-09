@@ -4,6 +4,7 @@ import crypto from "crypto";
 import bcrypt from "bcrypt";
 import nodemailer from "nodemailer";
 import { permissionKeyApprovalEmail } from "../../templateEmail/permissionKeyApproval";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 interface CreatePayload {
     name: string
@@ -73,6 +74,9 @@ export class CreateNewKeyController {
             });
 
             const ownerEmail = process.env.OWNER_EMAIL;
+            const smartbuildHeaderLogo = await getPresignedUrl("smartbuild-logo.png");
+            const smartbuildFooterLogo = await getPresignedUrl("smartbuild-footer-logo.png");
+            const instagramIcon = await getPresignedUrl("instagram-logo.png");
 
             if (ownerEmail) {
                 try {
@@ -98,7 +102,10 @@ export class CreateNewKeyController {
                             userName,
                             userEmail,
                             newKeyRecord.id,
-                            process.env.KEY_RESPONSE_EMAIL || ""
+                            process.env.KEY_RESPONSE_EMAIL || "",
+                            smartbuildHeaderLogo,
+                            smartbuildFooterLogo,
+                            instagramIcon
                         ),
                         text: `A new permission key has been requested by ${userName} (${userEmail}). Please approve or reject at the dashboard.`
                     };

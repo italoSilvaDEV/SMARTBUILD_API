@@ -52,7 +52,7 @@ export class InvoiceStatisticsController {
     const { companyId } = req.params;
 
     try {
-      const { period = "thisYear" } = req.query;
+      const { period = "thisYear", startDate: queryStartDate, endDate: queryEndDate } = req.query;
 
       const validPeriods = [
         "thisYear",
@@ -64,36 +64,65 @@ export class InvoiceStatisticsController {
         "allPeriod"
       ];
 
-      if (!validPeriods.includes(period as string)) {
-        return res.status(400).json({
-          error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
-        });
+      let startDate: Date;
+      let endDate: Date | undefined;
+      let isCustomRange = false;
+
+      // Se startDate e endDate forem fornecidos, eles têm prioridade total
+      if (queryStartDate && queryEndDate) {
+        startDate = dayjs(queryStartDate as string).startOf('day').toDate();
+        endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+        isCustomRange = true;
+      } else {
+        if (!validPeriods.includes(period as string)) {
+          return res.status(400).json({
+            error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+          });
+        }
+        const range = getDateRange(period as string);
+        startDate = range.startDate;
+        endDate = range.endDate;
       }
 
-      const { startDate, endDate } = getDateRange(period as string);
-
       const dateFilter: any = {};
-      if (period !== "allPeriod") {
+      if (isCustomRange) {
+        dateFilter.gte = startDate;
+        dateFilter.lte = endDate;
+      } else if (period !== "allPeriod") {
         dateFilter.gte = startDate;
         if (endDate) {
           dateFilter.lte = endDate;
         }
       }
 
-      const currentDate = new Date();
-      const currentMonth = currentDate.getMonth();
-      const currentYear = currentDate.getFullYear();
-      
-      const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-      const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-      
-      // Início e fim do mês atual
-      const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
-      const endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0);
-      
-      // Início e fim do mês anterior
-      const startOfLastMonth = new Date(lastMonthYear, lastMonth, 1);
-      const endOfLastMonth = new Date(lastMonthYear, lastMonth + 1, 0);
+      // Definição dos intervalos para comparação (Diferença %)
+      let currentPeriodStart: Date;
+      let currentPeriodEnd: Date;
+      let previousPeriodStart: Date;
+      let previousPeriodEnd: Date;
+
+      if (isCustomRange) {
+        // Se for customizado, compara com o período anterior de mesma duração
+        currentPeriodStart = startDate;
+        currentPeriodEnd = endDate!;
+        const durationInMs = dayjs(currentPeriodEnd).diff(dayjs(currentPeriodStart));
+        previousPeriodStart = dayjs(currentPeriodStart).subtract(durationInMs + 1, 'ms').toDate();
+        previousPeriodEnd = dayjs(currentPeriodStart).subtract(1, 'ms').toDate();
+      } else {
+        // Lógica padrão de mês atual vs mês anterior
+        const currentDate = new Date();
+        const currentMonth = currentDate.getMonth();
+        const currentYear = currentDate.getFullYear();
+        
+        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+        const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        
+        currentPeriodStart = new Date(currentYear, currentMonth, 1);
+        currentPeriodEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+        
+        previousPeriodStart = new Date(lastMonthYear, lastMonth, 1);
+        previousPeriodEnd = new Date(lastMonthYear, lastMonth + 1, 0, 23, 59, 59);
+      }
 
       const allInvoices = await prisma.invoice.findMany({
         where: {
@@ -109,8 +138,8 @@ export class InvoiceStatisticsController {
         }
       });
 
-      // Consulta para faturas do mês atual (não canceladas)
-      const currentMonthInvoices = await prisma.invoice.findMany({
+      // Consulta para faturas do período atual (para comparação)
+      const currentPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
           status: { notIn: ['void'] },
@@ -119,14 +148,14 @@ export class InvoiceStatisticsController {
             { cancel_invoice_edit: null }
           ],
           createdAt: {
-            gte: startOfCurrentMonth,
-            lte: endOfCurrentMonth
+            gte: currentPeriodStart,
+            lte: currentPeriodEnd
           }
         }
       });
 
-      // Consulta para faturas do mês anterior (não canceladas)
-      const lastMonthInvoices = await prisma.invoice.findMany({
+      // Consulta para faturas do período anterior (para comparação)
+      const lastPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
           status: { notIn: ['void'] },
@@ -135,13 +164,13 @@ export class InvoiceStatisticsController {
             { cancel_invoice_edit: null }
           ],
           createdAt: {
-            gte: startOfLastMonth,
-            lte: endOfLastMonth
+            gte: previousPeriodStart,
+            lte: previousPeriodEnd
           }
         }
       });
 
-      // Calcular totais de todas as faturas
+      // Calcular totais das faturas filtradas (dateFilter)
       const totalInvoices = allInvoices.reduce((sum, invoice) => 
         sum + Number(invoice.totalAmount), 0);
       
@@ -153,53 +182,49 @@ export class InvoiceStatisticsController {
         .filter(invoice => ['open', 'draft'].includes(invoice.status))
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
 
-      // Calcular totais do mês atual para comparação
-      const currentMonthTotalInvoices = currentMonthInvoices.reduce((sum, invoice) => 
+      // Calcular totais do período atual para comparação
+      const currentPeriodTotalInvoices = currentPeriodInvoices.reduce((sum, invoice) => 
         sum + Number(invoice.totalAmount), 0);
       
-      const currentMonthTotalInvoicePaid = currentMonthInvoices
+      const currentPeriodTotalInvoicePaid = currentPeriodInvoices
         .filter(invoice => invoice.status === 'paid')
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
       
-      const currentMonthTotalInvoicePending = currentMonthInvoices
+      const currentPeriodTotalInvoicePending = currentPeriodInvoices
         .filter(invoice => ['open', 'draft'].includes(invoice.status))
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
 
-      // Calcular totais do mês anterior
-      const lastMonthTotalInvoices = lastMonthInvoices.reduce((sum, invoice) => 
+      // Calcular totais do período anterior
+      const lastPeriodTotalInvoices = lastPeriodInvoices.reduce((sum, invoice) => 
         sum + Number(invoice.totalAmount), 0);
       
-      const lastMonthTotalInvoicePaid = lastMonthInvoices
+      const lastPeriodTotalInvoicePaid = lastPeriodInvoices
         .filter(invoice => invoice.status === 'paid')
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
       
-      const lastMonthTotalInvoicePending = lastMonthInvoices
+      const lastPeriodTotalInvoicePending = lastPeriodInvoices
         .filter(invoice => ['open', 'draft'].includes(invoice.status))
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
 
       // Calcular diferenças percentuais
       const calculatePercentageDifference = (current: number, previous: number): number => {
         if (previous === 0) {
-          return current > 0 ? 100 : 0; // Se não havia nada antes e agora tem, crescimento de 100%
+          return current > 0 ? 100 : 0;
         }
-        if (current === 0 && previous > 0) {
-          return -100; // Se havia algo antes e agora não tem nada, queda de 100%
-        }
-        // Fórmula: (atual - anterior) / anterior * 100
         return Math.round(((current - previous) / previous) * 100);
       };
 
-      // Calcular diferenças usando os totais do mês atual e anterior
+      // Calcular diferenças usando os totais do período atual e anterior
       const differenceLastMonthTotalInvoice = calculatePercentageDifference(
-        currentMonthTotalInvoices, lastMonthTotalInvoices
+        currentPeriodTotalInvoices, lastPeriodTotalInvoices
       );
       
       const differencePaidLastMonthTotalInvoice = calculatePercentageDifference(
-        currentMonthTotalInvoicePaid, lastMonthTotalInvoicePaid
+        currentPeriodTotalInvoicePaid, lastPeriodTotalInvoicePaid
       );
       
       const differencePendingLastMonthTotalInvoice = calculatePercentageDifference(
-        currentMonthTotalInvoicePending, lastMonthTotalInvoicePending
+        currentPeriodTotalInvoicePending, lastPeriodTotalInvoicePending
       );
 
       // Calcular média de valor das faturas
@@ -282,16 +307,16 @@ export class InvoiceStatisticsController {
           revenue: Number(revenue.toFixed(2))
         }));
 
-      console.log("Mês atual - Total de faturas:", currentMonthTotalInvoices);
-      console.log("Mês anterior - Total de faturas:", lastMonthTotalInvoices);
+      console.log("Período atual - Total de faturas:", currentPeriodTotalInvoices);
+      console.log("Período anterior - Total de faturas:", lastPeriodTotalInvoices);
       console.log("Diferença percentual:", differenceLastMonthTotalInvoice);
 
-      console.log("Mês atual - Total pago:", currentMonthTotalInvoicePaid);
-      console.log("Mês anterior - Total pago:", lastMonthTotalInvoicePaid);
+      console.log("Período atual - Total pago:", currentPeriodTotalInvoicePaid);
+      console.log("Período anterior - Total pago:", lastPeriodTotalInvoicePaid);
       console.log("Diferença percentual pago:", differencePaidLastMonthTotalInvoice);
 
-      console.log("Mês atual - Total pendente:", currentMonthTotalInvoicePending);
-      console.log("Mês anterior - Total pendente:", lastMonthTotalInvoicePending);
+      console.log("Período atual - Total pendente:", currentPeriodTotalInvoicePending);
+      console.log("Período anterior - Total pendente:", lastPeriodTotalInvoicePending);
       console.log("Diferença percentual pendente:", differencePendingLastMonthTotalInvoice);
 
       return res.status(200).json({
