@@ -995,6 +995,9 @@ model Invoice {
 
   type_value          String? // "percentage" ou "value"
   cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
+  
+  // NOVO: Identifica se o invoice foi criado via fluxo standalone (Custom Invoice sem projeto/estimate prévio)
+  isStandaloneInvoice Boolean? @default(false)
 
   percentageCoefficient Decimal?
   description           String?  @db.Text

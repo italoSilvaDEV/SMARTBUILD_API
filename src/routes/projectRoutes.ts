@@ -35,6 +35,7 @@ const uploadServiceProject = multer(
 const uploadAttachments = multer(uploadConfig2.uploadUtf8("./public/tmp/estimate-attachments"));
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
+projectRoutes.patch("/project/:id", checkToken, projectController.updateProject.bind(projectController));
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
 projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
 projectRoutes.patch("/project/update/start_date", checkToken, projectController.startDateProject);

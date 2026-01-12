@@ -56,8 +56,9 @@ export class QuickBooksInvoiceController {
     calledFromStripe?: boolean; // Novo parâmetro para identificar origem
     multi_emails?: string; // Emails adicionais para envio
     date_creation?: string; // Data customizada de criação
+    isStandaloneInvoice?: boolean; // Se é um invoice criado sem projeto pré-existente
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice } = params;
 
     try {
       // Buscar o projeto
@@ -580,6 +581,7 @@ export class QuickBooksInvoiceController {
               type_value: type_value,
               type_invoicebase: type_invoicebase as "project" | "estimate" | null,
               multi_emails: multi_emails || project.client?.email,
+              isStandaloneInvoice: isStandaloneInvoice || false,
               createdAt: date_creation ? new Date(date_creation) : new Date(),
 
               InvoiceItems: {
@@ -1170,7 +1172,7 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation } = req.body;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
 
     try {
       console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
@@ -1246,7 +1248,8 @@ export class QuickBooksInvoiceController {
         totalAmountTarget: calculatedTotalAmount,
         calledFromStripe: false, // Criar como invoice completo (banco + QB)
         multi_emails,
-        date_creation
+        date_creation,
+        isStandaloneInvoice
       });
 
       if (result?.invoice) {

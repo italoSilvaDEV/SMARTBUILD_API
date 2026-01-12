@@ -119,7 +119,8 @@ export class CustomInvoiceController {
       estimateId,
       services,
       multi_emails,
-      date_creation
+      date_creation,
+      isStandaloneInvoice
     } = req.body
 
     try {
@@ -210,6 +211,7 @@ export class CustomInvoiceController {
             type_invoicebase: type_invoicebase,
             estimateId: estimateId,
             multi_emails: multi_emails,
+            isStandaloneInvoice: isStandaloneInvoice || false,
             createdAt: date_creation ? new Date(date_creation) : new Date()
           }
         });
