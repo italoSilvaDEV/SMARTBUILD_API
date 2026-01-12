@@ -60,8 +60,8 @@ function getDateRange(periodType: string) {
 
 export interface INewProject {
   seller_user_id: string;
-  price: number;
-  status_project: string;
+  price?: number;
+  status_project?: string;
   company_id: string;
   client: IClientData;
   location?: string;
@@ -71,14 +71,20 @@ export interface INewProject {
   start_date?: string;
   deadline?: string;
   work_context_id?: string;
+  serviceProject?: Array<{
+    name: string;
+    description: string;
+    hours: number;
+    price: number;
+  }>;
 }
 
 export interface IClientData {
   name: string;
   email: string;
   phone: string;
-  birth_date: string;
-  start_date: string;
+  birth_date?: string;
+  start_date?: string;
 }
 
 export interface IServicesData {
@@ -1215,6 +1221,7 @@ export class ProjectController {
 
   async createProject(req: Request, res: Response) {
     const data: INewProject = req.body;
+    const { skipLocationValidation } = req.body;
 
     try {
       if (!data.seller_user_id) {
@@ -1229,17 +1236,21 @@ export class ProjectController {
       if (!data.client.name || !data.client.email) {
         return res.status(400).json({ error: "client name and email are required" });
       }
-      if (!data.location) {
-        return res.status(400).json({ error: "location is required" });
-      }
-      if (!data.lat) {
-        return res.status(400).json({ error: "lat is required" });
-      }
-      if (!data.log) {
-        return res.status(400).json({ error: "log is required" });
-      }
-      if (!data.radius) {
-        return res.status(400).json({ error: "radius is required" });
+      
+      // Validações de localização apenas se não for fluxo standalone
+      if (!skipLocationValidation) {
+        if (!data.location) {
+          return res.status(400).json({ error: "location is required" });
+        }
+        if (!data.lat) {
+          return res.status(400).json({ error: "lat is required" });
+        }
+        if (!data.log) {
+          return res.status(400).json({ error: "log is required" });
+        }
+        if (!data.radius) {
+          return res.status(400).json({ error: "radius is required" });
+        }
       }
 
       // Set default values for optional fields
@@ -1257,13 +1268,18 @@ export class ProjectController {
 
       if (client) {
         // Cliente já existe → atualizar apenas os dados básicos
+        const updateData: any = {
+          name: data.client.name,
+          phone: data.client.phone,
+        };
+        
+        if (data.client.birth_date !== undefined) {
+          updateData.birth_date = data.client.birth_date;
+        }
+        
         client = await prisma.client.update({
           where: { id: client.id },
-          data: {
-            name: data.client.name,
-            phone: data.client.phone,
-            birth_date: data.client.birth_date,
-          },
+          data: updateData,
         });
       } else {
         //  Cliente novo → criar incluindo lat, log, radius
@@ -1272,7 +1288,7 @@ export class ProjectController {
             name: data.client.name,
             email: data.client.email,
             phone: data.client.phone,
-            birth_date: data.client.birth_date,
+            birth_date: data.client.birth_date || null,
             company_id: data.company_id,
           },
         });
@@ -1328,14 +1344,32 @@ export class ProjectController {
           deadline: data.deadline,
           company_id: data.company_id,
           contract_number: nextNumber,
-          location: data.location,
-          lat: data.lat,
-          log: data.log,
+          location: data.location || "",
+          lat: data.lat || "",
+          log: data.log || "",
           radius: data.radius ? Number(data.radius) : null,
           balanceDue: price,
           workContextId: data.work_context_id || null,
         },
       });
+
+      // Criar serviceProjects se fornecidos (fluxo standalone invoice)
+      if (data.serviceProject && data.serviceProject.length > 0) {
+        const serviceProjectPromises = data.serviceProject.map(service => 
+          prisma.serviceProject.create({
+            data: {
+              projectId: project.id,
+              name: service.name,
+              description: service.description,
+              hours: service.hours,
+              price: service.price,
+              company_id: data.company_id,
+            },
+          })
+        );
+        
+        await Promise.all(serviceProjectPromises);
+      }
 
       return res.status(201).json(project);
     } catch (error) {

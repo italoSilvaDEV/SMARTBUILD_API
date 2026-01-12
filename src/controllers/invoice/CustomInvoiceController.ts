@@ -1818,6 +1818,53 @@ export class CustomInvoiceController {
     }
   }
 
+  async generateGlobalNumber(req: Request, res: Response) {
+    const { companyId } = req.params;
+
+    try {
+      // Verificar se a empresa existe
+      const company = await prisma.company.findUnique({
+        where: { id: companyId }
+      });
+
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Buscar todos os invoices com externalInvoiceId numérico para a empresa
+      const allInvoices = await prisma.invoice.findMany({
+        where: {
+          companyId: companyId,
+          externalInvoiceId: { not: null }
+        },
+        select: {
+          externalInvoiceId: true
+        }
+      });
+
+      // Extrair apenas os números válidos e encontrar o maior
+      const numericIds = allInvoices
+        .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+        .filter(num => !isNaN(num) && num > 0);
+
+      // Definir o número do invoice como o próximo número após o maior encontrado, ou 1000 se não houver
+      let nextInvoiceNumber = 1000;
+      if (numericIds.length > 0) {
+        const maxNumber = Math.max(...numericIds);
+        nextInvoiceNumber = maxNumber + 1;
+      }
+
+      return res.status(200).json({
+        number: nextInvoiceNumber.toString(),
+        companyId: companyId,
+        invoiceType: "custom"
+      });
+    } catch (error: any) {
+      console.error("Error generating global invoice number:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
   async deleteInvoice(req: Request, res: Response) {
     const { id } = req.params;
 
