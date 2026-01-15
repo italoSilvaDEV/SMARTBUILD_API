@@ -13,6 +13,12 @@ import { CompleteJobController } from "../controllers/jobSchedule/completeJobCon
 import { CreateCustomServiceController } from "../controllers/jobSchedule/CustomServices/createCustomServiceController";
 import { GetCustomJobsController } from "../controllers/jobSchedule/CustomServices/getCustomJobsController";
 import { ResendEmailController } from "../controllers/jobSchedule/resendEmailController";
+import { UpdateJobProjectController } from "../controllers/jobSchedule/updateJobProjectController";
+import { DeleteJobProjectController } from "../controllers/jobSchedule/deleteJobProjectController";
+import { UpdateSubserviceController } from "../controllers/jobSchedule/SubServices/updateSubserviceController";
+import { DeleteSubserviceController } from "../controllers/jobSchedule/SubServices/deleteSubserviceController";
+import { UpdateCustomServiceController } from "../controllers/jobSchedule/CustomServices/updateCustomServiceController";
+import { DeleteCustomServiceController } from "../controllers/jobSchedule/CustomServices/deleteCustomServiceController";
 const jobScheduleRoutes = Router();
 
 const getJobsByProjectController = new GetJobsByProjectController();
@@ -28,11 +34,28 @@ const completeJobController = new CompleteJobController();
 const createCustomServiceController = new CreateCustomServiceController();
 const getCustomJobsController = new GetCustomJobsController();
 const resendEmailController = new ResendEmailController();
+const updateJobProjectController = new UpdateJobProjectController();
+const deleteJobProjectController = new DeleteJobProjectController();
+const updateSubserviceController = new UpdateSubserviceController();
+const deleteSubserviceController = new DeleteSubserviceController();
+const updateCustomServiceController = new UpdateCustomServiceController();
+const deleteCustomServiceController = new DeleteCustomServiceController();
 
 jobScheduleRoutes.get("/jobs/details/:projectId", checkToken, getJobsByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/users/:projectId/:companyId", checkToken, getUsersByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/services/:projectId/:companyId", checkToken, getServicesByProjectController.handle)
 jobScheduleRoutes.post("/jobs/details/create", checkToken, createJobProjectController.handle)
+
+// Edit and Delete Routes
+jobScheduleRoutes.put("/jobs/details/update", checkToken, updateJobProjectController.handle)
+jobScheduleRoutes.delete("/jobs/details/delete/:serviceProjectId/:companyId", checkToken, deleteJobProjectController.handle)
+
+jobScheduleRoutes.put("/jobs/details/subservice/update", checkToken, updateSubserviceController.handle)
+jobScheduleRoutes.delete("/jobs/details/subservice/delete/:subserviceId/:companyId", checkToken, deleteSubserviceController.handle)
+
+jobScheduleRoutes.put("/jobs/details/customservice/update", checkToken, updateCustomServiceController.handle)
+jobScheduleRoutes.delete("/jobs/details/customservice/delete/:customServiceId/:companyId", checkToken, deleteCustomServiceController.handle)
+
 jobScheduleRoutes.post("/jobs/details/subservice", checkToken, createSubserviceController.handle)
 jobScheduleRoutes.get("/jobs/details/subcontractors/:companyId", checkToken, getSubContractorsController.handle)
 jobScheduleRoutes.post("/jobs/details/complete", checkToken, completeJobController.handle)
