@@ -33,6 +33,9 @@ export class PdfInvoicePaidController {
     }
 
     async create(req: Request, res: Response) {
+        console.log('[PdfInvoicePaid] CREATE - Request body:', req.body);
+        console.log('[PdfInvoicePaid] CREATE - File:', req.file ? 'Present' : 'Missing');
+        
         const {
             invoiceId,
         } = req.body
@@ -40,12 +43,14 @@ export class PdfInvoicePaidController {
         const file = req.file
 
         if (!invoiceId || !file) {
+            console.log('[PdfInvoicePaid] CREATE - Missing required fields:', { invoiceId: !!invoiceId, file: !!file });
             return res.status(400).json({
                 error: "Invoice ID and file are required"
             })
         }
 
         try {
+            console.log('[PdfInvoicePaid] CREATE - Finding invoice:', invoiceId);
             const invoice = await prisma.invoice.findUnique({
                 where: {
                     id: invoiceId
@@ -56,38 +61,63 @@ export class PdfInvoicePaidController {
             })
 
             if (!invoice) {
+                console.log('[PdfInvoicePaid] CREATE - Invoice not found:', invoiceId);
                 return res.status(404).json({
                     error: "Invoice not found"
                 })
             }
 
+            console.log('[PdfInvoicePaid] CREATE - Checking for existing PDF');
             const existingPdf = await prisma.pdfInvoicePaid.findUnique({
                 where: {
                     invoiceId: invoiceId
                 }
             })
 
-            if (existingPdf && existingPdf.uri) {
-                await deleteFileFromS3(existingPdf.uri);
+            console.log('[PdfInvoicePaid] CREATE - Uploading file to S3');
+            const newFileName = await uploadFileToS3_2(file, '');
+            console.log('[PdfInvoicePaid] CREATE - File uploaded:', newFileName);
+
+            let newPdf;
+            if (existingPdf) {
+                console.log('[PdfInvoicePaid] CREATE - Existing PDF found, updating instead');
+                if (existingPdf.uri) {
+                    console.log('[PdfInvoicePaid] CREATE - Deleting old file from S3:', existingPdf.uri);
+                    await deleteFileFromS3(existingPdf.uri);
+                }
+                
+                console.log('[PdfInvoicePaid] CREATE - Updating PDF record in database');
+                newPdf = await prisma.pdfInvoicePaid.update({
+                    where: {
+                        id: existingPdf.id
+                    },
+                    data: {
+                        original_file_name: file.originalname,
+                        uri: newFileName
+                    },
+                });
+            } else {
+                console.log('[PdfInvoicePaid] CREATE - Creating new PDF record in database');
+                newPdf = await prisma.pdfInvoicePaid.create({
+                    data: {
+                        original_file_name: file.originalname,
+                        uri: newFileName,
+                        invoiceId: invoiceId
+                    },
+                });
             }
 
-            const newFileName = await uploadFileToS3_2(file, '');
-
-            const newPdf = await prisma.pdfInvoicePaid.create({
-                data: {
-                    original_file_name: file.originalname,
-                    uri: newFileName,
-                    invoiceId: invoiceId
-                },
-            })
-
+            console.log('[PdfInvoicePaid] CREATE - Success:', newPdf.id);
             return res.status(200).json({
                 message: "PDF created successfully",
                 data: newPdf
             })
         } catch (error) {
+            console.error('[PdfInvoicePaid] CREATE - Error:', error);
+            console.error('[PdfInvoicePaid] CREATE - Error stack:', error instanceof Error ? error.stack : 'No stack trace');
             return res.status(500).json({
-                error: "Internal server error"
+                error: "Internal server error",
+                details: error instanceof Error ? error.message : 'Unknown error'
             })
         }
     }
