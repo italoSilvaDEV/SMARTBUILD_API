@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
-import { jobScheduleGlobalTemplate, ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../../utils/sendEmail";
+import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 
 interface UserInput {
     id: string;
