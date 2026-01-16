@@ -23,7 +23,9 @@ export class ResendEmailController {
                         select: {
                             location: true,
                             contract_number: true,
-                            company_id: true
+                            company_id: true,
+                            lat: true, // Adicionado
+                            log: true  // Adicionado
                         }
                     }
                 }
@@ -118,7 +120,9 @@ export class ResendEmailController {
                                 select: {
                                     location: true,
                                     contract_number: true,
-                                    company_id: true
+                                    company_id: true,
+                                    lat: true, // Adicionado
+                                    log: true  // Adicionado
                                 }
                             }
                         }
@@ -129,7 +133,9 @@ export class ResendEmailController {
                                 select: {
                                     location: true,
                                     contract_number: true,
-                                    company_id: true
+                                    company_id: true,
+                                    lat: true, // Adicionado
+                                    log: true  // Adicionado
                                 }
                             }
                         }
@@ -227,7 +233,9 @@ export class ResendEmailController {
                         select: {
                             location: true,
                             contract_number: true,
-                            company_id: true
+                            company_id: true,
+                            lat: true, // Adicionado
+                            log: true  // Adicionado
                         }
                     }
                 }

@@ -56,6 +56,8 @@ export class CreateJobCompanyController {
                     contract_number: true,
                     deadline: true,
                     location: true,
+                    lat: true, // Adicionado
+                    log: true, // Adicionado
                     workContext: {
                         select: {
                             Name: true,
@@ -103,6 +105,14 @@ export class CreateJobCompanyController {
                     const clientEmail = project.workContext?.Email || project.client?.email
 
                     if (clientEmail && clientName) {
+                        const projectLocation = project.location || "Not specified";
+                        const latitude = project.lat;
+                        const longitude = project.log;
+
+                        const googleMapsLink = (latitude && longitude)
+                            ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
+
                         const formatSGDate = (date?: string | Date) => {
                             if (!date) return 'Not set';
                             return new Date(date).toLocaleDateString('en-US', {
@@ -119,7 +129,8 @@ export class CreateJobCompanyController {
                         const commonDynamicData = {
                             projectName: "General Project Schedule",
                             contractNumber: project.contract_number || "N/A",
-                            location: project.location || "Not specified",
+                            location: projectLocation,
+                            googleMapsLink: googleMapsLink, // Adicionado
                             companyName: company.name || "",
                             startDateFormatted: formatSGDate(startDate),
                             deadlineFormatted: formatSGDate(deadline),
