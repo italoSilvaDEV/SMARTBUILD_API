@@ -129,29 +129,23 @@ export class UserServiceProjectController {
       const employees = await prisma.user.findMany({
         where: {
           AND: [
-            {
-              office: {
-                OR: [
-                  {
-                    name: "Employee"
-                  },
-                  {
-                    name: "Worker"
-                  }
-                ]
-              }
-            },
             isMultiCompany ? {
               companies: {
                 some: {
                   companyId: {
                     equals: id_company
+                  },
+                  office: {
+                    name: "Worker"
                   }
                 }
               }
             } : {
               company_id: {
                 equals: id_company
+              },
+              office: {
+                name: "Worker"
               }
             }
           ]
