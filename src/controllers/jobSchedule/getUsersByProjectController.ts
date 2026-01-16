@@ -67,6 +67,8 @@ export class GetUsersByProjectController {
                 }
             })
 
+            console.log(users.length)
+
             const usersFormatted = await Promise.all(users.map(async (user) => {
                 const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null
 
