@@ -45,7 +45,7 @@ export const permissionKeyRevokeRequestEmail = (
                     <tr>
                         <td style="background-color:#121212;padding:32px 32px;text-align:left;">
                             <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
+                                <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/smart-header-logo.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
                             </a>
                         </td>
                     </tr>
@@ -106,17 +106,12 @@ export const permissionKeyRevokeRequestEmail = (
                                 <tr>
                                     <td align="left" valign="middle" style="vertical-align:middle;">
                                         <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                            <img src="https://i.ibb.co/jPVYCxJr/logo-footer.png" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
+                                            <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/smart-footer-logo.png" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
                                         </a>
                                     </td>
                                     <td align="right" valign="middle" style="vertical-align:middle;">
                                         <a href="https://www.instagram.com/smartbuildapp/" style="text-decoration:none;display:inline-block;margin-right:16px;">
-                                            <img src="https://i.ibb.co/Swk8pH06/instragram-icon.png" alt="Instagram" style="width:20px;height:20px;display:block;">
-                                        </a>
-                                        <a href="https://www.linkedin.com/company/smartbuildapp/" style="text-decoration:none;display:inline-block;">
-                                            <svg width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M4.93329 5.83333C6.21996 5.83333 7.26663 4.78667 7.26663 3.5C7.26663 2.21333 6.21996 1.16667 4.93329 1.16667C3.64663 1.16667 2.59996 2.21333 2.59996 3.5C2.59996 4.78667 3.64663 5.83333 4.93329 5.83333ZM4.93329 5.83333V18.8333M10.7666 9.33333V18.8333M10.7666 9.33333C10.7666 7.58333 12.5166 6.41667 14.2666 6.41667C16.0166 6.41667 18.35 7.58333 18.35 10.5V18.8333M10.7666 9.33333V6.41667" stroke="#595959" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
+                                            <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/instagram.png" alt="Instagram" style="width:20px;height:20px;display:block;">
                                         </a>
                                     </td>
                                 </tr>

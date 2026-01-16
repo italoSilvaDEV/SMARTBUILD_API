@@ -54,6 +54,14 @@ export class GetCustomJobsController {
                     start_date: true,
                     deadline: true,
                     description: true,
+                    project: {
+                        select: {
+                            id: true,
+                            workContext: { select: { Name: true, Email: true, location: true } },
+                            client: { select: { name: true, email: true, location: true } },
+                            location: true,
+                        }
+                    },
                     scheduleCompleted: true,
                     userServiceProjects: {
                         select: {
@@ -62,6 +70,7 @@ export class GetCustomJobsController {
                                     id: true,
                                     name: true,
                                     avatar: true,
+                                    email: true,
                                     hourly_price: true,
                                     isOverTime: true,
                                     profession: true,
@@ -110,6 +119,7 @@ export class GetCustomJobsController {
                                             id: true,
                                             name: true,
                                             avatar: true,
+                                            email: true,
                                             hourly_price: true,
                                             isOverTime: true,
                                             profession: true,
@@ -130,6 +140,7 @@ export class GetCustomJobsController {
                         id: user.user.id,
                         name: user.user.name,
                         avatar: avatar,
+                        email: user.user.email,
                         hourly_price: user.user.hourly_price,
                         isOverTime: user.user.isOverTime,
                         profession: user.user.profession,
@@ -144,6 +155,7 @@ export class GetCustomJobsController {
                             id: user.user.id,
                             name: user.user.name,
                             avatar: avatar,
+                            email: user.user.email,
                             hourly_price: user.user.hourly_price,
                             isOverTime: user.user.isOverTime,
                             profession: user.user.profession,
@@ -168,6 +180,10 @@ export class GetCustomJobsController {
                     start_date: customJob.start_date,
                     deadline: customJob.deadline,
                     description: customJob.description,
+                    projectLocation: customJob.project?.location,
+                    projectId: customJob.project?.id,
+                    clientName: customJob.project?.workContext?.Name || customJob.project?.client?.name,
+                    clientEmail: customJob.project?.workContext?.Email || customJob.project?.client?.email,
                     scheduleCompleted: customJob.scheduleCompleted,
                     users: users,
                     subContractors: customJob.subContractorServiceProjects,

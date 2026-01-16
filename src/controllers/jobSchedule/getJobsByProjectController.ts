@@ -31,12 +31,8 @@ export class GetJobsByProjectController {
             const jobs = await prisma.serviceProject.findMany({
                 where: {
                     projectId: projectId,
-                    start_date: {
-                        not: null
-                    },
-                    deadline: {
-                        not: null
-                    }
+                    start_date: { not: null },
+                    deadline: { not: null }
                 },
                 select: {
                     id: true,
@@ -52,6 +48,7 @@ export class GetJobsByProjectController {
                                     id: true,
                                     name: true,
                                     avatar: true,
+                                    email: true,
                                     hourly_price: true,
                                     isOverTime: true,
                                     profession: true,
@@ -75,16 +72,9 @@ export class GetJobsByProjectController {
                     Project: {
                         select: {
                             id: true,
-                            workContext: {
-                                select: {
-                                    Name: true,
-                                }
-                            },
-                            client: {
-                                select: {
-                                    name: true,
-                                }
-                            }
+                            workContext: { select: { Name: true, Email: true, location: true } },
+                            client: { select: { name: true, email: true, location: true } },
+                            location: true,
                         }
                     },
                     subServicesProjects: {
@@ -102,14 +92,10 @@ export class GetJobsByProjectController {
                                             id: true,
                                             avatar: true,
                                             name: true,
+                                            email: true,
                                             hourly_price: true,
                                             isOverTime: true,
                                             profession: true,
-                                            office: {
-                                                select: {
-                                                    name: true,
-                                                }
-                                            }
                                         }
                                     }
                                 }
@@ -132,43 +118,23 @@ export class GetJobsByProjectController {
                 }
             })
 
+            const formatSubcontractors = (junctions: any[]) => junctions.map(j => j.subcontractor);
+
             const jobsFormatted = await Promise.all(jobs.map(async (job) => {
                 const users = await Promise.all(job.UserServiceProject.map(async (user) => {
                     const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
-
-                    return {
-                        id: user.user.id,
-                        name: user.user.name,
-                        avatar: avatar,
-                        hourly_price: user.user.hourly_price,
-                        isOverTime: user.user.isOverTime,
-                    }
+                    return { ...user.user, avatar }
                 }))
 
-                const subServicesProjects = await Promise.all(job.subServicesProjects.map(async (subServiceProject) => {
-                    const users = await Promise.all(subServiceProject.userServiceProject.map(async (user) => {
-                        const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
-
-                        return {
-                            id: user.user.id,
-                            name: user.user.name,
-                            avatar: avatar,
-                            hourly_price: user.user.hourly_price,
-                            isOverTime: user.user.isOverTime,
-                            profession: user.user.profession,
-                            office: user.user.office?.name,
-                        }
+                const subServices = await Promise.all(job.subServicesProjects.map(async (ss) => {
+                    const ssUsers = await Promise.all(ss.userServiceProject.map(async (u) => {
+                        const avatar = u.user.avatar ? await getPresignedUrl(u.user.avatar) : null
+                        return { ...u.user, avatar }
                     }))
-
                     return {
-                        id: subServiceProject.id,
-                        name: subServiceProject.name,
-                        description: subServiceProject.description,
-                        start_date: subServiceProject.start_date,
-                        scheduleCompleted: subServiceProject.scheduleCompleted,
-                        deadline: subServiceProject.deadline,
-                        users: users,
-                        subContractors: subServiceProject.subContractorServiceProjects,
+                        ...ss,
+                        users: ssUsers,
+                        subContractors: formatSubcontractors(ss.subContractorServiceProjects)
                     }
                 }))
 
@@ -179,11 +145,14 @@ export class GetJobsByProjectController {
                     description: job.description,
                     deadline: job.deadline,
                     clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
+                    clientEmail: job.Project?.workContext?.Email || job.Project?.client?.email,
+                    projectLocation: job.Project?.location,
                     projectId: job.Project?.id,
                     scheduleCompleted: job.scheduleCompleted,
-                    users: users,
-                    subServicesProjects: subServicesProjects,
-                    subContractors: job.subContractorServiceProjects,
+                    type: 'service',
+                    users,
+                    subServicesProjects: subServices,
+                    subContractors: formatSubcontractors(job.subContractorServiceProjects),
                 }
             }))
 

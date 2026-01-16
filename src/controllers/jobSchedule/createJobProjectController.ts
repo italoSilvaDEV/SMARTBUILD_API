@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
-import { workerAssignmentEmail } from "../../templateEmail/workerAssignment";
+import { sendEmail } from "../../utils/sendEmail";
 
 interface User {
     id: string
@@ -51,6 +50,7 @@ export class CreateJobProjectController {
                 },
                 select: {
                     id: true,
+                    name: true,
                 }
             })
 
@@ -104,12 +104,12 @@ export class CreateJobProjectController {
                         where: {
                             id: user.id,
                             isDisabled: false,
-                            office: {
-                                name: "Worker"
-                            },
                             companies: {
                                 some: {
-                                    companyId: company.id
+                                    companyId: company.id,
+                                    office: {
+                                        name: "Worker"
+                                    }
                                 }
                             }
                         }
@@ -219,8 +219,13 @@ export class CreateJobProjectController {
             const serviceName = serviceProjectData?.name || 'Service';
             const serviceDescription = body.description ? removeHtml(body.description) : serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
             const projectLocation = projectData?.location || 'Not specified';
-            const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
-            const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+            const latitude = projectData?.lat;
+            const longitude = projectData?.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
+
             const startDate = serviceProjectData?.start_date || body.startDate;
             const deadline = serviceProjectData?.deadline || body.deadline;
 
@@ -254,50 +259,49 @@ export class CreateJobProjectController {
                 }
             });
 
+            const formatSGDate = (date?: string) => {
+                if (!date) return 'Not set';
+                return new Date(date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                }) + ')';
+            };
+
+            const commonDynamicData = {
+                projectName: serviceName,
+                contractNumber: projectData?.contract_number || "N/A",
+                location: projectLocation,
+                googleMapsLink: googleMapsLink,
+                companyName: company?.name || "",
+                startDateFormatted: formatSGDate(startDate),
+                deadlineFormatted: formatSGDate(deadline),
+                description: serviceDescription || "",
+                currentYear: new Date().getFullYear().toString(),
+            };
+
             if (!body.skipEmail) {
                 try {
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    })
-
-                    const emailSubject = isScheduleChange
-                        ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
-                        : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
-
                     for (const userServiceProject of allUserServiceProjects) {
                         const user = userServiceProject.user;
                         if (user && user.email && user.name) {
-                            const emailHtml = workerAssignmentEmail(
-                                user.name,
-                                serviceName,
-                                new Date(startDate).toISOString(),
-                                new Date(deadline).toISOString(),
-                                projectLocation,
-                                user.email,
-                                latitude,
-                                longitude,
-                                isScheduleChange,
-                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                                serviceDescription
-                            );
-
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: user.email,
-                                subject: emailSubject,
-                                html: emailHtml,
-                                text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                templateId: isScheduleChange
+                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
+                                    : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                                dynamicTemplateData: {
+                                    ...commonDynamicData,
+                                    recipientName: user.name,
+                                    changes: isScheduleChange ? [
+                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                    ] : []
+                                }
                             });
                         }
                     }
@@ -305,27 +309,19 @@ export class CreateJobProjectController {
                     for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
                         const subcontractor = subcontractorServiceProject.subcontractor;
                         if (subcontractor && subcontractor.email && subcontractor.name) {
-                            const emailHtml = workerAssignmentEmail(
-                                subcontractor.name,
-                                serviceName,
-                                new Date(startDate).toISOString(),
-                                new Date(deadline).toISOString(),
-                                projectLocation,
-                                subcontractor.email,
-                                latitude,
-                                longitude,
-                                isScheduleChange,
-                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                                serviceDescription
-                            );
-
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: subcontractor.email,
-                                subject: emailSubject,
-                                html: emailHtml,
-                                text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                templateId: isScheduleChange
+                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
+                                    : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                                dynamicTemplateData: {
+                                    ...commonDynamicData,
+                                    recipientName: subcontractor.name,
+                                    changes: isScheduleChange ? [
+                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                    ] : []
+                                }
                             });
                         }
                     }

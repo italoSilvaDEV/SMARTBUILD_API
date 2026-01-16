@@ -68,7 +68,6 @@ export class InvoiceStatisticsController {
       let endDate: Date | undefined;
       let isCustomRange = false;
 
-      // Se startDate e endDate forem fornecidos, eles têm prioridade total
       if (queryStartDate && queryEndDate) {
         startDate = dayjs(queryStartDate as string).startOf('day').toDate();
         endDate = dayjs(queryEndDate as string).endOf('day').toDate();

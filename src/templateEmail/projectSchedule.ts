@@ -176,7 +176,7 @@ export const projectScheduleEmail = (
                     <tr>
                         <td style="background-color:#121212;padding:32px 32px;text-align:left;">
                             <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                <img src="https://i.ibb.co/RG50Jkz7/logo-header.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
+                                <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/smart-header-logo.png" alt="SmartBuild" style="height:32px;display:block;max-width:160px;">
                             </a>
                         </td>
                     </tr>
@@ -260,12 +260,12 @@ export const projectScheduleEmail = (
                                 <tr>
                                     <td align="left" valign="middle" style="vertical-align:middle;">
                                         <a href="https://app.prosmartbuild.com/" style="text-decoration:none;display:inline-block;">
-                                            <img src="https://i.ibb.co/jPVYCxJr/logo-footer.png" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
+                                            <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/smart-footer-logo.png" alt="SmartBuild" style="height:24px;display:block;max-width:121px;">
                                         </a>
                                     </td>
                                     <td align="right" valign="middle" style="vertical-align:middle;">
                                         <a href="https://www.instagram.com/smartbuildapp/" style="text-decoration:none;display:inline-block;">
-                                            <img src="https://i.ibb.co/Swk8pH06/instragram-icon.png" alt="Instagram" style="width:24px;height:24px;display:block;">
+                                            <img src="https://assets-codelabs-dev.s3.sa-east-1.amazonaws.com/instagram.png" alt="Instagram" style="width:24px;height:24px;display:block;">
                                         </a>
                                     </td>
                                 </tr>

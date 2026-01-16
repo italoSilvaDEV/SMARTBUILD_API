@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { projectScheduleEmail } from "../../templateEmail/projectSchedule";
+import { sendEmail } from "../../utils/sendEmail";
 
 interface CreateSchedule {
     companyId: string
@@ -57,6 +56,8 @@ export class CreateJobCompanyController {
                     contract_number: true,
                     deadline: true,
                     location: true,
+                    lat: true, // Adicionado
+                    log: true, // Adicionado
                     workContext: {
                         select: {
                             Name: true,
@@ -103,75 +104,53 @@ export class CreateJobCompanyController {
                     const clientName = project.workContext?.Name || project.client?.name
                     const clientEmail = project.workContext?.Email || project.client?.email
 
-                    if (!clientEmail || !clientName) {
-                        console.log("Client email or name not found, skipping email send");
-                    } else {
-                        const companyAvatar = company.avatar
-                            ? await getPresignedUrl(company.avatar)
-                            : ""
+                    if (clientEmail && clientName) {
+                        const projectLocation = project.location || "Not specified";
+                        const latitude = project.lat;
+                        const longitude = project.log;
 
-                        const emailSubject = hadPreviousSchedule
-                            ? `Update: Project #${project.contract_number} Rescheduled (${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} - ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})`
-                            : `Scheduled: Project at ${project.location} starts ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
+                        const googleMapsLink = (latitude && longitude)
+                            ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-                        const emailHtml = projectScheduleEmail(
-                            clientName,
-                            companyAvatar || "",
-                            company.name || '',
-                            String(project.contract_number || 'N/A'),
-                            project.location || 'Not specified',
-                            startDate.toISOString(),
-                            deadline.toISOString(),
-                            hadPreviousSchedule,
-                            oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                            oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                            company.phone || undefined,
-                            company.email || undefined
-                        )
+                        const formatSGDate = (date?: string | Date) => {
+                            if (!date) return 'Not set';
+                            return new Date(date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                            }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                            }) + ')';
+                        };
 
-                        const SMTP_CONFIG = require("../../config/smtp");
-                        const transporter = nodemailer.createTransport({
-                            host: SMTP_CONFIG.host,
-                            port: SMTP_CONFIG.port,
-                            secure: SMTP_CONFIG.port === 465,
-                            auth: {
-                                user: SMTP_CONFIG.user,
-                                pass: SMTP_CONFIG.pass,
-                            },
-                            tls: {
-                                rejectUnauthorized: false,
-                            },
-                        })
+                        const commonDynamicData = {
+                            projectName: "General Project Schedule",
+                            contractNumber: project.contract_number || "N/A",
+                            location: projectLocation,
+                            googleMapsLink: googleMapsLink, // Adicionado
+                            companyName: company.name || "",
+                            startDateFormatted: formatSGDate(startDate),
+                            deadlineFormatted: formatSGDate(deadline),
+                            currentYear: new Date().getFullYear().toString(),
+                        };
 
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
+                        await sendEmail({
                             to: clientEmail,
-                            subject: emailSubject,
-                            html: emailHtml,
-                            text: `
-                            Dear ${clientName},
-    
-                            ${hadPreviousSchedule
-                                    ? `We wanted to inform you that there has been an update to your project schedule.`
-                                    : `Great news! Your project has been successfully scheduled and we're excited to get started!`}
-    
-                            Project Details:
-                            - Contract Number: ${project.contract_number || 'N/A'}
-                            - Project Location: ${project.location || 'Not specified'}
-                            - Start Date: ${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            - Deadline: ${deadline.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-    
-                            ${hadPreviousSchedule && oldStartDate && oldDeadline ? `
-                            Previous Schedule:
-                            - Start Date: ${new Date(oldStartDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            - Deadline: ${new Date(oldDeadline).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            ` : ''}
-    
-                            If you have any questions or need to discuss any adjustments, please don't hesitate to contact us. We're here to ensure everything runs smoothly.
-    
-                            Thank you for your business!
-                            ${company.name || ''}`.trim()
-                        })
+                            templateId: hadPreviousSchedule
+                                ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
+                                : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                            dynamicTemplateData: {
+                                ...commonDynamicData,
+                                recipientName: clientName,
+                                changes: hadPreviousSchedule ? [
+                                    { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                    { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                ] : []
+                            }
+                        });
 
                         console.log("Email sent successfully")
                     }

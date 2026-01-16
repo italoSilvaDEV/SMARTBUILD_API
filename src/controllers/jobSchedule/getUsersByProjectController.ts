@@ -43,40 +43,42 @@ export class GetUsersByProjectController {
                 })
             }
 
-            const users = await prisma.user.findMany({
+            const userCompanies = await prisma.userCompany.findMany({
                 where: {
+                    companyId: company.id,
                     office: {
-                        name: {
-                            in: ["Worker"]
-                        }
+                        name: "Worker"
                     },
-                    companies: {
-                        some: {
-                            companyId: company.id
+                    user: {
+                        NOT: {
+                            isDisabled: true
                         }
-                    },
-                    isDisabled: false,
+                    }
                 },
                 select: {
-                    id: true,
-                    name: true,
-                    avatar: true,
-                    hourly_price: true,
-                    isOverTime: true,
-                    profession: true,
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true,
+                            hourly_price: true,
+                            isOverTime: true,
+                            profession: true,
+                        }
+                    },
                 }
             })
 
-            const usersFormatted = await Promise.all(users.map(async (user) => {
-                const avatarUrl = user.avatar ? await getPresignedUrl(user.avatar) : null
+            const usersFormatted = await Promise.all(userCompanies.map(async (uc) => {
+                const avatarUrl = uc.user.avatar ? await getPresignedUrl(uc.user.avatar) : null
 
                 return {
-                    id: user.id,
-                    name: user.name,
+                    id: uc.user.id,
+                    name: uc.user.name,
                     avatar: avatarUrl,
-                    hourly_price: user.hourly_price,
-                    isOverTime: user.isOverTime,
-                    profession: user.profession,
+                    hourly_price: uc.user.hourly_price,
+                    isOverTime: uc.user.isOverTime,
+                    profession: uc.user.profession,
                 }
             }))
 
