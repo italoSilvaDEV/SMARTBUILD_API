@@ -45,11 +45,19 @@ export class GetUsersByProjectController {
 
             const users = await prisma.user.findMany({
                 where: {
+                    office: {
+                        name: {
+                            in: ["Worker"]
+                        }
+                    },
                     companies: {
                         some: {
                             companyId: company.id
                         }
                     },
+                    NOT: {
+                        isDisabled: true
+                    }
                 },
                 select: {
                     id: true,
