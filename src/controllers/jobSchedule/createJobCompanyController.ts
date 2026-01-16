@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { projectScheduleEmail } from "../../templateEmail/projectSchedule";
+import { sendEmail } from "../../utils/sendEmail";
 
 interface CreateSchedule {
     companyId: string
@@ -129,22 +129,7 @@ export class CreateJobCompanyController {
                             company.email || undefined
                         )
 
-                        const SMTP_CONFIG = require("../../config/smtp");
-                        const transporter = nodemailer.createTransport({
-                            host: SMTP_CONFIG.host,
-                            port: SMTP_CONFIG.port,
-                            secure: SMTP_CONFIG.port === 465,
-                            auth: {
-                                user: SMTP_CONFIG.user,
-                                pass: SMTP_CONFIG.pass,
-                            },
-                            tls: {
-                                rejectUnauthorized: false,
-                            },
-                        })
-
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
+                        await sendEmail({
                             to: clientEmail,
                             subject: emailSubject,
                             html: emailHtml,

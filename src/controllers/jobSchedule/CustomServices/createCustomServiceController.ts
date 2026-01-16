@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import nodemailer from "nodemailer";
 import { workerAssignmentEmail } from "../../../templateEmail/workerAssignment";
+import { sendEmail } from "../../../utils/sendEmail";
 
 interface User {
     id: string
@@ -172,20 +172,6 @@ export class CreateCustomServiceController {
                     const deadline = customService.deadline || body.deadline;
                     const customServiceDescription = customService.description ? removeHtml(customService.description) : undefined;
 
-                    const SMTP_CONFIG = require("../../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    });
-
                     const emailSubject = `New Assignment - ${customService.name} - #${projectData?.contract_number}`;
 
                     const allUserServiceProjects = await prisma.userServiceProject.findMany({
@@ -215,8 +201,7 @@ export class CreateCustomServiceController {
                                 customServiceDescription
                             );
 
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: usp.user.email,
                                 subject: emailSubject,
                                 html: emailHtml,
@@ -242,8 +227,7 @@ export class CreateCustomServiceController {
                                 customServiceDescription
                             );
 
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: ssp.subcontractor.email,
                                 subject: emailSubject,
                                 html: emailHtml,

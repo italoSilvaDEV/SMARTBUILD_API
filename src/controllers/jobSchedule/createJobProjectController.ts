@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
 import { workerAssignmentEmail } from "../../templateEmail/workerAssignment";
+import { sendEmail } from "../../utils/sendEmail";
 
 interface User {
     id: string
@@ -256,20 +256,6 @@ export class CreateJobProjectController {
 
             if (!body.skipEmail) {
                 try {
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    })
-
                     const emailSubject = isScheduleChange
                         ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
                         : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
@@ -292,8 +278,7 @@ export class CreateJobProjectController {
                                 serviceDescription
                             );
 
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: user.email,
                                 subject: emailSubject,
                                 html: emailHtml,
@@ -320,8 +305,7 @@ export class CreateJobProjectController {
                                 serviceDescription
                             );
 
-                            await transporter.sendMail({
-                                from: SMTP_CONFIG.user,
+                            await sendEmail({
                                 to: subcontractor.email,
                                 subject: emailSubject,
                                 html: emailHtml,

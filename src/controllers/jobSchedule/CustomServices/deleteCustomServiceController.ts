@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { jobScheduleGlobalTemplate } from "../../../templateEmail/jobScheduleGlobalTemplate";
+import { sendEmail } from "../../../utils/sendEmail";
 
 export class DeleteCustomServiceController {
     async handle(req: Request, res: Response) {
@@ -48,15 +48,6 @@ export class DeleteCustomServiceController {
 
             await prisma.customServiceSchedule.delete({ where: { id: customServiceId } });
 
-            const SMTP_CONFIG = require("../../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false }
-            });
-
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
@@ -65,8 +56,7 @@ export class DeleteCustomServiceController {
             const clientName = project.workContext?.Name || project.client?.name;
 
             if (clientEmail && clientName) {
-                await transporter.sendMail({
-                    from: SMTP_CONFIG.user,
+                await sendEmail({
                     to: clientEmail,
                     subject: `Cancelled: Custom Service Schedule - #${contractNumber}`,
                     html: jobScheduleGlobalTemplate(
@@ -79,8 +69,7 @@ export class DeleteCustomServiceController {
             const workers = customService.userServiceProjects.map(usp => usp.user);
             for (const worker of workers) {
                 if (worker?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: worker.email,
                         subject: `Cancelled: Assignment for ${customService.name}`,
                         html: jobScheduleGlobalTemplate(
@@ -94,8 +83,7 @@ export class DeleteCustomServiceController {
             const subcontractors = customService.subContractorServiceProjects.map(s => s.subcontractor);
             for (const sub of subcontractors) {
                 if (sub?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: sub.email,
                         subject: `Cancelled: Assignment for ${customService.name}`,
                         html: jobScheduleGlobalTemplate(

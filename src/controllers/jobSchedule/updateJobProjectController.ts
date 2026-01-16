@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { jobScheduleGlobalTemplate, ScheduleChange } from "../../templateEmail/jobScheduleGlobalTemplate";
+import { sendEmail } from "../../utils/sendEmail";
 
 interface UserInput {
     id: string;
@@ -149,15 +149,6 @@ export class UpdateJobProjectController {
                 }))
             ]);
 
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false }
-            });
-
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";
@@ -165,42 +156,56 @@ export class UpdateJobProjectController {
             const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
             const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
 
+            const formatSGDate = (date?: string) => {
+                if (!date) return 'Not set';
+                return new Date(date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                }) + ')';
+            };
+
+            const commonDynamicData = {
+                projectName: serviceProject.name,
+                contractNumber: contractNumber,
+                location: projectLocation,
+                companyName: company.name || "",
+                startDateFormatted: formatSGDate(body.startDate || serviceProject.start_date || undefined),
+                deadlineFormatted: formatSGDate(body.deadline || serviceProject.deadline || undefined),
+                description: body.description || serviceProject.description || "",
+                currentYear: new Date().getFullYear().toString(),
+            };
+
             if (clientEmail && clientName) {
-                await transporter.sendMail({
-                    from: SMTP_CONFIG.user,
+                await sendEmail({
                     to: clientEmail,
-                    subject: `Update: Project Schedule - #${contractNumber}`,
-                    html: jobScheduleGlobalTemplate(
-                        clientName,
-                        serviceProject.name,
-                        contractNumber,
-                        projectLocation,
-                        'UPDATED',
-                        changes,
-                        companyLogo,
-                        company.name,
-                        company.phone || undefined,
-                        company.email || undefined,
-                        body.startDate || serviceProject.start_date || undefined,
-                        body.deadline || serviceProject.deadline || undefined,
-                        body.description || serviceProject.description
-                    )
+                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                    dynamicTemplateData: {
+                        ...commonDynamicData,
+                        recipientName: clientName,
+                        changes: changes.map(c => ({
+                            label: c.label,
+                            oldValue: c.oldValue,
+                            newValue: c.newValue
+                        }))
+                    }
                 });
             }
 
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });
                 if (worker?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: worker.email,
-                        subject: `New Assignment: ${serviceProject.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            worker.name, serviceProject.name, contractNumber, projectLocation, 'ASSIGNED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined,
-                            body.startDate || serviceProject.start_date || undefined,
-                            body.deadline || serviceProject.deadline || undefined
-                        )
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: worker.name
+                        }
                     });
                 }
             }
@@ -208,14 +213,13 @@ export class UpdateJobProjectController {
             for (const workerId of workersToRemove) {
                 const worker = serviceProject.UserServiceProject.find(usp => usp.user_id === workerId)?.user;
                 if (worker?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: worker.email,
-                        subject: `Assignment Removed: ${serviceProject.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            worker.name, serviceProject.name, contractNumber, projectLocation, 'REMOVED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined
-                        )
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: worker.name
+                        }
                     });
                 }
             }
@@ -225,16 +229,18 @@ export class UpdateJobProjectController {
                 for (const workerId of remainingWorkerIds) {
                     const worker = serviceProject.UserServiceProject.find(usp => usp.user_id === workerId)?.user;
                     if (worker?.email) {
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
+                        await sendEmail({
                             to: worker.email,
-                            subject: `Schedule Update: ${serviceProject.name}`,
-                            html: jobScheduleGlobalTemplate(
-                                worker.name, serviceProject.name, contractNumber, projectLocation, 'UPDATED', changes,
-                                companyLogo, company.name, company.phone || undefined, company.email || undefined,
-                                body.startDate || serviceProject.start_date || undefined,
-                                body.deadline || serviceProject.deadline || undefined
-                            )
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            dynamicTemplateData: {
+                                ...commonDynamicData,
+                                recipientName: worker.name,
+                                changes: changes.map(c => ({
+                                    label: c.label,
+                                    oldValue: c.oldValue,
+                                    newValue: c.newValue
+                                }))
+                            }
                         });
                     }
                 }
@@ -243,16 +249,13 @@ export class UpdateJobProjectController {
             for (const subId of subsToAdd) {
                 const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subId } });
                 if (subcontractor?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: subcontractor.email,
-                        subject: `New Assignment: ${serviceProject.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            subcontractor.name, serviceProject.name, contractNumber, projectLocation, 'ASSIGNED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined,
-                            body.startDate || serviceProject.start_date || undefined,
-                            body.deadline || serviceProject.deadline || undefined
-                        )
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: subcontractor.name
+                        }
                     });
                 }
             }
@@ -260,14 +263,13 @@ export class UpdateJobProjectController {
             for (const subId of subsToRemove) {
                 const sub = serviceProject.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
                 if (sub?.email) {
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: sub.email,
-                        subject: `Assignment Removed: ${serviceProject.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            sub.name, serviceProject.name, contractNumber, projectLocation, 'REMOVED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined
-                        )
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: sub.name
+                        }
                     });
                 }
             }
@@ -277,16 +279,18 @@ export class UpdateJobProjectController {
                 for (const subId of remainingSubIds) {
                     const sub = serviceProject.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
                     if (sub?.email) {
-                        await transporter.sendMail({
-                            from: SMTP_CONFIG.user,
+                        await sendEmail({
                             to: sub.email,
-                            subject: `Schedule Update: ${serviceProject.name}`,
-                            html: jobScheduleGlobalTemplate(
-                                sub.name, serviceProject.name, contractNumber, projectLocation, 'UPDATED', changes,
-                                companyLogo, company.name, company.phone || undefined, company.email || undefined,
-                                body.startDate || serviceProject.start_date || undefined,
-                                body.deadline || serviceProject.deadline || undefined
-                            )
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            dynamicTemplateData: {
+                                ...commonDynamicData,
+                                recipientName: sub.name,
+                                changes: changes.map(c => ({
+                                    label: c.label,
+                                    oldValue: c.oldValue,
+                                    newValue: c.newValue
+                                }))
+                            }
                         });
                     }
                 }

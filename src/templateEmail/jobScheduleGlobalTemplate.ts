@@ -9,7 +9,7 @@ export const jobScheduleGlobalTemplate = (
     projectName: string,
     contractNumber: string | number,
     location: string,
-    status: 'UPDATED' | 'CANCELLED' | 'ASSIGNED' | 'REMOVED',
+    status: 'UPDATED' | 'CANCELLED' | 'ASSIGNED' | 'REMOVED' | 'REMINDER',
     changes: ScheduleChange[] = [],
     logo: string = '',
     companyName: string = '',
@@ -24,9 +24,10 @@ export const jobScheduleGlobalTemplate = (
         CANCELLED: { color: '#D92D20', text: 'Schedule Cancelled', badge: 'CANCELLED' },
         ASSIGNED: { color: '#1E9B5C', text: 'New Assignment', badge: 'ASSIGNED' },
         REMOVED: { color: '#F79009', text: 'Assignment Removed', badge: 'REMOVED' },
+        REMINDER: { color: '#121212', text: 'Schedule Reminder', badge: 'REMINDER' },
     };
 
-    const config = statusConfig[status];
+    const config = statusConfig[status || 'REMINDER'];
 
     const formattedDate = (date?: string) => {
         if (!date) return 'Not set';
@@ -183,14 +184,16 @@ export const jobScheduleGlobalTemplate = (
                                 Hello, ${recipientName}.
                             </p>
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0;line-height:1.5;font-weight:400;">
-                                ${status === 'CANCELLED'
-            ? `This email is to inform you that the schedule for <strong>${projectName}</strong> has been cancelled.`
-            : status === 'REMOVED'
-                ? `You have been removed from the assignment for <strong>${projectName}</strong>.`
-                : status === 'ASSIGNED'
-                    ? `You have been assigned to <strong>${projectName}</strong>. Please check the details below.`
-                    : `We are writing to inform you about updates to the schedule for <strong>${projectName}</strong>.`
-        }
+                                ${status === 'CANCELLED' 
+                                    ? `This email is to inform you that the schedule for <strong>${projectName}</strong> has been cancelled.` 
+                                    : status === 'REMOVED'
+                                    ? `You have been removed from the assignment for <strong>${projectName}</strong>.`
+                                    : status === 'ASSIGNED'
+                                    ? `You have been assigned to <strong>${projectName}</strong>. Please check the details below.`
+                                    : status === 'REMINDER'
+                                    ? `This is a reminder regarding the schedule for <strong>${projectName}</strong>.`
+                                    : `We are writing to inform you about updates to the schedule for <strong>${projectName}</strong>.`
+                                }
                             </p>
                         </td>
                     </tr>
