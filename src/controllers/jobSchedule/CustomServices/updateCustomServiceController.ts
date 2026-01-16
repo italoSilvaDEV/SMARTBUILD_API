@@ -42,11 +42,24 @@ export class UpdateCustomServiceController {
             const customService = await prisma.customServiceSchedule.findUnique({
                 where: { id: body.customServiceId },
                 include: {
-                    project: { include: { client: true, workContext: true } },
-                    userServiceProjects: { include: { user: true } },
-                    subContractorServiceProjects: { include: { subcontractor: true } }
+                    project: {
+                        include: {
+                            client: true,
+                            workContext: true
+                        }
+                    },
+                    userServiceProjects: {
+                        include: {
+                            user: true
+                        }
+                    },
+                    subContractorServiceProjects: {
+                        include: {
+                            subcontractor: true
+                        }
+                    }
                 }
-            });
+            }) as any;
 
             if (!customService) return res.status(404).json({ error: "Custom service not found" });
 
@@ -73,15 +86,15 @@ export class UpdateCustomServiceController {
                 changes.push({ label: "Description", newValue: "Description has been updated" });
             }
 
-            const currentWorkerIds = customService.userServiceProjects.map(usp => usp.user_id);
+            const currentWorkerIds = customService.userServiceProjects.map((usp: any) => usp.user_id);
             const newWorkerIds = body.users?.map(u => u.id) || currentWorkerIds;
-            const workersToRemove = currentWorkerIds.filter(id => !newWorkerIds.includes(id));
-            const workersToAdd = newWorkerIds.filter(id => !currentWorkerIds.includes(id));
+            const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
+            const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
-            const currentSubIds = customService.subContractorServiceProjects.map(s => s.subcontractor_id);
+            const currentSubIds = customService.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
             const newSubIds = body.subcontractors?.map(s => s.id) || currentSubIds;
-            const subsToRemove = currentSubIds.filter(id => !newSubIds.includes(id));
-            const subsToAdd = newSubIds.filter(id => !currentSubIds.includes(id));
+            const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
+            const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
             await prisma.$transaction([
                 prisma.customServiceSchedule.update({
@@ -96,20 +109,25 @@ export class UpdateCustomServiceController {
                 prisma.userServiceProject.deleteMany({
                     where: { custom_service_schedule_id: body.customServiceId, user_id: { in: workersToRemove } }
                 }),
-                ...workersToAdd.map(id => prisma.userServiceProject.create({
+                ...workersToAdd.map((id: string) => prisma.userServiceProject.create({
                     data: { custom_service_schedule_id: body.customServiceId, user_id: id }
                 })),
                 prisma.subContractorServiceProject.deleteMany({
                     where: { custom_service_schedule_id: body.customServiceId, subcontractor_id: { in: subsToRemove } }
                 }),
-                ...subsToAdd.map(id => prisma.subContractorServiceProject.create({
+                ...subsToAdd.map((id: string) => prisma.subContractorServiceProject.create({
                     data: { custom_service_schedule_id: body.customServiceId, subcontractor_id: id }
                 }))
             ]);
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
+            const latitude = project.lat;
+            const longitude = project.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -128,6 +146,7 @@ export class UpdateCustomServiceController {
                 projectName: body.name || customService.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
+                googleMapsLink: googleMapsLink, // Adicionado
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || customService.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || customService.deadline || undefined),
@@ -169,7 +188,7 @@ export class UpdateCustomServiceController {
             }
 
             for (const workerId of workersToRemove) {
-                const worker = customService.userServiceProjects.find(usp => usp.user_id === workerId)?.user;
+                const worker = customService.userServiceProjects.find((usp: any) => usp.user_id === workerId)?.user;
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
@@ -183,9 +202,9 @@ export class UpdateCustomServiceController {
             }
 
             if (dateChanged) {
-                const remainingWorkerIds = currentWorkerIds.filter(id => !workersToRemove.includes(id));
+                const remainingWorkerIds = currentWorkerIds.filter((id: string) => !workersToRemove.includes(id));
                 for (const workerId of remainingWorkerIds) {
-                    const worker = customService.userServiceProjects.find(usp => usp.user_id === workerId)?.user;
+                    const worker = customService.userServiceProjects.find((usp: any) => usp.user_id === workerId)?.user;
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
@@ -219,7 +238,7 @@ export class UpdateCustomServiceController {
             }
 
             for (const subId of subsToRemove) {
-                const sub = customService.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                const sub = customService.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
@@ -233,9 +252,9 @@ export class UpdateCustomServiceController {
             }
 
             if (dateChanged) {
-                const remainingSubIds = currentSubIds.filter(id => !subsToRemove.includes(id));
+                const remainingSubIds = currentSubIds.filter((id: string) => !subsToRemove.includes(id));
                 for (const subId of remainingSubIds) {
-                    const sub = customService.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                    const sub = customService.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
                     if (sub?.email) {
                         await sendEmail({
                             to: sub.email,

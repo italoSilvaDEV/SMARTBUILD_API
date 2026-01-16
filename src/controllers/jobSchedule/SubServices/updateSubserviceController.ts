@@ -55,7 +55,7 @@ export class UpdateSubserviceController {
                     userServiceProject: { include: { user: true } },
                     subContractorServiceProjects: { include: { subcontractor: true } }
                 }
-            });
+            }) as any;
 
             if (!subservice) return res.status(404).json({ error: "Subservice not found" });
 
@@ -83,15 +83,15 @@ export class UpdateSubserviceController {
             }
 
             // Workers logic
-            const currentWorkerIds = subservice.userServiceProject.map(usp => usp.user_id);
+            const currentWorkerIds = subservice.userServiceProject.map((usp: any) => usp.user_id);
             const newWorkerIds = body.users?.map(u => u.id) || currentWorkerIds;
-            const workersToRemove = currentWorkerIds.filter(id => !newWorkerIds.includes(id));
-            const workersToAdd = newWorkerIds.filter(id => !currentWorkerIds.includes(id));
+            const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
+            const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
-            const currentSubIds = subservice.subContractorServiceProjects.map(s => s.subcontractor_id);
+            const currentSubIds = subservice.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
             const newSubIds = body.subcontractors?.map(s => s.id) || currentSubIds;
-            const subsToRemove = currentSubIds.filter(id => !newSubIds.includes(id));
-            const subsToAdd = newSubIds.filter(id => !currentSubIds.includes(id));
+            const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
+            const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
             await prisma.$transaction([
                 prisma.subServicesProject.update({
@@ -106,20 +106,25 @@ export class UpdateSubserviceController {
                 prisma.userServiceProject.deleteMany({
                     where: { sub_service_project_id: body.subserviceId, user_id: { in: workersToRemove } }
                 }),
-                ...workersToAdd.map(id => prisma.userServiceProject.create({
+                ...workersToAdd.map((id: string) => prisma.userServiceProject.create({
                     data: { sub_service_project_id: body.subserviceId, user_id: id }
                 })),
                 prisma.subContractorServiceProject.deleteMany({
                     where: { sub_service_project_id: body.subserviceId, subcontractor_id: { in: subsToRemove } }
                 }),
-                ...subsToAdd.map(id => prisma.subContractorServiceProject.create({
+                ...subsToAdd.map((id: string) => prisma.subContractorServiceProject.create({
                     data: { sub_service_project_id: body.subserviceId, subcontractor_id: id }
                 }))
             ]);
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
+            const latitude = project.lat;
+            const longitude = project.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -138,6 +143,7 @@ export class UpdateSubserviceController {
                 projectName: body.name || subservice.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
+                googleMapsLink: googleMapsLink, // Adicionado
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || subservice.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || subservice.deadline || undefined),
@@ -179,7 +185,7 @@ export class UpdateSubserviceController {
             }
 
             for (const workerId of workersToRemove) {
-                const worker = subservice.userServiceProject.find(usp => usp.user_id === workerId)?.user;
+                const worker = subservice.userServiceProject.find((usp: any) => usp.user_id === workerId)?.user;
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
@@ -193,9 +199,9 @@ export class UpdateSubserviceController {
             }
 
             if (dateChanged) {
-                const remainingWorkerIds = currentWorkerIds.filter(id => !workersToRemove.includes(id));
+                const remainingWorkerIds = currentWorkerIds.filter((id: string) => !workersToRemove.includes(id));
                 for (const workerId of remainingWorkerIds) {
-                    const worker = subservice.userServiceProject.find(usp => usp.user_id === workerId)?.user;
+                    const worker = subservice.userServiceProject.find((usp: any) => usp.user_id === workerId)?.user;
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
@@ -229,7 +235,7 @@ export class UpdateSubserviceController {
             }
 
             for (const subId of subsToRemove) {
-                const sub = subservice.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                const sub = subservice.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
@@ -243,9 +249,9 @@ export class UpdateSubserviceController {
             }
 
             if (dateChanged) {
-                const remainingSubIds = currentSubIds.filter(id => !subsToRemove.includes(id));
+                const remainingSubIds = currentSubIds.filter((id: string) => !subsToRemove.includes(id));
                 for (const subId of remainingSubIds) {
-                    const sub = subservice.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                    const sub = subservice.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
                     if (sub?.email) {
                         await sendEmail({
                             to: sub.email,
