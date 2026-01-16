@@ -115,82 +115,6 @@ export class GetJobsByProjectController {
                 }
             })
 
-            const customJobs = await prisma.customServiceSchedule.findMany({
-                where: { projectId: projectId },
-                select: {
-                    id: true,
-                    name: true,
-                    start_date: true,
-                    deadline: true,
-                    description: true,
-                    scheduleCompleted: true,
-                    userServiceProjects: {
-                        select: {
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    avatar: true,
-                                    hourly_price: true,
-                                    isOverTime: true,
-                                    profession: true,
-                                }
-                            }
-                        }
-                    },
-                    subContractorServiceProjects: {
-                        select: {
-                            subcontractor: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    email: true,
-                                    phone: true,
-                                    address: true,
-                                }
-                            }
-                        }
-                    },
-                    subServicesProjects: {
-                        select: {
-                            id: true,
-                            name: true,
-                            start_date: true,
-                            deadline: true,
-                            description: true,
-                            scheduleCompleted: true,
-                            userServiceProject: {
-                                select: {
-                                    user: {
-                                        select: {
-                                            id: true,
-                                            name: true,
-                                            avatar: true,
-                                            hourly_price: true,
-                                            isOverTime: true,
-                                            profession: true,
-                                        }
-                                    }
-                                }
-                            },
-                            subContractorServiceProjects: {
-                                select: {
-                                    subcontractor: {
-                                        select: {
-                                            id: true,
-                                            name: true,
-                                            email: true,
-                                            phone: true,
-                                            address: true,
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-
             const formatSubcontractors = (junctions: any[]) => junctions.map(j => j.subcontractor);
 
             const jobsFormatted = await Promise.all(jobs.map(async (job) => {
@@ -227,36 +151,9 @@ export class GetJobsByProjectController {
                 }
             }))
 
-            const customJobsFormatted = await Promise.all(customJobs.map(async (job) => {
-                const users = await Promise.all(job.userServiceProjects.map(async (user) => {
-                    const avatar = user.user.avatar ? await getPresignedUrl(user.user.avatar) : null
-                    return { ...user.user, avatar }
-                }))
-
-                const subServices = await Promise.all(job.subServicesProjects.map(async (ss) => {
-                    const ssUsers = await Promise.all(ss.userServiceProject.map(async (u) => {
-                        const avatar = u.user.avatar ? await getPresignedUrl(u.user.avatar) : null
-                        return { ...u.user, avatar }
-                    }))
-                    return {
-                        ...ss,
-                        users: ssUsers,
-                        subContractors: formatSubcontractors(ss.subContractorServiceProjects)
-                    }
-                }))
-
-                return {
-                    ...job,
-                    type: 'custom',
-                    users,
-                    subServicesProjects: subServices,
-                    subContractors: formatSubcontractors(job.subContractorServiceProjects),
-                }
-            }))
-
             return res.status(200).json({
                 message: "Jobs fetched successfully",
-                data: [...jobsFormatted, ...customJobsFormatted]
+                data: jobsFormatted
             })
         } catch (error) {
             return res.status(500).json({
