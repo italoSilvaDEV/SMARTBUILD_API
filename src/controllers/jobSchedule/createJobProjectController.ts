@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { workerAssignmentEmail } from "../../templateEmail/workerAssignment";
 import { sendEmail } from "../../utils/sendEmail";
 
 interface User {
@@ -51,6 +50,7 @@ export class CreateJobProjectController {
                 },
                 select: {
                     id: true,
+                    name: true,
                 }
             })
 
@@ -254,35 +254,48 @@ export class CreateJobProjectController {
                 }
             });
 
+            const formatSGDate = (date?: string) => {
+                if (!date) return 'Not set';
+                return new Date(date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                }) + ')';
+            };
+
+            const commonDynamicData = {
+                projectName: serviceName,
+                contractNumber: projectData?.contract_number || "N/A",
+                location: projectLocation,
+                companyName: company?.name || "",
+                startDateFormatted: formatSGDate(startDate),
+                deadlineFormatted: formatSGDate(deadline),
+                description: serviceDescription || "",
+                currentYear: new Date().getFullYear().toString(),
+            };
+
             if (!body.skipEmail) {
                 try {
-                    const emailSubject = isScheduleChange
-                        ? `Schedule Updated - ${serviceName} - #${projectData?.contract_number}`
-                        : `New Assignment - ${serviceName} - #${projectData?.contract_number}`;
-
                     for (const userServiceProject of allUserServiceProjects) {
                         const user = userServiceProject.user;
                         if (user && user.email && user.name) {
-                            const emailHtml = workerAssignmentEmail(
-                                user.name,
-                                serviceName,
-                                new Date(startDate).toISOString(),
-                                new Date(deadline).toISOString(),
-                                projectLocation,
-                                user.email,
-                                latitude,
-                                longitude,
-                                isScheduleChange,
-                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                                serviceDescription
-                            );
-
                             await sendEmail({
                                 to: user.email,
-                                subject: emailSubject,
-                                html: emailHtml,
-                                text: `Hello ${user.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                templateId: isScheduleChange 
+                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
+                                    : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                                dynamicTemplateData: {
+                                    ...commonDynamicData,
+                                    recipientName: user.name,
+                                    changes: isScheduleChange ? [
+                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                    ] : []
+                                }
                             });
                         }
                     }
@@ -290,26 +303,19 @@ export class CreateJobProjectController {
                     for (const subcontractorServiceProject of allSubcontractorServiceProjects) {
                         const subcontractor = subcontractorServiceProject.subcontractor;
                         if (subcontractor && subcontractor.email && subcontractor.name) {
-                            const emailHtml = workerAssignmentEmail(
-                                subcontractor.name,
-                                serviceName,
-                                new Date(startDate).toISOString(),
-                                new Date(deadline).toISOString(),
-                                projectLocation,
-                                subcontractor.email,
-                                latitude,
-                                longitude,
-                                isScheduleChange,
-                                oldStartDate ? new Date(oldStartDate).toISOString() : undefined,
-                                oldDeadline ? new Date(oldDeadline).toISOString() : undefined,
-                                serviceDescription
-                            );
-
                             await sendEmail({
                                 to: subcontractor.email,
-                                subject: emailSubject,
-                                html: emailHtml,
-                                text: `Hello ${subcontractor.name},\n\n${isScheduleChange ? 'The schedule has been updated' : 'You have been assigned'} to the following service: ${serviceName}\n\nStart: ${new Date(startDate).toLocaleDateString()}\nDeadline: ${new Date(deadline).toLocaleDateString()}\nLocation: ${projectLocation}`
+                                templateId: isScheduleChange 
+                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
+                                    : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                                dynamicTemplateData: {
+                                    ...commonDynamicData,
+                                    recipientName: subcontractor.name,
+                                    changes: isScheduleChange ? [
+                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                    ] : []
+                                }
                             });
                         }
                     }

@@ -55,7 +55,6 @@ export class GetUsersByProjectController {
                             companyId: company.id
                         }
                     },
-                    isDisabled: false,
                 },
                 select: {
                     id: true,

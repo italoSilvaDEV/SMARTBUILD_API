@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
-import { jobScheduleGlobalTemplate, ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../../utils/sendEmail";
+import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 
 interface UserInput {
     id: string;
@@ -134,6 +134,9 @@ export class UpdateCustomServiceController {
                 description: body.description || customService.description || "",
                 currentYear: new Date().getFullYear().toString(),
             };
+
+            const clientEmail = project.workContext?.Email || project.client?.email;
+            const clientName = project.workContext?.Name || project.client?.name;
 
             if (clientEmail && clientName) {
                 await sendEmail({

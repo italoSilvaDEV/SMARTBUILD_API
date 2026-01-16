@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
-import { jobScheduleGlobalTemplate } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../../utils/sendEmail";
 
 export class DeleteCustomServiceController {
@@ -55,14 +54,22 @@ export class DeleteCustomServiceController {
             const clientEmail = project.workContext?.Email || project.client?.email;
             const clientName = project.workContext?.Name || project.client?.name;
 
+            const commonDynamicData = {
+                projectName: customService.name,
+                contractNumber: contractNumber,
+                companyName: company.name || "",
+                currentYear: new Date().getFullYear().toString(),
+                isCancelled: true
+            };
+
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
-                    subject: `Cancelled: Custom Service Schedule - #${contractNumber}`,
-                    html: jobScheduleGlobalTemplate(
-                        clientName, customService.name, contractNumber, projectLocation, 'CANCELLED', [],
-                        companyLogo, company.name, company.phone || undefined, company.email || undefined
-                    )
+                    templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                    dynamicTemplateData: {
+                        ...commonDynamicData,
+                        recipientName: clientName
+                    }
                 });
             }
 
@@ -71,11 +78,11 @@ export class DeleteCustomServiceController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        subject: `Cancelled: Assignment for ${customService.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            worker.name, customService.name, contractNumber, projectLocation, 'CANCELLED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined
-                        )
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: worker.name
+                        }
                     });
                 }
             }
@@ -85,11 +92,11 @@ export class DeleteCustomServiceController {
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
-                        subject: `Cancelled: Assignment for ${customService.name}`,
-                        html: jobScheduleGlobalTemplate(
-                            sub.name, customService.name, contractNumber, projectLocation, 'CANCELLED', [],
-                            companyLogo, company.name, company.phone || undefined, company.email || undefined
-                        )
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: sub.name
+                        }
                     });
                 }
             }

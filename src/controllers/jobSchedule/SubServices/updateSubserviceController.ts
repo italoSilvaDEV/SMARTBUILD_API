@@ -145,6 +145,9 @@ export class UpdateSubserviceController {
                 currentYear: new Date().getFullYear().toString(),
             };
 
+            const clientEmail = project.workContext?.Email || project.client?.email;
+            const clientName = project.workContext?.Name || project.client?.name;
+
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
