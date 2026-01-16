@@ -48,6 +48,7 @@ export class GetJobsByProjectController {
                                     id: true,
                                     name: true,
                                     avatar: true,
+                                    email: true,
                                     hourly_price: true,
                                     isOverTime: true,
                                     profession: true,
@@ -71,8 +72,8 @@ export class GetJobsByProjectController {
                     Project: {
                         select: {
                             id: true,
-                            workContext: { select: { Name: true } },
-                            client: { select: { name: true } }
+                            workContext: { select: { Name: true, Email: true } },
+                            client: { select: { name: true, email: true } }
                         }
                     },
                     subServicesProjects: {
@@ -90,6 +91,7 @@ export class GetJobsByProjectController {
                                             id: true,
                                             avatar: true,
                                             name: true,
+                                            email: true,
                                             hourly_price: true,
                                             isOverTime: true,
                                             profession: true,
@@ -142,6 +144,7 @@ export class GetJobsByProjectController {
                     description: job.description,
                     deadline: job.deadline,
                     clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
+                    clientEmail: job.Project?.workContext?.Email || job.Project?.client?.email,
                     projectId: job.Project?.id,
                     scheduleCompleted: job.scheduleCompleted,
                     type: 'service',

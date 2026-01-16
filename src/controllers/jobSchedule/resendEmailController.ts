@@ -59,6 +59,10 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -85,7 +89,7 @@ export class ResendEmailController {
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: serviceProject.description || "",
+                        description: serviceProject.description ? removeHtml(serviceProject.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     }
@@ -174,6 +178,10 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -200,7 +208,7 @@ export class ResendEmailController {
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: subservice.description || "",
+                        description: subservice.description ? removeHtml(subservice.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     }
@@ -272,6 +280,10 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -298,7 +310,7 @@ export class ResendEmailController {
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: customService.description || "",
+                        description: customService.description ? removeHtml(customService.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     }
