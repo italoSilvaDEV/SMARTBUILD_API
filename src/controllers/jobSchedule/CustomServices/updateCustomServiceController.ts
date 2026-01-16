@@ -54,8 +54,8 @@ export class UpdateCustomServiceController {
             if (!project) return res.status(404).json({ error: "Project not found" });
 
             const changes: ScheduleChange[] = [];
-            const dateChanged = (body.startDate && body.startDate !== customService.start_date) || 
-                               (body.deadline && body.deadline !== customService.deadline);
+            const dateChanged = (body.startDate && body.startDate !== customService.start_date) ||
+                (body.deadline && body.deadline !== customService.deadline);
 
             if (body.name && body.name !== customService.name) {
                 changes.push({ label: "Name", oldValue: customService.name, newValue: body.name });
@@ -73,19 +73,16 @@ export class UpdateCustomServiceController {
                 changes.push({ label: "Description", newValue: "Description has been updated" });
             }
 
-            // Workers logic
             const currentWorkerIds = customService.userServiceProjects.map(usp => usp.user_id);
             const newWorkerIds = body.users?.map(u => u.id) || currentWorkerIds;
             const workersToRemove = currentWorkerIds.filter(id => !newWorkerIds.includes(id));
             const workersToAdd = newWorkerIds.filter(id => !currentWorkerIds.includes(id));
 
-            // Subcontractors logic
             const currentSubIds = customService.subContractorServiceProjects.map(s => s.subcontractor_id);
             const newSubIds = body.subcontractors?.map(s => s.id) || currentSubIds;
             const subsToRemove = currentSubIds.filter(id => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter(id => !currentSubIds.includes(id));
 
-            // DB Updates
             await prisma.$transaction([
                 prisma.customServiceSchedule.update({
                     where: { id: body.customServiceId },
@@ -110,7 +107,6 @@ export class UpdateCustomServiceController {
                 }))
             ]);
 
-            // Email Logic
             const SMTP_CONFIG = require("../../../config/smtp");
             const transporter = nodemailer.createTransport({
                 host: SMTP_CONFIG.host,
@@ -124,7 +120,6 @@ export class UpdateCustomServiceController {
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
 
-            // 1. Notify Client
             const clientEmail = project.workContext?.Email || project.client?.email;
             const clientName = project.workContext?.Name || project.client?.name;
 
@@ -143,7 +138,6 @@ export class UpdateCustomServiceController {
                 });
             }
 
-            // 2. Notify Workers
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });
                 if (worker?.email) {
@@ -152,7 +146,7 @@ export class UpdateCustomServiceController {
                         to: worker.email,
                         subject: `New Assignment: ${body.name || customService.name}`,
                         html: jobScheduleGlobalTemplate(
-                            worker.name, body.name || customService.name, contractNumber, projectLocation, 'ASSIGNED', [], 
+                            worker.name, body.name || customService.name, contractNumber, projectLocation, 'ASSIGNED', [],
                             companyLogo, company.name, company.phone || undefined, company.email || undefined,
                             body.startDate || customService.start_date || undefined,
                             body.deadline || customService.deadline || undefined
@@ -169,7 +163,7 @@ export class UpdateCustomServiceController {
                         to: worker.email,
                         subject: `Assignment Removed: ${customService.name}`,
                         html: jobScheduleGlobalTemplate(
-                            worker.name, customService.name, contractNumber, projectLocation, 'REMOVED', [], 
+                            worker.name, customService.name, contractNumber, projectLocation, 'REMOVED', [],
                             companyLogo, company.name, company.phone || undefined, company.email || undefined
                         )
                     });
@@ -187,6 +181,58 @@ export class UpdateCustomServiceController {
                             subject: `Schedule Update: ${body.name || customService.name}`,
                             html: jobScheduleGlobalTemplate(
                                 worker.name, body.name || customService.name, contractNumber, projectLocation, 'UPDATED', changes,
+                                companyLogo, company.name, company.phone || undefined, company.email || undefined,
+                                body.startDate || customService.start_date || undefined,
+                                body.deadline || customService.deadline || undefined
+                            )
+                        });
+                    }
+                }
+            }
+
+            for (const subId of subsToAdd) {
+                const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subId } });
+                if (subcontractor?.email) {
+                    await transporter.sendMail({
+                        from: SMTP_CONFIG.user,
+                        to: subcontractor.email,
+                        subject: `New Assignment: ${body.name || customService.name}`,
+                        html: jobScheduleGlobalTemplate(
+                            subcontractor.name, body.name || customService.name, contractNumber, projectLocation, 'ASSIGNED', [],
+                            companyLogo, company.name, company.phone || undefined, company.email || undefined,
+                            body.startDate || customService.start_date || undefined,
+                            body.deadline || customService.deadline || undefined
+                        )
+                    });
+                }
+            }
+
+            for (const subId of subsToRemove) {
+                const sub = customService.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                if (sub?.email) {
+                    await transporter.sendMail({
+                        from: SMTP_CONFIG.user,
+                        to: sub.email,
+                        subject: `Assignment Removed: ${customService.name}`,
+                        html: jobScheduleGlobalTemplate(
+                            sub.name, customService.name, contractNumber, projectLocation, 'REMOVED', [],
+                            companyLogo, company.name, company.phone || undefined, company.email || undefined
+                        )
+                    });
+                }
+            }
+
+            if (dateChanged) {
+                const remainingSubIds = currentSubIds.filter(id => !subsToRemove.includes(id));
+                for (const subId of remainingSubIds) {
+                    const sub = customService.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
+                    if (sub?.email) {
+                        await transporter.sendMail({
+                            from: SMTP_CONFIG.user,
+                            to: sub.email,
+                            subject: `Schedule Update: ${body.name || customService.name}`,
+                            html: jobScheduleGlobalTemplate(
+                                sub.name, body.name || customService.name, contractNumber, projectLocation, 'UPDATED', changes,
                                 companyLogo, company.name, company.phone || undefined, company.email || undefined,
                                 body.startDate || customService.start_date || undefined,
                                 body.deadline || customService.deadline || undefined

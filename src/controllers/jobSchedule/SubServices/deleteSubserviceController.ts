@@ -43,10 +43,8 @@ export class DeleteSubserviceController {
             const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
             if (!project) return res.status(404).json({ error: "Project context not found" });
 
-            // DB Delete
             await prisma.subServicesProject.delete({ where: { id: subserviceId } });
 
-            // Email Logic
             const SMTP_CONFIG = require("../../../config/smtp");
             const transporter = nodemailer.createTransport({
                 host: SMTP_CONFIG.host,
@@ -60,7 +58,6 @@ export class DeleteSubserviceController {
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
 
-            // 1. Notify Client
             const clientEmail = project.workContext?.Email || project.client?.email;
             const clientName = project.workContext?.Name || project.client?.name;
 
@@ -76,7 +73,6 @@ export class DeleteSubserviceController {
                 });
             }
 
-            // 2. Notify Workers
             const workers = subservice.userServiceProject.map(usp => usp.user);
             for (const worker of workers) {
                 if (worker?.email) {
@@ -85,7 +81,22 @@ export class DeleteSubserviceController {
                         to: worker.email,
                         subject: `Cancelled: Assignment for ${subservice.name}`,
                         html: jobScheduleGlobalTemplate(
-                            worker.name, subservice.name, contractNumber, projectLocation, 'CANCELLED', [], 
+                            worker.name, subservice.name, contractNumber, projectLocation, 'CANCELLED', [],
+                            companyLogo, company.name, company.phone || undefined, company.email || undefined
+                        )
+                    });
+                }
+            }
+
+            const subcontractors = subservice.subContractorServiceProjects.map(s => s.subcontractor);
+            for (const sub of subcontractors) {
+                if (sub?.email) {
+                    await transporter.sendMail({
+                        from: SMTP_CONFIG.user,
+                        to: sub.email,
+                        subject: `Cancelled: Assignment for ${subservice.name}`,
+                        html: jobScheduleGlobalTemplate(
+                            sub.name, subservice.name, contractNumber, projectLocation, 'CANCELLED', [],
                             companyLogo, company.name, company.phone || undefined, company.email || undefined
                         )
                     });

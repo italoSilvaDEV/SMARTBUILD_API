@@ -31,10 +31,25 @@ export class DeleteJobProjectController {
 
             if (!serviceProject) return res.status(404).json({ error: "Service project not found" });
 
-            // DB Delete (Cascade should handle junctions if configured, but let's be explicit if needed)
-            await prisma.serviceProject.delete({ where: { id: serviceProjectId } });
+            await prisma.$transaction([
+                prisma.serviceProject.update({
+                    where: {
+                        id: serviceProjectId
+                    },
+                    data: {
+                        start_date: null,
+                        deadline: null,
+                        scheduleCompleted: false
+                    }
+                }),
+                prisma.userServiceProject.deleteMany({
+                    where: { service_project_id: serviceProjectId }
+                }),
+                prisma.subContractorServiceProject.deleteMany({
+                    where: { service_project_id: serviceProjectId }
+                })
+            ]);
 
-            // Email Logic
             const SMTP_CONFIG = require("../../config/smtp");
             const transporter = nodemailer.createTransport({
                 host: SMTP_CONFIG.host,
@@ -48,7 +63,6 @@ export class DeleteJobProjectController {
             const projectLocation = serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";
 
-            // 1. Notify Client
             const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
             const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
 
@@ -58,13 +72,12 @@ export class DeleteJobProjectController {
                     to: clientEmail,
                     subject: `Cancelled: Project Schedule - #${contractNumber}`,
                     html: jobScheduleGlobalTemplate(
-                        clientName, serviceProject.name, contractNumber, projectLocation, 'CANCELLED', [], 
+                        clientName, serviceProject.name, contractNumber, projectLocation, 'CANCELLED', [],
                         companyLogo, company.name, company.phone || undefined, company.email || undefined
                     )
                 });
             }
 
-            // 2. Notify All assigned Workers
             const workers = serviceProject.UserServiceProject.map(usp => usp.user);
             for (const worker of workers) {
                 if (worker?.email) {
@@ -73,7 +86,22 @@ export class DeleteJobProjectController {
                         to: worker.email,
                         subject: `Cancelled: Assignment for ${serviceProject.name}`,
                         html: jobScheduleGlobalTemplate(
-                            worker.name, serviceProject.name, contractNumber, projectLocation, 'CANCELLED', [], 
+                            worker.name, serviceProject.name, contractNumber, projectLocation, 'CANCELLED', [],
+                            companyLogo, company.name, company.phone || undefined, company.email || undefined
+                        )
+                    });
+                }
+            }
+
+            const subcontractors = serviceProject.subContractorServiceProjects.map(s => s.subcontractor);
+            for (const sub of subcontractors) {
+                if (sub?.email) {
+                    await transporter.sendMail({
+                        from: SMTP_CONFIG.user,
+                        to: sub.email,
+                        subject: `Cancelled: Assignment for ${serviceProject.name}`,
+                        html: jobScheduleGlobalTemplate(
+                            sub.name, serviceProject.name, contractNumber, projectLocation, 'CANCELLED', [],
                             companyLogo, company.name, company.phone || undefined, company.email || undefined
                         )
                     });
