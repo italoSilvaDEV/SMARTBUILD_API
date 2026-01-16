@@ -54,6 +54,14 @@ export class GetCustomJobsController {
                     start_date: true,
                     deadline: true,
                     description: true,
+                    project: {
+                        select: {
+                            id: true,
+                            workContext: { select: { Name: true, Email: true, location: true } },
+                            client: { select: { name: true, email: true, location: true } },
+                            location: true,
+                        }
+                    },
                     scheduleCompleted: true,
                     userServiceProjects: {
                         select: {
@@ -172,6 +180,10 @@ export class GetCustomJobsController {
                     start_date: customJob.start_date,
                     deadline: customJob.deadline,
                     description: customJob.description,
+                    projectLocation: customJob.project?.location,
+                    projectId: customJob.project?.id,
+                    clientName: customJob.project?.workContext?.Name || customJob.project?.client?.name,
+                    clientEmail: customJob.project?.workContext?.Email || customJob.project?.client?.email,
                     scheduleCompleted: customJob.scheduleCompleted,
                     users: users,
                     subContractors: customJob.subContractorServiceProjects,
