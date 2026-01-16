@@ -97,6 +97,10 @@ export class CreateCustomServiceController {
                     ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+                const removeHtml = (text: string): string => {
+                    return text.replace(/<[^>]*>/g, '').trim();
+                };
+
                 const formatSGDate = (date?: string) => {
                     if (!date) return 'Not set';
                     return new Date(date).toLocaleDateString('en-US', {
@@ -114,7 +118,7 @@ export class CreateCustomServiceController {
                     companyName: company.name || "",
                     startDateFormatted: formatSGDate(customService.start_date || undefined),
                     deadlineFormatted: formatSGDate(customService.deadline || undefined),
-                    description: customService.description || "",
+                    description: customService.description ? removeHtml(customService.description) : "",
                     currentYear: new Date().getFullYear().toString(),
                 };
 

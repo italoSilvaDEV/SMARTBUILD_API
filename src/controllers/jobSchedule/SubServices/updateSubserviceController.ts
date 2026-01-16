@@ -140,6 +140,10 @@ export class UpdateSubserviceController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+            const removeHtml = (text: string): string => {
+                return text.replace(/<[^>]*>/g, '').trim();
+            };
+
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -161,7 +165,7 @@ export class UpdateSubserviceController {
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || subservice.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || subservice.deadline || undefined),
-                description: body.description || subservice.description || "",
+                description: body.description ? removeHtml(body.description) : subservice.description ? removeHtml(subservice.description) : "",
                 currentYear: new Date().getFullYear().toString(),
             };
 

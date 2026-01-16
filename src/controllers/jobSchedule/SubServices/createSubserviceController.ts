@@ -105,6 +105,10 @@ export class CreateSubserviceController {
                     ? `https://www.google.com/maps/search/?api=1&query=${projectData.lat},${projectData.log}`
                     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
+                const removeHtml = (text: string): string => {
+                    return text.replace(/<[^>]*>/g, '').trim();
+                };
+
                 const formatSGDate = (date?: string) => {
                     if (!date) return 'Not set';
                     return new Date(date).toLocaleDateString('en-US', {
@@ -122,7 +126,7 @@ export class CreateSubserviceController {
                     companyName: company?.name || "",
                     startDateFormatted: formatSGDate(subservice.start_date || undefined),
                     deadlineFormatted: formatSGDate(subservice.deadline || undefined),
-                    description: subservice.description || "",
+                    description: subservice.description ? removeHtml(subservice.description) : "",
                     currentYear: new Date().getFullYear().toString(),
                 };
 
