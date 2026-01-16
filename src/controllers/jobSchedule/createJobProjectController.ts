@@ -104,12 +104,12 @@ export class CreateJobProjectController {
                         where: {
                             id: user.id,
                             isDisabled: false,
-                            office: {
-                                name: "Worker"
-                            },
                             companies: {
                                 some: {
-                                    companyId: company.id
+                                    companyId: company.id,
+                                    office: {
+                                        name: "Worker"
+                                    }
                                 }
                             }
                         }
@@ -285,7 +285,7 @@ export class CreateJobProjectController {
                         if (user && user.email && user.name) {
                             await sendEmail({
                                 to: user.email,
-                                templateId: isScheduleChange 
+                                templateId: isScheduleChange
                                     ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
                                     : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
                                 dynamicTemplateData: {
@@ -305,7 +305,7 @@ export class CreateJobProjectController {
                         if (subcontractor && subcontractor.email && subcontractor.name) {
                             await sendEmail({
                                 to: subcontractor.email,
-                                templateId: isScheduleChange 
+                                templateId: isScheduleChange
                                     ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
                                     : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
                                 dynamicTemplateData: {
