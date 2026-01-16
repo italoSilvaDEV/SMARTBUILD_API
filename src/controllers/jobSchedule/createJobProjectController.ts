@@ -219,8 +219,13 @@ export class CreateJobProjectController {
             const serviceName = serviceProjectData?.name || 'Service';
             const serviceDescription = body.description ? removeHtml(body.description) : serviceProjectData?.description ? removeHtml(serviceProjectData.description) : undefined;
             const projectLocation = projectData?.location || 'Not specified';
-            const latitude = projectData?.lat ? parseFloat(projectData.lat) : null;
-            const longitude = projectData?.log ? parseFloat(projectData.log) : null;
+            const latitude = projectData?.lat;
+            const longitude = projectData?.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
+
             const startDate = serviceProjectData?.start_date || body.startDate;
             const deadline = serviceProjectData?.deadline || body.deadline;
 
@@ -271,6 +276,7 @@ export class CreateJobProjectController {
                 projectName: serviceName,
                 contractNumber: projectData?.contract_number || "N/A",
                 location: projectLocation,
+                googleMapsLink: googleMapsLink, // Nova variável
                 companyName: company?.name || "",
                 startDateFormatted: formatSGDate(startDate),
                 deadlineFormatted: formatSGDate(deadline),

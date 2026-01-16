@@ -50,6 +50,12 @@ export class ResendEmailController {
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.location || 'Not specified';
             const contractNumber = serviceProject.Project?.contract_number || 'N/A';
+            const latitude = serviceProject.Project?.lat;
+            const longitude = serviceProject.Project?.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -73,6 +79,7 @@ export class ResendEmailController {
                         projectName: serviceProject.name,
                         contractNumber: contractNumber,
                         location: projectLocation,
+                        googleMapsLink: googleMapsLink, // Nova variável
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
@@ -154,6 +161,12 @@ export class ResendEmailController {
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
+            const latitude = project.lat;
+            const longitude = project.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -177,6 +190,7 @@ export class ResendEmailController {
                         projectName: subservice.name,
                         contractNumber: contractNumber,
                         location: projectLocation,
+                        googleMapsLink: googleMapsLink, // Nova variável
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
@@ -243,6 +257,12 @@ export class ResendEmailController {
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
+            const latitude = project.lat;
+            const longitude = project.log;
+
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -266,6 +286,7 @@ export class ResendEmailController {
                         projectName: customService.name,
                         contractNumber: contractNumber,
                         location: projectLocation,
+                        googleMapsLink: googleMapsLink, // Nova variável
                         companyName: company.name || "",
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),

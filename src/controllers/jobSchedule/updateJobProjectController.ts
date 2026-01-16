@@ -152,6 +152,13 @@ export class UpdateJobProjectController {
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";
+            const latitude = serviceProject.Project?.lat;
+            const longitude = serviceProject.Project?.log;
+
+            // Gerar link do Google Maps (prioriza coordenadas, senão usa endereço)
+            const googleMapsLink = (latitude && longitude)
+                ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
             const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
             const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
@@ -173,6 +180,7 @@ export class UpdateJobProjectController {
                 projectName: serviceProject.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
+                googleMapsLink: googleMapsLink, // Nova variável
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || serviceProject.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || serviceProject.deadline || undefined),
