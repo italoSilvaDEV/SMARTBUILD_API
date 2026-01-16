@@ -84,17 +84,20 @@ export class UpdateSubserviceController {
 
             // Workers logic
             const currentWorkerIds = subservice.userServiceProject.map((usp: any) => usp.user_id);
-            const newWorkerIds = body.users?.map(u => u.id) || currentWorkerIds;
+            const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
+
             const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
             const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
             const currentSubIds = subservice.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
-            const newSubIds = body.subcontractors?.map(s => s.id) || currentSubIds;
+            const newSubIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
+
             const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
-            await prisma.$transaction([
-                prisma.subServicesProject.update({
+            await prisma.$transaction(async (tx) => {
+                // 1. Update principal
+                await tx.subServicesProject.update({
                     where: { id: body.subserviceId },
                     data: {
                         name: body.name,
@@ -102,20 +105,34 @@ export class UpdateSubserviceController {
                         start_date: body.startDate,
                         deadline: body.deadline
                     }
-                }),
-                prisma.userServiceProject.deleteMany({
-                    where: { sub_service_project_id: body.subserviceId, user_id: { in: workersToRemove } }
-                }),
-                ...workersToAdd.map((id: string) => prisma.userServiceProject.create({
-                    data: { sub_service_project_id: body.subserviceId, user_id: id }
-                })),
-                prisma.subContractorServiceProject.deleteMany({
-                    where: { sub_service_project_id: body.subserviceId, subcontractor_id: { in: subsToRemove } }
-                }),
-                ...subsToAdd.map((id: string) => prisma.subContractorServiceProject.create({
-                    data: { sub_service_project_id: body.subserviceId, subcontractor_id: id }
-                }))
-            ]);
+                });
+
+                // 2. Remover relações
+                if (workersToRemove.length > 0) {
+                    await tx.userServiceProject.deleteMany({
+                        where: { sub_service_project_id: body.subserviceId, user_id: { in: workersToRemove } }
+                    });
+                }
+
+                if (subsToRemove.length > 0) {
+                    await tx.subContractorServiceProject.deleteMany({
+                        where: { sub_service_project_id: body.subserviceId, subcontractor_id: { in: subsToRemove } }
+                    });
+                }
+
+                // 3. Adicionar relações
+                for (const workerId of workersToAdd) {
+                    await tx.userServiceProject.create({
+                        data: { sub_service_project_id: body.subserviceId, user_id: workerId }
+                    });
+                }
+
+                for (const subId of subsToAdd) {
+                    await tx.subContractorServiceProject.create({
+                        data: { sub_service_project_id: body.subserviceId, subcontractor_id: subId }
+                    });
+                }
+            });
 
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";

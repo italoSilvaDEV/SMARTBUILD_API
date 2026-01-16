@@ -87,17 +87,20 @@ export class UpdateCustomServiceController {
             }
 
             const currentWorkerIds = customService.userServiceProjects.map((usp: any) => usp.user_id);
-            const newWorkerIds = body.users?.map(u => u.id) || currentWorkerIds;
+            const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || [])); // Garante IDs únicos do front
+
             const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
             const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
             const currentSubIds = customService.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
-            const newSubIds = body.subcontractors?.map(s => s.id) || currentSubIds;
+            const newSubIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || [])); // Garante IDs únicos do front
+
             const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
-            await prisma.$transaction([
-                prisma.customServiceSchedule.update({
+            await prisma.$transaction(async (tx) => {
+                // 1. Update principal
+                await tx.customServiceSchedule.update({
                     where: { id: body.customServiceId },
                     data: {
                         name: body.name,
@@ -105,20 +108,34 @@ export class UpdateCustomServiceController {
                         start_date: body.startDate,
                         deadline: body.deadline
                     }
-                }),
-                prisma.userServiceProject.deleteMany({
-                    where: { custom_service_schedule_id: body.customServiceId, user_id: { in: workersToRemove } }
-                }),
-                ...workersToAdd.map((id: string) => prisma.userServiceProject.create({
-                    data: { custom_service_schedule_id: body.customServiceId, user_id: id }
-                })),
-                prisma.subContractorServiceProject.deleteMany({
-                    where: { custom_service_schedule_id: body.customServiceId, subcontractor_id: { in: subsToRemove } }
-                }),
-                ...subsToAdd.map((id: string) => prisma.subContractorServiceProject.create({
-                    data: { custom_service_schedule_id: body.customServiceId, subcontractor_id: id }
-                }))
-            ]);
+                });
+
+                // 2. Remover quem saiu
+                if (workersToRemove.length > 0) {
+                    await tx.userServiceProject.deleteMany({
+                        where: { custom_service_schedule_id: body.customServiceId, user_id: { in: workersToRemove } }
+                    });
+                }
+
+                if (subsToRemove.length > 0) {
+                    await tx.subContractorServiceProject.deleteMany({
+                        where: { custom_service_schedule_id: body.customServiceId, subcontractor_id: { in: subsToRemove } }
+                    });
+                }
+
+                // 3. Adicionar quem entrou (um por um para evitar erro de spread massivo)
+                for (const workerId of workersToAdd) {
+                    await tx.userServiceProject.create({
+                        data: { custom_service_schedule_id: body.customServiceId, user_id: workerId }
+                    });
+                }
+
+                for (const subId of subsToAdd) {
+                    await tx.subContractorServiceProject.create({
+                        data: { custom_service_schedule_id: body.customServiceId, subcontractor_id: subId }
+                    });
+                }
+            });
 
             const projectLocation = project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
