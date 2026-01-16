@@ -53,12 +53,10 @@ export class CreateCustomServiceController {
 
             if (!project) return res.status(404).json({ error: "Project not found" });
 
-            // Garante IDs únicos para evitar duplicidade de relações
             const workerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
             const subcontractorIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
 
             const customService = await prisma.$transaction(async (tx) => {
-                // 1. Criar o serviço customizado
                 const service = await tx.customServiceSchedule.create({
                     data: {
                         name: body.name,
@@ -69,7 +67,6 @@ export class CreateCustomServiceController {
                     }
                 });
 
-                // 2. Criar relações de Workers
                 for (const workerId of workerIds) {
                     await tx.userServiceProject.create({
                         data: {
@@ -79,7 +76,6 @@ export class CreateCustomServiceController {
                     });
                 }
 
-                // 3. Criar relações de Subcontractors
                 for (const subId of subcontractorIds) {
                     await tx.subContractorServiceProject.create({
                         data: {
@@ -92,7 +88,6 @@ export class CreateCustomServiceController {
                 return service;
             });
 
-            // Notificações via SendGrid
             if (!body.skipEmail) {
                 const projectLocation = project.location || "Not specified";
                 const latitude = project.lat;
@@ -123,25 +118,23 @@ export class CreateCustomServiceController {
                     currentYear: new Date().getFullYear().toString(),
                 };
 
-                // Notificar Workers
                 for (const workerId of workerIds) {
                     const worker = await prisma.user.findUnique({ where: { id: workerId }, select: { name: true, email: true } });
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
-                            templateId: "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                            templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                             dynamicTemplateData: { ...commonDynamicData, recipientName: worker.name }
                         });
                     }
                 }
 
-                // Notificar Subcontractors
                 for (const subId of subcontractorIds) {
                     const sub = await prisma.subcontractor.findUnique({ where: { id: subId }, select: { name: true, email: true } });
                     if (sub?.email) {
                         await sendEmail({
                             to: sub.email,
-                            templateId: "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                            templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                             dynamicTemplateData: { ...commonDynamicData, recipientName: sub.name }
                         });
                     }

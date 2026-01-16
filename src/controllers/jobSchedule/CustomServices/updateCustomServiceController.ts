@@ -87,19 +87,18 @@ export class UpdateCustomServiceController {
             }
 
             const currentWorkerIds = customService.userServiceProjects.map((usp: any) => usp.user_id);
-            const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || [])); // Garante IDs únicos do front
+            const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
 
             const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
             const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
             const currentSubIds = customService.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
-            const newSubIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || [])); // Garante IDs únicos do front
+            const newSubIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
 
             const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
             await prisma.$transaction(async (tx) => {
-                // 1. Update principal
                 await tx.customServiceSchedule.update({
                     where: { id: body.customServiceId },
                     data: {
@@ -110,7 +109,6 @@ export class UpdateCustomServiceController {
                     }
                 });
 
-                // 2. Remover quem saiu
                 if (workersToRemove.length > 0) {
                     await tx.userServiceProject.deleteMany({
                         where: { custom_service_schedule_id: body.customServiceId, user_id: { in: workersToRemove } }
@@ -123,7 +121,6 @@ export class UpdateCustomServiceController {
                     });
                 }
 
-                // 3. Adicionar quem entrou (um por um para evitar erro de spread massivo)
                 for (const workerId of workersToAdd) {
                     await tx.userServiceProject.create({
                         data: { custom_service_schedule_id: body.customServiceId, user_id: workerId }

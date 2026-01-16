@@ -65,7 +65,7 @@ export class DeleteCustomServiceController {
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
-                    templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                    templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                     dynamicTemplateData: {
                         ...commonDynamicData,
                         recipientName: clientName
@@ -78,7 +78,7 @@ export class DeleteCustomServiceController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -92,7 +92,7 @@ export class DeleteCustomServiceController {
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
-                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: sub.name

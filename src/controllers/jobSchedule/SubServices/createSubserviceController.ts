@@ -94,7 +94,6 @@ export class CreateSubserviceController {
                 return created;
             });
 
-            // Notificações
             if (!body.skipEmail && projectId) {
                 const projectData = await prisma.project.findUnique({
                     where: { id: projectId },
@@ -132,7 +131,7 @@ export class CreateSubserviceController {
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
-                            templateId: "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                            templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                             dynamicTemplateData: { ...commonDynamicData, recipientName: worker.name }
                         });
                     }

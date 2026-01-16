@@ -23,7 +23,6 @@ export async function sendEmail({ to, subject, html, text, from, templateId, dyn
         dynamicTemplateData,
     };
 
-    // If using a template and no subject is provided, SendGrid uses the template's subject
     if (templateId) {
         if (!subject) delete (msg as any).subject;
         delete (msg as any).html;

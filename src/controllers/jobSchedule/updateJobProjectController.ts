@@ -155,7 +155,6 @@ export class UpdateJobProjectController {
             const latitude = serviceProject.Project?.lat;
             const longitude = serviceProject.Project?.log;
 
-            // Gerar link do Google Maps (prioriza coordenadas, senão usa endereço)
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
@@ -180,7 +179,7 @@ export class UpdateJobProjectController {
                 projectName: serviceProject.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
-                googleMapsLink: googleMapsLink, // Nova variável
+                googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || serviceProject.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || serviceProject.deadline || undefined),
@@ -191,7 +190,7 @@ export class UpdateJobProjectController {
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
-                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                     dynamicTemplateData: {
                         ...commonDynamicData,
                         recipientName: clientName,
@@ -209,7 +208,7 @@ export class UpdateJobProjectController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -223,7 +222,7 @@ export class UpdateJobProjectController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -239,7 +238,7 @@ export class UpdateJobProjectController {
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: worker.name,
@@ -259,7 +258,7 @@ export class UpdateJobProjectController {
                 if (subcontractor?.email) {
                     await sendEmail({
                         to: subcontractor.email,
-                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: subcontractor.name
@@ -273,7 +272,7 @@ export class UpdateJobProjectController {
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
-                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: sub.name
@@ -289,7 +288,7 @@ export class UpdateJobProjectController {
                     if (sub?.email) {
                         await sendEmail({
                             to: sub.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: sub.name,

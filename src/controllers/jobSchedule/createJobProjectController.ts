@@ -276,7 +276,7 @@ export class CreateJobProjectController {
                 projectName: serviceName,
                 contractNumber: projectData?.contract_number || "N/A",
                 location: projectLocation,
-                googleMapsLink: googleMapsLink, // Nova variável
+                googleMapsLink: googleMapsLink,
                 companyName: company?.name || "",
                 startDateFormatted: formatSGDate(startDate),
                 deadlineFormatted: formatSGDate(deadline),

@@ -96,7 +96,6 @@ export class UpdateSubserviceController {
             const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
 
             await prisma.$transaction(async (tx) => {
-                // 1. Update principal
                 await tx.subServicesProject.update({
                     where: { id: body.subserviceId },
                     data: {
@@ -107,7 +106,6 @@ export class UpdateSubserviceController {
                     }
                 });
 
-                // 2. Remover relações
                 if (workersToRemove.length > 0) {
                     await tx.userServiceProject.deleteMany({
                         where: { sub_service_project_id: body.subserviceId, user_id: { in: workersToRemove } }
@@ -120,7 +118,6 @@ export class UpdateSubserviceController {
                     });
                 }
 
-                // 3. Adicionar relações
                 for (const workerId of workersToAdd) {
                     await tx.userServiceProject.create({
                         data: { sub_service_project_id: body.subserviceId, user_id: workerId }
@@ -174,7 +171,7 @@ export class UpdateSubserviceController {
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
-                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                     dynamicTemplateData: {
                         ...commonDynamicData,
                         recipientName: clientName,
@@ -192,7 +189,7 @@ export class UpdateSubserviceController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -206,7 +203,7 @@ export class UpdateSubserviceController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -222,7 +219,7 @@ export class UpdateSubserviceController {
                     if (worker?.email) {
                         await sendEmail({
                             to: worker.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: worker.name,
@@ -242,7 +239,7 @@ export class UpdateSubserviceController {
                 if (subcontractor?.email) {
                     await sendEmail({
                         to: subcontractor.email,
-                        templateId: "d-c2235cb8340643d3b7e9745773f47e01", // New Assignment
+                        templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: subcontractor.name
@@ -256,7 +253,7 @@ export class UpdateSubserviceController {
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
-                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425", // Assignment Removed
+                        templateId: "d-0f0dd1c1ccb242fcb8ffa1f5ba41b425",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: sub.name
@@ -272,7 +269,7 @@ export class UpdateSubserviceController {
                     if (sub?.email) {
                         await sendEmail({
                             to: sub.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
+                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: sub.name,

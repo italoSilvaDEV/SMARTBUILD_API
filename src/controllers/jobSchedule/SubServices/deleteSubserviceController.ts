@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
-import { jobScheduleGlobalTemplate } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../../utils/sendEmail";
 
 export class DeleteSubserviceController {
@@ -62,7 +61,7 @@ export class DeleteSubserviceController {
             if (clientEmail && clientName) {
                 await sendEmail({
                     to: clientEmail,
-                    templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                    templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                     dynamicTemplateData: {
                         ...commonDynamicData,
                         recipientName: clientName
@@ -75,7 +74,7 @@ export class DeleteSubserviceController {
                 if (worker?.email) {
                     await sendEmail({
                         to: worker.email,
-                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: worker.name
@@ -89,7 +88,7 @@ export class DeleteSubserviceController {
                 if (sub?.email) {
                     await sendEmail({
                         to: sub.email,
-                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8", // Cancelled
+                        templateId: "d-66ecce3621174b65958f2e9c4e3b28f8",
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: sub.name
