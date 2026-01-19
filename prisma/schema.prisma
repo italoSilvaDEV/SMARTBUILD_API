@@ -967,7 +967,7 @@ enum AttendanceMode {
 
 model Invoice {
   id                    String  @id @default(uuid())
-  stripeInvoiceId       String? @unique
+  stripeInvoiceId       String? @unique 
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
@@ -995,6 +995,9 @@ model Invoice {
 
   type_value          String? // "percentage" ou "value"
   cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
+  
+  // NOVO: Identifica se o invoice foi criado via fluxo standalone (Custom Invoice sem projeto/estimate prévio)
+  isStandaloneInvoice Boolean? @default(false)
 
   percentageCoefficient Decimal?
   description           String?  @db.Text
@@ -1192,6 +1195,8 @@ model Estimate {
 
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
+  
+  isStandaloneEstimate Boolean? @default(false)
 
   canceledAt         DateTime?
   canceledById       String?

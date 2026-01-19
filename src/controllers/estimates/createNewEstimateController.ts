@@ -17,11 +17,12 @@ type payloadCreateEstimate = {
     workContextId?: string;
     cancelEstimates?: boolean;
     isProjectFlow?: boolean;
+    isStandaloneEstimate?: boolean;
 }
 
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
-        const payloadCreateEstimate = req.body as payloadCreateEstimate
+        const payloadCreateEstimate = req.body as payloadCreateEstimate 
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
@@ -98,6 +99,7 @@ export class CreateNewEstimateController {
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
                         multi_emails: payloadCreateEstimate.multi_emails,
+                        isStandaloneEstimate: payloadCreateEstimate.isStandaloneEstimate || false,
                         date_creation: payloadCreateEstimate.date_creation ? new Date(payloadCreateEstimate.date_creation) : new Date(),
                         project: {
                             connect: {
