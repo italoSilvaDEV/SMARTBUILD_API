@@ -125,8 +125,8 @@ export class PlanController {
       const { grouped } = req.query;
       
       const whereClause = grouped === 'true' 
-        ? {} 
-        : { isCampaign: false };
+        ? { isCampaign: false } 
+        : {}
       
       const plans = await prisma.plan.findMany({
         where: whereClause,
