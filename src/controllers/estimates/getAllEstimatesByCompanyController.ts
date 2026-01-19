@@ -122,6 +122,7 @@ export class GetAllEstimatesByCompanyController {
                     balanceDue: true,
                     type_estimate: true,
                     multi_emails: true,
+                    isStandaloneEstimate: true,
                     project: {
                         select: {
                             id: true,
