@@ -124,10 +124,12 @@ export class PlanController {
     try {
       const { grouped } = req.query;
       
+      const whereClause = grouped === 'true' 
+        ? { isCampaign: false } 
+        : {}
+      
       const plans = await prisma.plan.findMany({
-        where: {
-          isCampaign: false
-        },
+        where: whereClause,
         include: {
           permissionGroup: true
         }
@@ -187,6 +189,7 @@ export class PlanController {
       res.status(500).json({ message: 'Error fetching plans', error: (error as Error).message });
     }
   }
+  
 
   async getPlanById(req: Request, res: Response) {
     try {
