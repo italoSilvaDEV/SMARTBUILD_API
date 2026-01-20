@@ -5,6 +5,9 @@ import QuickBooks from "node-quickbooks";
 
 import { fireAndForgetUpsertToQBO } from "../customer/FireAndForgetUpsertToQBO";
 import { getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
+import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
+import nodemailer from "nodemailer";
+import { invoicePaidPaymentEmail } from "../../../templateEmail/invoicePaidPayment";
 
 // Função para determinar se deve marcar needsReauthorization
 function shouldRequireReauthorization(err: any): boolean {
@@ -56,8 +59,9 @@ export class QuickBooksInvoiceController {
     calledFromStripe?: boolean; // Novo parâmetro para identificar origem
     multi_emails?: string; // Emails adicionais para envio
     date_creation?: string; // Data customizada de criação
+    isStandaloneInvoice?: boolean; // Se é um invoice criado sem projeto pré-existente
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice } = params;
 
     try {
       // Buscar o projeto
@@ -580,6 +584,7 @@ export class QuickBooksInvoiceController {
               type_value: type_value,
               type_invoicebase: type_invoicebase as "project" | "estimate" | null,
               multi_emails: multi_emails || project.client?.email,
+              isStandaloneInvoice: isStandaloneInvoice || false,
               createdAt: date_creation ? new Date(date_creation) : new Date(),
 
               InvoiceItems: {
@@ -1170,7 +1175,7 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation } = req.body;
+    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
 
     try {
       console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
@@ -1246,7 +1251,8 @@ export class QuickBooksInvoiceController {
         totalAmountTarget: calculatedTotalAmount,
         calledFromStripe: false, // Criar como invoice completo (banco + QB)
         multi_emails,
-        date_creation
+        date_creation,
+        isStandaloneInvoice
       });
 
       if (result?.invoice) {
@@ -2359,7 +2365,7 @@ export class QuickBooksInvoiceController {
 
       // Se o invoice não foi encontrado no QBO, deletar apenas localmente
       if (result.notFound) {
-        console.log(`⚠️ Invoice não encontrado no QuickBooks, deletando apenas localmente...`);
+        console.log(` Invoice não encontrado no QuickBooks, deletando apenas localmente...`);
         await prisma.invoice.delete({
           where: { id: invoice.id }
         });
@@ -2376,7 +2382,7 @@ export class QuickBooksInvoiceController {
         where: { id: invoice.id }
       });
 
-      console.log(`✅ Invoice deletado com sucesso (local e QuickBooks): ${invoice.id}`);
+      console.log(` Invoice deletado com sucesso (local e QuickBooks): ${invoice.id}`);
 
       return res.status(200).json({
         success: true,
@@ -2384,7 +2390,7 @@ export class QuickBooksInvoiceController {
         quickbooksResult: result
       });
     } catch (error: any) {
-      console.error("❌ Erro ao deletar QuickBooks invoice:", error);
+      console.error(" Erro ao deletar QuickBooks invoice:", error);
 
       // Verificar se é um erro de autorização
       if (error.message && (
@@ -3003,6 +3009,525 @@ export class QuickBooksInvoiceController {
         message: error.message || "Failed to retrieve payment link",
         details: error.toString()
       });
+    }
+  }
+
+  /**
+   * Registra um pagamento manual para um invoice QuickBooks
+   * Cria o pagamento no QuickBooks e registra localmente
+   */
+  async createPayment(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { paymentMethod, notes, amount, userId } = req.body;
+
+    try {
+      console.log(`[QuickBooks Payment] Iniciando registro de pagamento para invoice: ${invoiceId}`);
+
+      // Validações
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      if (!paymentMethod) {
+        return res.status(400).json({ error: "Payment method is required" });
+      }
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Valid payment amount is required" });
+      }
+
+      // Buscar o invoice no banco de dados
+      const invoice = await prisma.invoice.findFirst({
+        where: { 
+          OR: [
+            { id: invoiceId },
+            { externalInvoiceId: invoiceId }
+          ]
+        },
+        include: {
+          project: {
+            include: {
+              company: true,
+              client: true
+            }
+          },
+          estimate: {
+            select: {
+              id: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      // Verificar se é um invoice QuickBooks
+      if (invoice.invoiceType !== "quickbooks") {
+        return res.status(400).json({ 
+          error: "Invalid invoice type",
+          message: "This endpoint is only for QuickBooks invoices" 
+        });
+      }
+
+      // Verificar se o invoice já está pago
+      if (invoice.status === "paid") {
+        return res.status(400).json({ 
+          error: "Invoice already paid",
+          message: "This invoice has already been marked as paid" 
+        });
+      }
+
+      // Verificar se o invoice já foi cancelado
+      if (invoice.status === "void" || invoice.status === "canceled") {
+        return res.status(400).json({ 
+          error: "Invoice canceled",
+          message: "Cannot register payment for a canceled invoice" 
+        });
+      }
+
+      if (!invoice.idQuickbookContabio) {
+        return res.status(400).json({ 
+          error: "QuickBooks invoice ID missing",
+          message: "This invoice has not been synced with QuickBooks yet" 
+        });
+      }
+
+      if (!invoice.project?.company_id) {
+        return res.status(400).json({ 
+          error: "Company not found",
+          message: "Invoice does not have an associated company" 
+        });
+      }
+
+      console.log(`[QuickBooks Payment] Iniciando processo de registro de pagamento para QB ID: ${invoice.idQuickbookContabio}`);
+
+      // Tentar obter cliente QuickBooks
+      let hasQbConnection = false;
+      let qb: any = null;
+      let balance = 0;
+      let newStatus = invoice.status;
+
+      try {
+        console.log(`[QuickBooks Payment] Tentando conectar ao QuickBooks...`);
+        const qbClient = await getQbClientWithAccountOrThrow(userId, invoice.project.company_id);
+        qb = qbClient.qb;
+        hasQbConnection = true;
+        console.log(`[QuickBooks Payment] Conexão com QuickBooks estabelecida com sucesso`);
+      } catch (qbError: any) {
+        console.warn(`[QuickBooks Payment] Não foi possível conectar ao QuickBooks: ${qbError.message}`);
+        console.warn(`[QuickBooks Payment] Prosseguindo apenas com registro local do pagamento`);
+        hasQbConnection = false;
+      }
+
+      // Se tiver conexão QB, tentar criar o pagamento no QuickBooks
+      if (hasQbConnection && qb) {
+        try {
+          // 1. Buscar o invoice no QuickBooks para obter dados atualizados
+          console.log(`[QuickBooks Payment] Buscando invoice no QuickBooks...`);
+          const qbInvoice = await callWithRetry(
+            () => new Promise((resolve, reject) => {
+              qb.getInvoice(invoice.idQuickbookContabio, (err: any, inv: any) => {
+                if (err) reject(err);
+                else resolve(inv);
+              });
+            })
+          );
+
+          if (!qbInvoice) {
+            console.warn(`[QuickBooks Payment] Invoice não encontrado no QuickBooks, prosseguindo apenas com registro local`);
+            hasQbConnection = false;
+          } else {
+            // 2. Criar o pagamento no QuickBooks
+            console.log(`[QuickBooks Payment] Criando pagamento no QuickBooks...`);
+            const paymentPayload = {
+              TotalAmt: amount,
+              CustomerRef: {
+                value: (qbInvoice as any).CustomerRef.value
+              },
+              Line: [
+                {
+                  Amount: amount,
+                  LinkedTxn: [
+                    {
+                      TxnId: invoice.idQuickbookContabio,
+                      TxnType: "Invoice"
+                    }
+                  ]
+                }
+              ]
+            };
+
+            const qbPayment = await callWithRetry(
+              () => new Promise((resolve, reject) => {
+                qb.createPayment(paymentPayload, (err: any, payment: any) => {
+                  if (err) reject(err);
+                  else resolve(payment);
+                });
+              })
+            );
+
+            console.log(`[QuickBooks Payment] Pagamento criado no QuickBooks com sucesso. Payment ID: ${(qbPayment as any).Id}`);
+
+            // 3. Buscar o invoice atualizado no QuickBooks para pegar o novo status
+            console.log(`[QuickBooks Payment] Buscando invoice atualizado no QuickBooks...`);
+            const updatedQbInvoice = await callWithRetry(
+              () => new Promise((resolve, reject) => {
+                qb.getInvoice(invoice.idQuickbookContabio, (err: any, inv: any) => {
+                  if (err) reject(err);
+                  else resolve(inv);
+                });
+              })
+            );
+
+            balance = (updatedQbInvoice as any).Balance || 0;
+            const totalAmount = (updatedQbInvoice as any).TotalAmt || 0;
+
+            // Determinar o novo status baseado no saldo do QuickBooks
+            if (balance === 0) {
+              newStatus = "paid";
+            } else if (balance < totalAmount) {
+              newStatus = "partial";
+            }
+
+            console.log(`[QuickBooks Payment] Status atualizado do QuickBooks: ${newStatus}, Balance: ${balance}`);
+          }
+        } catch (qbOperationError: any) {
+          console.error(`[QuickBooks Payment] Erro ao operar com QuickBooks: ${qbOperationError.message}`);
+          console.warn(`[QuickBooks Payment] Prosseguindo apenas com registro local do pagamento`);
+          hasQbConnection = false;
+        }
+      }
+
+      // Se não tiver conexão QB, calcular status baseado nos dados locais
+      if (!hasQbConnection) {
+        console.log(`[QuickBooks Payment] Calculando status baseado em dados locais...`);
+        
+        // Buscar todos os pagamentos já registrados para este invoice
+        const existingPayments = await prisma.invoicePayment.findMany({
+          where: { invoiceId: invoice.id }
+        });
+
+        // Calcular total pago (incluindo o pagamento atual)
+        const totalPaid = existingPayments.reduce((sum, p) => sum + Number(p.amount), 0) + Number(amount);
+        const invoiceTotalAmount = Number(invoice.totalAmount);
+
+        // Calcular saldo restante
+        balance = invoiceTotalAmount - totalPaid;
+
+        // Determinar status baseado no total pago vs total do invoice
+        if (balance <= 0 || totalPaid >= invoiceTotalAmount) {
+          newStatus = "paid";
+          balance = 0;
+        } else if (totalPaid > 0 && totalPaid < invoiceTotalAmount) {
+          newStatus = "partial";
+        }
+
+        console.log(`[QuickBooks Payment] Status calculado localmente: ${newStatus}, Balance: ${balance}, Total Paid: ${totalPaid}`);
+      }
+
+      // 4. Criar registro de pagamento no banco local
+      const payment = await prisma.invoicePayment.create({
+        data: {
+          invoiceId: invoice.id,
+          paymentMethod,
+          notes: notes || '',
+          amount: amount,
+          createdAt: new Date()
+        }
+      });
+
+      // 5. Atualizar o invoice no banco local
+      const updatedInvoice = await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: newStatus,
+          checked: true,
+          balanceRemaining: balance,
+          lastPaymentAt: new Date(),
+          updatedAt: new Date()
+        },
+        include: {
+          project: {
+            include: {
+              client: true
+            }
+          }
+        }
+      });
+
+      // 6. Criar timeline entry
+      await prisma.invoiceTimeline.create({
+        data: {
+          invoiceId: invoice.id,
+          description: `Payment received via ${paymentMethod} - Amount: $${amount.toFixed(2)}${notes ? ` - Notes: ${notes}` : ''}`,
+          date_creation: new Date(),
+          date_update: new Date()
+        }
+      });
+
+      // 6.1. Criar invoice payment timeline entry
+      if (invoice.type_invoicebase === "project" && invoice.project) {
+        console.log("[QuickBooks Payment] Criando invoice payment timeline para project");
+        await prisma.invoicePaymentTimeLine.create({
+          data: {
+            description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(Number(amount)) + " on " + new Date().toLocaleDateString('en-US'),
+            projectId: invoice.project.id
+          }
+        });
+      } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
+        console.log("[QuickBooks Payment] Criando invoice payment timeline para estimate");
+        await prisma.invoicePaymentTimeLine.create({
+          data: {
+            description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(Number(amount)) + " on " + new Date().toLocaleDateString('en-US'),
+            estimateId: invoice.estimate.id
+          }
+        });
+      }
+
+      // 7. Se o invoice foi totalmente pago, enviar email de confirmação
+      if (newStatus === "paid") {
+        try {
+          console.log(`[QuickBooks Payment] Invoice totalmente pago. Enviando email de confirmação...`);
+          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
+        } catch (emailError) {
+          console.error("[QuickBooks Payment] Erro ao enviar email de confirmação:", emailError);
+          // Não falhar a requisição se o email falhar
+        }
+      }
+
+      const successMessage = hasQbConnection 
+        ? "Payment registered successfully in QuickBooks and locally"
+        : "Payment registered successfully locally (QuickBooks connection unavailable)";
+
+      console.log(`[QuickBooks Payment] ${successMessage}. Novo status: ${newStatus}`);
+
+      return res.status(201).json({
+        success: true,
+        message: successMessage,
+        registeredInQuickBooks: hasQbConnection,
+        payment,
+        invoice: {
+          id: updatedInvoice.id,
+          status: updatedInvoice.status,
+          balanceRemaining: updatedInvoice.balanceRemaining
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[QuickBooks Payment] Erro ao registrar pagamento:", error);
+
+      // Verificar se é erro de autorização
+      if (error.message && (
+        error.message.includes("401") || 
+        error.message.includes("403") || 
+        error.message.includes("Insufficient permissions") ||
+        error.message.includes("invalid_grant") ||
+        error.message.includes("token")
+      )) {
+        return res.status(403).json({
+          error: "Insufficient permissions",
+          message: "You need to reconnect your QuickBooks account",
+          action: "reauthorize"
+        });
+      }
+
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to register payment",
+        details: error.toString()
+      });
+    }
+  }
+
+  /**
+   * Busca o pagamento registrado para um invoice
+   */
+  async getPayment(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      const payment = await prisma.invoicePayment.findFirst({
+        where: { invoiceId }
+      });
+
+      if (!payment) {
+        return res.status(404).json({ error: "Payment not found" });
+      }
+
+      return res.status(200).json(payment);
+    } catch (error: any) {
+      console.error("Erro ao buscar pagamento:", error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to fetch payment"
+      });
+    }
+  }
+
+  /**
+   * Atualiza o pagamento registrado para um invoice
+   */
+  async updatePayment(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const { paymentMethod, notes } = req.body;
+
+    try {
+      const payment = await prisma.invoicePayment.findFirst({
+        where: { invoiceId }
+      });
+
+      if (!payment) {
+        return res.status(404).json({ error: "Payment not found" });
+      }
+
+      const updatedPayment = await prisma.invoicePayment.update({
+        where: { id: payment.id },
+        data: {
+          ...(paymentMethod && { paymentMethod }),
+          ...(notes !== undefined && { notes })
+        }
+      });
+
+      return res.status(200).json(updatedPayment);
+    } catch (error: any) {
+      console.error("Erro ao atualizar pagamento:", error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to update payment"
+      });
+    }
+  }
+
+  /**
+   * Envia email de confirmação de pagamento com PDF
+   */
+  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number) {
+    try {
+      console.log(`[QuickBooks Payment] Iniciando envio de email de confirmação para invoice ${invoiceData.id}`);
+
+      // Buscar detalhes do cliente
+      const client = invoiceData.project?.client;
+      const recipientEmail = client?.email;
+      const recipientName = client?.name || 'Client';
+
+      if (!recipientEmail) {
+        console.log("[QuickBooks Payment] Email do cliente não encontrado, pulando envio");
+        return;
+      }
+
+      // Buscar detalhes da empresa
+      const company = await prisma.company.findUnique({
+        where: { id: invoiceData.project.company_id }
+      });
+
+      if (!company) {
+        console.error("[QuickBooks Payment] Company not found");
+        return;
+      }
+
+      // Verificar se existe PDF pago
+      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findFirst({
+        where: { invoiceId: invoiceData.id },
+        orderBy: { date_creation: 'desc' }
+      });
+
+      if (!pdfInvoicePaid) {
+        console.log(`[QuickBooks Payment] Nenhum PDF pago encontrado para invoice ${invoiceData.id}`);
+      }
+
+      // Configurar SMTP
+      const SMTP_CONFIG = require("../../../config/smtp");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_CONFIG.host,
+        port: SMTP_CONFIG.port,
+        secure: SMTP_CONFIG.port === 465,
+        auth: {
+          user: SMTP_CONFIG.user,
+          pass: SMTP_CONFIG.pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Obter avatar da empresa
+      const companyAvatar = company?.avatar
+        ? await getPresignedUrl(company.avatar)
+        : "";
+
+      // Preparar anexos
+      const attachments = [];
+
+      if (pdfInvoicePaid && pdfInvoicePaid.uri) {
+        try {
+          const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+          const pdfResponse = await fetch(pdfUrl);
+          if (pdfResponse.ok) {
+            const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId}.pdf`;
+            attachments.push({
+              filename: fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf'
+            });
+          }
+        } catch (error) {
+          console.error("[QuickBooks Payment] Erro ao buscar PDF:", error);
+        }
+      }
+
+      const paymentDate = new Date();
+      const emailSubject = `Invoice #${invoiceData.externalInvoiceId} - Payment Confirmation`;
+
+      const emailHtml = invoicePaidPaymentEmail(
+        recipientName,
+        companyAvatar || "",
+        company?.name || '',
+        invoiceData.externalInvoiceId || invoiceData.id,
+        Number(amount),
+        paymentDate.toISOString(),
+        paymentMethod,
+        undefined,
+        company?.phone || '',
+        company?.email || ''
+      );
+
+      await transporter.sendMail({
+        from: SMTP_CONFIG.user,
+        to: recipientEmail,
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        text: `
+Dear ${recipientName},
+
+We are pleased to confirm that Invoice #${invoiceData.externalInvoiceId} has been paid successfully.
+
+Payment Details:
+- Invoice Number: #${invoiceData.externalInvoiceId}
+- Payment Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount))}
+- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Payment Method: ${paymentMethod}
+
+Thank you for your prompt payment. If you have any questions, please feel free to contact us.
+
+Have a great day!
+${company?.name || ''}
+        `.trim()
+      });
+
+      console.log(`[QuickBooks Payment] Email de confirmação enviado com sucesso para ${recipientEmail}`);
+    } catch (error) {
+      console.error("[QuickBooks Payment] Erro ao enviar email de confirmação:", error);
+      // Não propagar erro - o pagamento já foi registrado
     }
   }
 

@@ -14,6 +14,12 @@ const invoiceItemsController = new InvoiceItemsController();
 // Criar invoice (tipo definido no body)
 invoiceRoutes.post("/invoice/:projectId", checkToken, unifiedInvoiceController.createInvoice.bind(unifiedInvoiceController));
 
+// Buscar invoice específico por ID
+invoiceRoutes.get("/invoice/:id", checkToken, unifiedInvoiceController.getInvoiceById.bind(unifiedInvoiceController));
+
+// Vincular invoice a um projeto (standalone invoices)
+invoiceRoutes.patch("/invoice/link-to-project/:id", checkToken, unifiedInvoiceController.linkInvoiceToProject.bind(unifiedInvoiceController));
+
 // Buscar invoices por projeto
 invoiceRoutes.get("/invoice/project/:projectId", checkToken, unifiedInvoiceController.getInvoicesByProject.bind(unifiedInvoiceController));
 

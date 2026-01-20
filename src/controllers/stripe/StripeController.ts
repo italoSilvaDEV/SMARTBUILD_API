@@ -294,7 +294,8 @@ export class StripeController {
             totalAmount,
             type_invoicebase,
             estimateId,
-            multi_emails
+            multi_emails,
+            isStandaloneInvoice
         } = req.body;
 
         try {
@@ -464,7 +465,8 @@ export class StripeController {
                     user_id: userId,
                     estimateId: estimate?.id || null,
                     type_invoicebase: type_invoicebase,
-                    multi_emails: multi_emails
+                    multi_emails: multi_emails,
+                    isStandaloneInvoice: isStandaloneInvoice || false
                 },
             });
 

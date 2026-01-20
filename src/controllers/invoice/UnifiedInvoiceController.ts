@@ -30,6 +30,56 @@ export class UnifiedInvoiceController {
     }
   }
 
+  async getInvoiceById(req: Request, res: Response) {
+    const { id } = req.params;
+
+    try {
+      const invoice = await prisma.invoice.findUnique({
+        where: { id },
+        include: {
+          InvoiceItems: {
+            orderBy: { createdAt: 'asc' }
+          },
+          company: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true
+            }
+          },
+          project: {
+            include: {
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  location: true
+                }
+              }
+            }
+          },
+          PdfProject: true,
+          InvoiceSendHistory: {
+            orderBy: { sentAt: 'desc' },
+            take: 5
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      return res.status(200).json(invoice);
+    } catch (error) {
+      console.error("Error fetching invoice by ID:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  }
+
   async getInvoicesByProject(req: Request, res: Response) {
     const { projectId } = req.params;
     const { invoiceType, searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
@@ -309,6 +359,151 @@ export class UnifiedInvoiceController {
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to fetch QBO payments"
+      });
+    }
+  }
+
+  async linkInvoiceToProject(req: Request, res: Response) {
+    const { id } = req.params;
+    const { projectId } = req.body;
+
+    try {
+      console.log(`[UnifiedInvoiceController] Linking invoice ${id} to project ${projectId}`);
+
+      // Verificar se o invoice existe
+      const invoice = await prisma.invoice.findUnique({
+        where: { id },
+        include: {
+          project: {
+            include: {
+              serviceProject: true,
+              estimates: {
+                include: {
+                  serviceProjects: true
+                }
+              },
+              pdfproject: true
+            }
+          }
+        }
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      // Verificar se o novo projeto existe
+      const newProject = await prisma.project.findUnique({
+        where: { id: projectId }
+      });
+
+      if (!newProject) {
+        return res.status(404).json({ error: "Target project not found" });
+      }
+
+      // Usar transação para garantir atomicidade
+      const result = await prisma.$transaction(async (tx) => {
+        // PRIMEIRO: Atualizar o invoice para apontar para o novo projeto
+        // Isso deve ser feito ANTES de deletar o projeto antigo para evitar problemas de foreign key
+        const updatedInvoice = await tx.invoice.update({
+          where: { id },
+          data: {
+            projectId: projectId,
+            isStandaloneInvoice: false // Agora não é mais standalone
+          },
+          include: {
+            InvoiceItems: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true
+              }
+            },
+            project: {
+              include: {
+                client: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                    location: true
+                  }
+                }
+              }
+            },
+            PdfProject: true
+          }
+        });
+
+        // SEGUNDO: Se for um invoice standalone, excluir o projeto antigo e seus dados relacionados
+        if (invoice.isStandaloneInvoice && invoice.projectId && invoice.project) {
+          const oldProjectId = invoice.projectId;
+          console.log(`[UnifiedInvoiceController] Deleting old standalone project ${oldProjectId}`);
+
+          // Excluir services do estimate (se existir)
+          if (invoice.project.estimates && invoice.project.estimates.length > 0) {
+            for (const estimate of invoice.project.estimates) {
+              // Desvincular PDFs do estimate (NÃO deletar, apenas remover referência)
+              await tx.pdfProject.updateMany({
+                where: { estimate_id: estimate.id },
+                data: { estimate_id: null }
+              });
+
+              await tx.estimateServiceProject.deleteMany({
+                where: { estimateId: estimate.id }
+              });
+              
+              // Excluir o estimate
+              await tx.estimate.delete({
+                where: { id: estimate.id }
+              });
+            }
+          }
+
+          // Excluir service projects do projeto
+          await tx.serviceProject.deleteMany({
+            where: { projectId: oldProjectId }
+          });
+
+          // Desvincular PDFs do projeto (NÃO deletar, apenas remover referência project_id)
+          // Os PDFs continuam vinculados ao invoice
+          await tx.pdfProject.updateMany({
+            where: { project_id: oldProjectId },
+            data: { project_id: null }
+          });
+
+          // Excluir InvoicePaymentTimeLine relacionados ao projeto
+          await tx.invoicePaymentTimeLine.deleteMany({
+            where: { projectId: oldProjectId }
+          });
+
+          // Excluir o projeto antigo
+          await tx.project.delete({
+            where: { id: oldProjectId }
+          });
+
+          console.log(`[UnifiedInvoiceController] Old standalone project ${oldProjectId} deleted successfully`);
+        }
+
+        return updatedInvoice;
+      });
+
+      console.log(`[UnifiedInvoiceController] Invoice ${id} linked to project ${projectId} successfully`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Invoice linked to project successfully",
+        invoice: result
+      });
+
+    } catch (error: any) {
+      console.error("[UnifiedInvoiceController] Error linking invoice to project:", error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message || "Failed to link invoice to project"
       });
     }
   }
