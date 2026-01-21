@@ -76,13 +76,13 @@ export class ProjectScheduleController {
                             newValue: formatSGDate(deadline)
                         });
                     }
-                    
+
                     await sendEmail({
                         to: clientEmail,
-                        templateId: "d-9fcafe83aab641849972ba54ec2e965f", // Project Update Template
+                        templateId: "d-9fcafe83aab641849972ba54ec2e965f",
                         dynamicTemplateData: {
                             recipientName: clientName,
-                            projectName: "General Project Schedule",
+                            projectName: "Contract #" + contractNumber,
                             contractNumber: contractNumber,
                             location: projectLocation,
                             googleMapsLink: googleMapsLink,
@@ -119,7 +119,9 @@ export class ProjectScheduleController {
             const project = await prisma.project.findUnique({
                 where: { id: projectId },
                 include: {
-                    company: true
+                    company: true,
+                    workContext: true,
+                    client: true,
                 }
             });
 
@@ -128,6 +130,7 @@ export class ProjectScheduleController {
             }
 
             const projectLocation = project.location || "Not specified";
+            const clientName = project.workContext?.Name || project.client?.name;
             const contractNumber = project.contract_number || "N/A";
             const latitude = project.lat;
             const longitude = project.log;
@@ -154,8 +157,8 @@ export class ProjectScheduleController {
                     to: email,
                     templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27", // Reminder Template
                     dynamicTemplateData: {
-                        recipientName: "Customer",
-                        projectName: "Project Schedule Reminder",
+                        recipientName: clientName || "Customer",
+                        projectName: "Contract #" + contractNumber,
                         contractNumber: contractNumber,
                         location: projectLocation,
                         googleMapsLink: googleMapsLink,
