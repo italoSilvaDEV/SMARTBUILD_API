@@ -401,15 +401,19 @@ export class UnifiedInvoiceController {
         return res.status(404).json({ error: "Target project not found" });
       }
 
+      // Verificar se é a primeira vez que o invoice está sendo vinculado
+      const isFirstLinking = !invoice.hasBeenLinked;
+      
       // Usar transação para garantir atomicidade
       const result = await prisma.$transaction(async (tx) => {
         // PRIMEIRO: Atualizar o invoice para apontar para o novo projeto
-        // Isso deve ser feito ANTES de deletar o projeto antigo para evitar problemas de foreign key
+        
         const updatedInvoice = await tx.invoice.update({
           where: { id },
           data: {
             projectId: projectId,
-            isStandaloneInvoice: false // Agora não é mais standalone
+            // isStandaloneInvoice: false, // Agora não é mais standalone
+            hasBeenLinked: true // Marcar que já foi vinculado uma vez
           },
           include: {
             InvoiceItems: true,
@@ -438,10 +442,10 @@ export class UnifiedInvoiceController {
           }
         });
 
-        // SEGUNDO: Se for um invoice standalone, excluir o projeto antigo e seus dados relacionados
-        if (invoice.isStandaloneInvoice && invoice.projectId && invoice.project) {
+    
+        if (isFirstLinking && invoice.isStandaloneInvoice && invoice.projectId && invoice.project) {
           const oldProjectId = invoice.projectId;
-          console.log(`[UnifiedInvoiceController] Deleting old standalone project ${oldProjectId}`);
+          
 
           // Excluir services do estimate (se existir)
           if (invoice.project.estimates && invoice.project.estimates.length > 0) {
@@ -485,17 +489,21 @@ export class UnifiedInvoiceController {
             where: { id: oldProjectId }
           });
 
-          console.log(`[UnifiedInvoiceController] Old standalone project ${oldProjectId} deleted successfully`);
+          
         }
 
         return updatedInvoice;
       });
 
+      const message = isFirstLinking 
+        ? "Invoice linked to project successfully (first time linking - old project deleted)"
+        : "Invoice moved to new project successfully (old project preserved)";
+
       console.log(`[UnifiedInvoiceController] Invoice ${id} linked to project ${projectId} successfully`);
 
       return res.status(200).json({
         success: true,
-        message: "Invoice linked to project successfully",
+        message,
         invoice: result
       });
 

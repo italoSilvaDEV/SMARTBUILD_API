@@ -807,10 +807,10 @@ model CostProject {
   @@map("cost_project")
 }
 
-model Subcontractor {
+model Subcontractor { 
   id            String   @id @default(uuid())
   name          String
-  email         String   @unique
+  email         String
   phone         String?
   address       String?
   date_creation DateTime @default(now())
@@ -822,6 +822,7 @@ model Subcontractor {
   company_id                   String?
   subContractorServiceProjects SubContractorServiceProject[]
 
+  @@unique([email, company_id])
   @@map("subcontractors")
 }
 
@@ -1016,6 +1017,8 @@ model Invoice {
   surchargePaymentLocal    Decimal? // Taxa local aplicada (diferença entre valor original e final)
   surchargePaymentStripe   Decimal? // Taxa de processamento cobrada pelo Stripe
   totalAmountWithSurcharge Decimal? // Valor total pago (com surcharge)
+
+  hasBeenLinked Boolean? @default(false)
 
   // Relacionamento com Project e Company
   project   Project? @relation(name: "ProjectToInvoice", fields: [projectId], references: [id], onDelete: Cascade)
