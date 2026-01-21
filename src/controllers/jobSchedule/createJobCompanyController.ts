@@ -141,7 +141,7 @@ export class CreateJobCompanyController {
                             to: clientEmail,
                             templateId: hadPreviousSchedule
                                 ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
-                                : "d-810a9042b78147779f67a2958f609e86", // Project Scheduled (Informative)
+                                : "d-9eea3c0c0d39459ca43be63a1d7bc42f",
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: clientName,
