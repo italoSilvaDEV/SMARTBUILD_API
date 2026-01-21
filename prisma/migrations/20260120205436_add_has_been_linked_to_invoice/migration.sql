@@ -1,0 +1,1 @@
+ALTER TABLE `Invoice` ADD COLUMN `hasBeenLinked` BOOLEAN NOT NULL DEFAULT false;
