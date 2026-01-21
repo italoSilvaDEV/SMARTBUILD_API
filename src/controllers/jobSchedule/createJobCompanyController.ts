@@ -127,7 +127,7 @@ export class CreateJobCompanyController {
                         };
 
                         const commonDynamicData = {
-                            projectName: "General Project Schedule",
+                            projectName: "Contract #" + (project.contract_number || "N/A"),
                             contractNumber: project.contract_number || "N/A",
                             location: projectLocation,
                             googleMapsLink: googleMapsLink, // Adicionado
@@ -141,7 +141,7 @@ export class CreateJobCompanyController {
                             to: clientEmail,
                             templateId: hadPreviousSchedule
                                 ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
-                                : "d-c2235cb8340643d3b7e9745773f47e01", // Assigned
+                                : "d-810a9042b78147779f67a2958f609e86", // Project Scheduled (Informative)
                             dynamicTemplateData: {
                                 ...commonDynamicData,
                                 recipientName: clientName,
