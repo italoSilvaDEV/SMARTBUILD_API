@@ -807,10 +807,10 @@ model CostProject {
   @@map("cost_project")
 }
 
-model Subcontractor {
+model Subcontractor { 
   id            String   @id @default(uuid())
   name          String
-  email         String   @unique
+  email         String
   phone         String?
   address       String?
   date_creation DateTime @default(now())
@@ -822,6 +822,7 @@ model Subcontractor {
   company_id                   String?
   subContractorServiceProjects SubContractorServiceProject[]
 
+  @@unique([email, company_id])
   @@map("subcontractors")
 }
 
