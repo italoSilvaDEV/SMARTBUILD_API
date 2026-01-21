@@ -10,9 +10,15 @@ interface SendEmailData {
     from?: string;
     templateId?: string;
     dynamicTemplateData?: { [key: string]: any };
+    attachments?: Array<{
+        content: string;
+        filename: string;
+        type: string;
+        disposition?: string;
+    }>;
 }
 
-export async function sendEmail({ to, subject, html, text, from, templateId, dynamicTemplateData }: SendEmailData) {
+export async function sendEmail({ to, subject, html, text, from, templateId, dynamicTemplateData, attachments }: SendEmailData) {
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',
@@ -21,6 +27,7 @@ export async function sendEmail({ to, subject, html, text, from, templateId, dyn
         html: html || '',
         templateId,
         dynamicTemplateData,
+        attachments,
     };
 
     if (templateId) {

@@ -36,14 +36,18 @@ export class GetJobsByCompanyController {
                 },
                 select: {
                     id: true,
+                    location: true,
+                    contract_number: true,
                     workContext: {
                         select: {
                             Name: true,
+                            Email: true,
                         }
                     },
                     client: {
                         select: {
                             name: true,
+                            email: true,
                         }
                     },
                     start_date: true,
@@ -64,6 +68,10 @@ export class GetJobsByCompanyController {
                     name: project.workContext?.Name || project.client?.name,
                     start_date: project.start_date,
                     deadline: project.deadline,
+                    clientName: project.workContext?.Name || project.client?.name,
+                    clientEmail: project.workContext?.Email || project.client?.email,
+                    projectLocation: project.location,
+                    contract_number: project.contract_number,
                 }
             }))
 

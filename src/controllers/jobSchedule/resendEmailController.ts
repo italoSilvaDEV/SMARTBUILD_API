@@ -7,7 +7,7 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ResendEmailController {
     async forServiceProject(req: Request, res: Response) {
         const { id } = req.params;
-        const { to } = req.body;
+        const { to, attachments } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -92,7 +92,8 @@ export class ResendEmailController {
                         description: serviceProject.description ? removeHtml(serviceProject.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
-                    }
+                    },
+                    attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
             }
 
@@ -106,7 +107,7 @@ export class ResendEmailController {
 
     async forSubService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to } = req.body;
+        const { to, attachments } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -211,7 +212,8 @@ export class ResendEmailController {
                         description: subservice.description ? removeHtml(subservice.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
-                    }
+                    },
+                    attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
             }
 
@@ -225,7 +227,7 @@ export class ResendEmailController {
 
     async forCustomService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to } = req.body;
+        const { to, attachments } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -313,7 +315,8 @@ export class ResendEmailController {
                         description: customService.description ? removeHtml(customService.description) : "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
-                    }
+                    },
+                    attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
             }
 

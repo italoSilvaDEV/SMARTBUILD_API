@@ -19,8 +19,11 @@ import { UpdateSubserviceController } from "../controllers/jobSchedule/SubServic
 import { DeleteSubserviceController } from "../controllers/jobSchedule/SubServices/deleteSubserviceController";
 import { UpdateCustomServiceController } from "../controllers/jobSchedule/CustomServices/updateCustomServiceController";
 import { DeleteCustomServiceController } from "../controllers/jobSchedule/CustomServices/deleteCustomServiceController";
+import { ProjectScheduleController } from "../controllers/jobSchedule/projectScheduleController";
+
 const jobScheduleRoutes = Router();
 
+const projectScheduleController = new ProjectScheduleController();
 const getJobsByProjectController = new GetJobsByProjectController();
 const getProjectsByCompanyController = new GetProjectsByCompanyController();
 const getUsersByProjectController = new GetUsersByProjectController();
@@ -69,5 +72,10 @@ jobScheduleRoutes.post("/jobs/details/resend/customservice/:id", checkToken, res
 jobScheduleRoutes.get("/jobs/main/jobs/:companyId", checkToken, getJobsByCompanyController.handle)
 jobScheduleRoutes.get("/jobs/main/projects/:companyId", checkToken, getProjectsByCompanyController.handle)
 jobScheduleRoutes.post("/jobs/main/create", checkToken, createJobCompanyController.handle)
+
+// Project Level Schedule Routes
+jobScheduleRoutes.put("/jobs/main/update/:projectId", checkToken, projectScheduleController.update)
+jobScheduleRoutes.post("/jobs/main/resend/:projectId", checkToken, projectScheduleController.resend)
+jobScheduleRoutes.delete("/jobs/main/delete/:projectId", checkToken, projectScheduleController.delete)
 
 export default jobScheduleRoutes;
