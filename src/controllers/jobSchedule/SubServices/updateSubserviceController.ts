@@ -131,10 +131,10 @@ export class UpdateSubserviceController {
                 }
             });
 
-            const projectLocation = project.location || "Not specified";
+            const projectLocation = project.workContext?.location || project.location || "Not specified";
             const contractNumber = project.contract_number || "N/A";
-            const latitude = project.lat;
-            const longitude = project.log;
+            const latitude = project.workContext?.latitude?.toString() || project.lat;
+            const longitude = project.workContext?.longitude?.toString() || project.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
@@ -171,22 +171,6 @@ export class UpdateSubserviceController {
 
             const clientEmail = project.workContext?.Email || project.client?.email;
             const clientName = project.workContext?.Name || project.client?.name;
-
-            if (clientEmail && clientName) {
-                await sendEmail({
-                    to: clientEmail,
-                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                    dynamicTemplateData: {
-                        ...commonDynamicData,
-                        recipientName: clientName,
-                        changes: changes.map(c => ({
-                            label: c.label,
-                            oldValue: c.oldValue,
-                            newValue: c.newValue
-                        }))
-                    }
-                });
-            }
 
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });

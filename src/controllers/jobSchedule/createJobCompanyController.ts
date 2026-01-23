@@ -63,6 +63,8 @@ export class CreateJobCompanyController {
                             Name: true,
                             Email: true,
                             location: true,
+                            latitude: true,
+                            longitude: true,
                         }
                     },
                     client: {
@@ -105,9 +107,9 @@ export class CreateJobCompanyController {
                     const clientEmail = project.workContext?.Email || project.client?.email
 
                     if (clientEmail && clientName) {
-                        const projectLocation = project.location || "Not specified";
-                        const latitude = project.lat;
-                        const longitude = project.log;
+                        const projectLocation = project.workContext?.location || project.location || "Not specified";
+                        const latitude = project.workContext?.latitude?.toString() || project.lat;
+                        const longitude = project.workContext?.longitude?.toString() || project.log;
 
                         const googleMapsLink = (latitude && longitude)
                             ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`

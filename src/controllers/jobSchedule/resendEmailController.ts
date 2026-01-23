@@ -24,8 +24,15 @@ export class ResendEmailController {
                             location: true,
                             contract_number: true,
                             company_id: true,
-                            lat: true, // Adicionado
-                            log: true  // Adicionado
+                            lat: true,
+                            log: true,
+                            workContext: {
+                                select: {
+                                    location: true,
+                                    latitude: true,
+                                    longitude: true
+                                }
+                            }
                         }
                     }
                 }
@@ -50,10 +57,10 @@ export class ResendEmailController {
             }
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
-            const projectLocation = serviceProject.Project?.location || 'Not specified';
+            const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || 'Not specified';
             const contractNumber = serviceProject.Project?.contract_number || 'N/A';
-            const latitude = serviceProject.Project?.lat;
-            const longitude = serviceProject.Project?.log;
+            const latitude = serviceProject.Project?.workContext?.latitude?.toString() || serviceProject.Project?.lat;
+            const longitude = serviceProject.Project?.workContext?.longitude?.toString() || serviceProject.Project?.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
@@ -126,8 +133,15 @@ export class ResendEmailController {
                                     location: true,
                                     contract_number: true,
                                     company_id: true,
-                                    lat: true, // Adicionado
-                                    log: true  // Adicionado
+                                    lat: true,
+                                    log: true,
+                                    workContext: {
+                                        select: {
+                                            location: true,
+                                            latitude: true,
+                                            longitude: true
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -139,8 +153,15 @@ export class ResendEmailController {
                                     location: true,
                                     contract_number: true,
                                     company_id: true,
-                                    lat: true, // Adicionado
-                                    log: true  // Adicionado
+                                    lat: true,
+                                    log: true,
+                                    workContext: {
+                                        select: {
+                                            location: true,
+                                            latitude: true,
+                                            longitude: true
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -170,10 +191,10 @@ export class ResendEmailController {
             }
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
-            const projectLocation = project.location || 'Not specified';
+            const projectLocation = project.workContext?.location || project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
-            const latitude = project.lat;
-            const longitude = project.log;
+            const latitude = project.workContext?.latitude?.toString() || project.lat;
+            const longitude = project.workContext?.longitude?.toString() || project.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
@@ -244,8 +265,15 @@ export class ResendEmailController {
                             location: true,
                             contract_number: true,
                             company_id: true,
-                            lat: true, // Adicionado
-                            log: true  // Adicionado
+                            lat: true,
+                            log: true,
+                            workContext: {
+                                select: {
+                                    location: true,
+                                    latitude: true,
+                                    longitude: true
+                                }
+                            }
                         }
                     }
                 }
@@ -273,10 +301,10 @@ export class ResendEmailController {
             }
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
-            const projectLocation = project.location || 'Not specified';
+            const projectLocation = project.workContext?.location || project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
-            const latitude = project.lat;
-            const longitude = project.log;
+            const latitude = project.workContext?.latitude?.toString() || project.lat;
+            const longitude = project.workContext?.longitude?.toString() || project.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`

@@ -150,10 +150,10 @@ export class UpdateJobProjectController {
             ]);
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
-            const projectLocation = serviceProject.Project?.location || "Not specified";
+            const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";
-            const latitude = serviceProject.Project?.lat;
-            const longitude = serviceProject.Project?.log;
+            const latitude = serviceProject.Project?.workContext?.latitude?.toString() || serviceProject.Project?.lat;
+            const longitude = serviceProject.Project?.workContext?.longitude?.toString() || serviceProject.Project?.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
@@ -186,22 +186,6 @@ export class UpdateJobProjectController {
                 description: body.description || serviceProject.description || "",
                 currentYear: new Date().getFullYear().toString(),
             };
-
-            if (clientEmail && clientName) {
-                await sendEmail({
-                    to: clientEmail,
-                    templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                    dynamicTemplateData: {
-                        ...commonDynamicData,
-                        recipientName: clientName,
-                        changes: changes.map(c => ({
-                            label: c.label,
-                            oldValue: c.oldValue,
-                            newValue: c.newValue
-                        }))
-                    }
-                });
-            }
 
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });
