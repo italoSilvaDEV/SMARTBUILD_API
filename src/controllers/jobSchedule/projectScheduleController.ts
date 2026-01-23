@@ -558,6 +558,8 @@ export class ProjectScheduleController {
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
+
+                    console.log("Assignment email sent to worker", email);
                 }
             }
 
@@ -571,6 +573,8 @@ export class ProjectScheduleController {
                     },
                     attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
+
+                console.log("Assignment email sent to client", clientEmail);
             }
 
             return res.status(200).json({ message: "Assignment emails sent successfully" });
