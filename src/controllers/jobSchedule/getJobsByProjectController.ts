@@ -72,9 +72,11 @@ export class GetJobsByProjectController {
                     Project: {
                         select: {
                             id: true,
-                            workContext: { select: { Name: true, Email: true, location: true } },
+                            workContext: { select: { Name: true, Email: true, location: true, latitude: true, longitude: true } },
                             client: { select: { name: true, email: true, location: true } },
                             location: true,
+                            lat: true,
+                            log: true,
                         }
                     },
                     subServicesProjects: {
@@ -147,6 +149,8 @@ export class GetJobsByProjectController {
                     clientName: job.Project?.workContext?.Name || job.Project?.client?.name,
                     clientEmail: job.Project?.workContext?.Email || job.Project?.client?.email,
                     projectLocation: job.Project?.location,
+                    projectLatitude: job.Project?.workContext?.latitude || job.Project?.lat,
+                    projectLongitude: job.Project?.workContext?.longitude || job.Project?.log,
                     projectId: job.Project?.id,
                     scheduleCompleted: job.scheduleCompleted,
                     type: 'service',

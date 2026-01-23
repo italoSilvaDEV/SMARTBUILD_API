@@ -57,9 +57,11 @@ export class GetCustomJobsController {
                     project: {
                         select: {
                             id: true,
-                            workContext: { select: { Name: true, Email: true, location: true } },
+                            workContext: { select: { Name: true, Email: true, location: true, latitude: true, longitude: true } },
                             client: { select: { name: true, email: true, location: true } },
                             location: true,
+                            lat: true,
+                            log: true,
                         }
                     },
                     scheduleCompleted: true,
@@ -180,7 +182,9 @@ export class GetCustomJobsController {
                     start_date: customJob.start_date,
                     deadline: customJob.deadline,
                     description: customJob.description,
-                    projectLocation: customJob.project?.location,
+                    projectLocation: customJob.project?.workContext?.location || customJob.project?.location,
+                    projectLatitude: customJob.project?.workContext?.latitude || customJob.project?.lat,
+                    projectLongitude: customJob.project?.workContext?.longitude || customJob.project?.log,
                     projectId: customJob.project?.id,
                     clientName: customJob.project?.workContext?.Name || customJob.project?.client?.name,
                     clientEmail: customJob.project?.workContext?.Email || customJob.project?.client?.email,
