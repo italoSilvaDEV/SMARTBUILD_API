@@ -220,12 +220,17 @@ export class ProjectScheduleController {
             subServiceId,
             serviceProjectId,
             changes,
-            skipEmail
+            skipEmail,
+            description
         } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
         }
+
+        const removeHtml = (text: string): string => {
+            return text.replace(/<[^>]*>/g, '').trim();
+        };
 
         try {
             let data: any = null;
@@ -357,6 +362,7 @@ export class ProjectScheduleController {
                 deadlineFormatted: formatSGDate(deadline),
                 changes: changes || [],
                 notes: notes || "",
+                description: description ? removeHtml(description) : (data?.description ? removeHtml(data.description) : ""),
                 currentYear: new Date().getFullYear().toString(),
                 isUpdate: true
             };
@@ -407,8 +413,13 @@ export class ProjectScheduleController {
             customServiceId,
             subServiceId,
             serviceProjectId,
-            skipEmail
+            skipEmail,
+            description
         } = req.body;
+
+        const removeHtml = (text: string): string => {
+            return text.replace(/<[^>]*>/g, '').trim();
+        };
 
         try {
             let data: any = null;
@@ -538,6 +549,7 @@ export class ProjectScheduleController {
                 startDateFormatted: formatSGDate(startDate),
                 deadlineFormatted: formatSGDate(deadline),
                 notes: notes || "",
+                description: description ? removeHtml(description) : (data?.description ? removeHtml(data.description) : ""),
                 currentYear: new Date().getFullYear().toString(),
             };
 
