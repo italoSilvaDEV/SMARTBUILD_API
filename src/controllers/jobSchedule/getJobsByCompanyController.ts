@@ -42,12 +42,18 @@ export class GetJobsByCompanyController {
                         select: {
                             Name: true,
                             Email: true,
+                            location: true,
+                            latitude: true,
+                            longitude: true
                         }
                     },
                     client: {
                         select: {
                             name: true,
                             email: true,
+                            location: true,
+                            lat: true,
+                            log: true
                         }
                     },
                     start_date: true,
@@ -55,10 +61,10 @@ export class GetJobsByCompanyController {
                 }
             })
 
-            const projectsWithSchedule = allProjects.filter(project => 
-                project.start_date && 
-                project.deadline && 
-                project.start_date !== "" && 
+            const projectsWithSchedule = allProjects.filter(project =>
+                project.start_date &&
+                project.deadline &&
+                project.start_date !== "" &&
                 project.deadline !== ""
             )
 
@@ -71,6 +77,8 @@ export class GetJobsByCompanyController {
                     clientName: project.workContext?.Name || project.client?.name,
                     clientEmail: project.workContext?.Email || project.client?.email,
                     projectLocation: project.location,
+                    projectLongitude: project.workContext?.longitude ? project.workContext?.longitude : project.client?.log,
+                    projectLatitude: project.workContext?.latitude ? project.workContext?.latitude : project.client?.lat,
                     contract_number: project.contract_number,
                 }
             }))

@@ -41,13 +41,19 @@ export class GetProjectsByCompanyController {
                     workContext: {
                         select: {
                             Name: true,
-                            location: true
+                            location: true,
+                            Email: true,
+                            latitude: true,
+                            longitude: true
                         }
                     },
                     client: {
                         select: {
                             name: true,
                             location: true,
+                            email: true,
+                            lat: true,
+                            log: true
                         }
                     },
                     cover_photo: true,
@@ -86,6 +92,9 @@ export class GetProjectsByCompanyController {
                     contract_number: project.contract_number,
                     clientName: project.workContext?.Name || project.client?.name,
                     clientLocation: project.workContext?.location || project.client?.location,
+                    clientLongitude: project.workContext?.longitude ? project.workContext?.longitude : project.client?.log,
+                    clientLatitude: project.workContext?.latitude ? project.workContext?.latitude : project.client?.lat,
+                    clientEmail: project.workContext?.Email ? project.workContext?.Email : project.client?.email,
                     coverPhotoUrl: coverPhotoUrl,
                     status: project.status_project,
                     price: totalPrice,
