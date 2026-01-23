@@ -146,6 +146,11 @@ export class CreateJobCompanyController {
                         };
 
                         for (const email of recipientEmails) {
+                            const user = await prisma.user.findUnique({
+                                where: { email },
+                                select: { name: true }
+                            });
+
                             await sendEmail({
                                 to: email,
                                 templateId: hadPreviousSchedule
@@ -153,7 +158,7 @@ export class CreateJobCompanyController {
                                     : "d-9eea3c0c0d39459ca43be63a1d7bc42f",
                                 dynamicTemplateData: {
                                     ...commonDynamicData,
-                                    recipientName: clientName,
+                                    recipientName: user?.name || clientName,
                                     changes: hadPreviousSchedule ? [
                                         { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
                                         { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }

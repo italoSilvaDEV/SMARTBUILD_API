@@ -88,63 +88,6 @@ export class CreateCustomServiceController {
                 return service;
             });
 
-            if (!body.skipEmail) {
-                const projectLocation = project.location || "Not specified";
-                const latitude = project.lat;
-                const longitude = project.log;
-
-                const googleMapsLink = (latitude && longitude)
-                    ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
-
-                const removeHtml = (text: string): string => {
-                    return text.replace(/<[^>]*>/g, '').trim();
-                };
-
-                const formatSGDate = (date?: string) => {
-                    if (!date) return 'Not set';
-                    return new Date(date).toLocaleDateString('en-US', {
-                        year: 'numeric', month: 'short', day: 'numeric'
-                    }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                        hour: 'numeric', minute: '2-digit', hour12: true
-                    }) + ')';
-                };
-
-                const commonDynamicData = {
-                    projectName: customService.name,
-                    contractNumber: project.contract_number || "N/A",
-                    location: projectLocation,
-                    googleMapsLink: googleMapsLink,
-                    companyName: company.name || "",
-                    startDateFormatted: formatSGDate(customService.start_date || undefined),
-                    deadlineFormatted: formatSGDate(customService.deadline || undefined),
-                    description: customService.description ? removeHtml(customService.description) : "",
-                    currentYear: new Date().getFullYear().toString(),
-                };
-
-                for (const workerId of workerIds) {
-                    const worker = await prisma.user.findUnique({ where: { id: workerId }, select: { name: true, email: true } });
-                    if (worker?.email) {
-                        await sendEmail({
-                            to: worker.email,
-                            templateId: "d-c2235cb8340643d3b7e9745773f47e01",
-                            dynamicTemplateData: { ...commonDynamicData, recipientName: worker.name }
-                        });
-                    }
-                }
-
-                for (const subId of subcontractorIds) {
-                    const sub = await prisma.subcontractor.findUnique({ where: { id: subId }, select: { name: true, email: true } });
-                    if (sub?.email) {
-                        await sendEmail({
-                            to: sub.email,
-                            templateId: "d-c2235cb8340643d3b7e9745773f47e01",
-                            dynamicTemplateData: { ...commonDynamicData, recipientName: sub.name }
-                        });
-                    }
-                }
-            }
-
             return res.status(201).json({
                 message: "Custom service created successfully",
                 data: customService

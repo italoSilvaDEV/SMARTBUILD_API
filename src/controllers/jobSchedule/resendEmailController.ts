@@ -7,13 +7,7 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ResendEmailController {
     async forServiceProject(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes } = req.body;
-
-        if (!to) {
-            return res.status(400).json({ error: "Recipient emails (to) are required" });
-        }
-
-        const emails = to.split(",").map((email: string) => email.trim());
+        const { to, attachments, notes, skipEmail } = req.body;
 
         try {
             const serviceProject = await prisma.serviceProject.findUnique({
@@ -30,7 +24,15 @@ export class ResendEmailController {
                                 select: {
                                     location: true,
                                     latitude: true,
-                                    longitude: true
+                                    longitude: true,
+                                    Email: true,
+                                    Name: true
+                                }
+                            },
+                            client: {
+                                select: {
+                                    email: true,
+                                    name: true
                                 }
                             }
                         }
@@ -56,7 +58,6 @@ export class ResendEmailController {
                 return res.status(400).json({ error: "Service project has no schedule" });
             }
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || 'Not specified';
             const contractNumber = serviceProject.Project?.contract_number || 'N/A';
             const latitude = serviceProject.Project?.workContext?.latitude?.toString() || serviceProject.Project?.lat;
@@ -83,26 +84,57 @@ export class ResendEmailController {
                 }) + ')';
             };
 
-            for (const email of emails) {
-                await sendEmail({
-                    to: email,
-                    templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Reminder
-                    dynamicTemplateData: {
-                        recipientName: "Professional",
-                        projectName: serviceProject.name,
-                        contractNumber: contractNumber,
-                        location: projectLocation,
-                        googleMapsLink: googleMapsLink, // Nova variável
-                        companyName: company.name || "",
-                        startDateFormatted: formatSGDate(startDate || undefined),
-                        deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: serviceProject.description ? removeHtml(serviceProject.description) : "",
-                        notes: notes || "",
-                        currentYear: new Date().getFullYear().toString(),
-                        isReminder: true
-                    },
-                    attachments: attachments && attachments.length > 0 ? attachments : undefined
-                });
+            const commonDynamicData = {
+                projectName: serviceProject.name,
+                location: projectLocation,
+                googleMapsLink: googleMapsLink,
+                companyName: company.name || "",
+                startDateFormatted: formatSGDate(startDate || undefined),
+                deadlineFormatted: formatSGDate(deadline || undefined),
+                notes: notes || "",
+                currentYear: new Date().getFullYear().toString(),
+                isReminder: true
+            };
+
+            // Notify workers/subs from "to" field
+            if (to) {
+                const emails = to.split(",").map((email: string) => email.trim());
+                for (const email of emails) {
+                    const user = await prisma.user.findUnique({
+                        where: { email },
+                        select: { name: true }
+                    });
+
+                    await sendEmail({
+                        to: email,
+                        templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: user?.name || "Team Member",
+                            description: serviceProject.description ? removeHtml(serviceProject.description) : "",
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
+            }
+
+            // Notify client if skipEmail is false
+            if (!skipEmail) {
+                const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
+                const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
+
+                if (clientEmail) {
+                    await sendEmail({
+                        to: clientEmail,
+                        templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27", // Client Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: clientName || "Customer",
+                            contractNumber: contractNumber,
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
             }
 
             return res.status(200).json({ message: "Reminder emails sent successfully" });
@@ -115,13 +147,7 @@ export class ResendEmailController {
 
     async forSubService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes } = req.body;
-
-        if (!to) {
-            return res.status(400).json({ error: "Recipient emails (to) are required" });
-        }
-
-        const emails = to.split(",").map((email: string) => email.trim());
+        const { to, attachments, notes, skipEmail } = req.body;
 
         try {
             const subservice = await prisma.subServicesProject.findUnique({
@@ -140,7 +166,15 @@ export class ResendEmailController {
                                         select: {
                                             location: true,
                                             latitude: true,
-                                            longitude: true
+                                            longitude: true,
+                                            Email: true,
+                                            Name: true
+                                        }
+                                    },
+                                    client: {
+                                        select: {
+                                            email: true,
+                                            name: true
                                         }
                                     }
                                 }
@@ -160,7 +194,15 @@ export class ResendEmailController {
                                         select: {
                                             location: true,
                                             latitude: true,
-                                            longitude: true
+                                            longitude: true,
+                                            Email: true,
+                                            Name: true
+                                        }
+                                    },
+                                    client: {
+                                        select: {
+                                            email: true,
+                                            name: true
                                         }
                                     }
                                 }
@@ -191,7 +233,6 @@ export class ResendEmailController {
                 return res.status(400).json({ error: "Subservice has no schedule" });
             }
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.workContext?.location || project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
             const latitude = project.workContext?.latitude?.toString() || project.lat;
@@ -218,26 +259,57 @@ export class ResendEmailController {
                 }) + ')';
             };
 
-            for (const email of emails) {
-                await sendEmail({
-                    to: email,
-                    templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Reminder
-                    dynamicTemplateData: {
-                        recipientName: "Professional",
-                        projectName: subservice.name,
-                        contractNumber: contractNumber,
-                        location: projectLocation,
-                        googleMapsLink: googleMapsLink, // Nova variável
-                        companyName: company.name || "",
-                        startDateFormatted: formatSGDate(startDate || undefined),
-                        deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: subservice.description ? removeHtml(subservice.description) : "",
-                        notes: notes || "",
-                        currentYear: new Date().getFullYear().toString(),
-                        isReminder: true
-                    },
-                    attachments: attachments && attachments.length > 0 ? attachments : undefined
-                });
+            const commonDynamicData = {
+                projectName: subservice.name,
+                location: projectLocation,
+                googleMapsLink: googleMapsLink,
+                companyName: company.name || "",
+                startDateFormatted: formatSGDate(startDate || undefined),
+                deadlineFormatted: formatSGDate(deadline || undefined),
+                notes: notes || "",
+                currentYear: new Date().getFullYear().toString(),
+                isReminder: true
+            };
+
+            // Notify workers/subs from "to" field
+            if (to) {
+                const emails = to.split(",").map((email: string) => email.trim());
+                for (const email of emails) {
+                    const user = await prisma.user.findUnique({
+                        where: { email },
+                        select: { name: true }
+                    });
+
+                    await sendEmail({
+                        to: email,
+                        templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: user?.name || "Team Member",
+                            description: subservice.description ? removeHtml(subservice.description) : "",
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
+            }
+
+            // Notify client if skipEmail is false
+            if (!skipEmail) {
+                const clientEmail = project.workContext?.Email || project.client?.email;
+                const clientName = project.workContext?.Name || project.client?.name;
+
+                if (clientEmail) {
+                    await sendEmail({
+                        to: clientEmail,
+                        templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27", // Client Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: clientName || "Customer",
+                            contractNumber: contractNumber,
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
             }
 
             return res.status(200).json({ message: "Reminder emails sent successfully" });
@@ -250,13 +322,7 @@ export class ResendEmailController {
 
     async forCustomService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes } = req.body;
-
-        if (!to) {
-            return res.status(400).json({ error: "Recipient emails (to) are required" });
-        }
-
-        const emails = to.split(",").map((email: string) => email.trim());
+        const { to, attachments, notes, skipEmail } = req.body;
 
         try {
             const customService = await prisma.customServiceSchedule.findUnique({
@@ -273,7 +339,15 @@ export class ResendEmailController {
                                 select: {
                                     location: true,
                                     latitude: true,
-                                    longitude: true
+                                    longitude: true,
+                                    Email: true,
+                                    Name: true
+                                }
+                            },
+                            client: {
+                                select: {
+                                    email: true,
+                                    name: true
                                 }
                             }
                         }
@@ -302,7 +376,6 @@ export class ResendEmailController {
                 return res.status(400).json({ error: "Custom service has no schedule" });
             }
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.workContext?.location || project.location || 'Not specified';
             const contractNumber = project.contract_number || 'N/A';
             const latitude = project.workContext?.latitude?.toString() || project.lat;
@@ -329,26 +402,57 @@ export class ResendEmailController {
                 }) + ')';
             };
 
-            for (const email of emails) {
-                await sendEmail({
-                    to: email,
-                    templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Reminder
-                    dynamicTemplateData: {
-                        recipientName: "Professional",
-                        projectName: customService.name,
-                        contractNumber: contractNumber,
-                        location: projectLocation,
-                        googleMapsLink: googleMapsLink, // Nova variável
-                        companyName: company.name || "",
-                        startDateFormatted: formatSGDate(startDate || undefined),
-                        deadlineFormatted: formatSGDate(deadline || undefined),
-                        description: customService.description ? removeHtml(customService.description) : "",
-                        notes: notes || "",
-                        currentYear: new Date().getFullYear().toString(),
-                        isReminder: true
-                    },
-                    attachments: attachments && attachments.length > 0 ? attachments : undefined
-                });
+            const commonDynamicData = {
+                projectName: customService.name,
+                location: projectLocation,
+                googleMapsLink: googleMapsLink,
+                companyName: company.name || "",
+                startDateFormatted: formatSGDate(startDate || undefined),
+                deadlineFormatted: formatSGDate(deadline || undefined),
+                notes: notes || "",
+                currentYear: new Date().getFullYear().toString(),
+                isReminder: true
+            };
+
+            // Notify workers/subs from "to" field
+            if (to) {
+                const emails = to.split(",").map((email: string) => email.trim());
+                for (const email of emails) {
+                    const user = await prisma.user.findUnique({
+                        where: { email },
+                        select: { name: true }
+                    });
+
+                    await sendEmail({
+                        to: email,
+                        templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: user?.name || "Team Member",
+                            description: customService.description ? removeHtml(customService.description) : "",
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
+            }
+
+            // Notify client if skipEmail is false
+            if (!skipEmail) {
+                const clientEmail = project.workContext?.Email || project.client?.email;
+                const clientName = project.workContext?.Name || project.client?.name;
+
+                if (clientEmail) {
+                    await sendEmail({
+                        to: clientEmail,
+                        templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27", // Client Reminder
+                        dynamicTemplateData: {
+                            ...commonDynamicData,
+                            recipientName: clientName || "Customer",
+                            contractNumber: contractNumber,
+                        },
+                        attachments: attachments && attachments.length > 0 ? attachments : undefined
+                    });
+                }
             }
 
             return res.status(200).json({ message: "Reminder emails sent successfully" });
