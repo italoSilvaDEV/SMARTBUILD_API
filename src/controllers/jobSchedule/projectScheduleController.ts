@@ -206,7 +206,8 @@ export class ProjectScheduleController {
             notes,
             customServiceId,
             subServiceId,
-            serviceProjectId
+            serviceProjectId,
+            changes
         } = req.body;
 
         if (!to) {
@@ -344,6 +345,7 @@ export class ProjectScheduleController {
                         companyName: company?.name || "SmartBuild",
                         startDateFormatted: formatSGDate(startDate),
                         deadlineFormatted: formatSGDate(deadline),
+                        changes: changes || [],
                         notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isUpdate: true
