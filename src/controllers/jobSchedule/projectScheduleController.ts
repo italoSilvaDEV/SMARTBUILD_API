@@ -6,7 +6,7 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ProjectScheduleController {
     async update(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { startDate, deadline, sendEmail: shouldSendEmail, to, attachments, notes } = req.body;
+        const { startDate, deadline, skipEmail, to, attachments, notes } = req.body;
 
         try {
             const project = await prisma.project.findUnique({
@@ -33,7 +33,7 @@ export class ProjectScheduleController {
                 }
             });
 
-            if (shouldSendEmail) {
+            if (!skipEmail) {
                 const clientEmail = project.workContext?.Email || project.client?.email;
                 const clientName = project.workContext?.Name || project.client?.name;
 
