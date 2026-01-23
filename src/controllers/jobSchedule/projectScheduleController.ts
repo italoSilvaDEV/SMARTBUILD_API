@@ -205,7 +205,7 @@ export class ProjectScheduleController {
             attachments,
             notes,
             customServiceId,
-            subserviceId,
+            subServiceId,
             serviceProjectId
         } = req.body;
 
@@ -243,9 +243,9 @@ export class ProjectScheduleController {
                     deadline = data.deadline;
                     recipientName = project?.workContext?.Name || project?.client?.name || "Customer";
                 }
-            } else if (subserviceId) {
+            } else if (subServiceId) {
                 data = await prisma.subServicesProject.findUnique({
-                    where: { id: subserviceId },
+                    where: { id: subServiceId },
                     include: {
                         serviceProject: {
                             include: {
