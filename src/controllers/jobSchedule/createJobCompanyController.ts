@@ -149,7 +149,7 @@ export class CreateJobCompanyController {
                             await sendEmail({
                                 to: email,
                                 templateId: hadPreviousSchedule
-                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4"
+                                    ? "d-9fcafe83aab641849972ba54ec2e965f"
                                     : "d-9eea3c0c0d39459ca43be63a1d7bc42f",
                                 dynamicTemplateData: {
                                     ...commonDynamicData,
