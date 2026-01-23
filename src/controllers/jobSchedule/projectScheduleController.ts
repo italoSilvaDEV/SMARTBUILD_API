@@ -6,7 +6,7 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ProjectScheduleController {
     async update(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { startDate, deadline, sendEmail: shouldSendEmail } = req.body;
+        const { startDate, deadline, sendEmail: shouldSendEmail, to, attachments, notes } = req.body;
 
         try {
             const project = await prisma.project.findUnique({
@@ -37,7 +37,9 @@ export class ProjectScheduleController {
                 const clientEmail = project.workContext?.Email || project.client?.email;
                 const clientName = project.workContext?.Name || project.client?.name;
 
-                if (clientEmail && clientName) {
+                const recipientEmails = to ? to.split(",").map((e: string) => e.trim()) : (clientEmail ? [clientEmail] : []);
+
+                if (recipientEmails.length > 0 && clientName) {
                     const company = project.company;
                     const projectLocation = project.workContext?.location || project.location || "Not specified";
                     const contractNumber = project.contract_number || "N/A";
@@ -77,23 +79,27 @@ export class ProjectScheduleController {
                         });
                     }
 
-                    await sendEmail({
-                        to: clientEmail,
-                        templateId: "d-9fcafe83aab641849972ba54ec2e965f",
-                        dynamicTemplateData: {
-                            recipientName: clientName,
-                            projectName: "Contract #" + contractNumber,
-                            contractNumber: contractNumber,
-                            location: projectLocation,
-                            googleMapsLink: googleMapsLink,
-                            companyName: company?.name || "",
-                            startDateFormatted: formatSGDate(startDate),
-                            deadlineFormatted: formatSGDate(deadline),
-                            changes: changes,
-                            currentYear: new Date().getFullYear().toString(),
-                            isUpdate: true
-                        }
-                    });
+                    for (const email of recipientEmails) {
+                        await sendEmail({
+                            to: email,
+                            templateId: "d-9fcafe83aab641849972ba54ec2e965f",
+                            dynamicTemplateData: {
+                                recipientName: clientName,
+                                projectName: "Contract #" + contractNumber,
+                                contractNumber: contractNumber,
+                                location: projectLocation,
+                                googleMapsLink: googleMapsLink,
+                                companyName: company?.name || "",
+                                startDateFormatted: formatSGDate(startDate),
+                                deadlineFormatted: formatSGDate(deadline),
+                                changes: changes,
+                                notes: notes || "",
+                                currentYear: new Date().getFullYear().toString(),
+                                isUpdate: true
+                            },
+                            attachments: attachments && attachments.length > 0 ? attachments : undefined
+                        });
+                    }
                 }
             }
 

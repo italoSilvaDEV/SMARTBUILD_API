@@ -9,6 +9,9 @@ interface CreateSchedule {
     startDate: string
     deadline: string
     skipEmail?: boolean
+    to?: string
+    attachments?: any[]
+    notes?: string
 }
 
 export class CreateJobCompanyController {
@@ -106,7 +109,9 @@ export class CreateJobCompanyController {
                     const clientName = project.workContext?.Name || project.client?.name
                     const clientEmail = project.workContext?.Email || project.client?.email
 
-                    if (clientEmail && clientName) {
+                    const recipientEmails = body.to ? body.to.split(",").map(e => e.trim()) : (clientEmail ? [clientEmail] : []);
+
+                    if (recipientEmails.length > 0 && clientName) {
                         const projectLocation = project.workContext?.location || project.location || "Not specified";
                         const latitude = project.workContext?.latitude?.toString() || project.lat;
                         const longitude = project.workContext?.longitude?.toString() || project.log;
@@ -136,23 +141,27 @@ export class CreateJobCompanyController {
                             companyName: company.name || "",
                             startDateFormatted: formatSGDate(startDate),
                             deadlineFormatted: formatSGDate(deadline),
+                            notes: body.notes || "",
                             currentYear: new Date().getFullYear().toString(),
                         };
 
-                        await sendEmail({
-                            to: clientEmail,
-                            templateId: hadPreviousSchedule
-                                ? "d-269bc2b469934e85b3e437fd98e0fcd4" // Updated
-                                : "d-9eea3c0c0d39459ca43be63a1d7bc42f",
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: clientName,
-                                changes: hadPreviousSchedule ? [
-                                    { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
-                                    { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
-                                ] : []
-                            }
-                        });
+                        for (const email of recipientEmails) {
+                            await sendEmail({
+                                to: email,
+                                templateId: hadPreviousSchedule
+                                    ? "d-269bc2b469934e85b3e437fd98e0fcd4"
+                                    : "d-9eea3c0c0d39459ca43be63a1d7bc42f",
+                                dynamicTemplateData: {
+                                    ...commonDynamicData,
+                                    recipientName: clientName,
+                                    changes: hadPreviousSchedule ? [
+                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
+                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                    ] : []
+                                },
+                                attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined
+                            });
+                        }
 
                         console.log("Email sent successfully")
                     }
