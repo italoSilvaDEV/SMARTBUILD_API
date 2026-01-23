@@ -38,6 +38,8 @@ export class GetJobsByCompanyController {
                     id: true,
                     location: true,
                     contract_number: true,
+                    log: true,
+                    lat: true,
                     workContext: {
                         select: {
                             Name: true,
@@ -76,9 +78,9 @@ export class GetJobsByCompanyController {
                     deadline: project.deadline,
                     clientName: project.workContext?.Name || project.client?.name,
                     clientEmail: project.workContext?.Email || project.client?.email,
-                    projectLocation: project.location,
-                    projectLongitude: project.workContext?.longitude ? project.workContext?.longitude : project.client?.log,
-                    projectLatitude: project.workContext?.latitude ? project.workContext?.latitude : project.client?.lat,
+                    projectLocation: project.workContext?.location || project.client?.location || project.location,
+                    projectLongitude: project.workContext?.longitude || project.client?.log || project.log,
+                    projectLatitude: project.workContext?.latitude || project.client?.lat || project.lat,
                     contract_number: project.contract_number,
                 }
             }))
