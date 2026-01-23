@@ -7,7 +7,7 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ResendEmailController {
     async forServiceProject(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments } = req.body;
+        const { to, attachments, notes } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -97,6 +97,7 @@ export class ResendEmailController {
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
                         description: serviceProject.description ? removeHtml(serviceProject.description) : "",
+                        notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     },
@@ -114,7 +115,7 @@ export class ResendEmailController {
 
     async forSubService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments } = req.body;
+        const { to, attachments, notes } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -231,6 +232,7 @@ export class ResendEmailController {
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
                         description: subservice.description ? removeHtml(subservice.description) : "",
+                        notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     },
@@ -248,7 +250,7 @@ export class ResendEmailController {
 
     async forCustomService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments } = req.body;
+        const { to, attachments, notes } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -341,6 +343,7 @@ export class ResendEmailController {
                         startDateFormatted: formatSGDate(startDate || undefined),
                         deadlineFormatted: formatSGDate(deadline || undefined),
                         description: customService.description ? removeHtml(customService.description) : "",
+                        notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     },

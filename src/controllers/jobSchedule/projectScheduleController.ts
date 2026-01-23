@@ -107,7 +107,7 @@ export class ProjectScheduleController {
 
     async resend(req: Request, res: Response) {
         const { projectId } = req.params;
-        const { to, attachments } = req.body;
+        const { to, attachments, notes } = req.body;
 
         if (!to) {
             return res.status(400).json({ error: "Recipient emails (to) are required" });
@@ -165,6 +165,7 @@ export class ProjectScheduleController {
                         companyName: project.company?.name || "",
                         startDateFormatted: formatSGDate(project.start_date),
                         deadlineFormatted: formatSGDate(project.deadline),
+                        notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
                     },
