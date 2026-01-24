@@ -513,7 +513,6 @@ export class ProjectScheduleController {
                         }
                     }
                 });
-                console.log("data", data);
                 if (data) {
                     project = data.serviceProject?.Project || data.custom_service_schedule?.project;
                     company = project?.company;

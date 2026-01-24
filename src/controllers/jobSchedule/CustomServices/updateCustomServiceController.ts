@@ -164,16 +164,13 @@ export class UpdateCustomServiceController {
                 projectName: body.name || customService.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
-                googleMapsLink: googleMapsLink, // Adicionado
+                googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || customService.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || customService.deadline || undefined),
                 description: body.description ? removeHtml(body.description) : customService.description ? removeHtml(customService.description) : "",
                 currentYear: new Date().getFullYear().toString(),
             };
-
-            const clientEmail = project.workContext?.Email || project.client?.email;
-            const clientName = project.workContext?.Name || project.client?.name;
 
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });
@@ -203,28 +200,6 @@ export class UpdateCustomServiceController {
                 }
             }
 
-            if (dateChanged) {
-                const remainingWorkerIds = currentWorkerIds.filter((id: string) => !workersToRemove.includes(id));
-                for (const workerId of remainingWorkerIds) {
-                    const worker = customService.userServiceProjects.find((usp: any) => usp.user_id === workerId)?.user;
-                    if (worker?.email) {
-                        await sendEmail({
-                            to: worker.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: worker.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
-                }
-            }
-
             for (const subId of subsToAdd) {
                 const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subId } });
                 if (subcontractor?.email) {
@@ -250,28 +225,6 @@ export class UpdateCustomServiceController {
                             recipientName: sub.name
                         }
                     });
-                }
-            }
-
-            if (dateChanged) {
-                const remainingSubIds = currentSubIds.filter((id: string) => !subsToRemove.includes(id));
-                for (const subId of remainingSubIds) {
-                    const sub = customService.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
-                    if (sub?.email) {
-                        await sendEmail({
-                            to: sub.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4", // Updated
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: sub.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
                 }
             }
 

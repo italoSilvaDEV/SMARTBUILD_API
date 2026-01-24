@@ -82,8 +82,6 @@ export class UpdateJobProjectController {
             });
 
             const changes: ScheduleChange[] = [];
-            const dateChanged = (body.startDate && body.startDate !== serviceProject.start_date) ||
-                (body.deadline && body.deadline !== serviceProject.deadline);
 
             if (body.startDate && body.startDate !== serviceProject.start_date) {
                 changes.push({
@@ -149,7 +147,6 @@ export class UpdateJobProjectController {
                 }))
             ]);
 
-            const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";
             const latitude = serviceProject.Project?.workContext?.latitude?.toString() || serviceProject.Project?.lat;
@@ -158,9 +155,6 @@ export class UpdateJobProjectController {
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
-
-            const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
-            const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -215,28 +209,6 @@ export class UpdateJobProjectController {
                 }
             }
 
-            if (dateChanged) {
-                const remainingWorkerIds = currentWorkerIds.filter(id => !workersToRemove.includes(id));
-                for (const workerId of remainingWorkerIds) {
-                    const worker = serviceProject.UserServiceProject.find(usp => usp.user_id === workerId)?.user;
-                    if (worker?.email) {
-                        await sendEmail({
-                            to: worker.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: worker.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
-                }
-            }
-
             for (const subId of subsToAdd) {
                 const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subId } });
                 if (subcontractor?.email) {
@@ -262,28 +234,6 @@ export class UpdateJobProjectController {
                             recipientName: sub.name
                         }
                     });
-                }
-            }
-
-            if (dateChanged) {
-                const remainingSubIds = currentSubIds.filter(id => !subsToRemove.includes(id));
-                for (const subId of remainingSubIds) {
-                    const sub = serviceProject.subContractorServiceProjects.find(s => s.subcontractor_id === subId)?.subcontractor;
-                    if (sub?.email) {
-                        await sendEmail({
-                            to: sub.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: sub.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
                 }
             }
 

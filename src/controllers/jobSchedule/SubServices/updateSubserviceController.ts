@@ -63,8 +63,6 @@ export class UpdateSubserviceController {
             if (!project) return res.status(404).json({ error: "Project context not found" });
 
             const changes: ScheduleChange[] = [];
-            const dateChanged = (body.startDate && body.startDate !== subservice.start_date) ||
-                (body.deadline && body.deadline !== subservice.deadline);
 
             if (body.name && body.name !== subservice.name) {
                 changes.push({ label: "Name", oldValue: subservice.name, newValue: body.name });
@@ -82,7 +80,6 @@ export class UpdateSubserviceController {
                 changes.push({ label: "Description", newValue: "Description has been updated" });
             }
 
-            // Workers logic
             const currentWorkerIds = subservice.userServiceProject.map((usp: any) => usp.user_id);
             const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
 
@@ -161,16 +158,13 @@ export class UpdateSubserviceController {
                 projectName: body.name || subservice.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
-                googleMapsLink: googleMapsLink, // Adicionado
+                googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
                 startDateFormatted: formatSGDate(body.startDate || subservice.start_date || undefined),
                 deadlineFormatted: formatSGDate(body.deadline || subservice.deadline || undefined),
                 description: body.description ? removeHtml(body.description) : subservice.description ? removeHtml(subservice.description) : "",
                 currentYear: new Date().getFullYear().toString(),
             };
-
-            const clientEmail = project.workContext?.Email || project.client?.email;
-            const clientName = project.workContext?.Name || project.client?.name;
 
             for (const workerId of workersToAdd) {
                 const worker = await prisma.user.findUnique({ where: { id: workerId } });
@@ -200,28 +194,6 @@ export class UpdateSubserviceController {
                 }
             }
 
-            if (dateChanged) {
-                const remainingWorkerIds = currentWorkerIds.filter((id: string) => !workersToRemove.includes(id));
-                for (const workerId of remainingWorkerIds) {
-                    const worker = subservice.userServiceProject.find((usp: any) => usp.user_id === workerId)?.user;
-                    if (worker?.email) {
-                        await sendEmail({
-                            to: worker.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: worker.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
-                }
-            }
-
             for (const subId of subsToAdd) {
                 const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subId } });
                 if (subcontractor?.email) {
@@ -247,28 +219,6 @@ export class UpdateSubserviceController {
                             recipientName: sub.name
                         }
                     });
-                }
-            }
-
-            if (dateChanged) {
-                const remainingSubIds = currentSubIds.filter((id: string) => !subsToRemove.includes(id));
-                for (const subId of remainingSubIds) {
-                    const sub = subservice.subContractorServiceProjects.find((s: any) => s.subcontractor_id === subId)?.subcontractor;
-                    if (sub?.email) {
-                        await sendEmail({
-                            to: sub.email,
-                            templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
-                            dynamicTemplateData: {
-                                ...commonDynamicData,
-                                recipientName: sub.name,
-                                changes: changes.map(c => ({
-                                    label: c.label,
-                                    oldValue: c.oldValue,
-                                    newValue: c.newValue
-                                }))
-                            }
-                        });
-                    }
                 }
             }
 
