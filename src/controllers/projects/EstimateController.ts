@@ -4,6 +4,7 @@ import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import nodemailer from "nodemailer";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
+import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { PDFDocument, rgb } from 'pdf-lib';
@@ -574,7 +575,7 @@ export class EstimateController {
 
       if (estimate.PdfProject && estimate.PdfProject.length > 0) {
         const pdf = estimate.PdfProject[0];
-        
+
         if (pdf.uri) {
           pdf.uri = await getPresignedUrl(pdf.uri);
         }
@@ -1250,7 +1251,6 @@ export class EstimateController {
   async sendEmail(req: Request, res: Response) {
     let attachmentFiles: Express.Multer.File[] = [];
 
-    // Função utilitária para limpar arquivos temporários
     const cleanupTempFiles = (files: Express.Multer.File[]) => {
       if (files && files.length > 0) {
         files.forEach(file => {
@@ -1259,7 +1259,7 @@ export class EstimateController {
               fs.unlinkSync(file.path);
             }
           } catch (error) {
-            console.error(`❌ Error deleting temporary file ${file.path}:`, error);
+            console.error(`Error deleting temporary file ${file.path}:`, error);
           }
         });
       }
@@ -1269,69 +1269,39 @@ export class EstimateController {
       const { id } = req.params;
       attachmentFiles = req.files as Express.Multer.File[];
 
-      // Extrair dados diretamente do body (FormData)
-      const { from, to, cc, bcc, subject, body, sendMeCopy, numberPerson } = req.body;
+      const {
+        from,
+        to,
+        cc,
+        bcc,
+        subject,
+        body,
+        sendMeCopy,
+        numberPerson
+      } = req.body;
 
-      // Validar se há dados básicos do email
       if (!to) {
-        // Limpar arquivos antes de retornar erro
         cleanupTempFiles(attachmentFiles);
         return res.status(400).json({ error: "Recipient email is required" });
       }
 
-      // Função para validar tipos de arquivo permitidos
-      const validateFileType = (file: Express.Multer.File): boolean => {
-        const allowedTypes = [
-          'image/jpeg',
-          'image/jpg',
-          'image/png',
-          'image/gif',
-          'image/bmp',
-          'image/webp',
-          'application/pdf'
-        ];
-        return allowedTypes.includes(file.mimetype);
-      };
-
-      // Validar tipos de arquivo dos anexos
-      if (attachmentFiles && attachmentFiles.length > 0) {
-        const invalidFiles = attachmentFiles.filter(file => !validateFileType(file));
-        if (invalidFiles.length > 0) {
-          // Limpar arquivos temporários
-          cleanupTempFiles(attachmentFiles);
-          return res.status(400).json({
-            error: "Invalid file type. Only images (JPEG, PNG, GIF, BMP, WEBP) and PDF files are allowed.",
-            invalidFiles: invalidFiles.map(f => ({
-              name: f.originalname,
-              type: f.mimetype
-            }))
-          });
-        }
-      }
-
-      // Função utilitária para processar emails corretamente
       const parseEmailList = (emailInput: any): string[] => {
         if (!emailInput) return [];
 
-        // Se for uma string que parece ser um array JSON, tentar fazer parse
         if (typeof emailInput === 'string') {
           try {
-            // Tentar fazer parse se parecer com JSON array
             if (emailInput.startsWith('[') && emailInput.endsWith(']')) {
               const parsed = JSON.parse(emailInput);
               if (Array.isArray(parsed)) {
                 return parsed.filter(email => email && typeof email === 'string').map(email => email.trim());
               }
             }
-            // Se não for JSON, tratar como string separada por vírgulas
             return emailInput.split(',').map((email: string) => email.trim()).filter(email => email);
           } catch (error) {
-            // Se falhar o parse, tratar como string normal
             return emailInput.split(',').map((email: string) => email.trim()).filter(email => email);
           }
         }
 
-        // Se já for array, garantir que seja array de strings
         if (Array.isArray(emailInput)) {
           return emailInput.filter(email => email && typeof email === 'string').map(email => email.trim());
         }
@@ -1339,7 +1309,6 @@ export class EstimateController {
         return [];
       };
 
-      // Criar o payload estruturado do email
       const dataEmail = {
         from: from || '',
         to: parseEmailList(to),
@@ -1350,9 +1319,7 @@ export class EstimateController {
         body: body || ''
       };
 
-      // Validar se há pelo menos um destinatário
       if (!dataEmail.to || dataEmail.to.length === 0) {
-        // Limpar arquivos antes de retornar erro
         cleanupTempFiles(attachmentFiles);
         return res.status(400).json({ error: "Please provide at least one recipient email address" });
       }
@@ -1363,99 +1330,60 @@ export class EstimateController {
           project: {
             include: {
               client: true,
-              company: true
+              company: true,
+              serviceProject: true
             }
           }
         }
       });
 
       if (!estimate) {
-        // Limpar arquivos antes de retornar erro
         cleanupTempFiles(attachmentFiles);
         return res.status(404).json({ error: "Estimate not found" });
       }
 
-      // Buscar o PDF para usar como anexo
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { estimate_id: estimate.id }
       });
       if (!pdfProject || !pdfProject.uri) {
-        // Limpar arquivos antes de retornar erro
         cleanupTempFiles(attachmentFiles);
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
-      // Gerar URL presigned para o PDF
       const pdfUrl = await getPresignedUrl(pdfProject.uri);
 
-      // Baixar o PDF do S3
       const pdfResponse = await fetch(pdfUrl);
       if (!pdfResponse.ok) {
-        // Limpar arquivos antes de lançar erro
         cleanupTempFiles(attachmentFiles);
         throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
       }
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
       const fileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
 
-      // Configurar o transportador de email
-      const SMTP_CONFIG = require("../../config/smtp");
-
-      // Verificar configuração SMTP
-      try {
-        await EstimateController.verifySMTPConfig();
-      } catch (error) {
-        console.error('SMTP verification failed:', error);
-        // Limpar arquivos antes de retornar erro
-        cleanupTempFiles(attachmentFiles);
-        return res.status(500).json({
-          error: "SMTP configuration error",
-          details: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
-      // Resultados do envio
       const results = [];
       const companyAvatar = estimate.project?.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : "";
 
-      // Preparar lista completa de destinatários APENAS dos campos enviados no FormData
       const allRecipients = [
         ...dataEmail.to,
         ...dataEmail.cc,
         ...dataEmail.bcc
       ];
 
-      // Se sendMeCopy for true, adicionar o remetente aos destinatários
       if (dataEmail.sendMeCopy && dataEmail.from) {
         allRecipients.push(dataEmail.from);
       }
 
-      // Garantir que allRecipients seja uma lista plana de strings únicas
       const uniqueRecipients = [...new Set(allRecipients.filter(email => email && typeof email === 'string'))];
 
       try {
-        // Preparar anexos
         const attachments = [
           {
             filename: fileName,
-            content: pdfBuffer,
-            contentType: 'application/pdf'
+            content: pdfBuffer.toString('base64'),
+            type: 'application/pdf',
+            disposition: 'attachment'
           }
         ];
 
-        // Adicionar anexos enviados pelo usuário
         if (attachmentFiles && attachmentFiles.length > 0) {
           console.log(`📎 Processing ${attachmentFiles.length} attachment(s)...`);
           for (const file of attachmentFiles) {
@@ -1463,158 +1391,112 @@ export class EstimateController {
               const fileBuffer = fs.readFileSync(file.path);
               attachments.push({
                 filename: file.originalname,
-                content: fileBuffer,
-                contentType: file.mimetype
+                content: fileBuffer.toString('base64'),
+                type: file.mimetype,
+                disposition: 'attachment'
               });
               console.log(`✅ Processed attachment: ${file.originalname} (${file.mimetype})`);
             } catch (error) {
-              console.error(`❌ Error reading attachment file ${file.originalname}:`, error);
+              console.error(`Error reading attachment file ${file.originalname}:`, error);
             }
           }
         }
 
-        const mailOptions = {
-          from: SMTP_CONFIG.user,
-          replyTo: dataEmail.from,
-          to: dataEmail.to,
-          cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
-          bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
-          subject: dataEmail.subject || `${estimate.project?.company?.name} - Estimate`,
-          html: estimateEmail(
-            estimate.project?.client?.name || '',
-            companyAvatar || "",
-            estimate.project?.company?.name || '',
-            numberPerson || estimate.number,
-            Number(estimate.totalAmount),
-            estimate.id,
-            estimate.project?.client?.email || '',
-            dataEmail.body
-          ),
-          attachments,
+        const TEMPLATE_ID = "d-c779b5bb2dc44a98b0428a0c17597a8d";
 
-          // Adicionar versão texto para melhorar a entregabilidade
-          text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : `
-Dear ${estimate.project?.client?.name || 'Client'},
+        const estimateNumber = estimate.number;
+        const creationDate = new Date(estimate.date_creation);
+        const validUntilDate = new Date(creationDate);
+        validUntilDate.setDate(validUntilDate.getDate() + 30);
 
-Your Estimate ${numberPerson || estimate.number} is ready!
-Total: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(estimate.totalAmount))}
-
-Please access the link to view details and approve the budget:
-${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}
-
-We appreciate your business. Feel free to contact us if you have any questions.
-
-Have a great day!
-${estimate.project?.company?.name || ''}
-          `.trim()
-        };
-
-        // Se sendMeCopy for true, adicionar o remetente ao BCC
-        if (dataEmail.sendMeCopy && dataEmail.from) {
-          if (mailOptions.bcc) {
-            if (Array.isArray(mailOptions.bcc)) {
-              mailOptions.bcc.push(dataEmail.from);
-            } else {
-              mailOptions.bcc = [mailOptions.bcc, dataEmail.from];
-            }
-          } else {
-            mailOptions.bcc = [dataEmail.from];
-          }
-        }
-
-        // Log detalhado antes do envio
-        console.log('📧 Sending email with options:', {
-          from: mailOptions.from,
-          replyTo: mailOptions.replyTo,
-          to: mailOptions.to,
-          cc: mailOptions.cc,
-          bcc: mailOptions.bcc,
-          subject: mailOptions.subject,
-          hasHtml: !!mailOptions.html,
-          hasText: !!mailOptions.text,
-          attachmentCount: attachments.length,
-          smtpConfig: {
-            host: SMTP_CONFIG.host,
-            port: SMTP_CONFIG.port,
-            secure: SMTP_CONFIG.port === 465,
-            user: SMTP_CONFIG.user
-          }
+        const validUntilFormatted = validUntilDate.toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric'
         });
 
-        // Enviar o email
-        const emailResponse = await transporter.sendMail(mailOptions);
+        const totalFormatted = new Intl.NumberFormat('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(Number(estimate.totalAmount));
 
-        // Log detalhado da resposta
-        console.log('✅ Email sent successfully:', {
-          messageId: emailResponse.messageId,
-          accepted: emailResponse.accepted,
-          rejected: emailResponse.rejected,
-          response: emailResponse.response,
-          envelope: emailResponse.envelope
-        });
+        const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}`;
+        const companyName = estimate.project?.company?.name || 'SmartBuild';
+        const projectDispName = estimate.project?.serviceProject?.[0]?.name || `Project ${estimate.project?.contract_number || ''}`;
 
-        // Log de sucesso APENAS para os destinatários reais (não incluir o email do cliente do banco)
-        for (const recipient of uniqueRecipients) {
+        const subjectFixed = `Estimate ${estimateNumber} from ${companyName}`;
+
+        for (const recipientEmail of uniqueRecipients) {
+          let recipientName = "Customer";
+          if (recipientEmail === estimate.project?.client?.email && estimate.project?.client?.name) {
+            recipientName = estimate.project.client.name;
+          }
+
+          await sendEmail({
+            to: recipientEmail,
+            subject: subjectFixed,
+            templateId: TEMPLATE_ID,
+            dynamicTemplateData: {
+              recipientName: recipientName,
+              projectName: projectDispName,
+              estimateNumber: numberPerson || estimateNumber,
+              totalAmount: totalFormatted,
+              validUntil: validUntilFormatted,
+              reviewLink: reviewLink,
+              companyName: companyName,
+              companyAvatar: companyAvatar,
+              currentYear: new Date().getFullYear().toString(),
+              recipientEmail: recipientEmail
+            },
+            attachments: attachments as any
+          });
+
           await prisma.estimateEmailLog.create({
             data: {
               estimate: { connect: { id } },
-              recipient,
+              recipient: recipientEmail,
               status: "success",
               sentAt: new Date()
             }
           });
-
-          results.push({ email: recipient, status: "success" });
+          results.push({ email: recipientEmail, status: "success" });
         }
 
-        // Timeline event APENAS com os destinatários reais
         await EstimateController.addTimelineEvent(
           estimate.id,
-          `Email sent to ${uniqueRecipients.length} recipient(s): ${uniqueRecipients.join(', ')}${attachmentFiles && attachmentFiles.length > 0 ? ` with ${attachmentFiles.length} attachment(s)` : ''}`
+          `Email sent to: ${uniqueRecipients.join(', ')}`
         );
+
+        return res.json({
+          success: true,
+          results
+        });
 
       } catch (error: any) {
-        // Log de erro APENAS para os destinatários reais
-        for (const recipient of uniqueRecipients) {
-          await prisma.estimateEmailLog.create({
-            data: {
-              estimate: { connect: { id } },
-              recipient,
-              status: "error",
-              errorMessage: error.message || "Unknown error",
-              sentAt: new Date()
-            }
-          });
+        console.error("Error sending estimate email:", error);
 
-          results.push({ email: recipient, status: "error", message: error.message });
-        }
+        await prisma.estimateEmailLog.create({
+          data: {
+            estimate: { connect: { id } },
+            recipient: uniqueRecipients.join(', '),
+            status: "error",
+            errorMessage: error.message || "Unknown error",
+            sentAt: new Date()
+          }
+        });
 
         await EstimateController.addTimelineEvent(
           estimate.id,
-          `Failed to send email to ${uniqueRecipients.join(', ')}: ${error.message}`
+          `Failed to send email via Twilio: ${error.message}`
         );
+
+        return res.status(500).json({ error: "Failed to send email", details: error.message });
       } finally {
-        // Limpar arquivos temporários - SEMPRE executado
         cleanupTempFiles(attachmentFiles);
       }
-
-      // Retornar os resultados
-      return res.json({
-        success: results.some(r => r.status === "success"),
-        results,
-        dataEmail: {
-          to: dataEmail.to,
-          cc: dataEmail.cc,
-          bcc: dataEmail.bcc,
-          subject: dataEmail.subject,
-          sendMeCopy: dataEmail.sendMeCopy,
-          attachmentCount: attachmentFiles ? attachmentFiles.length : 0
-        }
-      });
     } catch (error) {
       console.error('❌ Unexpected error in sendEmail:', error);
-      // Garantir limpeza mesmo em erros não tratados
-      cleanupTempFiles(attachmentFiles);
+      if (typeof cleanupTempFiles === 'function') {
+        cleanupTempFiles(attachmentFiles);
+      }
       return res.status(500).json({ error: "Failed to send estimate email" });
     }
   }
