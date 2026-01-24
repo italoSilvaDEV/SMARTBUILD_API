@@ -562,7 +562,7 @@ export class EstimateController {
         }).format(Number(estimate.totalAmount));
 
         await sendEmail({
-          to: (project?.user?.email && project?.company?.email) || '',
+          to: [project?.user?.email, project?.company?.email].filter(Boolean) as string[],
           templateId: "d-d36af97d7db94ef5b417edff70e04b06",
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
@@ -796,13 +796,14 @@ export class EstimateController {
 
       await Promise.all([
         (async () => {
-          if (project.user?.email && project.company?.email) {
+          // Email para o Dono da Empresa e Company
+          if (project.user?.email || project.company?.email) {
             await sendEmail({
-              to: (project.user.email && project.company?.email) || '',
+              to: [project.user?.email, project.company?.email].filter(Boolean) as string[],
               templateId: "d-640a0ff263d24f7b8f53af6581758706",
               dynamicTemplateData: {
                 ...commonData,
-                recipientName: project.user.name || "Team Member",
+                recipientName: project?.user?.name || "Team Member",
                 clientName: project.workContext?.Name || project.client?.name || "Customer"
               }
             });
