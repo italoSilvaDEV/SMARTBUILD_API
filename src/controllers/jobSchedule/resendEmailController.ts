@@ -7,7 +7,12 @@ import { sendEmail } from "../../utils/sendEmail";
 export class ResendEmailController {
     async forServiceProject(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes, skipEmail } = req.body;
+        const { to, attachments, notes, skipEmail, description: bodyDescription } = req.body;
+
+        const removeHtml = (text: string | null): string => {
+            if (!text) return "";
+            return text.replace(/<[^>]*>/g, '').trim();
+        };
 
         try {
             const serviceProject = await prisma.serviceProject.findUnique({
@@ -44,8 +49,11 @@ export class ResendEmailController {
                 return res.status(404).json({ error: "Service project not found" });
             }
 
+            const project = serviceProject.Project;
+            if (!project) return res.status(404).json({ error: "Project not found" });
+
             const company = await prisma.company.findUnique({
-                where: { id: serviceProject.Project?.company_id || "" },
+                where: { id: project.company_id || "" },
                 select: { id: true, name: true, avatar: true, phone: true, email: true }
             });
 
@@ -58,18 +66,14 @@ export class ResendEmailController {
                 return res.status(400).json({ error: "Service project has no schedule" });
             }
 
-            const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || 'Not specified';
-            const contractNumber = serviceProject.Project?.contract_number || 'N/A';
-            const latitude = serviceProject.Project?.workContext?.latitude?.toString() || serviceProject.Project?.lat;
-            const longitude = serviceProject.Project?.workContext?.longitude?.toString() || serviceProject.Project?.log;
+            const projectLocation = project.workContext?.location || project.location || 'Not specified';
+            const contractNumber = project.contract_number || 'N/A';
+            const latitude = project.workContext?.latitude?.toString() || project.lat;
+            const longitude = project.workContext?.longitude?.toString() || project.log;
 
             const googleMapsLink = (latitude && longitude)
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
-
-            const removeHtml = (text: string): string => {
-                return text.replace(/<[^>]*>/g, '').trim();
-            };
 
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
@@ -95,6 +99,8 @@ export class ResendEmailController {
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true
             };
+
+            const serviceDescription = bodyDescription ? removeHtml(bodyDescription) : (serviceProject.description ? removeHtml(serviceProject.description) : "");
 
             // Notify workers/subs from "to" field
             if (to) {
@@ -135,7 +141,7 @@ export class ResendEmailController {
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: nameMap.get(email) || "Team Member",
-                            description: serviceProject.description ? removeHtml(serviceProject.description) : "",
+                            description: serviceDescription,
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
@@ -144,8 +150,8 @@ export class ResendEmailController {
 
             // Notify client if skipEmail is false
             if (!skipEmail) {
-                const clientEmail = serviceProject.Project?.workContext?.Email || serviceProject.Project?.client?.email;
-                const clientName = serviceProject.Project?.workContext?.Name || serviceProject.Project?.client?.name;
+                const clientEmail = project.workContext?.Email || project.client?.email;
+                const clientName = project.workContext?.Name || project.client?.name;
 
                 if (clientEmail) {
                     await sendEmail({
@@ -171,7 +177,12 @@ export class ResendEmailController {
 
     async forSubService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes, skipEmail } = req.body;
+        const { to, attachments, notes, skipEmail, description: bodyDescription } = req.body;
+
+        const removeHtml = (text: string | null): string => {
+            if (!text) return "";
+            return text.replace(/<[^>]*>/g, '').trim();
+        };
 
         try {
             const subservice = await prisma.subServicesProject.findUnique({
@@ -266,10 +277,6 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const removeHtml = (text: string): string => {
-                return text.replace(/<[^>]*>/g, '').trim();
-            };
-
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -294,6 +301,8 @@ export class ResendEmailController {
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true
             };
+
+            const serviceDescription = bodyDescription ? removeHtml(bodyDescription) : (subservice.description ? removeHtml(subservice.description) : "");
 
             // Notify workers/subs from "to" field
             if (to) {
@@ -334,7 +343,7 @@ export class ResendEmailController {
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: nameMap.get(email) || "Team Member",
-                            description: subservice.description ? removeHtml(subservice.description) : "",
+                            description: serviceDescription,
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
@@ -370,7 +379,12 @@ export class ResendEmailController {
 
     async forCustomService(req: Request, res: Response) {
         const { id } = req.params;
-        const { to, attachments, notes, skipEmail } = req.body;
+        const { to, attachments, notes, skipEmail, description: bodyDescription } = req.body;
+
+        const removeHtml = (text: string | null): string => {
+            if (!text) return "";
+            return text.replace(/<[^>]*>/g, '').trim();
+        };
 
         try {
             const customService = await prisma.customServiceSchedule.findUnique({
@@ -433,10 +447,6 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const removeHtml = (text: string): string => {
-                return text.replace(/<[^>]*>/g, '').trim();
-            };
-
             const formatSGDate = (date?: string) => {
                 if (!date) return 'Not set';
                 return new Date(date).toLocaleDateString('en-US', {
@@ -461,6 +471,8 @@ export class ResendEmailController {
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true
             };
+
+            const serviceDescription = bodyDescription ? removeHtml(bodyDescription) : (customService.description ? removeHtml(customService.description) : "");
 
             // Notify workers/subs from "to" field
             if (to) {
@@ -501,7 +513,7 @@ export class ResendEmailController {
                         dynamicTemplateData: {
                             ...commonDynamicData,
                             recipientName: nameMap.get(email) || "Team Member",
-                            description: customService.description ? removeHtml(customService.description) : "",
+                            description: serviceDescription,
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
