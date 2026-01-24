@@ -159,16 +159,25 @@ export class ProjectScheduleController {
             };
 
             for (const email of emails) {
-                const user = await prisma.user.findUnique({
-                    where: { email },
-                    select: { name: true }
+                const userCompany = await prisma.userCompany.findUnique({
+                    where: {
+                        userId_companyId: {
+                            userId: email,
+                            companyId: project.company_id || ""
+                        }
+                    },
+                    include: {
+                        user: { select: { name: true } }
+                    }
                 });
+
+                const userName = userCompany?.user?.name || clientName;
 
                 await sendEmail({
                     to: email,
-                    templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27", // Reminder Template
+                    templateId: "d-719d0b2a3cde45e9885cf5ba085d3f27",
                     dynamicTemplateData: {
-                        recipientName: user?.name || clientName || "Customer",
+                        recipientName: userName || clientName || "Customer",
                         projectName: "Contract #" + contractNumber,
                         contractNumber: contractNumber,
                         location: projectLocation,
@@ -504,6 +513,7 @@ export class ProjectScheduleController {
                         }
                     }
                 });
+                console.log("data", data);
                 if (data) {
                     project = data.serviceProject?.Project || data.custom_service_schedule?.project;
                     company = project?.company;
@@ -579,7 +589,6 @@ export class ProjectScheduleController {
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
 
-                // Batch fetch names from userCompany and subcontractors
                 const [userCompanies, subcontractors] = await Promise.all([
                     prisma.userCompany.findMany({
                         where: {
