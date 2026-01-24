@@ -369,28 +369,32 @@ export class ProjectScheduleController {
 
             const emails = to.split(",").map((email: string) => email.trim());
 
-            const userCompanies = await prisma.userCompany.findMany({
-                where: {
-                    companyId: company.id,
-                    user: {
+            // Batch fetch names from userCompany and subcontractors
+            const [userCompanies, subcontractors] = await Promise.all([
+                prisma.userCompany.findMany({
+                    where: {
+                        companyId: company.id,
+                        user: { email: { in: emails } }
+                    },
+                    include: {
+                        user: { select: { email: true, name: true } }
+                    }
+                }),
+                prisma.subcontractor.findMany({
+                    where: {
+                        company_id: company.id,
                         email: { in: emails }
-                    }
-                },
-                include: {
-                    user: {
-                        select: {
-                            email: true,
-                            name: true
-                        }
-                    }
-                }
-            });
+                    },
+                    select: { email: true, name: true }
+                })
+            ]);
 
             const nameMap = new Map<string, string>();
             userCompanies.forEach(uc => {
-                if (uc.user) {
-                    nameMap.set(uc.user.email, uc.user.name);
-                }
+                if (uc.user) nameMap.set(uc.user.email, uc.user.name);
+            });
+            subcontractors.forEach(s => {
+                if (!nameMap.has(s.email)) nameMap.set(s.email, s.name);
             });
 
             for (const email of emails) {
@@ -575,28 +579,32 @@ export class ProjectScheduleController {
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
 
-                const userCompanies = await prisma.userCompany.findMany({
-                    where: {
-                        companyId: company.id,
-                        user: {
+                // Batch fetch names from userCompany and subcontractors
+                const [userCompanies, subcontractors] = await Promise.all([
+                    prisma.userCompany.findMany({
+                        where: {
+                            companyId: company.id,
+                            user: { email: { in: emails } }
+                        },
+                        include: {
+                            user: { select: { email: true, name: true } }
+                        }
+                    }),
+                    prisma.subcontractor.findMany({
+                        where: {
+                            company_id: company.id,
                             email: { in: emails }
-                        }
-                    },
-                    include: {
-                        user: {
-                            select: {
-                                email: true,
-                                name: true
-                            }
-                        }
-                    }
-                });
+                        },
+                        select: { email: true, name: true }
+                    })
+                ]);
 
                 const nameMap = new Map<string, string>();
                 userCompanies.forEach(uc => {
-                    if (uc.user) {
-                        nameMap.set(uc.user.email, uc.user.name);
-                    }
+                    if (uc.user) nameMap.set(uc.user.email, uc.user.name);
+                });
+                subcontractors.forEach(s => {
+                    if (!nameMap.has(s.email)) nameMap.set(s.email, s.name);
                 });
 
                 for (const email of emails) {

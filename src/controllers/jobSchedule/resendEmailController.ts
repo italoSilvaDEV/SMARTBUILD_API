@@ -46,7 +46,7 @@ export class ResendEmailController {
 
             const company = await prisma.company.findUnique({
                 where: { id: serviceProject.Project?.company_id || "" },
-                select: { name: true, avatar: true, phone: true, email: true }
+                select: { id: true, name: true, avatar: true, phone: true, email: true }
             });
 
             if (!company) return res.status(404).json({ error: "Company not found" });
@@ -99,18 +99,42 @@ export class ResendEmailController {
             // Notify workers/subs from "to" field
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
-                for (const email of emails) {
-                    const user = await prisma.user.findUnique({
-                        where: { email },
-                        select: { name: true }
-                    });
 
+                // Batch fetch names from userCompany and subcontractors
+                const [userCompanies, subcontractors] = await Promise.all([
+                    prisma.userCompany.findMany({
+                        where: {
+                            companyId: company.id,
+                            user: { email: { in: emails } }
+                        },
+                        include: {
+                            user: { select: { email: true, name: true } }
+                        }
+                    }),
+                    prisma.subcontractor.findMany({
+                        where: {
+                            company_id: company.id,
+                            email: { in: emails }
+                        },
+                        select: { email: true, name: true }
+                    })
+                ]);
+
+                const nameMap = new Map<string, string>();
+                userCompanies.forEach(uc => {
+                    if (uc.user) nameMap.set(uc.user.email, uc.user.name);
+                });
+                subcontractors.forEach(s => {
+                    if (!nameMap.has(s.email)) nameMap.set(s.email, s.name);
+                });
+
+                for (const email of emails) {
                     await sendEmail({
                         to: email,
                         templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
                         dynamicTemplateData: {
                             ...commonDynamicData,
-                            recipientName: user?.name || "Team Member",
+                            recipientName: nameMap.get(email) || "Team Member",
                             description: serviceProject.description ? removeHtml(serviceProject.description) : "",
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
@@ -221,7 +245,7 @@ export class ResendEmailController {
 
             const company = await prisma.company.findUnique({
                 where: { id: project.company_id || "" },
-                select: { name: true, avatar: true, phone: true, email: true }
+                select: { id: true, name: true, avatar: true, phone: true, email: true }
             });
 
             if (!company) return res.status(404).json({ error: "Company not found" });
@@ -274,18 +298,42 @@ export class ResendEmailController {
             // Notify workers/subs from "to" field
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
-                for (const email of emails) {
-                    const user = await prisma.user.findUnique({
-                        where: { email },
-                        select: { name: true }
-                    });
 
+                // Batch fetch names from userCompany and subcontractors
+                const [userCompanies, subcontractors] = await Promise.all([
+                    prisma.userCompany.findMany({
+                        where: {
+                            companyId: company.id,
+                            user: { email: { in: emails } }
+                        },
+                        include: {
+                            user: { select: { email: true, name: true } }
+                        }
+                    }),
+                    prisma.subcontractor.findMany({
+                        where: {
+                            company_id: company.id,
+                            email: { in: emails }
+                        },
+                        select: { email: true, name: true }
+                    })
+                ]);
+
+                const nameMap = new Map<string, string>();
+                userCompanies.forEach(uc => {
+                    if (uc.user) nameMap.set(uc.user.email, uc.user.name);
+                });
+                subcontractors.forEach(s => {
+                    if (!nameMap.has(s.email)) nameMap.set(s.email, s.name);
+                });
+
+                for (const email of emails) {
                     await sendEmail({
                         to: email,
                         templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
                         dynamicTemplateData: {
                             ...commonDynamicData,
-                            recipientName: user?.name || "Team Member",
+                            recipientName: nameMap.get(email) || "Team Member",
                             description: subservice.description ? removeHtml(subservice.description) : "",
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
@@ -364,7 +412,7 @@ export class ResendEmailController {
 
             const company = await prisma.company.findUnique({
                 where: { id: project.company_id || "" },
-                select: { name: true, avatar: true, phone: true, email: true }
+                select: { id: true, name: true, avatar: true, phone: true, email: true }
             });
 
             if (!company) return res.status(404).json({ error: "Company not found" });
@@ -417,18 +465,42 @@ export class ResendEmailController {
             // Notify workers/subs from "to" field
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
-                for (const email of emails) {
-                    const user = await prisma.user.findUnique({
-                        where: { email },
-                        select: { name: true }
-                    });
 
+                // Batch fetch names from userCompany and subcontractors
+                const [userCompanies, subcontractors] = await Promise.all([
+                    prisma.userCompany.findMany({
+                        where: {
+                            companyId: company.id,
+                            user: { email: { in: emails } }
+                        },
+                        include: {
+                            user: { select: { email: true, name: true } }
+                        }
+                    }),
+                    prisma.subcontractor.findMany({
+                        where: {
+                            company_id: company.id,
+                            email: { in: emails }
+                        },
+                        select: { email: true, name: true }
+                    })
+                ]);
+
+                const nameMap = new Map<string, string>();
+                userCompanies.forEach(uc => {
+                    if (uc.user) nameMap.set(uc.user.email, uc.user.name);
+                });
+                subcontractors.forEach(s => {
+                    if (!nameMap.has(s.email)) nameMap.set(s.email, s.name);
+                });
+
+                for (const email of emails) {
                     await sendEmail({
                         to: email,
                         templateId: "d-49b79f0499fc469489a09e2a89a6dc19", // Worker Reminder
                         dynamicTemplateData: {
                             ...commonDynamicData,
-                            recipientName: user?.name || "Team Member",
+                            recipientName: nameMap.get(email) || "Team Member",
                             description: customService.description ? removeHtml(customService.description) : "",
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
