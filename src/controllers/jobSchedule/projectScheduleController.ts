@@ -369,18 +369,37 @@ export class ProjectScheduleController {
 
             const emails = to.split(",").map((email: string) => email.trim());
 
-            for (const email of emails) {
-                const user = await prisma.user.findUnique({
-                    where: { email },
-                    select: { name: true }
-                });
+            const userCompanies = await prisma.userCompany.findMany({
+                where: {
+                    companyId: company.id,
+                    user: {
+                        email: { in: emails }
+                    }
+                },
+                include: {
+                    user: {
+                        select: {
+                            email: true,
+                            name: true
+                        }
+                    }
+                }
+            });
 
+            const nameMap = new Map<string, string>();
+            userCompanies.forEach(uc => {
+                if (uc.user) {
+                    nameMap.set(uc.user.email, uc.user.name);
+                }
+            });
+
+            for (const email of emails) {
                 await sendEmail({
                     to: email,
                     templateId: "d-269bc2b469934e85b3e437fd98e0fcd4",
                     dynamicTemplateData: {
                         ...commonDynamicData,
-                        recipientName: user?.name || recipientName || "Team Member",
+                        recipientName: nameMap.get(email) || "Team Member",
                     },
                     attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
@@ -555,18 +574,38 @@ export class ProjectScheduleController {
 
             if (to) {
                 const emails = to.split(",").map((email: string) => email.trim());
-                for (const email of emails) {
-                    const user = await prisma.user.findUnique({
-                        where: { email },
-                        select: { name: true }
-                    });
 
+                const userCompanies = await prisma.userCompany.findMany({
+                    where: {
+                        companyId: company.id,
+                        user: {
+                            email: { in: emails }
+                        }
+                    },
+                    include: {
+                        user: {
+                            select: {
+                                email: true,
+                                name: true
+                            }
+                        }
+                    }
+                });
+
+                const nameMap = new Map<string, string>();
+                userCompanies.forEach(uc => {
+                    if (uc.user) {
+                        nameMap.set(uc.user.email, uc.user.name);
+                    }
+                });
+
+                for (const email of emails) {
                     await sendEmail({
                         to: email,
                         templateId: "d-c2235cb8340643d3b7e9745773f47e01",
                         dynamicTemplateData: {
                             ...commonDynamicData,
-                            recipientName: user?.name || "Team Member",
+                            recipientName: nameMap.get(email) || "Team Member",
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
