@@ -562,7 +562,7 @@ export class EstimateController {
         }).format(Number(estimate.totalAmount));
 
         await sendEmail({
-          to: project?.user?.email || '',
+          to: (project?.user?.email && project?.company?.email) || '',
           templateId: "d-d36af97d7db94ef5b417edff70e04b06",
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
@@ -627,7 +627,7 @@ export class EstimateController {
         })
       }
 
-      const estimateUpdated = await prisma.estimate.update({
+      await prisma.estimate.update({
         where: { id },
         data: {
           clientSignature: JSON.stringify({ signature }),
@@ -796,9 +796,9 @@ export class EstimateController {
 
       await Promise.all([
         (async () => {
-          if (project.user?.email) {
+          if (project.user?.email && project.company?.email) {
             await sendEmail({
-              to: project.user.email,
+              to: (project.user.email && project.company?.email) || '',
               templateId: "d-640a0ff263d24f7b8f53af6581758706",
               dynamicTemplateData: {
                 ...commonData,
