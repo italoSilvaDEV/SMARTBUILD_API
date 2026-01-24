@@ -15,100 +15,6 @@ import mime from 'mime-types';
 
 export class EstimateController {
 
-  private static async sendStatusUpdateEmail(estimate: any, email: string, emailClient: string) {
-    const SMTP_CONFIG = require("../../config/smtp");
-
-    // Buscar o projeto relacionado ao estimate
-    const project = await prisma.project.findUnique({
-      where: { id: estimate.projectId },
-      include: {
-        client: true,
-        company: true,
-        user: true
-      }
-    });
-
-    if (!project) {
-      console.error("Project not found for estimate:", estimate.id);
-      return;
-    }
-    // Buscar o PDF para usar como anexo
-    const pdfProject = await prisma.pdfProject.findFirst({
-      where: { estimate_id: estimate.id }
-    });
-    if (!pdfProject || !pdfProject.uri) {
-      console.error("PDF Project not found or has no URI for estimate:", estimate.id);
-      return;
-    }
-    // Gerar URL presigned para o PDF
-    const pdfUrl = await getPresignedUrl(pdfProject.uri);
-
-    // Baixar o PDF do S3
-    const pdfResponse = await fetch(pdfUrl);
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
-    }
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-    const fileName = pdfProject.original_file_name || `estimate_${estimate.number}.pdf`;
-
-    // Obter o avatar da empresa
-    const companyAvatar = project.company?.avatar ? await getPresignedUrl(project.company.avatar) : "";
-
-    // Obter o número do estimate
-    const nextNumber = estimate.number;
-
-    // Calcular o valor total
-    const totalAmount = Number(estimate.totalAmount);
-
-    const transporter = nodemailer.createTransport({
-      host: SMTP_CONFIG.host,
-      port: SMTP_CONFIG.port,
-      secure: SMTP_CONFIG.port === 465,
-      auth: {
-        user: SMTP_CONFIG.user,
-        pass: SMTP_CONFIG.pass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    // Verificar a configuração do transportador
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error("Erro ao configurar o transportador de e-mail:", error);
-      } else {
-        console.log("Transportador de e-mail configurado com sucesso:", success);
-      }
-    });
-
-    const mailOptions = {
-      from: SMTP_CONFIG.user,
-      replyTo: project.user?.email,
-      to: email,
-      subject: "Smart Build - Estimate",
-      html: estimateNotificationEmail(
-        project.client?.name || '',
-        companyAvatar || "",
-        project.company?.name || '',
-        `${project.contract_number}/${nextNumber}`,
-        totalAmount,
-        emailClient,
-        estimate.status
-      ),
-      attachments: [
-        {
-          filename: fileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ],
-    };
-
-    await transporter.sendMail(mailOptions);
-  }
-
-  // Método utilitário para verificar configuração SMTP
   private static async verifySMTPConfig() {
     try {
       const SMTP_CONFIG = require("../../config/smtp");
@@ -636,16 +542,40 @@ export class EstimateController {
       const project = await prisma.project.findUnique({
         where: { id: estimate.projectId },
         include: {
-          user: true
+          user: true,
+          client: true,
+          company: true,
+          serviceProject: true,
+          workContext: true
         }
       });
 
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
       if (status === "rejected") {
-        await EstimateController.sendStatusUpdateEmail(
-          estimate,
-          project?.user?.email || '',
-          "client"
-        );
+        const companyAvatar = project?.company?.avatar ? await getPresignedUrl(project.company.avatar) : "";
+        const totalFormatted = new Intl.NumberFormat('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(Number(estimate.totalAmount));
+
+        await sendEmail({
+          to: project?.user?.email || '',
+          templateId: "d-d36af97d7db94ef5b417edff70e04b06",
+          dynamicTemplateData: {
+            recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
+            clientName: project?.workContext?.Name || project?.client?.name || "Customer",
+            projectName: project?.serviceProject?.[0]?.name || `Project ${project?.contract_number || ''}`,
+            location: project?.workContext?.location || project?.location || "Not specified",
+            totalAmount: totalFormatted,
+            companyName: project?.company?.name || "SmartBuild",
+            companyAvatar: companyAvatar,
+            currentYear: new Date().getFullYear().toString(),
+            phone: project?.client?.phone || "N/A"
+          }
+        });
       }
 
       // Usar a função utilitária
@@ -671,7 +601,8 @@ export class EstimateController {
           project: {
             include: {
               client: true,
-              company: true
+              company: true,
+              serviceProject: true
             }
           }
         }
@@ -705,7 +636,6 @@ export class EstimateController {
         }
       });
 
-      // Buscar o PDF para usar como anexo
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { estimate_id: estimate.id }
       });
@@ -714,28 +644,22 @@ export class EstimateController {
         return res.status(404).json({ error: "PDF Project not found or has no URI" });
       }
 
-      // Gerar URL presigned para o PDF
       const pdfUrl = await getPresignedUrl(pdfProject.uri);
 
-      // Baixar o PDF do S3
       const pdfResponse = await fetch(pdfUrl);
       if (!pdfResponse.ok) {
         throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
       }
       const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-      // Carregar o PDF original usando pdf-lib
       const pdfDoc = await PDFDocument.load(originalPdfBuffer);
       const pages = pdfDoc.getPages();
 
-      // Converter signature de base64 para imagem se ela existir
       if (signature) {
         try {
-          // Remove o prefixo data:image se existir
           const base64Data = signature.replace(/^data:image\/[a-z]+;base64,/, '');
           const signatureBuffer = Buffer.from(base64Data, 'base64');
 
-          // Tentar embeddar como PNG primeiro, depois como JPEG
           let signatureImage;
           try {
             signatureImage = await pdfDoc.embedPng(signatureBuffer);
@@ -748,18 +672,15 @@ export class EstimateController {
             }
           }
 
-          // Dimensões da signature
           const signatureWidth = 100;
           const signatureHeight = 50;
 
-          // Adicionar signature em todas as páginas a partir da segunda
           for (let i = 1; i < pages.length; i++) {
             const page = pages[i];
             const { width, height } = page.getSize();
 
-            // Posicionar a signature na parte inferior central
             const x = (width - signatureWidth) / 2;
-            const y = 20; // Mais próximo da margem
+            const y = 20;
 
             page.drawImage(signatureImage, {
               x,
@@ -768,7 +689,6 @@ export class EstimateController {
               height: signatureHeight,
             });
 
-            // Adicionar data e hora atual abaixo da assinatura
             const currentDate = new Date();
             const formattedDate = currentDate.toLocaleString('en-US', {
               year: 'numeric',
@@ -782,22 +702,19 @@ export class EstimateController {
 
             page.drawText(`Signed on: ${formattedDate}`, {
               x,
-              y: y - 15, // 15 pixels abaixo da assinatura
+              y: y - 15,
               size: 8,
-              color: rgb(0.5, 0.5, 0.5) // Cor cinza
+              color: rgb(0.5, 0.5, 0.5)
             });
           }
         } catch (signatureError) {
           console.error('Error processing signature:', signatureError);
-          // Continue sem adicionar a signature se houver erro
         }
       }
 
-      // Gerar o PDF modificado
       const modifiedPdfBytes = await pdfDoc.save();
       const modifiedPdfBuffer = Buffer.from(modifiedPdfBytes);
 
-      // Upload do PDF modificado diretamente para S3
       const s3 = new S3Client({
         region: process.env.AMAZON_S3_REGION,
         credentials: {
@@ -819,7 +736,6 @@ export class EstimateController {
 
       await s3.send(putObjectCommand);
 
-      // Atualizar o pdfProject com o novo URI
       await prisma.pdfProject.update({
         where: { id: pdfProject.id },
         data: {
@@ -831,15 +747,22 @@ export class EstimateController {
         where: { id: estimate.projectId },
         include: {
           user: true,
-          client: true
+          client: true,
+          company: true,
+          workContext: true,
+          serviceProject: true
         }
       });
 
-      if (project && project?.status_project !== "Accepted" &&
-        project?.status_project !== "Pre-Start" &&
-        project?.status_project !== "In Progress" &&
-        project?.status_project !== "Final walkthrough" &&
-        project?.status_project !== "Finished"
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status_project !== "Accepted" &&
+        project.status_project !== "Pre-Start" &&
+        project.status_project !== "In Progress" &&
+        project.status_project !== "Final walkthrough" &&
+        project.status_project !== "Finished"
       ) {
         await prisma.project.update({
           where: {
@@ -850,17 +773,53 @@ export class EstimateController {
           }
         });
       }
+
+      const companyAvatar = project.company?.avatar ? await getPresignedUrl(project.company.avatar) : "";
+      const totalFormatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(estimate.totalAmount));
+
+      const commonData = {
+        projectName: project.serviceProject?.[0]?.name || `Project ${project.contract_number || ''}`,
+        contractNumber: project.contract_number || "N/A",
+        location: project.workContext?.location || project.location || "Not specified",
+        totalAmount: totalFormatted,
+        companyName: project.company?.name || "SmartBuild",
+        companyAvatar: companyAvatar,
+        currentYear: new Date().getFullYear().toString(),
+        estimateNumber: estimate.number,
+        approvedDate: new Date().toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric'
+        })
+      };
+
       await Promise.all([
-        EstimateController.sendStatusUpdateEmail(
-          estimateUpdated,
-          project?.user?.email || '',
-          decodedEmail
-        ),
-        EstimateController.sendStatusUpdateEmail(
-          estimateUpdated,
-          project?.client?.email || '',
-          decodedEmail
-        ),
+        (async () => {
+          if (project.user?.email) {
+            await sendEmail({
+              to: project.user.email,
+              templateId: "d-640a0ff263d24f7b8f53af6581758706",
+              dynamicTemplateData: {
+                ...commonData,
+                recipientName: project.user.name || "Team Member",
+                clientName: project.workContext?.Name || project.client?.name || "Customer"
+              }
+            });
+          }
+        })(),
+        (async () => {
+          if (project.client?.email) {
+            await sendEmail({
+              to: project.client.email,
+              templateId: "d-61180196c59a4b599cefc0828aaebdc1",
+              dynamicTemplateData: {
+                ...commonData,
+                recipientName: project.workContext?.Name || project.client?.name || "Customer"
+              }
+            });
+          }
+        })(),
         EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail)
       ]);
 
