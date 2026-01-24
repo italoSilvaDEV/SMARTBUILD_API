@@ -38,16 +38,24 @@ export class GetJobsByCompanyController {
                     id: true,
                     location: true,
                     contract_number: true,
+                    log: true,
+                    lat: true,
                     workContext: {
                         select: {
                             Name: true,
                             Email: true,
+                            location: true,
+                            latitude: true,
+                            longitude: true
                         }
                     },
                     client: {
                         select: {
                             name: true,
                             email: true,
+                            location: true,
+                            lat: true,
+                            log: true
                         }
                     },
                     start_date: true,
@@ -55,10 +63,10 @@ export class GetJobsByCompanyController {
                 }
             })
 
-            const projectsWithSchedule = allProjects.filter(project => 
-                project.start_date && 
-                project.deadline && 
-                project.start_date !== "" && 
+            const projectsWithSchedule = allProjects.filter(project =>
+                project.start_date &&
+                project.deadline &&
+                project.start_date !== "" &&
                 project.deadline !== ""
             )
 
@@ -70,7 +78,9 @@ export class GetJobsByCompanyController {
                     deadline: project.deadline,
                     clientName: project.workContext?.Name || project.client?.name,
                     clientEmail: project.workContext?.Email || project.client?.email,
-                    projectLocation: project.location,
+                    projectLocation: project.workContext?.location || project.client?.location || project.location,
+                    projectLongitude: project.workContext?.longitude || project.client?.log || project.log,
+                    projectLatitude: project.workContext?.latitude || project.client?.lat || project.lat,
                     contract_number: project.contract_number,
                 }
             }))

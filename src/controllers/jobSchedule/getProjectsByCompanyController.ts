@@ -37,17 +37,26 @@ export class GetProjectsByCompanyController {
                 },
                 select: {
                     id: true,
+                    location: true,
+                    lat: true,
+                    log: true,
                     contract_number: true,
                     workContext: {
                         select: {
                             Name: true,
-                            location: true
+                            location: true,
+                            Email: true,
+                            latitude: true,
+                            longitude: true
                         }
                     },
                     client: {
                         select: {
                             name: true,
                             location: true,
+                            email: true,
+                            lat: true,
+                            log: true
                         }
                     },
                     cover_photo: true,
@@ -85,7 +94,10 @@ export class GetProjectsByCompanyController {
                     id: project.id,
                     contract_number: project.contract_number,
                     clientName: project.workContext?.Name || project.client?.name,
-                    clientLocation: project.workContext?.location || project.client?.location,
+                    clientLocation: project.workContext?.location || project.client?.location || project.location,
+                    clientLongitude: project.workContext?.longitude || project.client?.log || project.log,
+                    clientLatitude: project.workContext?.latitude || project.client?.lat || project.lat,
+                    clientEmail: project.workContext?.Email || project.client?.email,
                     coverPhotoUrl: coverPhotoUrl,
                     status: project.status_project,
                     price: totalPrice,

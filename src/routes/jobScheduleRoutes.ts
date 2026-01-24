@@ -76,6 +76,8 @@ jobScheduleRoutes.post("/jobs/main/create", checkToken, createJobCompanyControll
 // Project Level Schedule Routes
 jobScheduleRoutes.put("/jobs/main/update/:projectId", checkToken, projectScheduleController.update)
 jobScheduleRoutes.post("/jobs/main/resend/:projectId", checkToken, projectScheduleController.resend)
+jobScheduleRoutes.post("/jobs/main/sendemail/updated", checkToken, projectScheduleController.sendEmailUpdated)
+jobScheduleRoutes.post("/jobs/main/sendemail/assigned", checkToken, projectScheduleController.sendEmailAssigned)
 jobScheduleRoutes.delete("/jobs/main/delete/:projectId", checkToken, projectScheduleController.delete)
 
 export default jobScheduleRoutes;

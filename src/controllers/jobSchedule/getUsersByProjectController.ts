@@ -63,6 +63,7 @@ export class GetUsersByProjectController {
                             avatar: true,
                             hourly_price: true,
                             isOverTime: true,
+                            email: true,
                             profession: true,
                         }
                     },
@@ -79,6 +80,7 @@ export class GetUsersByProjectController {
                     hourly_price: uc.user.hourly_price,
                     isOverTime: uc.user.isOverTime,
                     profession: uc.user.profession,
+                    email: uc.user.email,
                 }
             }))
 
