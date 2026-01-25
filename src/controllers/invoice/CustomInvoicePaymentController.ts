@@ -1,35 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
-import { invoicePaidPaymentEmail } from "../../templateEmail/invoicePaidPayment";
+import { sendEmail } from "../../utils/sendEmail";
 
 export class CustomInvoicePaymentController {
-  private static async verifySMTPConfig() {
-    try {
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
-      const verification = await transporter.verify();
-      console.log('SMTP Configuration verified:', verification);
-      return verification;
-    } catch (error) {
-      console.error('SMTP Configuration error:', error);
-      throw error;
-    }
-  }
-
   async createPayment(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { paymentMethod, notes, amount } = req.body;
@@ -48,11 +22,68 @@ export class CustomInvoicePaymentController {
           project: {
             select: {
               id: true,
+              location: true,
+              contract_number: true,
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true,
+                  email: true,
+                  phone: true
+                }
+              },
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              },
+              workContext: {
+                select: {
+                  id: true,
+                  Email: true,
+                  Name: true,
+                  location: true
+                }
+              }
             }
           },
           estimate: {
             select: {
               id: true,
+              project: {
+                select: {
+                  id: true,
+                  location: true,
+                  contract_number: true,
+                  company: {
+                    select: {
+                      id: true,
+                      name: true,
+                      avatar: true,
+                      email: true,
+                      phone: true
+                    }
+                  },
+                  client: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true
+                    }
+                  },
+                  workContext: {
+                    select: {
+                      id: true,
+                      Email: true,
+                      Name: true,
+                      location: true
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -112,14 +143,15 @@ export class CustomInvoicePaymentController {
           }
         });
 
-        if (invoice.type_invoicebase === "project" && invoice.project) {
+        const project = invoice.project || invoice.estimate?.project;
+        if (invoice.type_invoicebase === "project" && project) {
           await smartbuild.invoicePaymentTimeLine.create({
             data: {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
-              projectId: invoice.project.id
+              }).format(Number(invoice.totalAmount)) + " on " + new Date().toLocaleDateString('en-US'),
+              projectId: project.id
             }
           })
         } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
@@ -128,7 +160,7 @@ export class CustomInvoicePaymentController {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              }).format(Number(invoice.totalAmount)) + " on " + new Date().toLocaleDateString('en-US'),
               estimateId: invoice.estimate.id
             }
           })
@@ -140,160 +172,78 @@ export class CustomInvoicePaymentController {
       });
 
       try {
-        const invoiceWithDetails = await prisma.invoice.findUnique({
-          where: { id: invoiceId },
-          include: {
-            project: {
-              include: {
-                client: true,
-                company: true,
-                workContext: {
-                  select: {
-                    id: true,
-                    Email: true,
-                    Name: true
-                  }
-                }
-              }
-            },
-            estimate: {
-              include: {
-                project: {
-                  include: {
-                    client: true,
-                    company: true,
-                    workContext: {
-                      select: {
-                        id: true,
-                        Email: true,
-                        Name: true
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        if (!invoiceWithDetails) {
-          console.error("Invoice not found for email sending");
-          return res.status(201).json({
-            message: "Payment recorded successfully",
-            payment
-          });
-        }
-
-        const project = invoiceWithDetails.project || invoiceWithDetails.estimate?.project;
-        const client = invoiceWithDetails.project?.client || invoiceWithDetails.estimate?.project?.client;
-        const company = invoiceWithDetails.project?.company || invoiceWithDetails.estimate?.project?.company;
+        const project = invoice.project || invoice.estimate?.project;
+        const client = project?.client;
+        const company = project?.company;
         const workContext = project?.workContext;
 
-        // Usar email do work context se disponível, senão usar email do cliente
         const recipientEmail = workContext?.Email || client?.email;
         const recipientName = workContext?.Name || client?.name || 'Client';
 
-        console.log("recipientEmail", recipientEmail);
-        console.log("recipientName", recipientName);
+        if (recipientEmail) {
+          const companyAvatar = company?.avatar ? await getPresignedUrl(company.avatar) : "";
+          const totalFormatted = new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }).format(Number(amount));
+          const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+          const projectDispName = `Project #${project?.contract_number || 'N/A'}`;
+          const paymentDateFormatted = new Date().toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric'
+          });
 
-        if (!recipientEmail) {
-          console.log("Recipient email not found (neither work context nor client email), skipping email send");
-          return res.status(201).json({
-            message: "Payment recorded successfully",
-            payment
+          const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
+            where: { invoiceId }
+          });
+
+          const attachments = [];
+          if (pdfInvoicePaid && pdfInvoicePaid.uri) {
+            try {
+              const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
+              const pdfResponse = await fetch(pdfUrl);
+              if (pdfResponse.ok) {
+                const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                attachments.push({
+                  filename: pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`,
+                  content: pdfBuffer.toString('base64'),
+                  type: 'application/pdf',
+                  disposition: 'attachment'
+                });
+              }
+            } catch (error) {
+              console.error("Error fetching PDF invoice paid:", error);
+            }
+          }
+
+          await sendEmail({
+            to: recipientEmail,
+            subject: `Payment Received - Invoice #${invoiceCode} - ${company?.name || 'SmartBuild'}`,
+            templateId: "d-b6e6e8ed26f14399a3ecceb89a6dee03",
+            dynamicTemplateData: {
+              recipientName: recipientName,
+              projectName: projectDispName,
+              invoiceNumber: invoiceCode,
+              totalAmount: totalFormatted,
+              paymentDate: paymentDateFormatted,
+              companyName: company?.name || "SmartBuild",
+              companyAvatar: companyAvatar,
+              customBody: notes || "",
+              currentYear: new Date().getFullYear().toString(),
+              recipientEmail: recipientEmail,
+              location: workContext?.location || project?.location || "Not specified"
+            },
+            attachments: attachments as any
+          });
+
+          await prisma.invoiceEmailLog.create({
+            data: {
+              invoice: { connect: { id: invoice.id } },
+              recipient: recipientEmail,
+              status: "success",
+              sentAt: new Date()
+            }
           });
         }
-
-        const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-          where: {
-            invoiceId: invoiceId
-          }
-        });
-
-        try {
-          await CustomInvoicePaymentController.verifySMTPConfig();
-        } catch (error) {
-          console.error('SMTP verification failed:', error);
-        }
-
-        const SMTP_CONFIG = require("../../config/smtp");
-        const transporter = nodemailer.createTransport({
-          host: SMTP_CONFIG.host,
-          port: SMTP_CONFIG.port,
-          secure: SMTP_CONFIG.port === 465,
-          auth: {
-            user: SMTP_CONFIG.user,
-            pass: SMTP_CONFIG.pass,
-          },
-          tls: {
-            rejectUnauthorized: false,
-          },
-        });
-
-        const companyAvatar = company?.avatar
-          ? await getPresignedUrl(company.avatar)
-          : "";
-
-        const attachments = [];
-
-        if (pdfInvoicePaid && pdfInvoicePaid.uri) {
-          try {
-            const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
-            const pdfResponse = await fetch(pdfUrl);
-            if (pdfResponse.ok) {
-              const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-              const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoice.externalInvoiceId}.pdf`;
-              attachments.push({
-                filename: fileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf'
-              });
-            }
-          } catch (error) {
-            console.error("Error fetching PDF invoice paid:", error);
-          }
-        }
-
-        const paymentDate = payment?.createdAt || new Date();
-        const emailSubject = `Invoice #${invoice.externalInvoiceId} - Payment Confirmation`;
-
-        const emailHtml = invoicePaidPaymentEmail(
-          recipientName,
-          companyAvatar || "",
-          company?.name || '',
-          invoice.externalInvoiceId || invoiceId,
-          Number(amount),
-          paymentDate.toISOString(),
-          paymentMethod,
-          undefined,
-          company?.phone || '',
-          company?.email || ''
-        );
-
-        await transporter.sendMail({
-          from: SMTP_CONFIG.user,
-          to: recipientEmail,
-          subject: emailSubject,
-          html: emailHtml,
-          attachments: attachments.length > 0 ? attachments : undefined,
-          text: `
-Dear ${recipientName},
-
-We are pleased to confirm that Invoice #${invoice.externalInvoiceId} has been paid successfully.
-
-Payment Details:
-- Invoice Number: #${invoice.externalInvoiceId}
-- Payment Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount))}
-- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Payment Method: ${paymentMethod}
-
-Thank you for your prompt payment. If you have any questions, please feel free to contact us.
-
-Have a great day!
-${company?.name || ''}
-          `.trim()
-        });
-
       } catch (emailError: any) {
         console.error("Error sending payment confirmation email:", emailError);
       }

@@ -7,6 +7,7 @@ import { generatePdf } from "../../utils/generatePdf";
 import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdfProjectEstimateInvoiceController";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import { stripeConfig } from "../../config/stripe";
+import { sendEmail } from "../../utils/sendEmail";
 
 const stripe = stripeConfig.getClient();
 
@@ -37,7 +38,7 @@ export class CustomInvoiceController {
 
       // Check for processing or requires_action states that block conversion
       const blockingStatuses = ['processing', 'requires_action'];
-      const blockingPaymentIntents = paymentIntents.filter(pi => 
+      const blockingPaymentIntents = paymentIntents.filter(pi =>
         blockingStatuses.includes(pi.status)
       );
 
@@ -55,7 +56,7 @@ export class CustomInvoiceController {
 
       // Cancel any PaymentIntents that are in cancelable states
       const cancelableStatuses = ['requires_payment_method', 'requires_confirmation', 'requires_capture'];
-      const cancelablePaymentIntents = paymentIntents.filter(pi => 
+      const cancelablePaymentIntents = paymentIntents.filter(pi =>
         cancelableStatuses.includes(pi.status)
       );
 
@@ -500,7 +501,7 @@ export class CustomInvoiceController {
   }
 
   // enviar o pdf para o cliente atravez de email
-  async sendInvoice(req: Request, res: Response) { 
+  async sendInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
     const { userId, companyId, idPdfProject, customSubject, customBody, customEmails } = req.body;
 
@@ -637,49 +638,30 @@ export class CustomInvoiceController {
         }
       }
 
-      // Configurar o envio de email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Obter o logo da empresa
       const company = invoice.project.company;
-      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+      const companyAvatar = company?.avatar ? await getPresignedUrl(company.avatar) : "";
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
-      const phone = company?.phone || '';
       const clientName = invoice.project.client.name;
-      const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const totalFormatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(invoice.totalAmount));
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+      const projectDispName = `Project #${invoice.project?.contract_number || 'N/A'}`;
+      const dueDateFormatted = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      }) : 'Not set';
 
-      // Usar o template invoiceCustom
-      const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(
-        clientName,
-        urlLogo,
-        invoiceCode,
-        invoiceAmount,
-        companyName,
-        phone || '',
-        customBody,
-        customSubject,
-        invoice.invoiceType,
-        invoice.invoiceUrl,
-        invoice.id
-      );
+      let paymentUrl = '';
+      if (invoice.invoiceType === 'stripe') {
+        paymentUrl = `${process.env.URL_FRONT}/pay/${invoice.id}`;
+      } else if (invoice.invoiceType === 'quickbooks' && invoice.invoiceUrl) {
+        paymentUrl = invoice.invoiceUrl;
+      }
 
-      const fileName = pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`;
-
-      // Usar subject personalizado se fornecido, senão usar o padrão baseado no tipo
       const emailSubject = customSubject || (String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`);
 
       // Resultados do envio para cada email
@@ -690,19 +672,37 @@ export class CustomInvoiceController {
         try {
           const attachments = [
             {
-              filename: fileName,
-              content: pdfBuffer,
-              contentType: 'application/pdf'
+              filename: pdfProject.original_file_name || `invoice_${invoiceCode}.pdf`,
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
             },
-            ...documentAttachments
+            ...documentAttachments.map(doc => ({
+              filename: doc.filename,
+              content: doc.content.toString('base64'),
+              type: doc.contentType,
+              disposition: 'attachment'
+            }))
           ];
 
-          await transporter.sendMail({
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: email,
             subject: emailSubject,
-            html: emailTemplate,
-            attachments: attachments
+            templateId: "d-0ce549c501c34e958c342212821b0604",
+            dynamicTemplateData: {
+              recipientName: clientName,
+              projectName: projectDispName,
+              invoiceNumber: invoiceCode,
+              totalAmount: totalFormatted,
+              dueDate: dueDateFormatted,
+              paymentUrl: paymentUrl,
+              companyName: companyName,
+              companyAvatar: companyAvatar,
+              customBody: customBody || "",
+              currentYear: new Date().getFullYear().toString(),
+              recipientEmail: email
+            },
+            attachments: attachments as any
           });
 
           // Se chegou aqui, o envio foi bem-sucedido
@@ -859,45 +859,32 @@ export class CustomInvoiceController {
         }
       }
 
-      // Configurar o envio de email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Obter o logo da empresa
       const company = invoice.project?.company;
-      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+      const companyAvatar = company?.avatar ? await getPresignedUrl(company.avatar) : "";
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
-      const phone = company?.phone || '';
       const clientName = invoice.project?.client?.name || 'Cliente';
-      const invoiceAmount = Number(invoice.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const totalFormatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(invoice.totalAmount));
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
+      const projectDispName = `Project #${invoice.project?.contract_number || 'N/A'}`;
+      const dueDateFormatted = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      }) : 'Not set';
 
-      // Usar o template invoiceCustom
-      const { invoiceCustom } = require('../../templateEmail/invoiceCustom');
-      const emailTemplate = invoiceCustom(
-        clientName,
-        urlLogo,
-        invoiceCode,
-        invoiceAmount,
-        companyName,
-        phone || '',
-        undefined, // customBody
-        undefined, // customSubject
-        invoice.invoiceType,
-        invoice.invoiceUrl,
-        invoice.id
-      );
+      // Determinar a URL correta baseada no tipo de invoice
+      let paymentUrl = '';
+      if (invoice.invoiceType === 'stripe') {
+        paymentUrl = `${process.env.URL_FRONT}/pay/${invoice.id}`;
+      } else if (invoice.invoiceUrl && invoice.invoiceType === 'custom') {
+        paymentUrl = invoice.invoiceUrl ||  '';
+      }
+
+      const emailSubject = String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`;
 
       // Resultados do envio para cada email
       const results = [];
@@ -905,27 +892,34 @@ export class CustomInvoiceController {
       // Processar todos os emails
       for (const email of emails) {
         try {
-          // Preparar opções de email
-          const mailOptions: any = {
-            from: SMTP_CONFIG.user,
-            to: email,
-            subject: String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`,
-            html: emailTemplate
-          };
-
-          // Adicionar anexo apenas se houver PDF disponível
+          const attachments = [];
           if (pdfBuffer && fileName) {
-            mailOptions.attachments = [
-              {
-                filename: fileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf'
-              }
-            ];
+            attachments.push({
+              filename: fileName,
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
+            });
           }
 
-          // Enviar o email
-          await transporter.sendMail(mailOptions);
+          await sendEmail({
+            to: email,
+            subject: emailSubject,
+            templateId: "d-0ce549c501c34e958c342212821b0604", // Template ID for Invoice Review
+            dynamicTemplateData: {
+              recipientName: clientName,
+              projectName: projectDispName,
+              invoiceNumber: invoiceCode,
+              totalAmount: totalFormatted,
+              dueDate: dueDateFormatted,
+              paymentUrl: paymentUrl,
+              companyName: companyName,
+              companyAvatar: companyAvatar,
+              currentYear: new Date().getFullYear().toString(),
+              recipientEmail: email
+            },
+            attachments: attachments as any
+          });
 
           // Se chegou aqui, o envio foi bem-sucedido
           await prisma.invoiceEmailLog.create({
@@ -1097,7 +1091,7 @@ export class CustomInvoiceController {
           if (qbController) {
             // Use userId from request body or try to get from invoice
             const userId = req.body.userId || invoice.user_id;
-            
+
             if (userId) {
               quickBooksVoidResult = await qbController.cancelInvoiceInternal({
                 quickBooksInvoiceId: invoice.idQuickbookContabio,
@@ -1331,7 +1325,7 @@ export class CustomInvoiceController {
     }
   }
 
-  async updateInvoice(req: Request, res: Response) { 
+  async updateInvoice(req: Request, res: Response) {
     const {
       invoiceId
     } = req.params;
@@ -1413,7 +1407,7 @@ export class CustomInvoiceController {
         if (existingInvoice.idQuickbookContabio && companyId) {
           console.log(" Deleting QuickBooks invoice before conversion to custom");
           console.log("QB Invoice ID:", existingInvoice.idQuickbookContabio);
-          
+
           try {
             const qbController = this.quickBooksController;
             if (qbController) {
@@ -1554,12 +1548,12 @@ export class CustomInvoiceController {
               Array.isArray(services) && services.length > 0
                 ? services
                 : (existingInvoice.InvoiceItems || []).map((ii: any) => ({
-                    name: ii.name || "Service",
-                    description: ii.description || "",
-                    quantity: Number(ii.quantity || 1),
-                    price: Number(ii.price || 0),
-                    total: Number(ii.totalAmount || 0),
-                  }));
+                  name: ii.name || "Service",
+                  description: ii.description || "",
+                  quantity: Number(ii.quantity || 1),
+                  price: Number(ii.price || 0),
+                  total: Number(ii.totalAmount || 0),
+                }));
 
             const qbServicesForCreate = qbServicesSource.map((s: any) => ({
               name: s.name || "Service",
@@ -1611,7 +1605,7 @@ export class CustomInvoiceController {
                 },
               });
             }
-          } 
+          }
           // Verificar se o invoice original tinha referência do QuickBooks
           else if (quickBooksAccount && existingInvoice.idQuickbookContabio) {
             // Preparar serviços para o formato esperado pelo QuickBooks
@@ -2257,50 +2251,24 @@ export class CustomInvoiceController {
         }
       }
 
-      // Configurar o envio de email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Obter o logo da empresa
       const company = invoice.project.company;
-      const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : undefined;
+      const companyAvatar = company?.avatar ? await getPresignedUrl(company.avatar) : "";
 
       // Preparar os dados para o template
       const companyName = company?.name || 'Smart Build';
-      const phone = company?.phone || '';
-      const companyEmail = company?.email || '';
       const clientName = invoice.project.client.name;
-      const invoiceAmount = Number(invoice.totalAmount);
+      const totalFormatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(invoice.totalAmount));
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
-      const paymentDate = invoice.payment?.createdAt || invoice.updatedAt;
+      const projectDispName = `Project #${invoice.project?.contract_number || 'N/A'}`;
+      const paymentDateFormatted = (invoice.payment?.createdAt || invoice.updatedAt).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
 
-      // Usar o template de pagamento confirmado
-      const { invoicePaidReceiptEmail } = require('../../templateEmail/invoicePaidReceipt');
-      const emailTemplate = invoicePaidReceiptEmail(
-        clientName,
-        urlLogo,
-        companyName,
-        invoiceCode,
-        invoiceAmount,
-        paymentDate.toISOString(),
-        customBody,
-        phone,
-        companyEmail
-      );
-
-      const fileName = pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`;
-
-      // Usar subject personalizado se fornecido, senão usar o padrão
-      const emailSubject = customSubject || `Payment Receipt - Invoice #${invoiceCode} - ${companyName}`;
+      const emailSubject = customSubject || `Payment Received - Invoice #${invoiceCode} - ${companyName}`;
 
       // Resultados do envio para cada email
       const results = [];
@@ -2310,19 +2278,37 @@ export class CustomInvoiceController {
         try {
           const attachments = [
             {
-              filename: fileName,
-              content: pdfBuffer,
-              contentType: 'application/pdf'
+              filename: pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`,
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
             },
-            ...documentAttachments
+            ...documentAttachments.map(doc => ({
+              filename: doc.filename,
+              content: doc.content.toString('base64'),
+              type: doc.contentType,
+              disposition: 'attachment'
+            }))
           ];
 
-          await transporter.sendMail({
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: email,
             subject: emailSubject,
-            html: emailTemplate,
-            attachments: attachments
+            templateId: "d-b6e6e8ed26f14399a3ecceb89a6dee03",
+            dynamicTemplateData: {
+              recipientName: clientName,
+              projectName: projectDispName,
+              invoiceNumber: invoiceCode,
+              totalAmount: totalFormatted,
+              paymentDate: paymentDateFormatted,
+              companyName: companyName,
+              companyAvatar: companyAvatar,
+              customBody: customBody || "",
+              currentYear: new Date().getFullYear().toString(),
+              recipientEmail: email,
+              location: invoice.project?.location || "Not specified"
+            },
+            attachments: attachments as any
           });
 
           // Se chegou aqui, o envio foi bem-sucedido
