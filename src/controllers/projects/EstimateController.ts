@@ -567,7 +567,7 @@ export class EstimateController {
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
             clientName: project?.workContext?.Name || project?.client?.name || "Customer",
-            projectName: project?.serviceProject?.[0]?.name || `Project ${project?.contract_number || ''}`,
+            projectName: `Project #${project?.contract_number || 'N/A'}`,
             location: project?.workContext?.location || project?.location || "Not specified",
             totalAmount: totalFormatted,
             companyName: project?.company?.name || "SmartBuild",
@@ -781,9 +781,9 @@ export class EstimateController {
       }).format(Number(estimate.totalAmount));
 
       const commonData = {
-        projectName: project.serviceProject?.[0]?.name || `Project ${project.contract_number || ''}`,
-        contractNumber: project.contract_number || "N/A",
-        location: project.workContext?.location || project.location || "Not specified",
+        projectName: `Project #${project?.contract_number || 'N/A'}`,
+        contractNumber: project?.contract_number || "N/A",
+        location: project?.workContext?.location || project?.location || "Not specified",
         totalAmount: totalFormatted,
         companyName: project.company?.name || "SmartBuild",
         companyAvatar: companyAvatar,
@@ -796,7 +796,6 @@ export class EstimateController {
 
       await Promise.all([
         (async () => {
-          // Email para o Dono da Empresa e Company
           if (project.user?.email || project.company?.email) {
             await sendEmail({
               to: [project.user?.email, project.company?.email].filter(Boolean) as string[],
