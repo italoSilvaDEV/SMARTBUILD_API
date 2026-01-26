@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { permissionKeyApprovalEmail } from "../../templateEmail/permissionKeyApproval";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
@@ -80,22 +80,7 @@ export class CreateNewKeyController {
 
             if (ownerEmail) {
                 try {
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    });
-
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: ownerEmail,
                         subject: `Action Required: Permission Key Approval Request - ${userName}`,
                         html: permissionKeyApprovalEmail(
@@ -107,10 +92,7 @@ export class CreateNewKeyController {
                             smartbuildFooterLogo,
                             instagramIcon
                         ),
-                        text: `A new permission key has been requested by ${userName} (${userEmail}). Please approve or reject at the dashboard.`
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Approval email sent to owner: ${ownerEmail}`);
                 } catch (emailError) {
                     console.error('Error sending approval email to owner:', emailError);

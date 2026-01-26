@@ -3,8 +3,7 @@ import { prisma } from "../../utils/prisma";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
-import nodemailer from "nodemailer";
-import { invoicePaidPaymentEmail } from "../../templateEmail/invoicePaidPayment";
+import { sendEmail } from "../../utils/sendEmail";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 const stripe = stripeConfig.getClient();
@@ -380,21 +379,6 @@ export class StripeInvoicePaymentController {
         }
       });
 
-      // Configurar SMTP
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
       const companyAvatar = company?.avatar
         ? await getPresignedUrl(company.avatar)
         : "";
@@ -410,8 +394,9 @@ export class StripeInvoicePaymentController {
             const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
             attachments.push({
               filename: fileName,
-              content: pdfBuffer,
-              contentType: 'application/pdf'
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
             });
             console.log(`PDF paid anexado ao email: ${fileName}`);
           }
@@ -428,41 +413,24 @@ export class StripeInvoicePaymentController {
       const invoiceCode = invoiceData.externalInvoiceId || invoiceData.id;
       const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation`;
 
-      const emailHtml = invoicePaidPaymentEmail(
-        recipientName,
-        companyAvatar || "",
-        company?.name || '',
-        invoiceCode,
-        amount,
-        paymentDate.toISOString(),
-        paymentMethod || 'Manual Payment',
-        undefined,
-        company?.phone || '',
-        company?.email || ''
-      );
-
-      await transporter.sendMail({
-        from: SMTP_CONFIG.user,
+      await sendEmail({
         to: recipientEmail,
         subject: emailSubject,
-        html: emailHtml,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        text: `
-Dear ${recipientName},
-
-We are pleased to confirm that Invoice #${invoiceCode} has been paid successfully.
-
-Payment Details:
-- Invoice Number: #${invoiceCode}
-- Payment Amount: ${formattedAmount}
-- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Payment Method: ${paymentMethod || 'Manual Payment'}
-
-Thank you for your prompt payment. If you have any questions, please feel free to contact us.
-
-Have a great day!
-${company?.name || ''}
-        `.trim()
+        templateId: "d-b6e6e8ed26f14399a3ecceb89a6dee03", // Same template as manual receipt
+        dynamicTemplateData: {
+          recipientName: recipientName,
+          projectName: `Project #${project?.contract_number || 'N/A'}`,
+          invoiceNumber: invoiceCode,
+          totalAmount: formattedAmount,
+          paymentDate: paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          companyName: company?.name || "SmartBuild",
+          companyAvatar: companyAvatar,
+          customBody: "",
+          currentYear: new Date().getFullYear().toString(),
+          recipientEmail: recipientEmail,
+          location: workContext?.location || project?.location || "Not specified"
+        },
+        attachments: attachments as any
       });
 
       console.log(`Email com PDF enviado para ${recipientEmail}`);

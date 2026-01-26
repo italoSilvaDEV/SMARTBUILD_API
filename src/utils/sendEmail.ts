@@ -8,6 +8,7 @@ interface SendEmailData {
     html?: string;
     text?: string;
     from?: string;
+    replyTo?: string;
     templateId?: string;
     dynamicTemplateData?: { [key: string]: any };
     attachments?: Array<{
@@ -18,10 +19,11 @@ interface SendEmailData {
     }>;
 }
 
-export async function sendEmail({ to, subject, html, text, from, templateId, dynamicTemplateData, attachments }: SendEmailData) {
+export async function sendEmail({ to, subject, html, text, from, replyTo, templateId, dynamicTemplateData, attachments }: SendEmailData) {
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',
+        replyTo,
         subject,
         text: text || subject || '',
         html: html || '',

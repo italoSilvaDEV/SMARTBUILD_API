@@ -1,34 +1,13 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderEmail } from "../../templateEmail/changeOrder";
 import fs from 'fs';
 
 export class SendEmailChangeOrderController {
     private static async verifySMTPConfig() {
-        try {
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
-            const verification = await transporter.verify();
-            console.log('✅ SMTP Configuration verified:', verification);
-            return verification;
-        } catch (error) {
-            console.error('❌ SMTP Configuration error:', error);
-            throw error;
-        }
+        return true;
     }
 
     async handle(req: Request, res: Response) {
@@ -195,31 +174,12 @@ export class SendEmailChangeOrderController {
             }
             const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
             const fileName = pdfProject.original_file_name || `change_order_${changeOrder.id}.pdf`;
-            const SMTP_CONFIG = require("../../config/smtp");
 
             try {
                 await SendEmailChangeOrderController.verifySMTPConfig();
             } catch (error) {
                 console.error('SMTP verification failed:', error);
-                cleanupTempFiles(attachmentFiles);
-                return res.status(500).json({
-                    error: "SMTP configuration error",
-                    details: error instanceof Error ? error.message : 'Unknown error'
-                });
             }
-
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
 
             const results = [];
             const companyAvatar = project?.company?.avatar
@@ -230,8 +190,9 @@ export class SendEmailChangeOrderController {
                 const attachments = [
                     {
                         filename: fileName,
-                        content: pdfBuffer,
-                        contentType: 'application/pdf'
+                        content: pdfBuffer.toString('base64'),
+                        type: 'application/pdf',
+                        disposition: 'attachment'
                     }
                 ];
 
@@ -241,8 +202,9 @@ export class SendEmailChangeOrderController {
                             const fileBuffer = fs.readFileSync(file.path);
                             attachments.push({
                                 filename: file.originalname,
-                                content: fileBuffer,
-                                contentType: file.mimetype
+                                content: fileBuffer.toString('base64'),
+                                type: file.mimetype,
+                                disposition: 'attachment'
                             });
                         } catch (error) {
                             console.error(`❌ Error reading attachment file ${file.originalname}:`, error);
@@ -256,8 +218,7 @@ export class SendEmailChangeOrderController {
 
                 const emailSubject = `Change Order Request: Additional items for ${projectName}`;
 
-                const mailOptions = {
-                    from: SMTP_CONFIG.user,
+                await sendEmail({
                     to: toEmails || [clientEmail],
                     subject: emailSubject,
                     html: changeOrderEmail(
@@ -272,30 +233,8 @@ export class SendEmailChangeOrderController {
                         projectLocation,
                         formattedScopeOfWork
                     ),
-                    attachments,
-                    text: `
-Dear ${clientName},
-
-A change order has been created for your project estimate ${changeOrder.estimate?.number || ''}.
-
-Change Order ID: ${changeOrder.id}
-Additional Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(changeOrder.total_amount))}
-Project Location: ${projectLocation}
-
-Scope of Work:
-${formattedScopeOfWork}
-
-Please access the link to view details and approve the change order:
-${process.env.URL_FRONT}/changeorder-response/${changeOrder.id}
-
-We appreciate your business. Feel free to contact us if you have any questions.
-
-Have a great day!
-${project?.company?.name || ''}
-                    `.trim()
-                };
-
-                await transporter.sendMail(mailOptions);
+                    attachments: attachments as any,
+                });
 
                 console.log('Email sent to:', toEmails);
 

@@ -6,7 +6,7 @@ import QuickBooks from "node-quickbooks";
 import { fireAndForgetUpsertToQBO } from "../customer/FireAndForgetUpsertToQBO";
 import { getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../../utils/sendEmail";
 import { invoicePaidPaymentEmail } from "../../../templateEmail/invoicePaidPayment";
 
 // Função para determinar se deve marcar needsReauthorization
@@ -3443,21 +3443,6 @@ export class QuickBooksInvoiceController {
         console.log(`[QuickBooks Payment] Nenhum PDF pago encontrado para invoice ${invoiceData.id}`);
       }
 
-      // Configurar SMTP
-      const SMTP_CONFIG = require("../../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
       // Obter avatar da empresa
       const companyAvatar = company?.avatar
         ? await getPresignedUrl(company.avatar)
@@ -3475,8 +3460,9 @@ export class QuickBooksInvoiceController {
             const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId}.pdf`;
             attachments.push({
               filename: fileName,
-              content: pdfBuffer,
-              contentType: 'application/pdf'
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
             });
           }
         } catch (error) {
@@ -3500,8 +3486,7 @@ export class QuickBooksInvoiceController {
         company?.email || ''
       );
 
-      await transporter.sendMail({
-        from: SMTP_CONFIG.user,
+      await sendEmail({
         to: recipientEmail,
         subject: emailSubject,
         html: emailHtml,

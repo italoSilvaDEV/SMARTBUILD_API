@@ -3,7 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import Jwt from "jsonwebtoken";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { RecoverPassword } from "../../templateEmail/recoverPassword";
 import { CompanyInvitation } from "../../templateEmail/companyInvitation";
 import { INewUser } from "../../DTOs/IUser";
@@ -155,52 +155,32 @@ export class UserController {
         });
 
         if (company) {
-          // SMTP
-          const SMTP_CONFIG = require("../../config/smtp");
-          const transporter = nodemailer.createTransport({
-            host: SMTP_CONFIG.host,
-            port: SMTP_CONFIG.port,
-            secure: SMTP_CONFIG.port === 465,
-            auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-            tls: { rejectUnauthorized: false },
-          });
-
-          try {
-            await transporter.verify();
-          } catch (verifyError) {
-            console.error(`[create] SMTP verification failed:`, verifyError);
-          }
-
           const urlLogo = company.avatar ? await getPresignedUrl(company.avatar) : '';
 
           // Escolher template baseado na situação
           let templateEmail: string;
-          let mailOptions: any;
+          let subject: string;
+          let text: string;
 
           if (hasOtherCompanies) {
             // Usuário já tem outras empresas - enviar convite SEM senha
             templateEmail = CompanyInvitation(userExists.name.toUpperCase(), urlLogo, company.name);
-            mailOptions = {
-              from: SMTP_CONFIG.user,
-              to: userExists.email,
-              subject: "Smart Build - Access to New Company",
-              html: templateEmail,
-              text: `Dear ${userExists.name},\n\nWe are pleased to inform you that your account has been enabled for the company ${company.name}.\n\nYou can now access this company using your existing credentials.\n\nBest regards,\nSmart Build Team`
-            };
+            subject = "Smart Build - Access to New Company";
+            text = `Dear ${userExists.name},\n\nWe are pleased to inform you that your account has been enabled for the company ${company.name}.\n\nYou can now access this company using your existing credentials.\n\nBest regards,\nSmart Build Team`;
           } else {
             // Usuário sem outras empresas - enviar email COM senha
             templateEmail = NewUser(userExists.name.toUpperCase(), urlLogo, pass!);
-            mailOptions = {
-              from: SMTP_CONFIG.user,
-              to: userExists.email,
-              subject: "Smart Build - Welcome",
-              html: templateEmail,
-              text: `Welcome ${userExists.name}!\n\nYou have been added to ${company.name}.\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
-            };
+            subject = "Smart Build - Welcome";
+            text = `Welcome ${userExists.name}!\n\nYou have been added to ${company.name}.\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`;
           }
 
           try {
-            await transporter.sendMail(mailOptions);
+            await sendEmail({
+              to: userExists.email,
+              subject: subject,
+              html: templateEmail,
+              text: text
+            });
           } catch (mailErr) {
             console.error(`[create] Error sending email:`, mailErr);
           }
@@ -218,21 +198,6 @@ export class UserController {
       } else {
         pass = crypto.randomBytes(3).toString("hex").toUpperCase();
         hashedPassword = bcrypt.hashSync(pass, 10);
-      }
-
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-        tls: { rejectUnauthorized: false },
-      });
-
-      try {
-        await transporter.verify();
-      } catch (verifyError) {
-        console.error(`[create] SMTP verification failed:`, verifyError);
       }
 
       // Criação do usuário
@@ -267,16 +232,14 @@ export class UserController {
       const urlLogo = company?.avatar ? await getPresignedUrl(company.avatar) : '';
       
       const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
-        to: data.email,
-        subject: "Smart Build - Welcome",
-        html: templateEmail,
-        text: `Welcome ${data.name}!\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
-      };
 
       try {
-        await transporter.sendMail(mailOptions);
+        await sendEmail({
+          to: data.email,
+          subject: "Smart Build - Welcome",
+          html: templateEmail,
+          text: `Welcome ${data.name}!\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+        });
       } catch (mailErr) {
         console.error(`[create] Error sending email:`, mailErr);
       }
@@ -1102,50 +1065,21 @@ export class UserController {
       },
     });
 
-    const SMTP_CONFIG = require("../../config/smtp");
+      const companyAvatar = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+      const templateEmail = RecoverPassword(user.name.toUpperCase(), companyAvatar, token);
 
-    const transporter = nodemailer.createTransport({
-      host: SMTP_CONFIG.host,
-      port: SMTP_CONFIG.port,
-      secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
-      auth: {
-        user: SMTP_CONFIG.user,
-        pass: SMTP_CONFIG.pass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    // Verificar a configuração do transportador
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error("Erro ao configurar o transportador de e-mail:", error);
-      } else {
-        console.log(
-          "Transportador de e-mail configurado com sucesso:",
-          success
-        );
+      try {
+        await sendEmail({
+          to: email,
+          subject: "Smart Build - Password Reset",
+          html: templateEmail
+        });
+        console.log("e-mail enviado com sucesso!");
+        return response.json({ message: "Email sent successfully" });
+      } catch (error) {
+        console.error("Erro ao enviar e-mail:", error);
+        return response.status(500).json({ error: "Erro ao enviar e-mail" });
       }
-    });
-    const logo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
-
-    const templateEmail = RecoverPassword(user.name.toUpperCase(), logo, token);
-    const mailOptions = {
-      from: SMTP_CONFIG.user,
-      to: email,
-      subject: "Smart Build - Password Reset",
-      html: templateEmail,
-    };
-
-    try {
-      const result = await transporter.sendMail(mailOptions);
-      console.log("e-mail enviado com sucesso!");
-      return response.json({ message: "Email sent successfully" });
-    } catch (error) {
-      console.error("Erro ao enviar e-mail:", error);
-      return response.status(500).json({ error: "Erro ao enviar e-mail" });
-    }
   }
 
   async validCode(request: Request, response: Response) {
@@ -1283,19 +1217,6 @@ export class UserController {
         }
       });
 
-      // Configurar e enviar email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Obter URL do logo da empresa
       const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
 
@@ -1303,12 +1224,16 @@ export class UserController {
       const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, newPassword);
 
       // Enviar email
-      await transporter.sendMail({
-        from: SMTP_CONFIG.user,
-        to: email,
-        subject: "Smart Build - Email Updated",
-        html: templateEmail,
-      });
+      try {
+        await sendEmail({
+          to: email,
+          subject: "Smart Build - Email Updated",
+          html: templateEmail,
+          text: `Hello ${user.name}!\n\nYour new temporary password is: ${newPassword}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+        });
+      } catch (mailErr) {
+        console.error(`[updateUserEmailAndSendPassword] Error sending email:`, mailErr);
+      }
 
       return res.status(200).json({ message: "Email updated and password sent successfully" });
     } catch (error) {
@@ -2000,37 +1925,16 @@ export class UserController {
         });
       }
 
-      // Senha automática: enviar email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
-      try {
-        await transporter.verify();
-      } catch (verifyError) {
-        console.error("[resendPassword] SMTP verification failed:", verifyError);
-      }
-
       const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
       const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, passwordToUse);
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
-        to: user.email,
-        subject: "Smart Build - Password Reset",
-        html: templateEmail,
-        text: `Hello ${user.name}!\n\nYour new temporary password is: ${passwordToUse}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
-      };
 
       try {
-        await transporter.sendMail(mailOptions);
+        await sendEmail({
+          to: user.email,
+          subject: "Smart Build - Password Reset",
+          html: templateEmail,
+          text: `Hello ${user.name}!\n\nYour new temporary password is: ${passwordToUse}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+        });
         return res.status(200).json({ 
           message: "Password resent successfully",
           emailSent: true

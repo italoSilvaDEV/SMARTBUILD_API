@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 import multer from "multer";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { createPreviewContract } from "../../templateEmail/createPreviewContract";
 import fs from "fs";
 
@@ -110,18 +110,6 @@ export class CreatePdContractfProjectController {
             console.log("ENVIANDO EMAIL");
             const startTime = Date.now(); // Captura o tempo de início
 
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: { rejectUnauthorized: false },
-            });
-
             const templateEmail = createPreviewContract(
                 additionalData.clientName.toUpperCase(),
                 additionalData.companyAvatar || "", // Logo URL do front-end
@@ -129,15 +117,16 @@ export class CreatePdContractfProjectController {
                 additionalData.totalPrice
             );
 
-            await transporter.sendMail({
-                from: SMTP_CONFIG.user,
+            await sendEmail({
                 to: additionalData.emailClient, // Assumindo que o e-mail está no nome do cliente
                 subject: `Contract for ${additionalData.clientName.toUpperCase()}`,
                 html: templateEmail,
                 attachments: [
                     {
                         filename: "contract.pdf",
-                        content: fs.createReadStream(pdfPath) // Usar stream em vez de path
+                        content: fs.readFileSync(pdfPath).toString("base64"),
+                        type: "application/pdf",
+                        disposition: "attachment"
                     },
                 ],
             });
