@@ -378,7 +378,7 @@ export class CampaignController {
               User: {
                 where: {
                   office: {
-                    name: 'administrator'
+                    name: 'Owner'
                   }
                 },
                 take: 1

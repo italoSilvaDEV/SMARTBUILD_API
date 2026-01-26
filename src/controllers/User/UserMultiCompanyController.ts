@@ -330,7 +330,7 @@ export class UserMultiCompanyController {
 
         // Se o plano expirou e o usuário não é administrador, bloquear acesso
         // Usar o office específico da empresa selecionada
-        const isAdmin = selectedOffice?.name.toLowerCase() === 'administrator';
+        const isAdmin = selectedOffice?.name.toLowerCase() === 'administrator' || selectedOffice?.name.toLowerCase() === 'owner';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
             error: "Your company's subscription has expired. Please ask your company administrator to renew your plan to continue using the system."

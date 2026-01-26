@@ -495,7 +495,7 @@ export class SalesDealController {
               User: {
                 where: {
                   office: {
-                    name: "Administrator"
+                    name: "Owner"
                   }
                 },
                 select: {

@@ -510,10 +510,10 @@ export class UserController {
         }
 
         // Se o plano expirou e o usuário não é administrador, bloquear acesso
-        const isAdmin = user.office.name.toLowerCase() === 'administrator';
+        const isAdmin = user.office.name.toLowerCase() === 'administrator' || user.office.name.toLowerCase() === 'owner';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
-            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
+            error: "Your subscription has expired. Please renew your plan to continue using the system."
           });
         }
       }
@@ -1611,7 +1611,7 @@ export class UserController {
       })
     }
 
-    if (userCompany.office.name === "administrator" || userCompany.office.name === "Administrator") {
+    if (userCompany.office.name.toLowerCase() === "administrator" || userCompany.office.name === "Owner") {
       return res.status(400).json({
         error: "Não é possível remover o usuário administrador da empresa"
       })

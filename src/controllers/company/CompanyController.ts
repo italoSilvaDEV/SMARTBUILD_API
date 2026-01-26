@@ -57,7 +57,7 @@ export class CompanyController {
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
-                        equals: 'administrator'
+                        equals: 'Owner'
                     }
                 }
             });
@@ -217,7 +217,7 @@ export class CompanyController {
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
-                        equals: 'administrator'
+                        equals: 'Owner'
                     }
                 }
             });
@@ -517,7 +517,7 @@ export class CompanyController {
                                 is: {
                                     office: {
                                         is: {
-                                            name: "Administrator"
+                                            name: "Owner"
                                         }
                                     }
                                 }
