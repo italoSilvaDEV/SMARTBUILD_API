@@ -20,6 +20,7 @@ interface SendEmailData {
 }
 
 export async function sendEmail({ to, subject, html, text, from, replyTo, templateId, dynamicTemplateData, attachments }: SendEmailData) {
+    console.log(process.env.SENDGRID_KEY)
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',

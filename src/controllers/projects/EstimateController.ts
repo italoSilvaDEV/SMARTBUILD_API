@@ -1349,9 +1349,10 @@ export class EstimateController {
             recipientName = estimate.project.client.name;
           }
 
-          await sendEmail({
+          const emailData: any = {
             to: recipientEmail,
             subject: subjectFixed,
+            attachments: attachments as any,
             templateId: TEMPLATE_ID,
             dynamicTemplateData: {
               recipientName: recipientName,
@@ -1363,10 +1364,12 @@ export class EstimateController {
               companyName: companyName,
               companyAvatar: companyAvatar,
               currentYear: new Date().getFullYear().toString(),
-              recipientEmail: recipientEmail
-            },
-            attachments: attachments as any
-          });
+              recipientEmail: recipientEmail,
+              body: body && body.trim().length > 0 ? body : "" // Injeta o body aqui para o template
+            }
+          };
+
+          await sendEmail(emailData);
 
           await prisma.estimateEmailLog.create({
             data: {
