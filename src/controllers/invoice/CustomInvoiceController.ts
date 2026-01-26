@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import fs from "fs";
 import { generatePdf } from "../../utils/generatePdf";

@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
 import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -16,28 +15,7 @@ import mime from 'mime-types';
 export class EstimateController {
 
   private static async verifySMTPConfig() {
-    try {
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
-      const verification = await transporter.verify();
-      console.log('✅ SMTP Configuration verified:', verification);
-      return verification;
-    } catch (error) {
-      console.error('❌ SMTP Configuration error:', error);
-      throw error;
-    }
+    return true;
   }
 
   // Função utilitária para registrar eventos na timeline
@@ -567,7 +545,7 @@ export class EstimateController {
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
             clientName: project?.workContext?.Name || project?.client?.name || "Customer",
-            projectName: `Project #${project?.contract_number || 'N/A'}`,
+            projectName: project?.serviceProject?.[0]?.name || `Project ${project?.contract_number || ''}`,
             location: project?.workContext?.location || project?.location || "Not specified",
             totalAmount: totalFormatted,
             companyName: project?.company?.name || "SmartBuild",
@@ -781,9 +759,9 @@ export class EstimateController {
       }).format(Number(estimate.totalAmount));
 
       const commonData = {
-        projectName: `Project #${project?.contract_number || 'N/A'}`,
-        contractNumber: project?.contract_number || "N/A",
-        location: project?.workContext?.location || project?.location || "Not specified",
+        projectName: project.serviceProject?.[0]?.name || `Project ${project.contract_number || ''}`,
+        contractNumber: project.contract_number || "N/A",
+        location: project.workContext?.location || project.location || "Not specified",
         totalAmount: totalFormatted,
         companyName: project.company?.name || "SmartBuild",
         companyAvatar: companyAvatar,
@@ -796,6 +774,7 @@ export class EstimateController {
 
       await Promise.all([
         (async () => {
+          // Email para o Dono da Empresa e Company
           if (project.user?.email || project.company?.email) {
             await sendEmail({
               to: [project.user?.email, project.company?.email].filter(Boolean) as string[],
@@ -1121,29 +1100,13 @@ export class EstimateController {
         return res.status(404).json({ error: "Estimate not found" });
       }
 
-      // Configurar o transportador de email
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
       // Resultados do envio para cada email
       const results = [];
       const companyAvatar = estimate.project?.company?.avatar ? await getPresignedUrl(estimate.project.company.avatar) : "";
       // Processar todos os emails
       for (const email of emails) {
         try {
-          const mailOptions = {
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: email,
             subject: estimate.project?.company?.name + " - Estimate Reminder",
             html: estimateEmail(
@@ -1155,10 +1118,7 @@ export class EstimateController {
               estimate.id,
               estimate.project?.client?.email || ''
             ),
-          };
-
-          // Enviar o email e aguardar a resposta
-          await transporter.sendMail(mailOptions);
+          });
 
           // Se chegou aqui, o envio foi bem-sucedido
           await prisma.estimateEmailLog.create({
@@ -1389,9 +1349,10 @@ export class EstimateController {
             recipientName = estimate.project.client.name;
           }
 
-          await sendEmail({
+          const emailData: any = {
             to: recipientEmail,
             subject: subjectFixed,
+            attachments: attachments as any,
             templateId: TEMPLATE_ID,
             dynamicTemplateData: {
               recipientName: recipientName,
@@ -1403,10 +1364,12 @@ export class EstimateController {
               companyName: companyName,
               companyAvatar: companyAvatar,
               currentYear: new Date().getFullYear().toString(),
-              recipientEmail: recipientEmail
-            },
-            attachments: attachments as any
-          });
+              recipientEmail: recipientEmail,
+              body: body && body.trim().length > 0 ? body : "" // Injeta o body aqui para o template
+            }
+          };
+
+          await sendEmail(emailData);
 
           await prisma.estimateEmailLog.create({
             data: {

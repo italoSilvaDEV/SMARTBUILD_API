@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { permissionKeyResponseEmail } from "../../templateEmail/permissionKeyResponse";
 
 export class ResponseKeyRequestController {
@@ -48,23 +48,10 @@ export class ResponseKeyRequestController {
             // Notificação por E-mail para o usuário solicitante
             if (user.email) {
                 try {
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                        tls: { rejectUnauthorized: false }
-                    });
-
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: user.email,
                         subject: approve ? "Permission Granted: Your Master Key is ready" : "Update on your Permission Key Request",
                         html: permissionKeyResponseEmail(user.name, approve, keyId),
-                        text: approve
-                            ? `Hello ${user.name}, your key was approved. View it at: ${process.env.URL_FRONT}/master-key-view/${keyId}`
-                            : `Hello ${user.name}, your key request was rejected.`
                     });
                 } catch (e) {
                     console.error("❌ Email notification failed:", e);

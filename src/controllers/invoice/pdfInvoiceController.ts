@@ -3,33 +3,12 @@ import { prisma } from "../../utils/prisma";
 import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { invoicePaidReceiptEmail } from "../../templateEmail/invoicePaidReceipt";
 
 export class PdfInvoicePaidController {
     private static async verifySMTPConfig() {
-        try {
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
-            const verification = await transporter.verify();
-            console.log('SMTP Configuration verified:', verification);
-            return verification;
-        } catch (error) {
-            console.error('SMTP Configuration error:', error);
-            throw error;
-        }
+        return true;
     }
 
     async create(req: Request, res: Response) {
@@ -332,20 +311,6 @@ export class PdfInvoicePaidController {
                     console.error('SMTP verification failed:', error);
                 }
 
-                const SMTP_CONFIG = require("../../config/smtp");
-                const transporter = nodemailer.createTransport({
-                    host: SMTP_CONFIG.host,
-                    port: SMTP_CONFIG.port,
-                    secure: SMTP_CONFIG.port === 465,
-                    auth: {
-                        user: SMTP_CONFIG.user,
-                        pass: SMTP_CONFIG.pass,
-                    },
-                    tls: {
-                        rejectUnauthorized: false,
-                    },
-                })
-
                 const companyAvatar = company?.avatar
                     ? await getPresignedUrl(company.avatar)
                     : ""
@@ -374,37 +339,18 @@ export class PdfInvoicePaidController {
                     paymentDate.toISOString()
                 )
 
-                await transporter.sendMail({
-                    from: SMTP_CONFIG.user,
+                await sendEmail({
                     to: client.email || "",
                     subject: emailSubject,
                     html: emailHtml,
                     attachments: [
                         {
                             filename: fileName,
-                            content: pdfBuffer,
-                            contentType: 'application/pdf'
+                            content: pdfBuffer.toString('base64'),
+                            type: 'application/pdf',
+                            disposition: 'attachment'
                         }
-                    ],
-                    text: `
-Dear ${client.name || 'Client'},
-
-We are sending you the payment receipt for Invoice #${invoice.externalInvoiceId} that was paid on ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
-
-Please find the payment receipt attached to this email for your records.
-
-Invoice Details:
-- Invoice Number: #${invoice.externalInvoiceId}
-- Invoice Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(invoice.totalAmount))}
-- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-- Status: Paid
-
-If you have any questions, please feel free to contact us.
-
-Thank you for your business!
-Have a great day!
-${company?.name || ''}
-                    `.trim()
+                    ]
                 })
 
                 console.log(`Payment receipt email sent to ${client.email}`);

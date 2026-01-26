@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { invoicePaymentConfirmation } from "../../templateEmail/invoicePaymentConfirmation";
 import { invoicePaymentNotificationCompany } from "../../templateEmail/invoicePaymentNotificationCompany";
 import { invoicePaymentProcessing } from "../../templateEmail/invoicePaymentProcessing";
@@ -651,16 +651,6 @@ export class StripeWebHookControllerConnect {
         try {
             console.log("Iniciando envio de emails de confirmação de pagamento");
 
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
-
             // Verificar se temos dados obrigatórios (nome da empresa é obrigatório)
             if (!invoiceData.company?.name) {
                 console.error("Nome da empresa não encontrado, cancelando envio de emails");
@@ -729,16 +719,13 @@ export class StripeWebHookControllerConnect {
             // Enviar emails para cada destinatário
             for (const recipient of recipients) {
                 try {
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: recipient.email,
                         subject: recipient.type === 'company'
                             ? `Payment Received - Invoice #${invoiceCode}`
                             : `Payment Confirmation - Invoice #${invoiceCode}`,
                         html: recipient.template,
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Email de ${recipient.type} enviado para ${recipient.email}`);
 
                     results.push({ email: recipient.email, type: recipient.type, status: "success" });
@@ -783,16 +770,6 @@ export class StripeWebHookControllerConnect {
     private async sendPaymentConfirmationEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
         try {
             console.log("Iniciando envio de emails de confirmação de pagamento (Payment Element)");
-
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
 
             // Verificar se temos dados obrigatórios
             if (!invoiceData.company?.name) {
@@ -865,16 +842,13 @@ export class StripeWebHookControllerConnect {
             // Enviar emails para cada destinatário
             for (const recipient of recipients) {
                 try {
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: recipient.email,
                         subject: recipient.type === 'company'
                             ? `Payment Received - Invoice #${invoiceCode}`
                             : `Payment Confirmation - Invoice #${invoiceCode}`,
                         html: recipient.template,
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Email de ${recipient.type} enviado para ${recipient.email}`);
 
                     // Log do envio de email
@@ -913,16 +887,6 @@ export class StripeWebHookControllerConnect {
     private async sendPaymentProcessingEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
         try {
             console.log("Iniciando envio de emails de processamento de pagamento");
-
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
 
             if (!invoiceData.company?.name) {
                 console.error("Nome da empresa não encontrado, cancelando envio de emails");
@@ -979,16 +943,13 @@ export class StripeWebHookControllerConnect {
 
             for (const recipient of recipients) {
                 try {
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: recipient.email,
                         subject: recipient.type === 'company'
                             ? `Payment Processing - Invoice #${invoiceCode}`
                             : `Payment Being Processed - Invoice #${invoiceCode}`,
                         html: recipient.template,
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Email de processamento (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
@@ -1025,16 +986,6 @@ export class StripeWebHookControllerConnect {
     private async sendPaymentFailedEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent, failureReason: string) {
         try {
             console.log("Iniciando envio de emails de falha no pagamento");
-
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
 
             if (!invoiceData.company?.name) {
                 console.error("Nome da empresa não encontrado, cancelando envio de emails");
@@ -1093,16 +1044,13 @@ export class StripeWebHookControllerConnect {
 
             for (const recipient of recipients) {
                 try {
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: recipient.email,
                         subject: recipient.type === 'company'
                             ? `Payment Failed - Invoice #${invoiceCode}`
                             : `Payment Failed - Invoice #${invoiceCode}`,
                         html: recipient.template,
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Email de falha (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
@@ -1140,16 +1088,6 @@ export class StripeWebHookControllerConnect {
         try {
             console.log("Iniciando envio de emails de disputa de pagamento");
 
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
-
             if (!invoiceData.company?.name || !invoiceData.company?.email) {
                 console.error("Dados da empresa não encontrados, cancelando envio de emails");
                 return;
@@ -1169,14 +1107,11 @@ export class StripeWebHookControllerConnect {
             );
 
             try {
-                const mailOptions = {
-                    from: SMTP_CONFIG.user,
+                await sendEmail({
                     to: invoiceData.company.email,
                     subject: ` URGENT: Payment Disputed - Invoice #${invoiceCode}`,
                     html: companyTemplate,
-                };
-
-                await transporter.sendMail(mailOptions);
+                });
                 console.log(`Email de disputa enviado para ${invoiceData.company.email}`);
 
                 await prisma.invoiceEmailLog.create({
@@ -1217,16 +1152,6 @@ export class StripeWebHookControllerConnect {
     ) {
         try {
             console.log("Iniciando envio de emails de ação necessária");
-
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                tls: { rejectUnauthorized: false },
-            });
 
             if (!invoiceData.company?.name) {
                 console.error("Nome da empresa não encontrado, cancelando envio de emails");
@@ -1287,16 +1212,13 @@ export class StripeWebHookControllerConnect {
 
             for (const recipient of recipients) {
                 try {
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: recipient.email,
                         subject: recipient.type === 'company'
                             ? `Customer Action Required - Invoice #${invoiceCode}`
                             : `Action Required: Verify Your Bank Account - Invoice #${invoiceCode}`,
                         html: recipient.template,
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Email de ação necessária (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
@@ -1356,21 +1278,6 @@ export class StripeWebHookControllerConnect {
                 }
             });
 
-            // Configurar SMTP
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
             const companyAvatar = company?.avatar
                 ? await getPresignedUrl(company.avatar)
                 : "";
@@ -1386,8 +1293,9 @@ export class StripeWebHookControllerConnect {
                         const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoiceData.externalInvoiceId || invoiceData.id}.pdf`;
                         attachments.push({
                             filename: fileName,
-                            content: pdfBuffer,
-                            contentType: 'application/pdf'
+                            content: pdfBuffer.toString('base64'),
+                            type: 'application/pdf',
+                            disposition: 'attachment'
                         });
                         console.log(`PDF paid anexado ao email: ${fileName}`);
                     }
@@ -1417,8 +1325,7 @@ export class StripeWebHookControllerConnect {
                 company?.email || ''
             );
 
-            await transporter.sendMail({
-                from: SMTP_CONFIG.user,
+            await sendEmail({
                 to: recipientEmail,
                 subject: emailSubject,
                 html: emailHtml,

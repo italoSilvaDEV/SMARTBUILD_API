@@ -2,6 +2,8 @@
 import QuickBooks from "node-quickbooks";
 import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
+import { sendEmail } from "../../../utils/sendEmail";
+import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { jsonSafe } from "../customer/quickbooksHelpers";
@@ -747,29 +749,6 @@ export class QuickBooksWebhookWorker {
     try {
       console.log("[QBO Webhook] Iniciando envio de emails de pagamento parcial QuickBooks");
 
-      // Importações (mesmo padrão do Stripe)
-      const nodemailer = require("nodemailer");
-      const SMTP_CONFIG = require("../../../config/smtp");
-      const { getPresignedUrl } = require("../../../utils/S3/getPresignedUrl");
-      const { quickBooksPaymentPartial } = require("../../../templateEmail/quickBooksPaymentPartial");
-
-      // Debug SMTP config
-      console.log("[QBO Webhook] SMTP Config (Partial):", {
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        user: SMTP_CONFIG.user,
-        hasPass: !!SMTP_CONFIG.pass
-      });
-
-      // Configurar SMTP (mesmo padrão do Stripe)
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-        tls: { rejectUnauthorized: false },
-      });
-
       if (!invoice.company?.name) {
         console.error("[QBO Webhook] Nome da empresa não encontrado, cancelando envio de emails");
         return;
@@ -799,6 +778,7 @@ export class QuickBooksWebhookWorker {
           ? await getPresignedUrl(invoice.company.avatar)
           : '';
 
+        const { quickBooksPaymentPartial } = require("../../../templateEmail/quickBooksPaymentPartial");
         const clientTemplate = quickBooksPaymentPartial(
           clientName,
           companyLogo,
@@ -887,21 +867,14 @@ export class QuickBooksWebhookWorker {
       // Enviar emails
       for (const recipient of recipients) {
         try {
-          const mailOptions: any = {
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: recipient.email,
+            from: recipient.type === 'client' ? invoice.company?.email : undefined,
             subject: recipient.type === 'company'
               ? `Partial Payment Received (QuickBooks) - Invoice #${invoiceCode}`
               : `Partial Payment Received - Invoice #${invoiceCode}`,
             html: recipient.template,
-          };
-
-          // Se for email para o cliente, configurar reply-to para a empresa
-          if (recipient.type === 'client' && invoice.company?.email) {
-            mailOptions.replyTo = invoice.company.email;
-          }
-
-          await transporter.sendMail(mailOptions);
+          });
           console.log(`[QBO Webhook] Email de pagamento parcial (${recipient.type}) enviado para ${recipient.email}`);
 
           await prisma.invoiceEmailLog.create({
@@ -938,30 +911,6 @@ export class QuickBooksWebhookWorker {
     try {
       console.log("[QBO Webhook] Iniciando envio de emails de confirmação de pagamento QuickBooks");
 
-      // Importações (mesmo padrão do Stripe)
-      const nodemailer = require("nodemailer");
-      const SMTP_CONFIG = require("../../../config/smtp");
-      const { getPresignedUrl } = require("../../../utils/S3/getPresignedUrl");
-      const { quickBooksPaymentConfirmation } = require("../../../templateEmail/quickBooksPaymentConfirmation");
-      const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
-
-      // Debug SMTP config
-      console.log("[QBO Webhook] SMTP Config:", {
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        user: SMTP_CONFIG.user,
-        hasPass: !!SMTP_CONFIG.pass
-      });
-
-      // Configurar SMTP (mesmo padrão do Stripe)
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Verificar dados obrigatórios
       if (!invoice.company?.name) {
         console.error("[QBO Webhook] Nome da empresa não encontrado, cancelando envio de emails");
@@ -987,6 +936,7 @@ export class QuickBooksWebhookWorker {
           ? await getPresignedUrl(invoice.company.avatar)
           : '';
 
+        const { quickBooksPaymentConfirmation } = require("../../../templateEmail/quickBooksPaymentConfirmation");
         const clientTemplate = quickBooksPaymentConfirmation(
           clientName,
           companyLogo,
@@ -1007,6 +957,7 @@ export class QuickBooksWebhookWorker {
 
       // Email da empresa
       if (invoice.company?.email) {
+        const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
         const companyTemplate = quickBooksPaymentNotificationCompany(
           invoice.company.name,
           invoiceCode,
@@ -1028,21 +979,14 @@ export class QuickBooksWebhookWorker {
       // Enviar emails
       for (const recipient of recipients) {
         try {
-          const mailOptions: any = {
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: recipient.email,
+            from: recipient.type === 'client' ? invoice.company?.email : undefined,
             subject: recipient.type === 'company'
               ? `Payment Received (QuickBooks) - Invoice #${invoiceCode}`
               : `Payment Confirmation (QuickBooks) - Invoice #${invoiceCode}`,
             html: recipient.template,
-          };
-
-          // Se for email para o cliente, configurar reply-to para a empresa
-          if (recipient.type === 'client' && invoice.company?.email) {
-            mailOptions.replyTo = invoice.company.email;
-          }
-
-          await transporter.sendMail(mailOptions);
+          });
           console.log(`[QBO Webhook] Email de ${recipient.type} enviado para ${recipient.email}`);
 
           // Log do envio
@@ -1074,18 +1018,9 @@ export class QuickBooksWebhookWorker {
     }
   }
 
-  /**
-   * Enviar email com PDF de confirmação de pagamento QuickBooks (pagamento total)
-   * Similar ao sendPaymentConfirmationEmailWithPdf do Stripe
-   */
   private static async sendQuickBooksFullPaymentEmailWithPdf(invoice: any, qbInvoice: any) {
     try {
       console.log("[QBO Webhook] Iniciando envio de email com PDF de pagamento QuickBooks");
-
-      const nodemailer = require("nodemailer");
-      const SMTP_CONFIG = require("../../../config/smtp");
-      const { getPresignedUrl } = require("../../../utils/S3/getPresignedUrl");
-      const { invoicePaidPaymentEmail } = require("../../../templateEmail/invoicePaidPayment");
 
       // Obter projeto com workContext
       const project = invoice.project;
@@ -1109,20 +1044,6 @@ export class QuickBooksWebhookWorker {
         }
       });
 
-      // Configurar SMTP
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465,
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-
       const companyAvatar = company?.avatar
         ? await getPresignedUrl(company.avatar)
         : "";
@@ -1138,8 +1059,9 @@ export class QuickBooksWebhookWorker {
             const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_qbo_${invoice.externalInvoiceId || invoice.id}.pdf`;
             attachments.push({
               filename: fileName,
-              content: pdfBuffer,
-              contentType: 'application/pdf'
+              content: pdfBuffer.toString('base64'),
+              type: 'application/pdf',
+              disposition: 'attachment'
             });
             console.log(`[QBO Webhook] PDF paid anexado ao email: ${fileName}`);
           }
@@ -1157,6 +1079,7 @@ export class QuickBooksWebhookWorker {
       const invoiceCode = invoice.externalInvoiceId || invoice.id;
       const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation (QuickBooks)`;
 
+      const { invoicePaidPaymentEmail } = require("../../../templateEmail/invoicePaidPayment");
       const emailHtml = invoicePaidPaymentEmail(
         recipientName,
         companyAvatar || "",
@@ -1170,8 +1093,7 @@ export class QuickBooksWebhookWorker {
         company?.email || ''
       );
 
-      await transporter.sendMail({
-        from: SMTP_CONFIG.user,
+      await sendEmail({
         to: recipientEmail,
         replyTo: company?.email || undefined, // Resposta vai para o email da empresa
         subject: emailSubject,
@@ -1260,8 +1182,7 @@ ${company?.name || ''}
             formattedHistory.length > 1 ? formattedHistory : undefined // Só mostrar histórico se houver múltiplos pagamentos
           );
 
-          await transporter.sendMail({
-            from: SMTP_CONFIG.user,
+          await sendEmail({
             to: company.email,
             subject: `Payment Received (QuickBooks) - Invoice #${invoiceCode}`,
             html: companyTemplate,

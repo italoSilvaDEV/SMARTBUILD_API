@@ -1,13 +1,12 @@
 import sgMail from '@sendgrid/mail';
 
-sgMail.setApiKey(process.env.SENDGRID_KEY || '');
-
 interface SendEmailData {
     to: string | string[];
     subject?: string;
     html?: string;
     text?: string;
     from?: string;
+    replyTo?: string;
     templateId?: string;
     dynamicTemplateData?: { [key: string]: any };
     attachments?: Array<{
@@ -18,10 +17,11 @@ interface SendEmailData {
     }>;
 }
 
-export async function sendEmail({ to, subject, html, text, from, templateId, dynamicTemplateData, attachments }: SendEmailData) {
+export async function sendEmail({ to, subject, html, text, from, replyTo, templateId, dynamicTemplateData, attachments }: SendEmailData) {
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',
+        replyTo,
         subject,
         text: text || subject || '',
         html: html || '',
@@ -35,6 +35,12 @@ export async function sendEmail({ to, subject, html, text, from, templateId, dyn
         delete (msg as any).html;
         delete (msg as any).text;
     }
+
+    if (!process.env.SENDGRID_KEY) {
+        throw new Error('SENDGRID_KEY not defined');
+    }
+    
+    sgMail.setApiKey(process.env.SENDGRID_KEY);
 
     try {
         await sgMail.send(msg);

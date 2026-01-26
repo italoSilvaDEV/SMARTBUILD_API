@@ -1,7 +1,7 @@
 import { INewCompany } from "../../DTOs/IUser";
 import { Request, Response } from 'express'
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { validationResult } from "express-validator";
 import { deleteFile } from "../../config/file";
@@ -227,29 +227,6 @@ export class CompanyController {
             const hashedPassword = bcrypt.hashSync(pass, 10);
             console.log("24. Senha temporária gerada");
 
-            console.log("25. Configurando email");
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
-            transporter.verify((error, success) => {
-                if (error) {
-                    console.error("Erro ao configurar o transportador de e-mail:", error);
-                } else {
-                    console.log("Transportador de e-mail configurado com sucesso:", success);
-                }
-            });
-
             console.log("26. Gerando URL presigned para logo");
             const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
             console.log("27. URL do logo:", urlLogo);
@@ -318,8 +295,7 @@ export class CompanyController {
             deleteFile(`./public/tmp/company/${req.file?.filename}`);
 
             console.log("34. Enviando email");
-            await transporter.sendMail({
-                from: SMTP_CONFIG.user,
+            await sendEmail({
                 to: data.email,
                 subject: "Smart Build",
                 html: templateEmail,

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { permissionKeyRevokeRequestEmail } from "../../templateEmail/permissionKeyRevokeRequest";
 
 export class RevokeKeyController {
@@ -33,17 +33,7 @@ export class RevokeKeyController {
 
             if (user.email) {
                 try {
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: { user: SMTP_CONFIG.user, pass: SMTP_CONFIG.pass },
-                        tls: { rejectUnauthorized: false }
-                    });
-
-                    await transporter.sendMail({
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: user.email,
                         subject: "Security: Confirm your Permission Key Revocation",
                         html: permissionKeyRevokeRequestEmail(
@@ -51,7 +41,6 @@ export class RevokeKeyController {
                             keyId,
                             process.env.KEY_RESPONSE_EMAIL || ""
                         ),
-                        text: `Hello ${user.name}, please confirm the revocation of your permission key at: ${process.env.URL_API}/permissions-key/${keyId}/confirm-revoke?secret=${process.env.KEY_RESPONSE_EMAIL}`
                     });
 
                     console.log(`Revocation request email sent to: ${user.email}`);

@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
@@ -2511,19 +2511,6 @@ export class ProjectController {
       // Gerar o PDF
       const pdfPath = await generatePdf(data, project.client.name);
 
-      // Configurar transporte de e-mail
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Criar template do e-mail
       const templateEmail = createPreviewContract(
         project.client?.name.toUpperCase(),
@@ -2532,20 +2519,19 @@ export class ProjectController {
         Number(total)
       );
 
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
+      await sendEmail({
         to: project.client.email,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
           {
             filename: "estimate.pdf",
-            path: pdfPath,
+            content: fs.readFileSync(pdfPath).toString("base64"),
+            type: "application/pdf",
+            disposition: "attachment",
           },
         ],
-      };
-
-      await transporter.sendMail(mailOptions);
+      });
 
       // Remover o PDF após o envio
       setTimeout(() => {
@@ -2707,19 +2693,6 @@ export class ProjectController {
       // Gerar o PDF
       const pdfPath = await generatePdf(data, project.client.name);
 
-      // Configurar transporte de e-mail
-      const SMTP_CONFIG = require("../../config/smtp");
-      const transporter = nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: SMTP_CONFIG.port,
-        secure: SMTP_CONFIG.port === 465, // true for 465, false for other ports
-        auth: {
-          user: SMTP_CONFIG.user,
-          pass: SMTP_CONFIG.pass,
-        },
-        tls: { rejectUnauthorized: false },
-      });
-
       // Criar template do e-mail
       const templateEmail = createPreviewContract(
         project.client?.name.toUpperCase(),
@@ -2728,20 +2701,19 @@ export class ProjectController {
         Number(total)
       );
 
-      const mailOptions = {
-        from: SMTP_CONFIG.user,
+      await sendEmail({
         to: project.client.email,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
           {
             filename: "estimate.pdf",
-            path: pdfPath,
+            content: fs.readFileSync(pdfPath).toString("base64"),
+            type: "application/pdf",
+            disposition: "attachment",
           },
         ],
-      };
-
-      await transporter.sendMail(mailOptions);
+      });
 
       // Remover o PDF após o envio
       setTimeout(() => {

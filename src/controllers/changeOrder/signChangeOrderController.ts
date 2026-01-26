@@ -4,7 +4,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { PDFDocument, rgb } from 'pdf-lib';
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
 
 export class SignChangeOrderController {
@@ -270,20 +270,6 @@ export class SignChangeOrderController {
                         return;
                     }
 
-                    const SMTP_CONFIG = require("../../config/smtp");
-                    const transporter = nodemailer.createTransport({
-                        host: SMTP_CONFIG.host,
-                        port: SMTP_CONFIG.port,
-                        secure: SMTP_CONFIG.port === 465,
-                        auth: {
-                            user: SMTP_CONFIG.user,
-                            pass: SMTP_CONFIG.pass,
-                        },
-                        tls: {
-                            rejectUnauthorized: false,
-                        },
-                    });
-
                     const project = changeOrderWithDetails.estimate?.project;
                     const clientName = project?.workContext?.Name || project?.client?.name || "Client";
                     const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
@@ -297,8 +283,7 @@ export class SignChangeOrderController {
 
                     const emailSubject = `APPROVED: Change Order #${changeOrderNumber} added +${formattedAmount} to Estimate`;
 
-                    const mailOptions = {
-                        from: SMTP_CONFIG.user,
+                    await sendEmail({
                         to: companyEmail,
                         subject: emailSubject,
                         html: changeOrderApprovedEmail(
@@ -311,23 +296,7 @@ export class SignChangeOrderController {
                             companyEmail,
                             project.id
                         ),
-                        text: `
-Dear ${company.name},
-
-Great news! ${clientName} has approved Change Order #${changeOrderNumber}.
-
-Approved Additional Amount: ${formattedAmount}
-Estimate: ${estimateNumber}
-
-You can view the change order details at:
-${process.env.URL_FRONT}/change-order/${changeOrder.id}
-
-Best regards,
-SmartBuild Team
-                        `.trim()
-                    };
-
-                    await transporter.sendMail(mailOptions);
+                    });
                     console.log(`Approved email sent to company: ${companyEmail}`);
                 }
             } catch (emailError) {

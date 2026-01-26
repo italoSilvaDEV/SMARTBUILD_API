@@ -4,7 +4,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/sendEmail";
 import fs from "fs";
 import { galleryEmail } from "../../templateEmail/galery";
 
@@ -316,32 +316,6 @@ export class GalleryProjectController {
                 return res.status(400).json({ error: "Please provide at least one recipient email address" });
             }
 
-            const SMTP_CONFIG = require("../../config/smtp");
-
-            try {
-                await this.verifySMTPConfig();
-            } catch (error) {
-                console.error('SMTP verification failed:', error);
-                cleanupTempFiles(attachmentFiles);
-                return res.status(500).json({
-                    error: "SMTP configuration error",
-                    details: error instanceof Error ? error.message : 'Unknown error'
-                });
-            }
-
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
             const results = [];
 
             const allRecipients = [
@@ -366,8 +340,9 @@ export class GalleryProjectController {
                             const fileBuffer = fs.readFileSync(file.path);
                             attachments.push({
                                 filename: file.originalname,
-                                content: fileBuffer,
-                                contentType: file.mimetype
+                                content: fileBuffer.toString('base64'),
+                                type: file.mimetype,
+                                disposition: 'attachment'
                             });
                             console.log(`Processed attachment: ${file.originalname} (${file.mimetype})`);
                         } catch (error) {
@@ -378,12 +353,9 @@ export class GalleryProjectController {
 
                 const urlLogo = project.company?.avatar ? await getPresignedUrl(project.company.avatar) : '';
 
-                const mailOptions = {
-                    from: SMTP_CONFIG.user,
-                    replyTo: dataEmail.from,
+                await sendEmail({
                     to: dataEmail.to,
-                    cc: dataEmail.cc.length > 0 ? dataEmail.cc : undefined,
-                    bcc: dataEmail.bcc.length > 0 ? dataEmail.bcc : undefined,
+                    replyTo: dataEmail.from,
                     subject: dataEmail.subject || 'Gallery Shared',
                     html: galleryEmail(
                         project.client?.name || '',
@@ -393,23 +365,8 @@ export class GalleryProjectController {
                         attachmentFiles.length,
                         dataEmail.body
                     ),
-                    text: dataEmail.body ? dataEmail.body.replace(/<[^>]*>/g, '') : 'Gallery shared with you.',
-                    attachments
-                };
-
-                if (dataEmail.sendMeCopy && dataEmail.from) {
-                    if (mailOptions.bcc) {
-                        if (Array.isArray(mailOptions.bcc)) {
-                            mailOptions.bcc.push(dataEmail.from);
-                        } else {
-                            mailOptions.bcc = [mailOptions.bcc, dataEmail.from];
-                        }
-                    } else {
-                        mailOptions.bcc = [dataEmail.from];
-                    }
-                }
-
-                await transporter.sendMail(mailOptions);
+                    attachments: attachments as any
+                });
 
                 for (const recipient of uniqueRecipients) {
                     results.push({ email: recipient, status: "success" });
@@ -448,26 +405,6 @@ export class GalleryProjectController {
     }
 
     private async verifySMTPConfig() {
-        try {
-            const SMTP_CONFIG = require("../../config/smtp");
-            const transporter = nodemailer.createTransport({
-                host: SMTP_CONFIG.host,
-                port: SMTP_CONFIG.port,
-                secure: SMTP_CONFIG.port === 465,
-                auth: {
-                    user: SMTP_CONFIG.user,
-                    pass: SMTP_CONFIG.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-
-            const verification = await transporter.verify();
-            return verification;
-        } catch (error) {
-            console.error('SMTP Configuration error:', error);
-            throw error;
-        }
+        return true;
     }
 }
