@@ -1515,6 +1515,7 @@ export class UserController {
       }
 
       let office = null;
+      let officePermissions: string[] = [];
 
       if (company_id) {
         const userCompany = await prisma.userCompany.findUnique({
@@ -1524,13 +1525,29 @@ export class UserController {
               companyId: company_id
             }
           },
-          select: {
-            office: true
+          include: {
+            office: {
+              include: {
+                userPermissions: {
+                  include: {
+                    permission: true
+                  }
+                }
+              }
+            }
           }
         })
 
         office = userCompany?.office;
+
+        // Buscar permissões do office do usuário
+        if (office?.userPermissions) {
+          officePermissions = office.userPermissions.map(up => up.permission.description);
+        }
       }
+
+      // Usar permissões do Office se disponíveis, senão usar permissões do plano
+      const finalPermissions = officePermissions.length > 0 ? officePermissions : permissions;
 
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
@@ -1538,7 +1555,7 @@ export class UserController {
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
-        permissions,
+        permissions: finalPermissions, // Permissões do Office do usuário
         plan: planInfo,
         office: office
       });
