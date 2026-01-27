@@ -33,6 +33,9 @@ model User {
   isDisabled          Boolean? @default(false)
   isOverTime          Boolean? @default(false)
   onBoardingCompleted Boolean? @default(true)
+  invoiceEditAll      Boolean? @default(false)
+  projectEditAll      Boolean? @default(false)
+  estimateEditAll     Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -58,7 +61,7 @@ model User {
   // Nova relação N:N através da tabela UserCompany
   companies UserCompany[]
 
-  Invoice  Invoice[]
+  Invoice  Invoice[] 
   TimeLine TimeLine[]
 
   quickBooksAccount    QuickBooksAccount?
@@ -201,6 +204,7 @@ model Office {
   date_update   DateTime      @updatedAt
   User          User[]
   UserCompany   UserCompany[]
+  userPermissions UserPermission[]
 }
 
 model Rules {
@@ -1268,6 +1272,7 @@ model Permissions {
 
   description          String
   GroupPermissionsList GroupPermissionsList[]
+  UserPermissions     UserPermission[]
   date_creation        DateTime               @default(now())
   date_update          DateTime               @updatedAt
 }
@@ -1293,6 +1298,22 @@ model GroupPermissionsList {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+model UserPermission {
+  id            String   @id @default(uuid())
+  editAll       Boolean  @default(false)
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  office_id String
+  office     Office  @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  
+  permission_id String
+  permission   Permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  
+  @@index([office_id])
+  @@index([permission_id])
 }
 
 model Subscription {
