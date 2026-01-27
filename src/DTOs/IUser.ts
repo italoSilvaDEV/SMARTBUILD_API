@@ -34,6 +34,9 @@ export interface INewUser {
   hourly_price?: number
   profession?: string
   company_id: string
+  invoiceEditAll?: boolean | string
+  projectEditAll?: boolean | string
+  estimateEditAll?: boolean | string
 }
 
 

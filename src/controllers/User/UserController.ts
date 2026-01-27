@@ -214,6 +214,9 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
+          invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
+          projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
+          estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
