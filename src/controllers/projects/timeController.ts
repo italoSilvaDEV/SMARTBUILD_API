@@ -176,7 +176,9 @@ async function findProject(data: IFindProject) {
                                                 name: true,
                                                 hourly_price: true,
                                                 id: true,
-                                                isOverTime: true
+                                                isOverTime: true,
+                                                defaultBreakMinutes: true,
+                                                dailyRate: true,
                                             }
                                         }
                                     },
@@ -250,7 +252,9 @@ async function findAllAttendances(companyId: string, search: string | undefined,
                     name: true,
                     hourly_price: true,
                     id: true,
-                    isOverTime: true
+                    isOverTime: true,
+                    defaultBreakMinutes: true,
+                    dailyRate: true,
                 }
             }
         },
@@ -378,16 +382,15 @@ export class TimeController {
                             attendance.check_out_time!.toISOString(),
                             attendance.workStartTime,
                             attendance.workEndTime,
+                            attendance.user.defaultBreakMinutes || 0,
                         );
                         const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                         totalWeekHours += dailyHours;
                         return { ...attendance, dailyHours };
                     });
 
-                    let weekRegularHours = 0;
-                    let weekOvertimeHours = 0;
-
                     const userHasOvertime = weekAttendances[0].user.isOverTime;
+                    const dailyRate = weekAttendances[0].user.dailyRate ? Number(weekAttendances[0].user.dailyRate) : 0;
 
                     if (userHasOvertime && totalWeekHours > 40) {
                         weekRegularHours = 40;
@@ -397,11 +400,17 @@ export class TimeController {
                         weekOvertimeHours = 0;
                     }
 
-                    const weeklyPrice = weekAttendances[0].user.hourly_price
-                        ? userHasOvertime
-                            ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                            : (weekRegularHours * weekAttendances[0].user.hourly_price)
-                        : 0;
+                    let weeklyPrice = 0;
+                    if (dailyRate > 0) {
+                        // Se tem valor fixo diário, o preço semanal é a soma das diárias (número de attendances * dailyRate)
+                        weeklyPrice = weekAttendances.length * dailyRate;
+                    } else {
+                        weeklyPrice = weekAttendances[0].user.hourly_price
+                            ? userHasOvertime
+                                ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
+                                : (weekRegularHours * weekAttendances[0].user.hourly_price)
+                            : 0;
+                    }
 
                     const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 
@@ -525,6 +534,7 @@ export class TimeController {
                                         attendance.check_out_time!.toISOString(),
                                         attendance.workStartTime,
                                         attendance.workEndTime,
+                                        attendance.user.defaultBreakMinutes || 0,
                                     );
                                     const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                                     totalWeekHours += dailyHours;
@@ -535,6 +545,7 @@ export class TimeController {
                                 let weekOvertimeHours = 0;
 
                                 const userHasOvertime = weekAttendances[0]?.user?.isOverTime;
+                                const dailyRate = weekAttendances[0]?.user?.dailyRate ? Number(weekAttendances[0].user.dailyRate) : 0;
 
                                 if (userHasOvertime && totalWeekHours > 40) {
                                     weekRegularHours = 40;
@@ -544,11 +555,16 @@ export class TimeController {
                                     weekOvertimeHours = 0;
                                 }
 
-                                const weeklyPrice = weekAttendances[0]?.user?.hourly_price
-                                    ? userHasOvertime
-                                        ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                                        : (weekRegularHours * weekAttendances[0].user.hourly_price)
-                                    : 0;
+                                let weeklyPrice = 0;
+                                if (dailyRate > 0) {
+                                    weeklyPrice = weekAttendances.length * dailyRate;
+                                } else {
+                                    weeklyPrice = weekAttendances[0]?.user?.hourly_price
+                                        ? userHasOvertime
+                                            ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
+                                            : (weekRegularHours * weekAttendances[0].user.hourly_price)
+                                        : 0;
+                                }
 
                                 const totalDailyHours = attendancesWithHours.reduce((sum, att) => sum + att.dailyHours, 0);
 

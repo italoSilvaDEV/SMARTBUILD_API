@@ -33,6 +33,13 @@ model User {
   isDisabled          Boolean? @default(false)
   isOverTime          Boolean? @default(false)
   onBoardingCompleted Boolean? @default(true)
+  
+  // Configurações de Ponto (Time Card)
+  attendanceMode      String?  @default("manual") // manual, auto
+  clockOutMode        String?  @default("manual") // manual, auto
+  canEditTimeCard     Boolean? @default(false)
+  dailyRate           Decimal? @db.Decimal(10, 2)
+  defaultBreakMinutes Int?     @default(0)
 
   token_recover_password String?              @unique
   autorId                String?

@@ -214,6 +214,11 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
+          attendanceMode: data.attendanceMode || "manual",
+          clockOutMode: data.clockOutMode || "manual",
+          canEditTimeCard: data.canEditTimeCard === 'true' || data.canEditTimeCard === true,
+          dailyRate: data.dailyRate ? Number(data.dailyRate) : null,
+          defaultBreakMinutes: data.defaultBreakMinutes ? Number(data.defaultBreakMinutes) : 0,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
@@ -586,6 +591,11 @@ export class UserController {
       confirm_password,
       isDisabled,
       isOverTime,
+      attendanceMode,
+      clockOutMode,
+      canEditTimeCard,
+      dailyRate,
+      defaultBreakMinutes,
     } = request.body;
 
     // Função de validação
@@ -695,6 +705,11 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            attendanceMode,
+            clockOutMode,
+            canEditTimeCard,
+            dailyRate,
+            defaultBreakMinutes,
           },
         });
       } else {
@@ -709,6 +724,11 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            attendanceMode,
+            clockOutMode,
+            canEditTimeCard,
+            dailyRate,
+            defaultBreakMinutes,
           },
         });
       }
