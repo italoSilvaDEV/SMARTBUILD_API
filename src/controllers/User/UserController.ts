@@ -661,7 +661,43 @@ export class UserController {
         }
       }
 
+      // Buscar permissões do office para validar os campos editAll
+      let finalInvoiceEditAll = invoiceEditAll || false;
+      let finalProjectEditAll = projectEditAll || false;
+      let finalEstimateEditAll = estimateEditAll || false;
+
       if (office && company_id) {
+        // Buscar o office com suas permissões
+        const officeWithPermissions = await prisma.office.findUnique({
+          where: { id: office.id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (officeWithPermissions) {
+          // Verificar se o office tem permissões de Invoice, Project ou Estimate
+          const hasInvoicePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office
+          // Se o office não tem a permissão, forçar false
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
+
         // Atualizar office_id na tabela UserCompany
         await prisma.userCompany.update({
           where: {
@@ -682,6 +718,35 @@ export class UserController {
             office_id: office.id,
           },
         });
+      } else if (user.office_id) {
+        // Se não mudou o office, buscar o office atual para validar
+        const currentOffice = await prisma.office.findUnique({
+          where: { id: user.office_id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (currentOffice) {
+          const hasInvoicePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office atual
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
       }
 
       if (current_password && password) {
@@ -710,9 +775,9 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
-            invoiceEditAll,
-            projectEditAll,
-            estimateEditAll,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       } else {
@@ -727,9 +792,9 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
-            invoiceEditAll,
-            projectEditAll,
-            estimateEditAll,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       }
