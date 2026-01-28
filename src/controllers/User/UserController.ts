@@ -589,6 +589,9 @@ export class UserController {
       confirm_password,
       isDisabled,
       isOverTime,
+      invoiceEditAll,
+      projectEditAll,
+      estimateEditAll,
     } = request.body;
 
     // Função de validação
@@ -659,6 +662,7 @@ export class UserController {
       }
 
       if (office && company_id) {
+        // Atualizar office_id na tabela UserCompany
         await prisma.userCompany.update({
           where: {
             userId_companyId: {
@@ -669,7 +673,15 @@ export class UserController {
           data: {
             office_id: office.id,
           }
-        })
+        });
+
+        // Atualizar office_id na tabela User
+        await prisma.user.update({
+          where: { id },
+          data: {
+            office_id: office.id,
+          },
+        });
       }
 
       if (current_password && password) {
@@ -698,6 +710,9 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            invoiceEditAll,
+            projectEditAll,
+            estimateEditAll,
           },
         });
       } else {
@@ -712,6 +727,9 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            invoiceEditAll,
+            projectEditAll,
+            estimateEditAll,
           },
         });
       }
@@ -836,6 +854,9 @@ export class UserController {
           profession: true,
           isDisabled: true,
           isOverTime: true,
+          invoiceEditAll: true,
+          projectEditAll: true,
+          estimateEditAll: true,
           seller_project: {
             select: {
               status_project: true,
