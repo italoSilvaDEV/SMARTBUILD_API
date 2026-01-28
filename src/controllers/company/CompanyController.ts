@@ -319,7 +319,8 @@ export class CompanyController {
             name,
             workStartTime,
             workEndTime,
-            attendanceMode
+            attendanceMode,
+            projectVisibilityMode
         } = req.body;
         const file = req.file;
 
@@ -377,7 +378,8 @@ export class CompanyController {
                     avatar: avatarUrl,
                     workStartTime,
                     workEndTime,
-                    ...(attendanceMode ? { attendanceMode } : {})
+                    ...(attendanceMode ? { attendanceMode } : {}),
+                    ...(projectVisibilityMode ? { projectVisibilityMode } : {})
                 },
             });
 
@@ -409,7 +411,8 @@ export class CompanyController {
                     name: true,
                     workStartTime: true,
                     workEndTime: true,
-                    attendanceMode: true
+                    attendanceMode: true,
+                    projectVisibilityMode: true
                 }
             });
 

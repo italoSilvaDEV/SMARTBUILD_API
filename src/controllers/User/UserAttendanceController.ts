@@ -661,6 +661,11 @@ export class UserAttendanceController {
                         select: {
                             companyId: true
                         }
+                    },
+                    company: {
+                        select: {
+                            projectVisibilityMode: true
+                        }
                     }
                 }
             });
@@ -669,6 +674,8 @@ export class UserAttendanceController {
                 res.status(404).json({ error: 'User not found.' });
                 return;
             }
+
+            const visibilityMode = user.company?.projectVisibilityMode || 'assignedOnly';
 
             // Monta conjunto de empresas do usuário
             const userCompanyIds = new Set<string>();
@@ -719,6 +726,14 @@ export class UserAttendanceController {
                             in: Array.from(userCompanyIds)
                         }
                     },
+                    // Se o modo for 'assignedOnly', filtra apenas onde o usuário está atribuído
+                    ...(visibilityMode === 'assignedOnly' ? {
+                        UserServiceProject: {
+                            some: {
+                                user_id: userId as string
+                            }
+                        }
+                    } : {}),
                     // Busca por nome do serviço (opcional)
                     ...(search && {
                         name: {
