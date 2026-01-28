@@ -376,8 +376,8 @@ export class TimeController {
 
                 Object.values(attendancesByWeek).forEach(weekAttendances => {
                     let totalWeekHours = 0;
-                    let weekRegularHours = 0;
-                    let weekOvertimeHours = 0;
+                    let weekRegHours = 0;
+                    let weekOverHours = 0;
 
                     const attendancesWithHours = weekAttendances.map(attendance => {
                         const hours = calcularHorasTrabalhadas(
@@ -396,11 +396,11 @@ export class TimeController {
                     const dailyRate = weekAttendances[0].user.dailyRate ? Number(weekAttendances[0].user.dailyRate) : 0;
 
                     if (userHasOvertime && totalWeekHours > 40) {
-                        weekRegularHours = 40;
-                        weekOvertimeHours = totalWeekHours - 40;
+                        weekRegHours = 40;
+                        weekOverHours = totalWeekHours - 40;
                     } else {
-                        weekRegularHours = totalWeekHours;
-                        weekOvertimeHours = 0;
+                        weekRegHours = totalWeekHours;
+                        weekOverHours = 0;
                     }
 
                     let weeklyPrice = 0;
@@ -410,8 +410,8 @@ export class TimeController {
                     } else {
                         weeklyPrice = weekAttendances[0].user.hourly_price
                             ? userHasOvertime
-                                ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                                : (weekRegularHours * weekAttendances[0].user.hourly_price)
+                                ? (weekRegHours * weekAttendances[0].user.hourly_price) + (weekOverHours * weekAttendances[0].user.hourly_price * 1.5)
+                                : (weekRegHours * weekAttendances[0].user.hourly_price)
                             : 0;
                     }
 
@@ -426,8 +426,8 @@ export class TimeController {
                         let dailyOvertimeHours = 0;
 
                         if (userHasOvertime && totalWeekHours > 40) {
-                            const regularProportion = weekRegularHours / totalWeekHours;
-                            const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                            const regularProportion = weekRegHours / totalWeekHours;
+                            const overtimeProportion = weekOverHours / totalWeekHours;
 
                             dailyRegularHours = attendance.dailyHours * regularProportion;
                             dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
@@ -531,8 +531,8 @@ export class TimeController {
 
                             Object.values(attendancesByWeek).forEach(weekAttendances => {
                                 let totalWeekHours = 0;
-                                let weekRegularHours = 0;
-                                let weekOvertimeHours = 0;
+                                let weekRegHours = 0;
+                                let weekOverHours = 0;
 
                                 const attendancesWithHours = weekAttendances.map(attendance => {
                                     const hours = calcularHorasTrabalhadas(
@@ -554,11 +554,11 @@ export class TimeController {
                                 const dailyRate = weekAttendances[0]?.user?.dailyRate ? Number(weekAttendances[0].user.dailyRate) : 0;
 
                                 if (userHasOvertime && totalWeekHours > 40) {
-                                    weekRegularHours = 40;
-                                    weekOvertimeHours = totalWeekHours - 40;
+                                    weekRegHours = 40;
+                                    weekOverHours = totalWeekHours - 40;
                                 } else {
-                                    weekRegularHours = totalWeekHours;
-                                    weekOvertimeHours = 0;
+                                    weekRegHours = totalWeekHours;
+                                    weekOverHours = 0;
                                 }
 
                                 let weeklyPrice = 0;
@@ -567,8 +567,8 @@ export class TimeController {
                                 } else {
                                     weeklyPrice = weekAttendances[0]?.user?.hourly_price
                                         ? userHasOvertime
-                                            ? (weekRegularHours * weekAttendances[0].user.hourly_price) + (weekOvertimeHours * weekAttendances[0].user.hourly_price * 1.5)
-                                            : (weekRegularHours * weekAttendances[0].user.hourly_price)
+                                            ? (weekRegHours * weekAttendances[0].user.hourly_price) + (weekOverHours * weekAttendances[0].user.hourly_price * 1.5)
+                                            : (weekRegHours * weekAttendances[0].user.hourly_price)
                                         : 0;
                                 }
 
@@ -583,8 +583,8 @@ export class TimeController {
                                     let dailyOvertimeHours = 0;
 
                                     if (userHasOvertime && totalWeekHours > 40) {
-                                        const regularProportion = weekRegularHours / totalWeekHours;
-                                        const overtimeProportion = weekOvertimeHours / totalWeekHours;
+                                        const regularProportion = weekRegHours / totalWeekHours;
+                                        const overtimeProportion = weekOverHours / totalWeekHours;
                                         dailyRegularHours = attendance.dailyHours * regularProportion;
                                         dailyOvertimeHours = attendance.dailyHours * overtimeProportion;
                                     } else {
