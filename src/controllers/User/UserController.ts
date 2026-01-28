@@ -214,11 +214,11 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
-          attendanceMode: data.attendanceMode || "manual",
-          clockOutMode: data.clockOutMode || "manual",
-          canEditTimeCard: data.canEditTimeCard === 'true' || data.canEditTimeCard === true,
-          dailyRate: data.dailyRate ? Number(data.dailyRate) : null,
-          defaultBreakMinutes: data.defaultBreakMinutes ? Number(data.defaultBreakMinutes) : 0,
+          attendanceMode: (data as any).attendanceMode || "manual",
+          clockOutMode: (data as any).clockOutMode || "manual",
+          canEditTimeCard: (data as any).canEditTimeCard === 'true' || (data as any).canEditTimeCard === true,
+          dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
+          defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });

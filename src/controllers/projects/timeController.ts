@@ -376,6 +376,9 @@ export class TimeController {
 
                 Object.values(attendancesByWeek).forEach(weekAttendances => {
                     let totalWeekHours = 0;
+                    let weekRegularHours = 0;
+                    let weekOvertimeHours = 0;
+
                     const attendancesWithHours = weekAttendances.map(attendance => {
                         const hours = calcularHorasTrabalhadas(
                             attendance.check_in_time!.toISOString(),
@@ -528,6 +531,9 @@ export class TimeController {
 
                             Object.values(attendancesByWeek).forEach(weekAttendances => {
                                 let totalWeekHours = 0;
+                                let weekRegularHours = 0;
+                                let weekOvertimeHours = 0;
+
                                 const attendancesWithHours = weekAttendances.map(attendance => {
                                     const hours = calcularHorasTrabalhadas(
                                         attendance.check_in_time!.toISOString(),
@@ -1555,10 +1561,10 @@ export class TimeController {
                     map.set(entry.userId, entry);
                 }
                 return map;
-            }, new Map());
+            }, new Map<string, any>());
 
             // Formatar o resultado final
-            const formattedResult = Array.from(latestEntriesMap.values()).map(entry => ({
+            const formattedResult = Array.from(latestEntriesMap.values()).map((entry: any) => ({
                 user_service_project_id: entry.user_service_project_id,
                 name: entry.name,
                 serviceName: entry.serviceName,
@@ -1575,7 +1581,7 @@ export class TimeController {
 
             // Obter os IDs únicos de UserServiceProject dos registros mais recentes
             const uniqueUserServiceProjectIds = new Set(
-                Array.from(latestEntriesMap.values()).map(entry => entry.user_service_project_id)
+                Array.from(latestEntriesMap.values()).map((entry: any) => entry.user_service_project_id)
             );
             // Contagem dos IDs únicos
             const serviceCount = uniqueUserServiceProjectIds.size;
