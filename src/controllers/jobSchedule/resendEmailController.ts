@@ -170,7 +170,7 @@ export class ResendEmailController {
             return res.status(200).json({ message: "Reminder emails sent successfully" });
 
         } catch (error: any) {
-            // console.error("Error resending service project emails:", error);
+            console.error("Error resending service project emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -372,7 +372,7 @@ export class ResendEmailController {
             return res.status(200).json({ message: "Reminder emails sent successfully" });
 
         } catch (error: any) {
-            // console.error("Error resending subservice emails:", error);
+            console.error("Error resending subservice emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -541,7 +541,7 @@ export class ResendEmailController {
 
             return res.status(200).json({ message: "Reminder emails sent successfully" });
         } catch (error: any) {
-            // console.error("Error resending custom service emails:", error);
+            console.error("Error resending custom service emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

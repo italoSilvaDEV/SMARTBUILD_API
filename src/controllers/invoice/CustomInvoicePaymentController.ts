@@ -211,7 +211,7 @@ export class CustomInvoicePaymentController {
                 });
               }
             } catch (error) {
-              // console.error("Error fetching PDF invoice paid:", error);
+              console.error("Error fetching PDF invoice paid:", error);
             }
           }
 
@@ -245,7 +245,7 @@ export class CustomInvoicePaymentController {
           });
         }
       } catch (emailError: any) {
-        // console.error("Error sending payment confirmation email:", emailError);
+        console.error("Error sending payment confirmation email:", emailError);
       }
 
       return res.status(201).json({
@@ -253,7 +253,7 @@ export class CustomInvoicePaymentController {
         payment
       });
     } catch (error: any) {
-      // console.error("Error recording custom invoice payment:", error);
+      console.error("Error recording custom invoice payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -272,7 +272,7 @@ export class CustomInvoicePaymentController {
 
       return res.status(200).json(payment);
     } catch (error: any) {
-      // console.error("Error fetching payment:", error);
+      console.error("Error fetching payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -306,7 +306,7 @@ export class CustomInvoicePaymentController {
         payment: updatedPayment
       });
     } catch (error: any) {
-      // console.error("Error updating payment:", error);
+      console.error("Error updating payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }

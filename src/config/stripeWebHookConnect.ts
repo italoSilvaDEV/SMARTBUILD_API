@@ -40,7 +40,7 @@ export async function setupConnectWebhook() {
       });
 
       if (existing) {
-        // console.log(`Webhook conectado já existe na base: ${event} (ID: ${existing.id})`);
+        console.log(`Webhook conectado já existe na base: ${event} (ID: ${existing.id})`);
         continue;
       }
 
@@ -64,9 +64,9 @@ export async function setupConnectWebhook() {
         },
       });
 
-      // console.log(`Webhook conectado criado para ${event}: ${stripeWebhook.id}`);
+      console.log(`Webhook conectado criado para ${event}: ${stripeWebhook.id}`);
     }
   } catch (err) {
-    // console.error("Erro ao configurar webhooks conectados:", err);
+    console.error("Erro ao configurar webhooks conectados:", err);
   }
 } 

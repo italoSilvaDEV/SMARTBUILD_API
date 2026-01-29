@@ -33,7 +33,7 @@ export class PlanController {
       res.status(201).json(plan);
     } catch (error: unknown) {
       // Erro ao criar plano
-      // console.error('Error creating plan:', error);
+      console.error('Error creating plan:', error);
       res.status(500).json({ message: 'Error creating plan', error: (error as Error).message });
     }
   }
@@ -48,7 +48,7 @@ export class PlanController {
       const plans = await this.planService.getAllPlans();
       res.status(200).json(plans);
     } catch (error: unknown) {
-      // console.error('Error fetching plans:', error);
+      console.error('Error fetching plans:', error);
       res.status(500).json({ message: 'Error fetching plans', error: (error as Error).message });
     }
   }
@@ -72,7 +72,7 @@ export class PlanController {
       res.status(200).json(plan);
     } catch (error: unknown) {
       // Erro ao buscar plano
-      // console.error('Error fetching plan:', error);
+      console.error('Error fetching plan:', error);
       res.status(500).json({ message: 'Error fetching plan', error: (error as Error).message });
     }
   }
@@ -111,7 +111,7 @@ export class PlanController {
       res.status(200).json(updatedPlan);
     } catch (error: unknown) {
       // Erro ao atualizar plano
-      // console.error('Error updating plan:', error);
+      console.error('Error updating plan:', error);
       res.status(500).json({ message: 'Error updating plan', error: (error as Error).message });
     }
   }
@@ -128,7 +128,7 @@ export class PlanController {
       res.status(204).send();
     } catch (error: unknown) {
       // Erro ao excluir plano
-      // console.error('Error deleting plan:', error);
+      console.error('Error deleting plan:', error);
       res.status(500).json({ message: 'Error deleting plan', error: (error as Error).message });
     }
   }

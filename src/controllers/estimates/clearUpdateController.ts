@@ -50,7 +50,7 @@ export class ClearUpdateController {
                 data: updated
             })
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             return res.status(500).json({
                 error: "Internal server error while clearing update"
             })

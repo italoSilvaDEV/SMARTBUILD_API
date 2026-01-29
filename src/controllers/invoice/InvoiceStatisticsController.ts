@@ -306,17 +306,17 @@ export class InvoiceStatisticsController {
           revenue: Number(revenue.toFixed(2))
         }));
 
-      // console.log("Período atual - Total de faturas:", currentPeriodTotalInvoices);
-      // console.log("Período anterior - Total de faturas:", lastPeriodTotalInvoices);
-      // console.log("Diferença percentual:", differenceLastMonthTotalInvoice);
+      console.log("Período atual - Total de faturas:", currentPeriodTotalInvoices);
+      console.log("Período anterior - Total de faturas:", lastPeriodTotalInvoices);
+      console.log("Diferença percentual:", differenceLastMonthTotalInvoice);
 
-      // console.log("Período atual - Total pago:", currentPeriodTotalInvoicePaid);
-      // console.log("Período anterior - Total pago:", lastPeriodTotalInvoicePaid);
-      // console.log("Diferença percentual pago:", differencePaidLastMonthTotalInvoice);
+      console.log("Período atual - Total pago:", currentPeriodTotalInvoicePaid);
+      console.log("Período anterior - Total pago:", lastPeriodTotalInvoicePaid);
+      console.log("Diferença percentual pago:", differencePaidLastMonthTotalInvoice);
 
-      // console.log("Período atual - Total pendente:", currentPeriodTotalInvoicePending);
-      // console.log("Período anterior - Total pendente:", lastPeriodTotalInvoicePending);
-      // console.log("Diferença percentual pendente:", differencePendingLastMonthTotalInvoice);
+      console.log("Período atual - Total pendente:", currentPeriodTotalInvoicePending);
+      console.log("Período anterior - Total pendente:", lastPeriodTotalInvoicePending);
+      console.log("Diferença percentual pendente:", differencePendingLastMonthTotalInvoice);
 
       return res.status(200).json({
         totalInvoices,
@@ -330,7 +330,7 @@ export class InvoiceStatisticsController {
         monthlyRevenueData
       });
     } catch (error: any) {
-      // console.error("Error fetching invoice statistics:", error);
+      console.error("Error fetching invoice statistics:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }

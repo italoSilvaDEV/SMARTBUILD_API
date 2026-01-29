@@ -29,7 +29,7 @@ export class ListActiveKeysController {
 
             return res.json(formattedKeys);
         } catch (error) {
-            // console.error("Error listing active keys:", error);
+            console.error("Error listing active keys:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

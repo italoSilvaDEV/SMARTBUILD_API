@@ -71,7 +71,7 @@ export class UpdateChangeOrderController {
                 })
             })
         } catch (error) {
-            // console.log(error)
+            console.log(error)
             return res.status(500).json({
                 error: "Internal server error"
             })

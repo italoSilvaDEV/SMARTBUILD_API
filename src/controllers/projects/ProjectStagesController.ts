@@ -35,7 +35,7 @@ export class ServiceStageController {
 
             res.status(201).json(projectStage);
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             res.status(500).json({ message: "Error creating project stage" });
         }
     }
@@ -67,7 +67,7 @@ export class ServiceStageController {
 
             res.json(projectStage);
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             res.status(500).json({ message: "Error fetching project stage" });
         }
     }
@@ -104,7 +104,7 @@ export class ServiceStageController {
 
             res.json(projectStage);
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             res.status(500).json({ message: "Error updating project stage" });
         }
     }
@@ -123,7 +123,7 @@ export class ServiceStageController {
 
             res.status(204).send();
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             res.status(500).json({ message: "Error deleting project stage" });
         }
     }

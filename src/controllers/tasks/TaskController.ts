@@ -45,6 +45,7 @@ export class TaskController {
 
       return res.status(201).json(task);
     } catch (error: any) {
+      console.error("[TaskController.create] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -92,6 +93,7 @@ export class TaskController {
 
       return res.json(tasksWithUrls);
     } catch (error: any) {
+      console.error("[TaskController.listByProject] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -127,6 +129,7 @@ export class TaskController {
 
       return res.json(tasksWithUrls);
     } catch (error: any) {
+      console.error("[TaskController.listByUser] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -165,6 +168,7 @@ export class TaskController {
 
       return res.json(task);
     } catch (error: any) {
+      console.error("[TaskController.update] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -176,6 +180,7 @@ export class TaskController {
       await prisma.task.delete({ where: { id } });
       return res.status(204).send();
     } catch (error: any) {
+      console.error("[TaskController.delete] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -206,6 +211,7 @@ export class TaskController {
 
       return res.status(201).json({ ...taskFile, url: signedUrl });
     } catch (error: any) {
+      console.error("[TaskController.uploadFile] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
@@ -218,6 +224,7 @@ export class TaskController {
       await prisma.taskFile.delete({ where: { id: fileId } });
       return res.status(204).send();
     } catch (error: any) {
+      console.error("[TaskController.deleteFile] Error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }

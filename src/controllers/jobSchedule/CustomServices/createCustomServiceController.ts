@@ -93,7 +93,7 @@ export class CreateCustomServiceController {
                 data: customService
             });
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

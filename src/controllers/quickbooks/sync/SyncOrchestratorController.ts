@@ -100,7 +100,7 @@ export class SyncOrchestratorController {
                 throw e;
             }
         } catch (error: any) {
-            // console.error("Erro na orquestração de sincronização:", error);
+            console.error("Erro na orquestração de sincronização:", error);
             return res.status(500).json({ error: "Internal error in orchestration", details: error.message });
         }
     }
@@ -142,7 +142,7 @@ export class SyncOrchestratorController {
             });
 
         } catch (error: any) {
-            // console.error("Erro na execução de sincronização:", error);
+            console.error("Erro na execução de sincronização:", error);
             return res.status(500).json({
                 error: "Erro interno na execução",
                 details: error.message
@@ -230,7 +230,7 @@ export class SyncOrchestratorController {
             });
 
         } catch (error: any) {
-            // console.error("Erro ao buscar status de sincronização:", error);
+            console.error("Erro ao buscar status de sincronização:", error);
             return res.status(500).json({
                 error: "Erro interno ao buscar status",
                 details: error.message
@@ -311,7 +311,7 @@ export class SyncOrchestratorController {
             });
 
         } catch (error: any) {
-            // console.error("Erro ao buscar histórico de execuções:", error);
+            console.error("Erro ao buscar histórico de execuções:", error);
             return res.status(500).json({
                 error: "Erro interno ao buscar histórico",
                 details: error.message
@@ -517,15 +517,15 @@ export class SyncOrchestratorController {
                 });
 
             } catch (error: any) {
-                // console.error(` Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
-                // console.error(` Detalhes do erro:`, {
-                //   message: error?.message,
-                //   details: error?.details,
-                //   debugInfo: error?.debugInfo,
-                //   statusCode: error?.statusCode,
-                //   fault: error?.Fault,
-                //   stack: error?.stack?.split('\n').slice(0, 5) // Primeiras 5 linhas do stack
-                // });
+                console.error(` Erro na sincronização ${typesEntity} - ${typeSync}:`, error);
+                console.error(` Detalhes do erro:`, {
+                    message: error?.message,
+                    details: error?.details,
+                    debugInfo: error?.debugInfo,
+                    statusCode: error?.statusCode,
+                    fault: error?.Fault,
+                    stack: error?.stack?.split('\n').slice(0, 5) // Primeiras 5 linhas do stack
+                });
 
                 const endTime = Date.now();
                 const duration = endTime - startTime;

@@ -38,7 +38,7 @@ export class InvoiceAutoEmailController {
 
       return res.status(200).json(config);
     } catch (error) {
-      // console.error("Error fetching auto email config:", error);
+      console.error("Error fetching auto email config:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -101,7 +101,7 @@ export class InvoiceAutoEmailController {
         config
       });
     } catch (error) {
-      // console.error("Error updating auto email config:", error);
+      console.error("Error updating auto email config:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -121,7 +121,7 @@ export class InvoiceAutoEmailController {
 
       return res.status(200).json({ logs });
     } catch (error) {
-      // console.error("Error fetching invoice auto email logs:", error);
+      console.error("Error fetching invoice auto email logs:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -189,7 +189,7 @@ export class InvoiceAutoEmailController {
         }
       });
     } catch (error) {
-      // console.error("Error fetching company auto email logs:", error);
+      console.error("Error fetching company auto email logs:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -256,7 +256,7 @@ export class InvoiceAutoEmailController {
         sentByType: typeStats
       });
     } catch (error) {
-      // console.error("Error fetching auto email stats:", error);
+      console.error("Error fetching auto email stats:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }

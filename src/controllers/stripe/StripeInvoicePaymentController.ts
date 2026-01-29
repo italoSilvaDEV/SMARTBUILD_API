@@ -95,10 +95,10 @@ export class StripeInvoicePaymentController {
             });
 
             cancelledPaymentIntentId = activePaymentIntent.stripePaymentIntentId;
-            // console.log(`PaymentIntent ${activePaymentIntent.stripePaymentIntentId} cancelado para permitir pagamento manual`);
+            console.log(`PaymentIntent ${activePaymentIntent.stripePaymentIntentId} cancelado para permitir pagamento manual`);
           }
         } catch (stripeError: any) {
-          // console.warn("Erro ao cancelar PaymentIntent no Stripe:", stripeError.message);
+          console.warn("Erro ao cancelar PaymentIntent no Stripe:", stripeError.message);
           // Continuar mesmo se não conseguir cancelar no Stripe
         }
       }
@@ -180,11 +180,11 @@ export class StripeInvoicePaymentController {
       /*
       // Tentar deletar invoice no QuickBooks (não deve falhar o processo se der erro)
       try {
-        // console.log("Verificando se existe invoice no QuickBooks para deletar...");
+        console.log("Verificando se existe invoice no QuickBooks para deletar...");
 
         // Verificar se o invoice tem referência do QuickBooks
         if (invoice.idQuickbookContabio && invoice.user_id) {
-          // console.log(`Tentando deletar invoice ${invoice.idQuickbookContabio} no QuickBooks...`);
+          console.log(`Tentando deletar invoice ${invoice.idQuickbookContabio} no QuickBooks...`);
 
           // Verificar se o usuário tem uma conta QuickBooks conectada
           const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -206,7 +206,7 @@ export class StripeInvoicePaymentController {
               calledFromStripe: true // Indicar que foi chamado pelo Stripe
             });
 
-            // console.log("Invoice deletado no QuickBooks com sucesso:", quickBooksVoidResult?.quickbooksId);
+            console.log("Invoice deletado no QuickBooks com sucesso:", quickBooksVoidResult?.quickbooksId);
 
             // Remover a referência do QuickBooks do invoice local
             await prisma.invoice.update({
@@ -227,13 +227,13 @@ export class StripeInvoicePaymentController {
               }
             });
           } else {
-            // console.log("Usuário não possui conta QuickBooks conectada. Pulando deleção no QB.");
+            console.log("Usuário não possui conta QuickBooks conectada. Pulando deleção no QB.");
           }
         } else {
-          // console.log("Invoice não possui referência do QuickBooks. Pulando deleção no QB.");
+          console.log("Invoice não possui referência do QuickBooks. Pulando deleção no QB.");
         }
       } catch (qbError: any) {
-        // console.error("Erro ao deletar invoice no QuickBooks:", qbError.message);
+        console.error("Erro ao deletar invoice no QuickBooks:", qbError.message);
         quickBooksVoidError = qbError.message;
 
         // Adicionar evento na timeline sobre erro no QuickBooks
@@ -247,7 +247,7 @@ export class StripeInvoicePaymentController {
             }
           });
         } catch (timelineError) {
-          // console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+          console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
         }
       }
       */
@@ -279,7 +279,7 @@ export class StripeInvoicePaymentController {
         try {
           await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
         } catch (pdfEmailError: any) {
-          // console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
+          console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
         }
       }
 
@@ -299,7 +299,7 @@ export class StripeInvoicePaymentController {
         // }
       });
     } catch (error: any) {
-      // console.error("Error recording Stripe invoice payment:", error);
+      console.error("Error recording Stripe invoice payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -318,7 +318,7 @@ export class StripeInvoicePaymentController {
 
       return res.status(200).json(payment);
     } catch (error: any) {
-      // console.error("Error fetching payment:", error);
+      console.error("Error fetching payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -352,7 +352,7 @@ export class StripeInvoicePaymentController {
         payment: updatedPayment
       });
     } catch (error: any) {
-      // console.error("Error updating payment:", error);
+      console.error("Error updating payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -368,7 +368,7 @@ export class StripeInvoicePaymentController {
       const recipientName = workContext?.Name || client?.name || 'Client';
 
       if (!recipientEmail) {
-        // console.log("Recipient email not found (neither work context nor client email), skipping email send");
+        console.log("Recipient email not found (neither work context nor client email), skipping email send");
         return;
       }
 
@@ -398,14 +398,14 @@ export class StripeInvoicePaymentController {
               type: 'application/pdf',
               disposition: 'attachment'
             });
-            // console.log(`PDF paid anexado ao email: ${fileName}`);
+            console.log(`PDF paid anexado ao email: ${fileName}`);
           }
         } catch (error) {
-          // console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
+          console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
           // Continua sem o PDF anexado
         }
       } else {
-        // console.log("PDF invoice paid não encontrado, enviando email sem anexo");
+        console.log("PDF invoice paid não encontrado, enviando email sem anexo");
       }
 
       const paymentDate = new Date();
@@ -433,7 +433,7 @@ export class StripeInvoicePaymentController {
         attachments: attachments as any
       });
 
-      // console.log(`Email com PDF enviado para ${recipientEmail}`);
+      console.log(`Email com PDF enviado para ${recipientEmail}`);
 
       // Log do envio de email
       await prisma.invoiceEmailLog.create({
@@ -445,7 +445,7 @@ export class StripeInvoicePaymentController {
       });
 
     } catch (error: any) {
-      // console.error("[ManualPaymentConfirmationWithPdf] Erro ao enviar email com PDF:", error.message);
+      console.error("[ManualPaymentConfirmationWithPdf] Erro ao enviar email com PDF:", error.message);
       // Não fazer throw para não interromper o fluxo principal
     }
   }

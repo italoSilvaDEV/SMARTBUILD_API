@@ -113,6 +113,7 @@ export class UserServiceProjectController {
         removedUserIds: removableUserIds,
       });
     } catch (error: any) {
+      console.error(error);
       res.status(500).json({
         error: "Error while creating relationships.",
         details: error.message || "Unknown error",
@@ -202,6 +203,7 @@ export class UserServiceProjectController {
 
       res.status(200).json(result);
     } catch (error) {
+      console.error(error);
       res.status(500).json({
         error: "Mistake when looking for employees and their services",
       });
@@ -221,6 +223,7 @@ export class UserServiceProjectController {
 
       res.status(200).json(userServiceProject);
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: "Error when searching for services" });
     }
   }
@@ -276,6 +279,7 @@ export class UserServiceProjectController {
 
       res.status(200).json(formattedResult);
     } catch (error) {
+      console.error(error);
       res
         .status(500)
         .json({ error: "Error when searching for user service projects" });
@@ -350,8 +354,6 @@ export class UserServiceProjectController {
           id: usp.id,
           service_project_id: usp.service_project_id,
           name: usp.service_project?.name,
-          projectId: usp.service_project?.Project?.id || null,
-          projectName: usp.service_project?.Project?.name || null,
           address: usp.service_project?.Project?.client?.location || null,
           startDate: startDate ? startDate.toLocaleDateString("pt-BR") : null,
           daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
@@ -363,6 +365,7 @@ export class UserServiceProjectController {
 
       res.status(200).json(formattedResult);
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: "Error when fetching service details" });
     }
   }
@@ -440,6 +443,7 @@ export class UserServiceProjectController {
 
       res.status(200).json(formattedResult);
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: "Error when fetching ServiceProject details" });
     }
   }
@@ -487,6 +491,7 @@ export class UserServiceProjectController {
 
       return res.status(200).json(formattedCosts);
     } catch (error) {
+      console.error("Error fetching costs:", error);
       return res.status(500).json({ error: "Internal server error." });
     }
   }
@@ -642,6 +647,7 @@ export class UserServiceProjectController {
             try {
               coverPhotoUrl = await getPresignedUrl(coverPhoto);
             } catch (error) {
+              console.error('Error generating presigned URL for cover photo:', error);
             }
           }
 
@@ -653,6 +659,7 @@ export class UserServiceProjectController {
                 try {
                   photoUrl = await getPresignedUrl(service.photos[0].uri);
                 } catch (error) {
+                  console.error('Error generating presigned URL:', error);
                 }
               }
 
@@ -696,6 +703,7 @@ export class UserServiceProjectController {
         totalServices: projectsWithServices.reduce((sum, p) => sum + p.servicesCount, 0)
       });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Error while fetching projects grouped by address.' });
     }
   }

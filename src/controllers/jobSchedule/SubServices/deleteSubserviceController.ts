@@ -99,7 +99,7 @@ export class DeleteSubserviceController {
 
             return res.status(200).json({ message: "Subservice deleted and notifications sent" });
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

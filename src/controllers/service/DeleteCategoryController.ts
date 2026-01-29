@@ -77,7 +77,7 @@ export class DeleteCategoryController {
 
             return response.json({ message: "Category and its subcategories and services deleted successfully" });
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

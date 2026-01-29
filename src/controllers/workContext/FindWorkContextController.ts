@@ -81,7 +81,7 @@ export class FindWorkContextController {
 
       return res.json(processedWorkContext);
     } catch (error: any) {
-      // console.error("Error fetching WorkContext:", error);
+      console.error("Error fetching WorkContext:", error);
       return res.status(500).json({ 
         error: "Error fetching work context" 
       });
@@ -205,11 +205,11 @@ export class FindWorkContextController {
         },
       };
 
-      // console.log(`Cliente ${clientId}: ${totalProjects} projetos totais, ${client.workContexts.length} work contexts`);
+      console.log(`Cliente ${clientId}: ${totalProjects} projetos totais, ${client.workContexts.length} work contexts`);
 
       return res.json(response);
     } catch (error: any) {
-      // console.error("Error fetching client with WorkContexts:", error);
+      console.error("Error fetching client with WorkContexts:", error);
       return res.status(500).json({ 
         error: "Error fetching client data" 
       });
@@ -299,7 +299,7 @@ export class FindWorkContextController {
         workContexts: processedWorkContexts,
       });
     } catch (error: any) {
-      // console.error("Error fetching WorkContexts by company:", error);
+      console.error("Error fetching WorkContexts by company:", error);
       return res.status(500).json({ 
         error: "Error fetching work contexts" 
       });
@@ -376,7 +376,7 @@ export class FindWorkContextController {
         workContexts: filteredContexts,
       });
     } catch (error: any) {
-      // console.error("Error searching WorkContexts:", error);
+      console.error("Error searching WorkContexts:", error);
       return res.status(500).json({ 
         error: "Error searching work contexts" 
       });
@@ -428,7 +428,7 @@ export class FindWorkContextController {
         workContexts,
       });
     } catch (error: any) {
-      // console.error("Error listing WorkContexts:", error);
+      console.error("Error listing WorkContexts:", error);
       return res.status(500).json({ 
         error: "Error listing work contexts" 
       });
@@ -444,7 +444,7 @@ export class FindWorkContextController {
         return res.status(400).json({ error: "Client ID is required" });
       }
 
-      // console.log(`Buscando projetos sem work context para o cliente: ${clientId}`);
+      console.log(`Buscando projetos sem work context para o cliente: ${clientId}`);
 
       // Buscar projetos do cliente que não têm workContextId
       const projects = await prisma.project.findMany({
@@ -488,14 +488,14 @@ export class FindWorkContextController {
         };
       });
 
-      // console.log(`Encontrados ${processedProjects.length} projetos sem work context`);
+      console.log(`Encontrados ${processedProjects.length} projetos sem work context`);
 
       return res.status(200).json({
         total: processedProjects.length,
         projects: processedProjects,
       });
     } catch (error) {
-      // console.error("Erro ao buscar projetos sem work context:", error);
+      console.error("Erro ao buscar projetos sem work context:", error);
       return res.status(500).json({ error: "Failed to fetch projects without work context" });
     }
   }
@@ -514,7 +514,7 @@ export class FindWorkContextController {
         return res.status(400).json({ error: "Work Context ID is required" });
       }
 
-      // console.log(`Buscando projetos disponíveis para o WorkContext ${workContextId} do cliente ${clientId}`);
+      console.log(`Buscando projetos disponíveis para o WorkContext ${workContextId} do cliente ${clientId}`);
 
       // Get projects that are either:
       // 1. Without any work context (workContextId is null)
@@ -569,7 +569,7 @@ export class FindWorkContextController {
         .filter(p => p.workContextId === workContextId)
         .map(p => p.id);
 
-      // console.log(`Encontrados ${processedProjects.length} projetos disponíveis (${selectedProjectIds.length} já vinculados)`);
+      console.log(`Encontrados ${processedProjects.length} projetos disponíveis (${selectedProjectIds.length} já vinculados)`);
 
       return res.status(200).json({
         total: processedProjects.length,
@@ -577,7 +577,7 @@ export class FindWorkContextController {
         selectedProjectIds,
       });
     } catch (error) {
-      // console.error("Erro ao buscar projetos disponíveis para work context:", error);
+      console.error("Erro ao buscar projetos disponíveis para work context:", error);
       return res.status(500).json({ error: "Failed to fetch available projects for work context" });
     }
   }

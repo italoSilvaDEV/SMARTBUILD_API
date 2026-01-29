@@ -154,7 +154,7 @@ export class DashboardController {
                         try {
                             avatarUrl = await getPresignedUrl(client.avatar);
                         } catch (error) {
-                            // console.error(`Erro ao gerar URL do avatar para cliente ${client.id}:`, error);
+                            console.error(`Erro ao gerar URL do avatar para cliente ${client.id}:`, error);
                             avatarUrl = null;
                         }
                     }
@@ -268,7 +268,7 @@ export class DashboardController {
             });
 
         } catch (error) {
-            // console.error("Erro no DashboardController:", error);
+            console.error("Erro no DashboardController:", error);
             return response.status(500).json({
                 error: "Internal server error"
             });

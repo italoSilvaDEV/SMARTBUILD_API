@@ -252,7 +252,7 @@ export class BusinessDashboardController {
                 jobsSchedule
             });
         } catch (error) {
-            // console.error("Error in dashboardCards:", error);
+            console.error("Error in dashboardCards:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -323,7 +323,7 @@ export class BusinessDashboardController {
 
             return res.json(salesData);
         } catch (error) {
-            // console.error("Error in salesChart:", error);
+            console.error("Error in salesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -395,7 +395,7 @@ export class BusinessDashboardController {
 
             return res.json(expensesData);
         } catch (error) {
-            // console.error("Error in expensesChart:", error);
+            console.error("Error in expensesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -611,7 +611,7 @@ export class BusinessDashboardController {
 
             return res.json(formattedExpenses);
         } catch (error) {
-            // console.error("Error in findMany:", error);
+            console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -721,7 +721,7 @@ export class BusinessDashboardController {
 
             return res.json(cashflowData);
         } catch (error) {
-            // console.error("Error in cashflowChart:", error);
+            console.error("Error in cashflowChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -809,7 +809,7 @@ export class BusinessDashboardController {
 
             return res.json(invoicesData);
         } catch (error) {
-            // console.error("Error in invoicesChart:", error);
+            console.error("Error in invoicesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -872,7 +872,7 @@ export class BusinessDashboardController {
 
             return res.json(chartData);
         } catch (error) {
-            // console.error("Error in projectsChart:", error);
+            console.error("Error in projectsChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -972,7 +972,7 @@ export class BusinessDashboardController {
 
             return res.json(chartData);
         } catch (error) {
-            // console.error("Error in estimatesChart:", error);
+            console.error("Error in estimatesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }

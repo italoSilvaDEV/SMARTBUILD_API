@@ -64,7 +64,7 @@ export class FindClientById {
                 try {
                     companyAvatarUrl = await getPresignedUrl(company.avatar);
                 } catch (error) {
-                    // console.error(`Erro ao gerar URL do avatar da company ${company.id}:`, error);
+                    console.error(`Erro ao gerar URL do avatar da company ${company.id}:`, error);
                     companyAvatarUrl = null;
                 }
             }
@@ -113,7 +113,7 @@ export class FindClientById {
             });
 
         } catch (error) {
-            // console.error("Erro no FindClientById:", error);
+            console.error("Erro no FindClientById:", error);
             return response.status(500).json({
                 error: "Internal server error"
             });
@@ -199,7 +199,7 @@ export class GetClientEditData {
             });
 
         } catch (error) {
-            // console.error("Erro no GetClientEditData:", error);
+            console.error("Erro no GetClientEditData:", error);
             return response.status(500).json({
                 error: "Internal server error"
             });
@@ -291,7 +291,7 @@ export class UpdateClientData {
             });
 
         } catch (error) {
-            // console.error("Erro no UpdateClientData:", error);
+            console.error("Erro no UpdateClientData:", error);
             return response.status(500).json({
                 error: "Internal server error"
             });

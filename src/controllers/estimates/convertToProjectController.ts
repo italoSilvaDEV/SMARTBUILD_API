@@ -171,9 +171,9 @@ export class ConvertToProjectController {
             })
 
         } catch (error: any) {
-            // console.error("Error converting estimate to project:", error);
-            // console.error("Error message:", error?.message);
-            // console.error("Error stack:", error?.stack);
+            console.error("Error converting estimate to project:", error);
+            console.error("Error message:", error?.message);
+            console.error("Error stack:", error?.stack);
             return res.status(500).json({
                 error: "Internal server error while converting estimate to project",
                 details: error?.message || "Unknown error"

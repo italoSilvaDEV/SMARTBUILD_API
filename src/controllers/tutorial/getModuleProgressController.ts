@@ -53,7 +53,7 @@ export class GetModuleProgressController {
                 data: moduleProgress
             });
         } catch (error) {
-            // console.error("Error fetching module progress:", error);
+            console.error("Error fetching module progress:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

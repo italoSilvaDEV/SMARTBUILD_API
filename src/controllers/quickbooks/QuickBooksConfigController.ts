@@ -21,7 +21,7 @@ export class QuickBooksConfigController {
                 configurations
             });
         } catch (error) {
-            // console.error("Erro ao buscar configurações do QuickBooks:", error);
+            console.error("Erro ao buscar configurações do QuickBooks:", error);
             return res.status(500).json({
                 success: false,
                 error: "Internal Server Error"
@@ -48,7 +48,7 @@ export class QuickBooksConfigController {
                 configuration
             });
         } catch (error) {
-            // console.error("Erro ao buscar configuração do QuickBooks:", error);
+            console.error("Erro ao buscar configuração do QuickBooks:", error);
             return res.status(500).json({
                 success: false,
                 error: "Internal Server Error"
@@ -107,7 +107,7 @@ export class QuickBooksConfigController {
                 configuration
             });
         } catch (error) {
-            // console.error("Erro ao atualizar configuração do QuickBooks:", error);
+            console.error("Erro ao atualizar configuração do QuickBooks:", error);
             return res.status(500).json({
                 success: false,
                 error: "Internal Server Error"
@@ -150,7 +150,7 @@ export class QuickBooksConfigController {
                 message: "Configuration deleted successfully"
             });
         } catch (error) {
-            // console.error("Erro ao deletar configuração do QuickBooks:", error);
+            console.error("Erro ao deletar configuração do QuickBooks:", error);
             return res.status(500).json({
                 success: false,
                 error: "Internal Server Error"

@@ -47,7 +47,7 @@ export class ResetTutorialController {
                 message: "Tutorial reset successfully"
             });
         } catch (error) {
-            // console.error("Error resetting tutorial:", error);
+            console.error("Error resetting tutorial:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

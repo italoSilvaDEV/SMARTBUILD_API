@@ -91,7 +91,7 @@ export class CreateSubserviceController {
 
             return res.status(201).json({ message: "Subservice created successfully", data: subservice });
         } catch (error) {
-            // console.error(error);
+            console.error(error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

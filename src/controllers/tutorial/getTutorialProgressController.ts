@@ -33,7 +33,7 @@ export class GetTutorialProgressController {
                 data: progress
             });
         } catch (error) {
-            // console.error("Error fetching tutorial progress:", error);
+            console.error("Error fetching tutorial progress:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

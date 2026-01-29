@@ -24,7 +24,7 @@ export class SubscriptionController {
       res.status(201).json(subscription);
     } catch (error: unknown) {
       // Erro ao criar assinatura
-      // console.error('Error creating subscription:', error);
+      console.error('Error creating subscription:', error);
       res.status(500).json({ message: 'Error creating subscription', error: (error as Error).message });
     }
   }
@@ -40,7 +40,7 @@ export class SubscriptionController {
       res.status(200).json(subscriptions);
     } catch (error: unknown) {
       // Erro ao listar assinaturas
-      // console.error('Error listing subscriptions:', error);
+      console.error('Error listing subscriptions:', error);
       res.status(500).json({ message: 'Error listing subscriptions', error: (error as Error).message });
     }
   }
@@ -57,7 +57,7 @@ export class SubscriptionController {
       res.status(200).json(subscriptions);
     } catch (error: unknown) {
       // Erro ao buscar assinaturas da empresa
-      // console.error('Error fetching company subscriptions:', error);
+      console.error('Error fetching company subscriptions:', error);
       res.status(500).json({ message: 'Error fetching company subscriptions', error: (error as Error).message });
     }
   }
@@ -81,7 +81,7 @@ export class SubscriptionController {
       res.status(200).json(subscription);
     } catch (error: unknown) {
       // Erro ao buscar assinatura
-      // console.error('Error fetching subscription:', error);
+      console.error('Error fetching subscription:', error);
       res.status(500).json({ message: 'Error fetching subscription', error: (error as Error).message });
     }
   }
@@ -112,7 +112,7 @@ export class SubscriptionController {
       res.status(200).json(updatedSubscription);
     } catch (error: unknown) {
       // Erro ao atualizar assinatura
-      // console.error('Error updating subscription:', error);
+      console.error('Error updating subscription:', error);
       res.status(500).json({ message: 'Error updating subscription', error: (error as Error).message });
     }
   }
@@ -137,7 +137,7 @@ export class SubscriptionController {
       res.status(200).json(canceledSubscription);
     } catch (error: unknown) {
       // Erro ao cancelar assinatura
-      // console.error('Error canceling subscription:', error);
+      console.error('Error canceling subscription:', error);
       res.status(500).json({ message: 'Error canceling subscription', error: (error as Error).message });
     }
   }
@@ -163,7 +163,7 @@ export class SubscriptionController {
       res.status(200).json(renewedSubscription);
     } catch (error: unknown) {
       // Erro ao renovar assinatura
-      // console.error('Error renewing subscription:', error);
+      console.error('Error renewing subscription:', error);
       res.status(500).json({ message: 'Error renewing subscription', error: (error as Error).message });
     }
   }
