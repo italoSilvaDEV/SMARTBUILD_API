@@ -47,7 +47,6 @@ export class FindPdfProjectAllController {
 
       return response.json({ total, result: resultWithPresignedPdf });
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
       }

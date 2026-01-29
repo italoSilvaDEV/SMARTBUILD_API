@@ -59,7 +59,6 @@ export class UserController {
           }
         }
       } catch (error) {
-        console.error(`[create] Error verifying employee limit:`, error);
       }
     }
 
@@ -182,7 +181,6 @@ export class UserController {
               text: text
             });
           } catch (mailErr) {
-            console.error(`[create] Error sending email:`, mailErr);
           }
         }
 
@@ -246,7 +244,6 @@ export class UserController {
           text: `Welcome ${data.name}!\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
         });
       } catch (mailErr) {
-        console.error(`[create] Error sending email:`, mailErr);
       }
 
       // apagar tmp
@@ -256,7 +253,6 @@ export class UserController {
 
       return res.status(201).json({ message: "User created successfully" });
     } catch (error: any) {
-      console.error(`[create] Error:`, error);
       return res.status(500).json({ error: error.message || "Internal error" });
     }
   }
@@ -504,10 +500,8 @@ export class UserController {
                 paymentFailed = true;
               }
 
-              console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
             }
             catch (stripeError) {
-              console.error('Erro ao verificar assinatura no Stripe:', stripeError);
               // Fallback para verificação local em caso de erro
               isExpired = new Date(subscription.endDate) < new Date();
             }
@@ -570,7 +564,6 @@ export class UserController {
         paymentFailed
       });
     } catch (error) {
-      console.error("Erro na autenticação:", error);
       return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
@@ -1094,10 +1087,8 @@ export class UserController {
           subject: "Smart Build - Password Reset",
           html: templateEmail
         });
-        console.log("e-mail enviado com sucesso!");
         return response.json({ message: "Email sent successfully" });
       } catch (error) {
-        console.error("Erro ao enviar e-mail:", error);
         return response.status(500).json({ error: "Erro ao enviar e-mail" });
       }
   }
@@ -1252,12 +1243,10 @@ export class UserController {
           text: `Hello ${user.name}!\n\nYour new temporary password is: ${newPassword}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
         });
       } catch (mailErr) {
-        console.error(`[updateUserEmailAndSendPassword] Error sending email:`, mailErr);
       }
 
       return res.status(200).json({ message: "Email updated and password sent successfully" });
     } catch (error) {
-      console.error("Error updating email:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
       });
@@ -1391,10 +1380,8 @@ export class UserController {
               }
             }
 
-            console.log(`Assinatura Stripe verificada: ${stripeSubscription.id}, status: ${stripeSubscription.status}, cancelada: ${stripeSubscriptionCanceled}, pagamento falho: ${paymentFailed}`);
           }
           catch (stripeError) {
-            console.error('Erro ao verificar assinatura no Stripe:', stripeError);
             // Fallback para verificação local em caso de erro
             isExpired = new Date(subscription.endDate) < new Date();
           }
@@ -1411,7 +1398,6 @@ export class UserController {
       });
 
     } catch (error) {
-      console.error("Erro ao verificar status da assinatura:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
@@ -1561,7 +1547,6 @@ export class UserController {
       });
 
     } catch (error) {
-      console.error("Erro ao verificar status da assinatura local:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor"
       });
@@ -1768,7 +1753,6 @@ export class UserController {
       });
 
     } catch (error) {
-      console.error("[checkUserCompanies] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
       });
@@ -1844,7 +1828,6 @@ export class UserController {
       }
 
     } catch (error) {
-      console.error("[checkEmailAvailability] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
       });
@@ -1910,7 +1893,6 @@ export class UserController {
       );
 
       if (!hasCommonCompany) {
-        console.error(`[resendPassword] Security violation: Admin ${adminUserId} attempted to change password for user ${id} from different company`);
         return res.status(403).json({ 
           error: "You can only reset passwords for users in your company" 
         });
@@ -1960,12 +1942,10 @@ export class UserController {
           emailSent: true
         });
       } catch (mailErr) {
-        console.error("[resendPassword] Error sending email:", mailErr);
         return res.status(500).json({ error: "Error sending email. Please try again." });
       }
 
     } catch (error) {
-      console.error("[resendPassword] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
       });

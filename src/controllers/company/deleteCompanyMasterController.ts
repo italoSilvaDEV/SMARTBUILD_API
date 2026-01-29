@@ -44,7 +44,6 @@ export class DeleteCompanyMasterController {
             });
 
         } catch (error) {
-            console.error("Error in requestDeletion:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -177,7 +176,6 @@ export class DeleteCompanyMasterController {
             });
 
         } catch (error: any) {
-            console.error("Error in confirmDeletion master:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

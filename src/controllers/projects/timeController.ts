@@ -613,7 +613,6 @@ export class TimeController {
                 totalPages: Math.ceil(consolidatedWorkers.length / pageSize)
             });
         } catch (error) {
-            console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -1052,7 +1051,6 @@ export class TimeController {
             });
 
         } catch (error) {
-            console.error("Error in findManyByIdWorker:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
@@ -1406,7 +1404,6 @@ export class TimeController {
             });
 
         } catch (error) {
-            console.error("Error in findManyByIdWorker:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
@@ -1599,7 +1596,6 @@ export class TimeController {
                 }
             );
         } catch (error) {
-            console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });

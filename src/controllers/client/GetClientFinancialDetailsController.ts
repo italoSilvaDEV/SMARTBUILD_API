@@ -113,7 +113,6 @@ export class GetClientFinancialDetailsController {
             });
 
         } catch (error) {
-            console.error("Error getting client financial details:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }

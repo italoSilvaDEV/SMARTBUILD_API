@@ -50,7 +50,6 @@ export class DeleteSubcontractorController {
       });
 
     } catch (error) {
-      console.error("Error deleting subcontractor:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

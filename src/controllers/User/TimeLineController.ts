@@ -26,16 +26,12 @@ export class TimeLineController {
             // Executar otimizações após 10 segundos (não bloquear startup)
             setTimeout(async () => {
                 try {
-                    console.log('[TIMELINE-CONTROLLER] Initializing database optimizations...');
                     // Criar índices de performance de forma segura
                     await this.createSafeIndexes();
-                    console.log('[TIMELINE-CONTROLLER] Database optimizations completed');
                 } catch (error) {
-                    console.error('[TIMELINE-CONTROLLER] Error in delayed optimization:', error);
                 }
             }, 10000);
         } catch (error) {
-            console.error('[TIMELINE-CONTROLLER] Error initializing optimizations:', error);
         }
     }
 
@@ -49,9 +45,7 @@ export class TimeLineController {
 CREATE INDEX idx_timeline_user_service_project_time 
 ON TimeLine(userServiceProjectId, check_in_time DESC)
 `;
-                console.log('[TIMELINE-CONTROLLER] Created index: idx_timeline_user_service_project_time');
             } else {
-                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_timeline_user_service_project_time');
             }
 
             // Verificar se índice user_attendance_open existe
@@ -61,9 +55,7 @@ ON TimeLine(userServiceProjectId, check_in_time DESC)
 CREATE INDEX idx_user_attendance_open 
 ON user_attendance(user_id, user_service_project_id, check_out_time)
 `;
-                console.log('[TIMELINE-CONTROLLER] Created index: idx_user_attendance_open');
             } else {
-                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_user_attendance_open');
             }
 
             // Verificar se índice timeline_user_date existe
@@ -73,14 +65,10 @@ ON user_attendance(user_id, user_service_project_id, check_out_time)
 CREATE INDEX idx_timeline_user_date 
 ON TimeLine(user_id, check_in_time DESC)
 `;
-                console.log('[TIMELINE-CONTROLLER] Created index: idx_timeline_user_date');
             } else {
-                console.log('[TIMELINE-CONTROLLER] Index already exists: idx_timeline_user_date');
             }
 
-            console.log('[TIMELINE-CONTROLLER] Performance indexes verification completed successfully');
         } catch (error) {
-            console.error('[TIMELINE-CONTROLLER] Error creating indexes (non-critical):', error);
             // Não lançar erro para não quebrar a aplicação
         }
     }
@@ -97,7 +85,6 @@ AND index_name = ${indexName}
 ` as any[];
             return result[0]?.count > 0;
         } catch (error) {
-            console.error(`[TIMELINE-CONTROLLER] Error checking index ${indexName}:`, error);
             return false;
         }
     }
@@ -195,8 +182,6 @@ AND index_name = ${indexName}
             // Verifica se o usuário existe
             const userExists = await prisma.user.findUnique({ where: { id: user_id } });
             if (!userExists) {
-                console.log('error', 'User not found.')
-                res.status(400).json({ error: 'User not found.' });
                 return;
             }
 
@@ -213,8 +198,6 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProject) {
-                console.log('error', 'ServiceProject not found.')
-                res.status(400).json({ error: 'ServiceProject not found.' });
                 return;
             }
 
@@ -227,8 +210,6 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProjectExists) {
-                console.log('error', 'UserServiceProject not found.')
-                res.status(400).json({ error: 'UserServiceProject not found.' });
                 return;
             }
 
@@ -285,8 +266,6 @@ AND index_name = ${indexName}
             });
             res.status(201).json(attendance);
         } catch (error) {
-            console.log('error', error)
-            console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
@@ -307,8 +286,6 @@ AND index_name = ${indexName}
             // Verifica se o usuário existe
             const userExists = await prisma.user.findUnique({ where: { id: user_id } });
             if (!userExists) {
-                console.log('error', 'User not found.')
-                res.status(400).json({ error: 'User not found.' });
                 return;
             }
 
@@ -325,8 +302,6 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProject) {
-                console.log('error', 'ServiceProject not found.')
-                res.status(400).json({ error: 'ServiceProject not found.' });
                 return;
             }
 
@@ -339,8 +314,6 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProjectExists) {
-                console.log('error', 'UserServiceProject not found.')
-                res.status(400).json({ error: 'UserServiceProject not found.' });
                 return;
             }
 
@@ -363,7 +336,6 @@ AND index_name = ${indexName}
             }
 
             if (!service_project_id) {
-                console.log('error', 'service_project_id is required');
                 res.status(400).json({ error: 'service_project_id is required.' });
                 return;
             }
@@ -384,8 +356,6 @@ AND index_name = ${indexName}
 
             res.status(201).json(attendance);
         } catch (error) {
-            console.log('error', error)
-            console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
@@ -402,7 +372,6 @@ AND index_name = ${indexName}
             const cacheKey = `timeline_worker_${user_service_project_id}_${date || 'all'}`;
             const cachedResult = this.getCached(cacheKey);
             if (cachedResult) {
-                console.log(`[TIMELINE-CACHE] Cache hit for ${cacheKey}`);
                 return res.status(200).json(cachedResult);
             }
             // Buscar o UserServiceProject para verificar se existe
@@ -440,8 +409,6 @@ AND index_name = ${indexName}
                 }
             });
             if (!userServiceProject) {
-                console.log(user_service_project_id, 'UserServiceProject not found')
-                return res.status(404).json({ error: "UserServiceProject not found" });
             }
             // Gerar URL assinada para o avatar do usuário, se existir
             let userWithPresignedAvatar = { ...userServiceProject.user };
@@ -508,7 +475,6 @@ AND index_name = ${indexName}
             this.setCache(cacheKey, result);
             return res.status(200).json(result);
         } catch (error) {
-            console.error("Error fetching timeline by worker:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -548,7 +514,6 @@ AND index_name = ${indexName}
             });
             res.status(200).json({ message: 'Timeline record deleted successfully.' });
         } catch (error) {
-            console.error('Error deleting timeline:', error);
             res.status(500).json({ error: 'Error while deleting timeline record.' });
         }
     }

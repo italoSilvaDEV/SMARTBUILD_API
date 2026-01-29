@@ -22,7 +22,6 @@ export const setupAttendanceJobs = () => {
                 })
             ));
         } catch (error) {
-            console.error('Automatic Clock-out error:', error);
         }
     });
 };

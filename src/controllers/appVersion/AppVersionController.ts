@@ -29,7 +29,6 @@ export class AppVersionController {
         message: appVersion.message || null
       });
     } catch (error) {
-      console.error("Erro ao buscar versão do app:", error);
       // Em caso de erro, retornar valores que não bloqueiam o app
       return response.json({
         minimumVersion: "0.0.0",
@@ -57,7 +56,6 @@ export class AppVersionController {
 
       return response.json(appVersion);
     } catch (error) {
-      console.error("Erro ao buscar versão do app (admin):", error);
       return response.status(500).json({
         error: "Erro interno do servidor"
       });
@@ -117,7 +115,6 @@ export class AppVersionController {
         data: appVersion
       });
     } catch (error) {
-      console.error("Erro ao atualizar versão do app:", error);
       return response.status(500).json({
         error: "Erro interno do servidor"
       });

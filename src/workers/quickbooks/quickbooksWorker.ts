@@ -3,12 +3,10 @@ import { Worker, QueueEvents } from "bullmq";
 import { redisConnection } from "../../queue/connection";
 import { SyncOrchestratorController } from "../../controllers/quickbooks/sync/SyncOrchestratorController";
 
-console.log("[Worker] iniciado. Aguardando jobs em 'quickbooks-sync'...");
-console.log('[Worker] ENV check -> DATABASE_URL:', !!process.env.DATABASE_URL, ' REDIS_URL:', !!process.env.REDIS_URL);
-// Eventos de fila (logs)
+// Eventos de fila (sem logs para evitar flood no terminal)
 const queueEvents = new QueueEvents("quickbooks-sync", { connection: redisConnection });
-queueEvents.on("completed", ({ jobId }) => console.log(`[Worker] Job ${jobId} COMPLETED`));
-queueEvents.on("failed", ({ jobId, failedReason }) => console.error(`[Worker] Job ${jobId} FAILED: ${failedReason}`));
+queueEvents.on("completed", () => {});
+queueEvents.on("failed", () => {});
 
 const orchestrator = new SyncOrchestratorController();
 
@@ -33,5 +31,4 @@ const worker = new Worker(
 
 // Só para garantir que o processo não finalize
 worker.on("error", (err) => {
-  console.error("[Worker] error:", err);
 });

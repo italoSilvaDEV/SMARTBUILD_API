@@ -137,7 +137,6 @@ export class UserAttendanceController {
 
             res.status(201).json(attendance);
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }
@@ -168,7 +167,6 @@ export class UserAttendanceController {
 
             res.status(200).json(updatedAttendance);
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while checking out.' });
         }
     }
@@ -189,7 +187,6 @@ export class UserAttendanceController {
 
             res.status(200).json(attendances);
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while fetching user attendances.' });
         }
     }
@@ -227,7 +224,6 @@ export class UserAttendanceController {
             // console.log('formattedAttendances', formattedAttendances)
             res.status(200).json(formattedAttendances);
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: "Error while fetching active user attendances." });
         }
     }
@@ -285,7 +281,6 @@ export class UserAttendanceController {
 
             return res.status(200).json(formattedRecords);
         } catch (error) {
-            console.error("Error fetching attendance records:", error);
             return res.status(500).json({ error: "Internal server error." });
         }
     }
@@ -322,7 +317,6 @@ export class UserAttendanceController {
 
             res.status(200).json(updatedAttendance);
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while updating attendance times.' });
         }
     }
@@ -398,7 +392,6 @@ export class UserAttendanceController {
                 attendance: updatedAttendance
             });
         } catch (error) {
-            console.error('Error changing project:', error);
             return res.status(500).json({ error: 'Error processing request' });
         }
     }
@@ -630,7 +623,6 @@ export class UserAttendanceController {
                 data: attendance
             });
         } catch (error) {
-            console.error("Error registering clock in/out:", error);
             return res.status(500).json({
                 success: false,
                 message: "Error processing request",
@@ -790,7 +782,6 @@ export class UserAttendanceController {
                             try {
                                 coverPhotoUrl = await getPresignedUrl(coverPhoto);
                             } catch (error) {
-                                console.error('Error generating presigned URL for cover photo:', error);
                             }
                         }
 
@@ -829,7 +820,6 @@ export class UserAttendanceController {
                 total: formattedServices.length
             });
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while fetching available projects.' });
         }
     }
@@ -1006,7 +996,6 @@ export class UserAttendanceController {
                 message: 'Check-in realizado com sucesso. UserServiceProject criado automaticamente.'
             });
         } catch (error) {
-            console.error(error);
             res.status(500).json({ error: 'Error while checking in.' });
         }
     }

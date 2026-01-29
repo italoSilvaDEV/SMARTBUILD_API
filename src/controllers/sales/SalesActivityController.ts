@@ -59,7 +59,6 @@ export class SalesActivityController {
 
       return res.status(201).json(activity);
     } catch (error: any) {
-      console.error("Error creating activity:", error);
       return res.status(500).json({ 
         error: "Erro ao criar atividade",
         message: error.message 
@@ -96,7 +95,6 @@ export class SalesActivityController {
 
       return res.status(200).json(activities);
     } catch (error: any) {
-      console.error("Error getting activities:", error);
       return res.status(500).json({ 
         error: "Erro ao buscar atividades",
         message: error.message 
@@ -115,7 +113,6 @@ export class SalesActivityController {
 
       return res.status(200).json({ message: "Atividade deletada com sucesso" });
     } catch (error: any) {
-      console.error("Error deleting activity:", error);
       return res.status(500).json({ 
         error: "Erro ao deletar atividade",
         message: error.message 

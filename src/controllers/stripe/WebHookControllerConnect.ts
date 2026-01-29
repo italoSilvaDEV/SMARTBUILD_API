@@ -99,7 +99,6 @@ async function fetchChargeAndFeesWithRetry(opts: {
         }
     }
 
-    console.error("Não foi possível obter BalanceTransaction após retries:", lastError?.message || lastError);
     return null;
 }
 
@@ -140,19 +139,15 @@ export class StripeWebHookControllerConnect {
 
             if (!event) return res.status(400).send("Signature verification failed");
 
-            console.log("Processing connect event:", event.type);
 
             /* ---------- INVOICE PAYMENT SUCCEEDED (CONNECT) ---------- */
             if (event.type === "invoice.payment_succeeded") {
-                console.log("Processando pagamento invoice.payment_succeeded (Conta Conectada)");
-                console.log("E esse amigo");
                 const invoice = event.data.object as Stripe.Invoice;
 
                 // Verificamos que deve ser um evento de conta conectada
                 const stripeEvent = event as Stripe.Event & { account?: string };
 
                 if (stripeEvent.account) {
-                    console.log(" Invoice payment succeeded recebido (Conta Conectada):");
                     // console.log("   • Conta Conectada:", stripeEvent.account);
 
                     // Buscar dados completos da invoice com relacionamentos
@@ -196,16 +191,13 @@ export class StripeWebHookControllerConnect {
                             data: { status: "paid" },
                         });
 
-                        console.log("Fatura de conta conectada atualizada como paga");
 
                         // Enviar emails de confirmação
                         try {
                             await this.sendInvoicePaymentConfirmationEmails(invoiceData, invoice);
                         } catch (emailError: any) {
-                            console.error("Erro ao enviar emails de confirmação:", emailError.message);
                         }
                     } else {
-                        console.log("Invoice não encontrada no banco de dados local");
                     }
                 }
             }
@@ -264,7 +256,6 @@ export class StripeWebHookControllerConnect {
                         try {
                             await this.sendPaymentProcessingEmails(pr.invoice, pi);
                         } catch (emailError: any) {
-                            console.error("Erro ao enviar emails de processamento:", emailError.message);
                         }
 
                         await prisma.invoiceTimeline.create({
@@ -283,7 +274,6 @@ export class StripeWebHookControllerConnect {
                     const pr = await findByPI(pi.id);
                     
                     if (pr?.invoice) {
-                        console.log("Payment requires action (microdeposit verification):", pi.id);
                         
                         // Atualizar status do PaymentIntentRecord
                         await prisma.paymentIntentRecord.update({
@@ -310,8 +300,6 @@ export class StripeWebHookControllerConnect {
                             }
                         }
 
-                        console.log("Verification URL:", verificationUrl);
-                        console.log("Arrival Date:", arrivalDate);
 
                         // Enviar emails de notificação sobre ação necessária
                         try {
@@ -322,7 +310,6 @@ export class StripeWebHookControllerConnect {
                                 arrivalDate
                             );
                         } catch (emailError: any) {
-                            console.error("Erro ao enviar emails de ação necessária:", emailError.message);
                         }
 
                         // Registrar na timeline
@@ -339,12 +326,8 @@ export class StripeWebHookControllerConnect {
                 /* -------------------------- Pagamento concluído ----------------------- */
 
                 case "payment_intent.succeeded": {
-                    console.log("Processando payment_intent.succeeded (Payment Element)");
                     const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-                    console.log("   • PaymentIntent ID:", paymentIntent.id);
-                    console.log("   • Amount:", paymentIntent.amount_received);
-                    console.log("   • Currency:", paymentIntent.currency);
 
                     const pr = await findByPI(paymentIntent.id);
 
@@ -355,7 +338,6 @@ export class StripeWebHookControllerConnect {
 
 
                     if (pr && pr.invoice) {
-                        console.log("pr encontrado para invoice:", pr.invoice.id);
 
                         // Busca fees reais + receipt_url na CONTA CONECTADA (com retry)
                         const feeInfo = await fetchChargeAndFeesWithRetry({
@@ -376,14 +358,6 @@ export class StripeWebHookControllerConnect {
                         const currency = feeInfo?.currency || paymentIntent.currency?.toUpperCase() || "USD";
                         const netToConnected = feeInfo?.net ?? (paidAmount - stripeFeesReal);
 
-                        console.log("Resumo do pagamento:", {
-                            originalAmount,
-                            paidAmount,
-                            localSurcharge,
-                            stripeFeesReal,
-                            netToConnected,
-                            currency,
-                        });
 
                         // Atualiza o registro do PaymentIntent
                         await prisma.paymentIntentRecord.update({
@@ -431,7 +405,6 @@ export class StripeWebHookControllerConnect {
                             })
                         }
 
-                        console.log("Invoice atualizada como paga via Payment Element");
 
                         // Timeline
                         await prisma.invoiceTimeline.create({
@@ -445,18 +418,15 @@ export class StripeWebHookControllerConnect {
                         try {
                             await this.sendPaymentConfirmationEmails(pr.invoice, paymentIntent);
                         } catch (emailError: any) {
-                            console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
                         }
 
                         // Enviar email com PDF de confirmação de pagamento (se existir)
                         try {
                             await this.sendPaymentConfirmationEmailWithPdf(pr.invoice, paymentIntent);
                         } catch (pdfEmailError: any) {
-                            console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
                         }
 
                     } else {
-                        console.log("PaymentIntentRecord não encontrado no banco de dados local");
                     }
 
                     break;
@@ -489,7 +459,6 @@ export class StripeWebHookControllerConnect {
                         try {
                             await this.sendPaymentFailedEmails(pr.invoice, pi, failureMsg);
                         } catch (emailError: any) {
-                            console.error("Erro ao enviar emails de falha no pagamento:", emailError.message);
                         }
 
                         await prisma.invoiceTimeline.create({
@@ -525,7 +494,6 @@ export class StripeWebHookControllerConnect {
                             paymentIntentId = ch.payment_intent.id;
                         }
                     } catch (e) {
-                        console.error("Não foi possível recuperar o charge da disputa:", e);
                     }
 
                     if (paymentIntentId) {
@@ -562,7 +530,6 @@ export class StripeWebHookControllerConnect {
                             try {
                                 await this.sendPaymentDisputedEmails(pr.invoice, dispute.reason || "unknown");
                             } catch (emailError: any) {
-                                console.error("Erro ao enviar emails de disputa:", emailError.message);
                             }
                         }
                     }
@@ -593,7 +560,6 @@ export class StripeWebHookControllerConnect {
                                 paymentIntentId = ch.payment_intent.id;
                             }
                         } catch (e) {
-                            console.error("Não foi possível recuperar o charge da disputa resolvida:", e);
                         }
 
                         if (paymentIntentId) {
@@ -642,18 +608,15 @@ export class StripeWebHookControllerConnect {
 
             return res.json({ received: true });
         } catch (err: any) {
-            console.error("Connect webhook error:", err.message);
             return res.status(400).send(`Connect webhook error: ${err.message}`);
         }
     }
 
     private async sendInvoicePaymentConfirmationEmails(invoiceData: any, stripeInvoice: Stripe.Invoice) {
         try {
-            console.log("Iniciando envio de emails de confirmação de pagamento");
 
             // Verificar se temos dados obrigatórios (nome da empresa é obrigatório)
             if (!invoiceData.company?.name) {
-                console.error("Nome da empresa não encontrado, cancelando envio de emails");
                 return;
             }
 
@@ -711,7 +674,6 @@ export class StripeWebHookControllerConnect {
                 });
             }
 
-            console.log(`Enviando para ${recipients.length} destinatários:`, recipients.map(r => `${r.email} (${r.type})`));
 
             // Resultados do envio para cada email
             const results = [];
@@ -726,7 +688,6 @@ export class StripeWebHookControllerConnect {
                             : `Payment Confirmation - Invoice #${invoiceCode}`,
                         html: recipient.template,
                     });
-                    console.log(`Email de ${recipient.type} enviado para ${recipient.email}`);
 
                     results.push({ email: recipient.email, type: recipient.type, status: "success" });
 
@@ -740,7 +701,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                 } catch (emailError: any) {
-                    console.error(`Erro ao enviar email de ${recipient.type} para ${recipient.email}:`, emailError.message);
 
                     results.push({ email: recipient.email, type: recipient.type, status: "error", message: emailError.message });
 
@@ -756,10 +716,8 @@ export class StripeWebHookControllerConnect {
                 }
             }
 
-            console.log("Resultado do envio de emails:", results);
 
         } catch (error: any) {
-            console.error("[PaymentConfirmation] Erro geral ao enviar emails:", error.message);
             throw error; // Re-throw para que o erro seja capturado no método principal
         }
     }
@@ -769,11 +727,9 @@ export class StripeWebHookControllerConnect {
    */
     private async sendPaymentConfirmationEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
         try {
-            console.log("Iniciando envio de emails de confirmação de pagamento (Payment Element)");
 
             // Verificar se temos dados obrigatórios
             if (!invoiceData.company?.name) {
-                console.error("Nome da empresa não encontrado, cancelando envio de emails");
                 return;
             }
 
@@ -837,7 +793,6 @@ export class StripeWebHookControllerConnect {
                 });
             }
 
-            console.log(`Enviando para ${recipients.length} destinatários:`, recipients.map(r => `${r.email} (${r.type})`));
 
             // Enviar emails para cada destinatário
             for (const recipient of recipients) {
@@ -849,7 +804,6 @@ export class StripeWebHookControllerConnect {
                             : `Payment Confirmation - Invoice #${invoiceCode}`,
                         html: recipient.template,
                     });
-                    console.log(`Email de ${recipient.type} enviado para ${recipient.email}`);
 
                     // Log do envio de email
                     await prisma.invoiceEmailLog.create({
@@ -861,7 +815,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                 } catch (emailError: any) {
-                    console.error(`Erro ao enviar email de ${recipient.type} para ${recipient.email}:`, emailError.message);
 
                     // Log do erro de envio
                     await prisma.invoiceEmailLog.create({
@@ -876,7 +829,6 @@ export class StripeWebHookControllerConnect {
             }
 
         } catch (error: any) {
-            console.error("[PaymentConfirmation] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
@@ -886,10 +838,8 @@ export class StripeWebHookControllerConnect {
      */
     private async sendPaymentProcessingEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
         try {
-            console.log("Iniciando envio de emails de processamento de pagamento");
 
             if (!invoiceData.company?.name) {
-                console.error("Nome da empresa não encontrado, cancelando envio de emails");
                 return;
             }
 
@@ -939,7 +889,6 @@ export class StripeWebHookControllerConnect {
                 });
             }
 
-            console.log(`Enviando emails de processamento para ${recipients.length} destinatários`);
 
             for (const recipient of recipients) {
                 try {
@@ -950,7 +899,6 @@ export class StripeWebHookControllerConnect {
                             : `Payment Being Processed - Invoice #${invoiceCode}`,
                         html: recipient.template,
                     });
-                    console.log(`Email de processamento (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -961,7 +909,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                 } catch (emailError: any) {
-                    console.error(`Erro ao enviar email de processamento para ${recipient.email}:`, emailError.message);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -975,7 +922,6 @@ export class StripeWebHookControllerConnect {
             }
 
         } catch (error: any) {
-            console.error("[PaymentProcessing] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
@@ -985,10 +931,8 @@ export class StripeWebHookControllerConnect {
      */
     private async sendPaymentFailedEmails(invoiceData: any, paymentIntent: Stripe.PaymentIntent, failureReason: string) {
         try {
-            console.log("Iniciando envio de emails de falha no pagamento");
 
             if (!invoiceData.company?.name) {
-                console.error("Nome da empresa não encontrado, cancelando envio de emails");
                 return;
             }
 
@@ -1040,7 +984,6 @@ export class StripeWebHookControllerConnect {
                 });
             }
 
-            console.log(`Enviando emails de falha para ${recipients.length} destinatários`);
 
             for (const recipient of recipients) {
                 try {
@@ -1051,7 +994,6 @@ export class StripeWebHookControllerConnect {
                             : `Payment Failed - Invoice #${invoiceCode}`,
                         html: recipient.template,
                     });
-                    console.log(`Email de falha (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -1062,7 +1004,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                 } catch (emailError: any) {
-                    console.error(`Erro ao enviar email de falha para ${recipient.email}:`, emailError.message);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -1076,7 +1017,6 @@ export class StripeWebHookControllerConnect {
             }
 
         } catch (error: any) {
-            console.error("[PaymentFailed] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
@@ -1086,10 +1026,8 @@ export class StripeWebHookControllerConnect {
      */
     private async sendPaymentDisputedEmails(invoiceData: any, disputeReason: string) {
         try {
-            console.log("Iniciando envio de emails de disputa de pagamento");
 
             if (!invoiceData.company?.name || !invoiceData.company?.email) {
-                console.error("Dados da empresa não encontrados, cancelando envio de emails");
                 return;
             }
 
@@ -1112,7 +1050,6 @@ export class StripeWebHookControllerConnect {
                     subject: ` URGENT: Payment Disputed - Invoice #${invoiceCode}`,
                     html: companyTemplate,
                 });
-                console.log(`Email de disputa enviado para ${invoiceData.company.email}`);
 
                 await prisma.invoiceEmailLog.create({
                     data: {
@@ -1123,7 +1060,6 @@ export class StripeWebHookControllerConnect {
                 });
 
             } catch (emailError: any) {
-                console.error(`Erro ao enviar email de disputa para ${invoiceData.company.email}:`, emailError.message);
 
                 await prisma.invoiceEmailLog.create({
                     data: {
@@ -1136,7 +1072,6 @@ export class StripeWebHookControllerConnect {
             }
 
         } catch (error: any) {
-            console.error("[PaymentDisputed] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
@@ -1151,10 +1086,8 @@ export class StripeWebHookControllerConnect {
         arrivalDate: string
     ) {
         try {
-            console.log("Iniciando envio de emails de ação necessária");
 
             if (!invoiceData.company?.name) {
-                console.error("Nome da empresa não encontrado, cancelando envio de emails");
                 return;
             }
 
@@ -1208,7 +1141,6 @@ export class StripeWebHookControllerConnect {
                 });
             }
 
-            console.log(`Enviando emails de ação necessária para ${recipients.length} destinatários`);
 
             for (const recipient of recipients) {
                 try {
@@ -1219,7 +1151,6 @@ export class StripeWebHookControllerConnect {
                             : `Action Required: Verify Your Bank Account - Invoice #${invoiceCode}`,
                         html: recipient.template,
                     });
-                    console.log(`Email de ação necessária (${recipient.type}) enviado para ${recipient.email}`);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -1230,7 +1161,6 @@ export class StripeWebHookControllerConnect {
                     });
 
                 } catch (emailError: any) {
-                    console.error(`Erro ao enviar email de ação necessária para ${recipient.email}:`, emailError.message);
 
                     await prisma.invoiceEmailLog.create({
                         data: {
@@ -1244,7 +1174,6 @@ export class StripeWebHookControllerConnect {
             }
 
         } catch (error: any) {
-            console.error("[PaymentRequiresAction] Erro geral ao enviar emails:", error.message);
             throw error;
         }
     }
@@ -1254,7 +1183,6 @@ export class StripeWebHookControllerConnect {
      */
     private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentIntent: Stripe.PaymentIntent) {
         try {
-            console.log("Iniciando envio de email com PDF de confirmação de pagamento");
 
             // Obter projeto com workContext
             const project = invoiceData.project || invoiceData.estimate?.project;
@@ -1267,7 +1195,6 @@ export class StripeWebHookControllerConnect {
             const recipientName = workContext?.Name || client?.name || 'Client';
 
             if (!recipientEmail) {
-                console.log("Recipient email not found (neither work context nor client email), skipping email send");
                 return;
             }
 
@@ -1297,14 +1224,11 @@ export class StripeWebHookControllerConnect {
                             type: 'application/pdf',
                             disposition: 'attachment'
                         });
-                        console.log(`PDF paid anexado ao email: ${fileName}`);
                     }
                 } catch (error) {
-                    console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
                     // Continua sem o PDF anexado
                 }
             } else {
-                console.log("PDF invoice paid não encontrado, enviando email sem anexo");
             }
 
             const paymentDate = new Date();
@@ -1348,7 +1272,6 @@ ${company?.name || ''}
                 `.trim()
             });
 
-            console.log(`Email com PDF enviado para ${recipientEmail}`);
 
             // Log do envio de email
             await prisma.invoiceEmailLog.create({
@@ -1360,7 +1283,6 @@ ${company?.name || ''}
             });
 
         } catch (error: any) {
-            console.error("[PaymentConfirmationWithPdf] Erro ao enviar email com PDF:", error.message);
             // Não fazer throw para não interromper o fluxo principal
         }
     }

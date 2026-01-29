@@ -56,7 +56,6 @@ export class CompleteTutorialController {
                 data: progress
             });
         } catch (error) {
-            console.error("Error completing tutorial:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

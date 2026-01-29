@@ -54,7 +54,6 @@ export class FindCatalogAllController {
 
             return response.json({ total, result: resultWithPresigned });
         } catch (error) {
-            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

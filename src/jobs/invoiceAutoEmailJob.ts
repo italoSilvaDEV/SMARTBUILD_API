@@ -143,7 +143,6 @@ function buildEmailTemplate(
  * Função principal que verifica e envia emails para invoices pendentes
  */
 async function checkAndSendAutoEmails() { 
-  console.log(`[${new Date().toISOString()}] Iniciando verificação automática de emails de invoices...`);
 
   try {
     // Buscar todas as configurações ativas
@@ -156,7 +155,6 @@ async function checkAndSendAutoEmails() {
       }
     });
 
-    console.log(`Encontradas ${activeConfigs.length} configurações ativas de envio automático de emails`);
 
     // Para cada configuração ativa, processar os invoices da empresa
     for (const config of activeConfigs) {
@@ -254,7 +252,6 @@ async function checkAndSendAutoEmails() {
           });
 
           if (alreadySentToday) {
-            console.log(`Email do tipo ${emailType} já foi enviado hoje para o invoice ${invoice.externalInvoiceId}`);
             continue;
           }
 
@@ -263,15 +260,12 @@ async function checkAndSendAutoEmails() {
           await sendAutoEmail(invoice, emailType, config.company); 
         }
       } catch (companyError) {
-        console.error(`Erro ao processar empresa ${config.company.name}:`, companyError);
         // Continuar para a próxima empresa em caso de erro
         continue;
       }
     }
 
-    console.log(`[${new Date().toISOString()}] Verificação automática de emails de invoices concluída`);
   } catch (error) {
-    console.error("Erro em checkAndSendAutoEmails:", error);
   }
 }
 
@@ -285,14 +279,11 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
     const clientName = invoice.project?.workContext?.Name || invoice.project?.client?.name || "Client";
     
     if (!recipientEmail) {
-      console.error(`Nenhum email de destinatário encontrado para invoice ${invoice.externalInvoiceId}`);
       return;
     }
 
     // Log indicando qual email está sendo usado e para quem está enviando
     const emailSource = invoice.project?.workContext?.Email ? "workContext" : "client";
-    console.log(`Usando email de ${emailSource} para invoice ${invoice.externalInvoiceId}: ${recipientEmail}`);
-    console.log(`📧 Enviando email automático para: ${recipientEmail} (${clientName}) - Invoice #${invoice.externalInvoiceId}`);
     const invoiceCode = invoice.externalInvoiceId || invoice.id.substring(0, 8);
     const invoiceAmount = Number(invoice.totalAmount).toLocaleString("en-US", {
       style: "currency",
@@ -316,7 +307,6 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
             fileName = pdfProject.original_file_name || fileName;
           }
         } catch (pdfError) {
-          console.warn(`Falha ao buscar PDF para invoice ${invoice.id}:`, pdfError);
         }
       }
     }
@@ -406,12 +396,10 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
       }
     });
 
-    console.log(` Email do tipo ${emailType} enviado com sucesso para invoice ${invoiceCode} para ${recipientEmail}`);
   } catch (error: any) {
     // Obter email do destinatário para o log de erro (workContext primeiro, depois client)
     const recipientEmailForLog = invoice.project?.workContext?.Email || invoice.project?.client?.email || "unknown";
 
-    console.error(` Erro ao enviar email automático para invoice ${invoice.id}:`, error.code, error.message);
 
     // Registrar erro no log
     await prisma.invoiceAutoEmailLog.create({
@@ -431,14 +419,11 @@ async function sendAutoEmail(invoice: any, emailType: string, company: any) {
  * Executa todos os dias às 9h da manhã (0 9 * * *)
  */
 export function setupInvoiceAutoEmailJob() {
-  console.log("Configurando job de cron para envio automático de emails de invoices...");
 
   // Agendar para executar todos os dias às 19:09
   cron.schedule("0 9 * * *", () => {
-    console.log("Executando job agendado de envio automático de emails de invoices às 09:00");
     checkAndSendAutoEmails();
   });
 
-  console.log("Job de cron de envio automático de emails de invoices agendado para 09:00 diariamente");
 }
 

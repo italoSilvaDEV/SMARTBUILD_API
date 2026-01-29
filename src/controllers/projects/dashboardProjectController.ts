@@ -338,7 +338,6 @@ export class DashboardProjectController {
             });
 
         } catch (error) {
-            console.error("Error fetching dashboard metrics:", error);
             return res.status(500).json({
                 error: "Internal server error while fetching dashboard metrics"
             });

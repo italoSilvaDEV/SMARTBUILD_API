@@ -21,7 +21,6 @@ export class SendEmailChangeOrderController {
                             fs.unlinkSync(file.path);
                         }
                     } catch (error) {
-                        console.error(`❌ Error deleting temporary file ${file.path}:`, error);
                     }
                 });
             }
@@ -178,7 +177,6 @@ export class SendEmailChangeOrderController {
             try {
                 await SendEmailChangeOrderController.verifySMTPConfig();
             } catch (error) {
-                console.error('SMTP verification failed:', error);
             }
 
             const results = [];
@@ -207,7 +205,6 @@ export class SendEmailChangeOrderController {
                                 disposition: 'attachment'
                             });
                         } catch (error) {
-                            console.error(`❌ Error reading attachment file ${file.originalname}:`, error);
                         }
                     }
                 }
@@ -236,14 +233,12 @@ export class SendEmailChangeOrderController {
                     attachments: attachments as any,
                 });
 
-                console.log('Email sent to:', toEmails);
 
                 for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "success" });
                 }
 
             } catch (error: any) {
-                console.error('❌ Error sending change order email:', error);
 
                 for (const recipient of toEmails) {
                     results.push({ email: recipient, status: "error", message: error.message });
@@ -266,7 +261,6 @@ export class SendEmailChangeOrderController {
                 }
             });
         } catch (error) {
-            console.error('Unexpected error in sendEmail:', error);
             cleanupTempFiles(attachmentFiles);
             return res.status(500).json({ error: "Failed to send change order email" });
         }

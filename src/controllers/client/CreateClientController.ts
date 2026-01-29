@@ -93,9 +93,7 @@ export class CreateClientController {
               isActive: true,
             },
           });
-          console.log(`[WorkContext] Created work context ${createdWorkContext.id} for client ${result.id}`);
         } catch (wcError) {
-          console.error("[WorkContext] Error creating work context:", wcError);
           // Don't fail the client creation if work context fails
         }
       }
@@ -103,11 +101,8 @@ export class CreateClientController {
        
        
        if (autorId && company_id) {
-         console.log(`[QBO][create] disparando upsert fire-and-forget client=${result.id} company=${result.company_id} user=${autorId}`);
          fireAndForgetUpsertToQBO(company_id, autorId, result.id);
        } else {
-         console.warn("[QBO][create] Não foi possível disparar sync: userId ou company_id ausentes");
-         console.log(autorId, company_id);
        }
 
       return res.json({

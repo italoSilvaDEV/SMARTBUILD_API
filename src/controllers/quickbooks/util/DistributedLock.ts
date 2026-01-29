@@ -45,7 +45,6 @@ export class DistributedLock {
         );
 
         if (result === 'OK') {
-          console.log(`[DistributedLock] Lock adquirido: ${this.lockKey}`);
           return true;
         }
 
@@ -54,15 +53,12 @@ export class DistributedLock {
           await this.sleep(retryDelayMs);
         }
       } catch (error) {
-        console.error(`[DistributedLock] Erro ao tentar adquirir lock ${this.lockKey}:`, error);
         
         // Para erros de conexão Redis, verifica se deve falhar graciosamente
         if (attempt === maxRetries) {
           if (gracefulOnFailure) {
-            console.warn(`[DistributedLock] Fallback graceful - continuando sem lock: ${this.lockKey}`);
             return true; // Em caso de falha do Redis, permite continuar
           } else {
-            console.error(`[DistributedLock] Redis falhou e graceful está desabilitado: ${this.lockKey}`);
             throw new Error(`[DistributedLock] Lock unavailable and graceful disabled: ${this.lockKey}`);
           }
         }
@@ -71,9 +67,7 @@ export class DistributedLock {
       }
     }
 
-    console.log(`[DistributedLock] Falha ao adquirir lock após ${maxRetries} tentativas: ${this.lockKey}`);
     if (gracefulOnFailure) {
-      console.warn(`[DistributedLock] Fallback graceful após timeout - continuando sem lock: ${this.lockKey}`);
       return true;
     }
     return false;
@@ -97,14 +91,11 @@ export class DistributedLock {
       const result = await this.redis.eval(script, 1, this.lockKey, this.lockValue) as number;
       
       if (result === 1) {
-        console.log(`[DistributedLock] Lock liberado: ${this.lockKey}`);
         return true;
       } else {
-        console.warn(`[DistributedLock] Lock não pôde ser liberado (não é nosso): ${this.lockKey}`);
         return false;
       }
     } catch (error) {
-      console.error(`[DistributedLock] Erro ao liberar lock ${this.lockKey}:`, error);
       return false;
     }
   }

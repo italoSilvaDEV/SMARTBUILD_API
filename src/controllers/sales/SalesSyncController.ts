@@ -170,7 +170,6 @@ export class SalesSyncController {
         total: companies.length
       });
     } catch (error: any) {
-      console.error("Error syncing companies to deals:", error);
       return res.status(500).json({
         error: "Erro ao sincronizar clientes",
         message: error.message

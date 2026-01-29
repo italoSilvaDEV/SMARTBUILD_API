@@ -27,7 +27,6 @@ export class FindServiceController {
 
             return response.json(services);
         } catch (error) {
-            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
@@ -76,7 +75,6 @@ export class FindServiceController {
             
             return res.json(services);
         } catch (error) {
-            console.error(error);
             return res.status(500).json({ error: "Failed to fetch services" });
         }
     }

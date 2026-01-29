@@ -34,7 +34,6 @@ export class AuditController {
 
       return res.status(201).json(audit);
     } catch (error) {
-      console.error('Error creating audit record:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -63,7 +62,6 @@ export class AuditController {
 
       return res.status(200).json(audits);
     } catch (error) {
-      console.error('Error fetching audit records:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -101,7 +99,6 @@ export class AuditController {
         }
       });
     } catch (error) {
-      console.error('Error fetching all audit records:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

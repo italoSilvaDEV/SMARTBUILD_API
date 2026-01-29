@@ -40,7 +40,6 @@ export class PdfInvoicePaidController {
             })
 
             if (!invoice) {
-                console.log('[PdfInvoicePaid] CREATE - Invoice not found:', invoiceId);
                 return res.status(404).json({
                     error: "Invoice not found"
                 })
@@ -92,8 +91,6 @@ export class PdfInvoicePaidController {
                 data: newPdf
             })
         } catch (error) {
-            console.error('[PdfInvoicePaid] CREATE - Error:', error);
-            console.error('[PdfInvoicePaid] CREATE - Error stack:', error instanceof Error ? error.stack : 'No stack trace');
             return res.status(500).json({
                 error: "Internal server error",
                 details: error instanceof Error ? error.message : 'Unknown error'
@@ -259,7 +256,6 @@ export class PdfInvoicePaidController {
                 })
 
                 if (!pdfInvoicePaid || !pdfInvoicePaid.uri) {
-                    console.log("PDF invoice paid not found, skipping email send");
                     return res.status(200).json({
                         message: "Invoice checked successfully",
                     })
@@ -289,7 +285,6 @@ export class PdfInvoicePaidController {
                 })
 
                 if (!invoiceWithDetails) {
-                    console.error("Invoice not found for email sending");
                     return res.status(200).json({
                         message: "Invoice checked successfully",
                     })
@@ -299,7 +294,6 @@ export class PdfInvoicePaidController {
                 const company = invoiceWithDetails.project?.company || invoiceWithDetails.estimate?.project?.company;
 
                 if (!client || !client.email) {
-                    console.log("Client email not found, skipping email send");
                     return res.status(200).json({
                         message: "Invoice checked successfully",
                     })
@@ -308,7 +302,6 @@ export class PdfInvoicePaidController {
                 try {
                     await PdfInvoicePaidController.verifySMTPConfig();
                 } catch (error) {
-                    console.error('SMTP verification failed:', error);
                 }
 
                 const companyAvatar = company?.avatar
@@ -353,16 +346,13 @@ export class PdfInvoicePaidController {
                     ]
                 })
 
-                console.log(`Payment receipt email sent to ${client.email}`);
             } catch (emailError: any) {
-                console.error("Error sending payment receipt email:", emailError);
             }
 
             return res.status(200).json({
                 message: "Invoice checked successfully",
             })
         } catch (error) {
-            console.error("Error in setChecked:", error);
             return res.status(500).json({
                 error: "Internal server error"
             })

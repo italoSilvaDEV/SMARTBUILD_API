@@ -74,7 +74,6 @@ export function calcularHorasTrabalhadas(
             extras: formatHM(msExtras)
         };
     } catch (error) {
-        console.error('Erro ao calcular horas:', error, { inicioUtc, fimUtc });
         return {
             normais: '00:00',
             extras: '00:00'

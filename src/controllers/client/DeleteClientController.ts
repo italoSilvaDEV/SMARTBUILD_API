@@ -129,14 +129,12 @@ export class DeleteClientController {
         });
       });
 
-      console.log(`[Delete Client] Client ${id} and all related data successfully deleted`);
 
       return res.json({
         success: true,
         message: 'Client and all related data deleted successfully'
       });
     } catch (error: any) {
-      console.error('[Delete Client] Error:', error);
       return res.status(500).json({
         error: 'Error deleting client',
         details: error.message

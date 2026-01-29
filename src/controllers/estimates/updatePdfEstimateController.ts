@@ -85,7 +85,6 @@ export class updatePdfEstimateController {
                     try {
                         await this.deleteFilesFromS3(existingPdf.uri);
                     } catch (error) {
-                        console.error("Error deleting old file from S3:", error);
                     }
                 }
 
@@ -120,7 +119,6 @@ export class updatePdfEstimateController {
                 });
 
             } catch (error) {
-                console.error("Error updating PDF:", error);
                 if (req.file) {
                     setImmediate(() => {
                         this.deleteFiles(req.file!.filename);

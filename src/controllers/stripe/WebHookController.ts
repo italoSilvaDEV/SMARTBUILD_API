@@ -28,15 +28,10 @@ export class StripeWebHooksController {
 
             if (!event) return res.status(400).send("Signature verification failed");
 
-            console.log("Processing event:", event.type);
           
             if (event.type === "invoice.payment_succeeded") {
-                console.log("Processando pagamento invoice.payment_succeeded (Conta Principal)");
                 const invoice = event.data.object as Stripe.Invoice;
                 
-                console.log(" Invoice payment succeeded recebido (Conta Principal):");
-                console.log("    Invoice ID:", invoice.id);
-                console.log("    Subscription:", invoice.subscription);
                 
                 if (invoice.subscription) {
                     const subscription = await prisma.subscription.findFirst({
@@ -54,14 +49,12 @@ export class StripeWebHooksController {
                             data: { paymentFailed: false }
                         });
                         
-                        console.log("    Assinatura na conta principal atualizada");
                     }
                 }
             }
 
             /* ---------- CHECKOUT COMPLETED ---------- */
             else if (event.type === "checkout.session.completed") {
-                console.log("processando pagamento checkout.session.completed");
                 const session = event.data.object as Stripe.Checkout.Session;
 
                 if (session.mode === "subscription") {
@@ -70,16 +63,13 @@ export class StripeWebHooksController {
                     
                     // Log separado: Rewardful usa client_reference_id
                     if (session.client_reference_id) {
-                        console.log(' [Rewardful] Referral ID detectado:', session.client_reference_id);
                     }
                     
                     //  Log separado: Sistema interno usa metadata  
                     if (referralId && referralId !== session.client_reference_id) {
-                        console.log(' [Backup] Referral ID também encontrado nos metadados:', referralId);
                     }
 
                     if (companyId && planId) {
-                        console.log(" Checkout completado para companyId:", companyId, "planId:", planId);
 
                         // Atualizar a empresa com o novo plano e allowedEmployees
                         await prisma.company.update({
@@ -93,14 +83,12 @@ export class StripeWebHooksController {
                             }
                         });
 
-                        console.log(" Empresa atualizada com novo plano");
 
                         // Identificar a assinatura Stripe criada por este checkout
                         const stripeSubscriptionId = typeof session.subscription === "string"
                             ? session.subscription
                             : session.subscription?.id;
 
-                        console.log("Nova assinatura Stripe ID:", stripeSubscriptionId);
 
                         // NÃO vamos desativar assinaturas antigas aqui
                         // Isso será feito de forma segura no evento subscription.created
@@ -110,14 +98,8 @@ export class StripeWebHooksController {
 
             /* ---------- SUBSCRIPTION UPDATED ---------- */
             else if (event.type === "customer.subscription.updated") {
-                console.log("processando pagamento customer.subscription.updated")
                 const sub = event.data.object as Stripe.Subscription;
 
-                console.log("  subscription.updated recebido:");
-                console.log("    Stripe subscription ID:", sub.id);
-                console.log("    Status:", sub.status);
-                console.log("   current_period_end (unix):", sub.current_period_end);
-                console.log("   canceled_at (unix):", sub.canceled_at || "não cancelada");
 
                 // Busca assinatura local pelo ID do Stripe
                 const localSub = await prisma.subscription.findFirst({
@@ -125,18 +107,15 @@ export class StripeWebHooksController {
                 });
 
                 if (!localSub) {
-                    console.log("    Nenhuma assinatura local encontrada para este ID.");
                     return res.json({ received: true }); // não faz nada se não existir no banco
                 }
 
-                console.log("   • Assinatura local encontrada:", localSub.id);
 
                 const newEnd = new Date(sub.current_period_end * 1000);
                 
                 // Verificar tipo de cancelamento
                 if (sub.status === 'canceled') {
                     // Cancelamento imediato
-                    console.log("    Assinatura cancelada imediatamente detectada!");
                     
                     await prisma.subscription.update({
                         where: { id: localSub.id },
@@ -147,13 +126,10 @@ export class StripeWebHooksController {
                         }
                     });
                     
-                    console.log("    Assinatura marcada como inativa e cancelada imediatamente");
                     return res.json({ received: true });
                 } 
                 else if (sub.cancel_at_period_end) {
                     // Cancelamento agendado para o final do período
-                    console.log("    Cancelamento ao final do período detectado");
-                    console.log("   • Data de término do período:", newEnd.toISOString());
                     
                     // Manter assinatura ativa até o final do período
                     await prisma.subscription.update({
@@ -166,14 +142,11 @@ export class StripeWebHooksController {
                         }
                     });
                     
-                    console.log("    Assinatura permanecerá ativa até o final do período");
                 }
                 else {
                     // Para outros casos, continua com a lógica normal
                     const isActive = sub.status === "active" || sub.status === "trialing";
                     
-                    console.log("    Novo endDate:", newEnd.toISOString());
-                    console.log("    isActive calculado:", isActive);
                     
                     await prisma.subscription.update({
                         where: { id: localSub.id },
@@ -185,19 +158,16 @@ export class StripeWebHooksController {
                         }
                     });
                     
-                    console.log("    Assinatura local atualizada.");
                 }
 
                 // Verifica se houve troca de preço / plano
                 const price = sub.items.data[0].price;
 
-                console.log("esse é o price", JSON.stringify(price, null, 2));
                 const plan = await prisma.plan.findFirst({
                     where: { stripePriceId: price.id },
                 });
 
                 if (plan) {
-                    console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
                     
                     // Buscar allowedEmployees do plano
                     const allowedEmployeesFromPlan = plan.allowedEmployees;
@@ -208,7 +178,6 @@ export class StripeWebHooksController {
                         select: { allowedEmployees: true }
                     });
 
-                    console.log("esse é oallowedEmployeesFromPlan", allowedEmployeesFromPlan);
                     
                     // Atualizar a empresa com o novo plano e allowedEmployees se necessário
                     await prisma.company.update({
@@ -226,29 +195,19 @@ export class StripeWebHooksController {
                             planId: plan.id,
                         },
                     });
-                    console.log("     Assinatura local atualizada.");
-                    console.log("     company.planId atualizado para", plan.id);
                 } else {
-                    console.log("    Nenhum plano correspondente ao price.id", price.id);
                 }
             }
 
             /* ---------- SUBSCRIPTION CREATED ---------- */
             else if (event.type === "customer.subscription.created") {
-                console.log("processando pagamento customer.subscription.created");
                 const sub = event.data.object as Stripe.Subscription;
 
-                console.log("  subscription.created recebido:");
-                console.log("    Stripe subscription ID:", sub.id);
-                console.log("    Status:", sub.status);
-                console.log("    current_period_end (unix):", sub.current_period_end);
-                console.log("   Customer ID:", sub.customer);
 
                 // Verificar se temos o companyId na metadata
                 const { companyId } = sub.metadata;
 
                 if (!companyId) {
-                    console.log("     Nenhum companyId encontrado na metadata, verificando por checkout.session.completed");
                     // Buscar o checkout.session que originou essa assinatura
                     // A assinatura geralmente é criada logo após o checkout.session.completed
                     const checkoutSessions = await stripe.checkout.sessions.list({
@@ -264,18 +223,15 @@ export class StripeWebHooksController {
                             : session.subscription.id === sub.id)
                     );
                     if (relatedSession) {
-                        console.log("     Encontrada sessão de checkout relacionada:", relatedSession.id);
 
                         //  Sistema interno usa metadata
                         const companyIdFromSession = relatedSession.metadata?.companyId;
                         
                         //  Log do Rewardful se existir
                         if (relatedSession.client_reference_id) {
-                            console.log(' [Rewardful] Referral ID na sessão:', relatedSession.client_reference_id);
                         }
 
                         if (companyIdFromSession) {
-                            console.log("     Encontrado companyId:", companyIdFromSession);
 
                             // Atualizar a metadata da assinatura para incluir o companyId
                             await stripe.subscriptions.update(sub.id, {
@@ -294,18 +250,15 @@ export class StripeWebHooksController {
                             });
 
                             if (!plan) {
-                                console.log("     Nenhum plano encontrado com o price.id:", priceId);
                                 return res.json({ received: true });
                             }
 
-                            console.log("    Novo plano detectado:", plan.name, "(", plan.id, ")");
 
                             // Salvar o stripeCustomerId na tabela Company
                             const stripeCustomerId = typeof sub.customer === 'string' 
                                 ? sub.customer 
                                 : sub.customer.id;
                             
-                            console.log("   Customer ID para salvar:", stripeCustomerId);
                             
                             // Atualizar o plano e o stripeCustomerId da empresa
                             await prisma.company.update({
@@ -319,8 +272,6 @@ export class StripeWebHooksController {
                                     })
                                 }
                             });
-                            console.log("     company.planId atualizado para", plan.id);
-                            console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
 
                             // Criar assinatura no banco
                             const newSubscription = await prisma.subscription.create({
@@ -337,14 +288,11 @@ export class StripeWebHooksController {
                                 }
                             });
 
-                            console.log("     Assinatura criada com sucesso:", newSubscription.id);
                             return res.json({ received: true });
                         } else {
-                            console.log("     Não foi possível encontrar a sessão relacionada à assinatura");
                             return res.json({ received: true });
                         }
                     } else {
-                        console.log("     Não foi possível encontrar a sessão relacionada à assinatura");
                         return res.json({ received: true });
                     }
                 }
@@ -357,7 +305,6 @@ export class StripeWebHooksController {
                     });
 
                     if (existingSubscription) {
-                        console.log(" Assinatura já existe no banco:", existingSubscription.id);
                         // Não fazer nada, a assinatura já foi processada
                         return res.json({ received: true });
                     }
@@ -374,14 +321,12 @@ export class StripeWebHooksController {
                         },
                         data: { isActive: false }
                     });
-                    console.log(" Assinaturas anteriores (incluindo planos FREE) marcadas como inativas");
 
                     // Salvar o stripeCustomerId na tabela Company
                     const stripeCustomerId = typeof sub.customer === 'string' 
                         ? sub.customer 
                         : sub.customer.id;
                     
-                    console.log("   • Customer ID para salvar:", stripeCustomerId);
                     
                     // Buscar o plano baseado no priceId
                     const priceId = sub.items.data[0].price.id;
@@ -390,13 +335,11 @@ export class StripeWebHooksController {
                     });
                     
                     if (!plan) {
-                        console.log("     Nenhum plano encontrado com o price.id:", priceId);
                         // Ainda assim, vamos atualizar o stripeCustomerId
                         await prisma.company.update({
                             where: { id: companyId },
                             data: { stripeCustomerId }
                         });
-                        console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
                         return res.json({ received: true });
                     }
                     
@@ -410,8 +353,6 @@ export class StripeWebHooksController {
                             allowedEmployees: plan.allowedEmployees
                         }
                     });
-                    console.log("     company.planId atualizado para", plan.id);
-                    console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
                     
                     // Criar a nova assinatura local
                     const newSubscription = await prisma.subscription.create({
@@ -428,20 +369,13 @@ export class StripeWebHooksController {
                         }
                     });
                     
-                    console.log("    Nova assinatura criada com sucesso:", newSubscription.id);
                 }
             }
 
             /* ---------- SUBSCRIPTION DELETED ---------- */
             else if (event.type === "customer.subscription.deleted") {
-                console.log("processando pagamento customer.subscription.deleted");
                 const sub = event.data.object as Stripe.Subscription;
 
-                console.log("  subscription.deleted recebido:");
-                console.log("    Stripe subscription ID:", sub.id);
-                console.log("   Status:", sub.status);
-                console.log("    Cancelamento programado:", sub.cancel_at_period_end ? "Sim" : "Não");
-                console.log("    Cancelado em:", sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : "N/A");
 
                 // Buscar a assinatura no banco de dados
                 const localSubscription = await prisma.subscription.findFirst({
@@ -449,13 +383,9 @@ export class StripeWebHooksController {
                 });
 
                 if (!localSubscription) {
-                    console.log("     Nenhuma assinatura local encontrada para este ID.");
                     return res.json({ received: true });
                 }
 
-                console.log("   • Assinatura local encontrada:", localSubscription.id);
-                console.log("   • Já está marcada como cancelada:", localSubscription.stripeSubscriptionCanceled ? "Sim" : "Não");
-                console.log("   • Já está marcada como inativa:", !localSubscription.isActive ? "Sim" : "Não");
 
                 // Este evento ocorre quando:
                 // 1. Assinatura foi cancelada imediatamente (não no fim do período)
@@ -469,7 +399,6 @@ export class StripeWebHooksController {
                         stripeSubscriptionCanceled: true
                     }
                 });
-                console.log("    Assinatura marcada como inativa e cancelada");
 
                 // Nota: Mantemos o usuário no mesmo plano, apenas com assinatura inativa e cancelada
                 // Isso permitirá que o front-end mostre a página "subscription expired/canceled"
@@ -581,12 +510,8 @@ export class StripeWebHooksController {
 
             /* ---------- INVOICE PAYMENT FAILED ---------- */
             else if (event.type === "invoice.payment_failed") {
-                console.log("processando evento invoice.payment_failed");
                 const invoice = event.data.object as Stripe.Invoice;
 
-                console.log(" Invoice payment failed recebido:");
-                console.log("   • Invoice ID:", invoice.id);
-                console.log("   • Subscription:", invoice.subscription);
 
                 if (invoice.subscription) {
                     // Buscar a assinatura no nosso banco pelo subscription ID
@@ -599,7 +524,6 @@ export class StripeWebHooksController {
                     });
 
                     if (subscription) {
-                        console.log("   • Assinatura local encontrada:", subscription.id);
 
                         // Atualizar a assinatura como pagamento falho
                         await prisma.subscription.update({
@@ -607,16 +531,13 @@ export class StripeWebHooksController {
                             data: { paymentFailed: true }
                         });
 
-                        console.log("    Assinatura marcada com pagamento falho");
                     } else {
-                        console.log("    Nenhuma assinatura local encontrada para este ID");
                     }
                 }
             }
 
             return res.json({ received: true });
         } catch (err: any) {
-            console.error("Webhook error:", err.message);
             return res.status(400).send(`Webhook Error: ${err.message}`);
         }
     }

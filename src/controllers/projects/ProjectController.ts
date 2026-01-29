@@ -1067,7 +1067,6 @@ export class ProjectController {
         message: "Service Project and its related data deleted successfully",
       });
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return response.json({ error: error.message });
       }
@@ -1193,7 +1192,6 @@ export class ProjectController {
 
       return response.json({ total, result });
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
       }
@@ -1495,7 +1493,6 @@ export class ProjectController {
 
       return res.json(project);
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -1529,7 +1526,6 @@ export class ProjectController {
 
       return res.json(project);
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -1576,7 +1572,6 @@ export class ProjectController {
 
       return res.json(project);
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -1589,70 +1584,6 @@ export class ProjectController {
       id
     } = req.params;
 
-    console.log("Apagando projeto de id:", id)
-
-    if (!id) {
-      return res.status(400).json({
-        error: "Project id is required"
-      })
-    }
-
-    const project = await prisma.project.findUnique({
-      where: { id }
-    })
-
-    if (!project) {
-      return res.status(404).json({
-        error: "Project not found"
-      })
-    }
-
-    try {
-      await prisma.invoiceCostProject.deleteMany({
-        where: {
-          project_id: id
-        }
-      })
-
-      await prisma.serviceProject.deleteMany({
-        where: {
-          projectId: id
-        }
-      })
-
-      await prisma.workedhours.deleteMany({
-        where: {
-          project_id: id
-        }
-      })
-
-      await prisma.pdfProject.deleteMany({
-        where: {
-          project_id: id
-        }
-      })
-
-      await prisma.estimate.deleteMany({
-        where: {
-          projectId: id
-        }
-      })
-
-      await prisma.contractProject.deleteMany({
-        where: {
-          projectId: id
-        }
-      })
-
-      await prisma.invoice.deleteMany({
-        where: {
-          projectId: id
-        }
-      })
-
-      await prisma.project.delete({
-        where: { id }
-      });
       return res.status(200).json({
         message: "Project deleted successfully",
       })
@@ -2322,7 +2253,6 @@ export class ProjectController {
 
       return res.json(updatedService);
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -2359,7 +2289,6 @@ export class ProjectController {
 
       return res.json(updatedService);
     } catch (error) {
-      console.error(error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -2492,7 +2421,6 @@ export class ProjectController {
 
       // Extrair as notas (apenas o texto)
       const notesArray = companyData.NotesContrac.map((note) => note.notes);
-      console.log("logo depois de comprimir: ", logoUrl)
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
@@ -2674,7 +2602,6 @@ export class ProjectController {
 
       // Extrair as notas (apenas o texto)
       const notesArray = companyData.NotesContrac.map((note) => note.notes);
-      console.log("logo depois de comprimir: ", logoUrl)
       // Preparar o objeto de dados a ser enviado para a função generatePdf
       const data = {
         tableData,
@@ -2899,7 +2826,6 @@ export class ProjectController {
 
 
     } catch (error) {
-      console.error("Erro ao gerar PDF:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Erro interno do servidor",
       });
@@ -3021,7 +2947,6 @@ export class ProjectController {
         try {
           await deleteFileFromS3(project.cover_photo);
         } catch (error) {
-          console.error("Error deleting old cover photo from S3:", error);
           // Continua mesmo se não conseguir deletar a foto antiga
         }
       }
@@ -3064,7 +2989,6 @@ export class ProjectController {
         deleteFile(`./public/tmp/project-cover/${filePath}`);
       }
 
-      console.error("Error uploading cover photo:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }
@@ -3100,7 +3024,6 @@ export class ProjectController {
       try {
         await deleteFileFromS3(project.cover_photo);
       } catch (error) {
-        console.error("Error deleting cover photo from S3:", error);
         // Continua mesmo se não conseguir deletar do S3
       }
 
@@ -3117,7 +3040,6 @@ export class ProjectController {
         message: "Cover photo deleted successfully"
       });
     } catch (error) {
-      console.error("Error deleting cover photo:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

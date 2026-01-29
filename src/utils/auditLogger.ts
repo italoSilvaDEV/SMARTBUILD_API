@@ -10,7 +10,6 @@ import { prisma } from '../utils/prisma';
 export async function logAudit(action: string, userId: string): Promise<any> {
   try {
     if (!action || !userId) {
-      console.error('Audit logging failed: action and userId are required');
       return null;
     }
 
@@ -23,7 +22,6 @@ export async function logAudit(action: string, userId: string): Promise<any> {
 
     return audit;
   } catch (error) {
-    console.error('Error logging audit event:', error);
     return null;
   }
 } 

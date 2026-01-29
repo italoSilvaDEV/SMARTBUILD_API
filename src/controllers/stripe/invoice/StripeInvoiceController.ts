@@ -79,7 +79,6 @@ export class StripeController {
 
             return res.status(200).json({ url: accountLink.url });
         } catch (error) {
-            console.error("Erro ao criar conta Stripe:", error);
             return res.status(500).json({ error: "Error creating Stripe account" });
         }
     }
@@ -124,21 +123,7 @@ export class StripeController {
             const pendingRequirements = account.requirements?.currently_due || [];
             const requiresOnboarding = !isConnected || pendingRequirements.length > 0;
 
-            console.log("StripeAccountId: ", company.stripeAccountId)
-            console.log("details_submitted: ", account.details_submitted)
-            console.log("charges_enabled: ", account.charges_enabled)
-            console.log("payouts_enabled: ", account.payouts_enabled)
-            console.log("Requirements: ", account.requirements?.currently_due)
-
-
-            return res.status(200).json({
-                hasStripeAccount: true,
-                connected: isConnected,
-                requiresOnboarding,
-                pendingRequirements
-            });
         } catch (error) {
-            console.error("Erro ao verificar status do Stripe:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -158,7 +143,6 @@ export class StripeController {
         } = req.body;
 
         try {
-            console.log("Buscando o projeto no banco de dados...");
             const project = await prisma.project.findUnique({
                 where: { id: projectId },
                 include: {
@@ -168,32 +152,26 @@ export class StripeController {
             });
 
             if (!project) {
-                console.error("Projeto não encontrado!");
                 return res.status(404).json({ error: "Project not found" });
             }
 
             if (!project.client) {
-                console.error("Cliente não encontrado para este projeto!");
                 return res.status(400).json({ error: "Client not found" });
             }
 
             if (!project.company || !project.company.stripeAccountId) {
-                console.error("Empresa não conectada ao Stripe!");
                 return res.status(400).json({ error: "Company not connected to Stripe" });
             }
 
-            console.log("Projeto, cliente e empresa encontrados com sucesso!");
 
             const emailClient = project.client.email || "";
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
             if (!emailRegex.test(emailClient)) {
-                console.error("Endereço de email inválido!");
                 return res.status(400).json({ error: "Invalid client email address" });
             }
 
             const stripeAccountId = project.company.stripeAccountId;
-            console.log("StripeAccountId da empresa:", stripeAccountId);
 
             let stripeCustomerId = project.client.stripeCustomerId;
 
@@ -203,10 +181,8 @@ export class StripeController {
                         stripeCustomerId,
                         { stripeAccount: stripeAccountId }
                     );
-                    console.log(`Cliente já tem um StripeCustomerId: ${stripeCustomerId}`);
                 } catch (error: any) {
                     if (error.code === 'resource_missing') {
-                        console.warn("Cliente não encontrado no Stripe. Criando um novo...");
                         stripeCustomerId = null;
                     } else {
                         throw error;
@@ -215,7 +191,6 @@ export class StripeController {
             }
 
             if (!stripeCustomerId) {
-                console.log("Criando cliente no Stripe...");
                 const customer = await stripe.customers.create(
                     {
                         name: project.client.name,
@@ -231,13 +206,10 @@ export class StripeController {
                     data: { stripeCustomerId },
                 });
 
-                console.log(`Cliente criado no Stripe com ID: ${stripeCustomerId}`);
             }
 
-            console.log("Criando Invoice Items...");
             const servicesArray = Array.isArray(services) ? services : [];
             if (servicesArray.length === 0) {
-                console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
             }
 
             let totalInvoiceAmount = 0;
@@ -271,7 +243,6 @@ export class StripeController {
                 const adjustedAmount = serviceAmount * validCoefficient;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
-                    console.warn(` Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
 
@@ -344,7 +315,6 @@ export class StripeController {
             }
 
 
-            console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     stripeInvoiceId: finalizedInvoice.id,
@@ -366,7 +336,6 @@ export class StripeController {
                 },
             });
 
-            console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Adicione a criação dos InvoiceItems
             if (lineItems && lineItems.length > 0) {
@@ -400,7 +369,6 @@ export class StripeController {
             });
 
         } catch (error) {
-            console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
 
@@ -429,20 +397,9 @@ export class StripeController {
 
             const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
 
-            console.log("Enviando Invoice por e-mail...");
             await stripe.invoices.sendInvoice(invoiceId, { stripeAccount: stripeAccountId });
 
-            console.log("Invoice enviada por e-mail para:", invoice.project.client.email);
 
-            console.log("userId: ", userId)
-
-            const sendHistory = await prisma.invoiceSendHistory.create({
-                data: {
-                    invoiceId: invoice.id,               // ID da invoice enviada
-                    recipient: invoice.project.client.email, // E-mail do destinatário
-                    user_id: userId                      // ID do usuário que enviou a invoice
-                },
-            });
 
             await prisma.invoiceTimeline.create({
                 data: {
@@ -455,7 +412,6 @@ export class StripeController {
             return res.status(200).json({ message: "Invoice sent successfully", sendHistory });
 
         } catch (error) {
-            console.error("Erro ao enviar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -519,7 +475,6 @@ export class StripeController {
             });
 
         } catch (error) {
-            console.error("Erro ao cancelar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -530,7 +485,6 @@ export class StripeController {
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
         try {
-            console.log("Buscando invoices do projeto:", projectId);
 
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
             const itemsLimit = Number(itemsPerPage);
@@ -609,12 +563,10 @@ export class StripeController {
             const total = await prisma.invoice.count({ where: filtro });
 
             if (invoices.length === 0) {
-                console.log("Nenhuma invoice encontrada para este projeto.");
                 // return res.status(200).json({ message: "No invoices found for this project." });
                 return res.status(200).json({ total, invoices: [], message: "No invoices found for this project." });
             }
 
-            console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
@@ -643,13 +595,11 @@ export class StripeController {
                     try {
                         // Verificar se o item stripeInvoiceId existe
                         if (!invoice.stripeInvoiceId) {
-                            console.warn(`Invoice ${invoice.id} é do tipo stripe mas não possui stripeInvoiceId.`);
                             return invoice;
                         }
 
                         // Verificar se a empresa possui um stripeAccountId
                         if (!invoice.company || !invoice.company.stripeAccountId) {
-                            console.warn(`Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
                             return invoice;
                         }
 
@@ -667,7 +617,6 @@ export class StripeController {
                                 where: { id: invoice.id },
                                 data: { status },
                             });
-                            console.log(`Status da fatura ${invoice.stripeInvoiceId} atualizado para ${status}`);
                             return { ...invoice, status };
                         }
 
@@ -676,14 +625,12 @@ export class StripeController {
 
                     } catch (stripeError: any) {
                         if (stripeError.code === 'resource_missing') {
-                            console.warn(`Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
                             return {
                                 ...invoice,
                                 status: "not_found_in_stripe",
                                 error: stripeError.message,
                             };
                         }
-                        console.error(`Erro ao buscar invoice ${invoice.stripeInvoiceId} no Stripe:`, stripeError);
                         return invoice;
                     }
                 })
@@ -692,7 +639,6 @@ export class StripeController {
             return res.status(200).json({ total, invoices: updatedInvoices });
 
         } catch (error) {
-            console.error("Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -792,7 +738,6 @@ export class StripeController {
             const total = await prisma.invoice.count({ where: filtro });
 
             if (invoices.length === 0) {
-                console.log("Nenhuma invoice encontrada para este projeto.");
                 return res.status(200).json({
                     total,
                     invoices: [],
@@ -800,7 +745,6 @@ export class StripeController {
                 });
             }
 
-            console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
@@ -819,7 +763,6 @@ export class StripeController {
 
                     try {
                         if (!invoice.company || !invoice.company.stripeAccountId) {
-                            console.warn(`Empresa associada à invoice ${invoice.id} não está conectada ao Stripe.`);
                             return invoice;
                         }
 
@@ -841,7 +784,6 @@ export class StripeController {
                                 where: { id: invoice.id },
                                 data: { status }
                             });
-                            console.log(`Status da fatura ${invoice.stripeInvoiceId} atualizado para ${status}`);
                             return { ...invoice, status };
                         }
 
@@ -853,11 +795,9 @@ export class StripeController {
                         };
                     } catch (stripeError: any) {
                         if (stripeError.code === 'resource_missing') {
-                            console.warn(`Invoice não encontrada no Stripe: ${invoice.stripeInvoiceId}.`);
                             return { ...invoice, status: "not_found_in_stripe", error: stripeError.message };
                         }
 
-                        console.error(`Erro ao buscar invoice ${invoice.stripeInvoiceId} no Stripe:`, stripeError);
                         return invoice;
                     }
                 })
@@ -868,7 +808,6 @@ export class StripeController {
                 invoices: updatedInvoices
             });
         } catch (error) {
-            console.error("Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -908,9 +847,6 @@ export class StripeController {
             });
 
             if (!oldInvoice || !oldInvoice.project || !oldInvoice.project.company || !oldInvoice.project.client) {
-                console.log({
-                    message: "Invoice, project, company, or client not found", oldInvoice
-                });
 
                 return res.status(404).json({
                     error: "Invoice, project, company, or client not found"
@@ -1079,7 +1015,6 @@ export class StripeController {
             });
 
         } catch (err) {
-            console.error("Erro no updateInvoice:", err);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -1146,9 +1081,7 @@ export class StripeController {
             const clientReferenceId = referralId || null; // Apenas referral ID (ou null)
 
             if (referralId) {
-                console.log('🎯 [Rewardful] Referral ID enviado para rastreamento:', referralId);
             } else {
-                console.log('📋 [Info] Nenhum referral ID - checkout direto');
             }
 
             // Configuração base da sessão de checkout
@@ -1185,16 +1118,13 @@ export class StripeController {
 
             // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação
             if (company.stripeCustomerId) {
-                console.log(`Usando cliente Stripe existente: ${company.stripeCustomerId}`);
                 sessionConfig.customer = company.stripeCustomerId;
             }
 
             // Criar a sessão de checkout
             const session = await stripe.checkout.sessions.create(sessionConfig);
 
-            console.log('✅ [StripeController] Sessão de checkout criada com sucesso:', session.id);
             if (referralId) {
-                console.log('✅ [Rewardful] Referral ID incluído no checkout para rastreamento');
             }
 
             return res.status(200).json({
@@ -1202,7 +1132,6 @@ export class StripeController {
                 sessionId: session.id
             });
         } catch (error) {
-            console.error("Erro ao criar sessão de checkout:", error);
             return res.status(500).json({ error: "Erro interno ao processar o checkout" });
         }
     }
@@ -1243,7 +1172,6 @@ export class StripeController {
 
             // Obter a assinatura do Stripe para encontrar o cliente
             const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
-            console.log("Assinatura Stripe verificada:", subscription.stripeSubscriptionId, "status:", stripeSubscription.status);
 
             if (!stripeSubscription.customer) {
                 return res.status(400).json({ error: "Stripe customer not found for this subscription." });
@@ -1257,7 +1185,6 @@ export class StripeController {
 
             return res.json({ url: session.url });
         } catch (error) {
-            console.error("Erro ao criar sessão do portal do cliente:", error);
             return res.status(500).json({
                 error: error instanceof Error ? error.message : "Internal server error"
             });

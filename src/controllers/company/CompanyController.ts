@@ -115,18 +115,13 @@ export class CompanyController {
 
             return res.status(201).json(company);
         } catch (error: any) {
-            console.error("36. Erro no processo:", error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
 
     async createAccountByMaster(req: Request, res: Response) {
-        console.log("1. Iniciando create da company");
-        console.log("2. Request file:", req.file);
-        console.log("3. Request body:", req.body);
 
         function validateNewUser(data: INewCompany): string | null {
-            console.log("4. Validando dados do usuário:", data);
             if (!data.company_name) return "Company name is mandatory";
             if (!data.name) return "Name is required";
             if (!data.email) return "Email is required";
@@ -136,27 +131,19 @@ export class CompanyController {
 
         // Verificar se existe arquivo antes de tentar processar
         if (!req.file) {
-            console.log("5. Erro: Nenhum arquivo foi enviado");
             return res.status(400).json({ error: "Avatar file is required" });
         }
 
         const filePath = req.file?.filename?.split(".")[0] + ".webp";
-        console.log("6. FilePath construído:", filePath);
-        console.log("7. Caminho completo:", `./public/tmp/company/${filePath}`);
 
         const s3Bucket = process.env.AMAZON_S3_BUCKET!;
-        console.log("8. S3 Bucket:", s3Bucket);
 
         try {
-            console.log("9. Iniciando upload para S3");
             const fileName = await uploadImageWebpToS3(`./public/tmp/company/${filePath}`, s3Bucket);
-            console.log("10. Upload concluído, fileName:", fileName);
 
             const errors = validationResult(req);
-            console.log("11. Erros de validação:", errors.array());
 
             if (!errors.isEmpty()) {
-                console.log("12. Encontrados erros de validação");
                 this.deleteFiles(
                     req.file?.filename?.split(".")[0] + ".webp",
                     req.file?.filename
@@ -165,13 +152,10 @@ export class CompanyController {
             }
 
             const data: INewCompany = req.body;
-            console.log("13. Dados da company:", data);
 
             const validationError = validateNewUser(data);
-            console.log("14. Erro de validação do usuário:", validationError);
 
             if (validationError) {
-                console.log("15. Erro na validação dos dados do usuário");
                 this.deleteFiles(
                     req.file?.filename?.split(".")[0] + ".webp",
                     req.file?.filename
@@ -179,14 +163,11 @@ export class CompanyController {
                 return res.status(400).json({ error: validationError });
             }
 
-            console.log("16. Verificando email duplicado");
             const userExists = await prisma.user.findUnique({
                 where: { email: data.email },
             });
-            console.log("17. Usuário existente:", userExists);
 
             if (userExists) {
-                console.log("18. Email já registrado");
                 this.deleteFiles(
                     req.file?.filename?.split(".")[0] + ".webp",
                     req.file?.filename
@@ -196,7 +177,6 @@ export class CompanyController {
                     .json({ error: "Email has already been registered in the system" });
             }
 
-            console.log("19. Verificando documento duplicado");
             // const documentExists = await prisma.user.findUnique({
             // where: { document: data.document },
             // });
@@ -213,7 +193,6 @@ export class CompanyController {
             // });
             // }
 
-            console.log("22. Buscando cargo de administrador");
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
@@ -221,20 +200,14 @@ export class CompanyController {
                     }
                 }
             });
-            console.log("23. Cargo encontrado:", office);
 
             const pass = crypto.randomBytes(3).toString("hex").toUpperCase();
             const hashedPassword = bcrypt.hashSync(pass, 10);
-            console.log("24. Senha temporária gerada");
 
-            console.log("26. Gerando URL presigned para logo");
             const urlLogo = fileName ? await getPresignedUrl(fileName) : '';
-            console.log("27. URL do logo:", urlLogo);
 
             const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
-            console.log("28. Template de email gerado");
 
-            console.log("29. Criando company no banco");
             const company = await prisma.company.create({
                 data: {
                     name: data.company_name,
@@ -246,9 +219,7 @@ export class CompanyController {
                         null
                 }
             });
-            console.log("30. Company criada:", company);
 
-            console.log("31. Criando usuário no banco");
             const isMultiCompany = await isMultiCompanyEnabled()
             if (isMultiCompany) {
                 const user = await prisma.user.create({
@@ -289,22 +260,17 @@ export class CompanyController {
                     }
                 });
             }
-            console.log("32. Usuário criado");
 
-            console.log("33. Deletando arquivo temporário");
             deleteFile(`./public/tmp/company/${req.file?.filename}`);
 
-            console.log("34. Enviando email");
             await sendEmail({
                 to: data.email,
                 subject: "Smart Build",
                 html: templateEmail,
             });
-            console.log("35. Email enviado");
 
             return res.status(201).json(company);
         } catch (error: any) {
-            console.error("36. Erro no processo:", error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -385,7 +351,6 @@ export class CompanyController {
 
             return res.status(200).json({ company: updatedCompany });
         } catch (error: any) {
-            console.error("Error updating company data:", error);
             return res.status(500).json({ error: error.message || "Internal error" });
         } finally {
             if (file) {
@@ -430,7 +395,6 @@ export class CompanyController {
 
             return response.json(formattedCompany);
         } catch (error) {
-            console.error('Error searching for company:', error);
             return response.status(500).json({ error: "Internal server error" });
         }
     }
@@ -488,7 +452,6 @@ export class CompanyController {
 
             return response.json(formattedCompany);
         } catch (error) {
-            console.error('Error searching for company:', error);
             return response.status(500).json({ error: "Internal server error" });
         }
     }
@@ -610,7 +573,6 @@ export class CompanyController {
 
             return res.status(200).json(filteredCompanies);
         } catch (error: any) {
-            console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -627,7 +589,6 @@ export class CompanyController {
             });
             res.status(201).json(note);
         } catch (error: any) {
-            console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -642,7 +603,6 @@ export class CompanyController {
             });
             res.status(200).json(updatedNote);
         } catch (error: any) {
-            console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -655,7 +615,6 @@ export class CompanyController {
             });
             return res.status(201).json({ message: "Note deleted successfully" });
         } catch (error: any) {
-            console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -669,14 +628,12 @@ export class CompanyController {
             });
             res.status(200).json(notes);
         } catch (error: any) {
-            console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
 
     async proxyImage(req: Request, res: Response) {
         try {
-            console.log("req.query:", req.query);
             const { url } = req.query;
             if (!url) {
                 return res.status(400).json({ error: "Missing 'url' query param" });
@@ -687,11 +644,9 @@ export class CompanyController {
             const rawUrl = url as string;
             const parsedUrl = new URL(rawUrl);
             const key = parsedUrl.pathname.substring(1); // Remove a '/' inicial
-            console.log("Extracted key:", key);
 
             // Gerar o presigned URL usando apenas a key
             const presignedUrl = await getPresignedUrl(key);
-            console.log("Generated presignedUrl:", presignedUrl);
 
             // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
             const fetch = await import("node-fetch").then((mod) => mod.default || mod);
@@ -699,7 +654,6 @@ export class CompanyController {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error("Error fetching image from S3, response text:", errorText);
                 return res.status(500).json({ error: "Failed to fetch image from S3" });
             }
 
@@ -714,7 +668,6 @@ export class CompanyController {
 
             return res.json({ base64 });
         } catch (error) {
-            console.error("Erro no proxy de imagem:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -727,11 +680,9 @@ export class CompanyController {
                 return res.status(400).json({ error: "URI parameter is required" });
             }
 
-            console.log("URI recebida:", uri);
 
             // Gerar o presigned URL usando a URI
             const presignedUrl = await getPresignedUrl(uri);
-            console.log("Generated presignedUrl:", presignedUrl);
 
             // Importa node-fetch (para Node <18; se estiver usando Node 18+, pode usar o fetch global)
             const fetch = await import("node-fetch").then((mod) => mod.default || mod);
@@ -739,7 +690,6 @@ export class CompanyController {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error("Error fetching image from S3, response text:", errorText);
                 return res.status(500).json({ error: "Failed to fetch image from S3" });
             }
 
@@ -758,7 +708,6 @@ export class CompanyController {
 
             return res.json({ base64 });
         } catch (error) {
-            console.error("Erro no proxy de imagem por URI:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -887,7 +836,6 @@ export class CompanyController {
                         process.env.AMAZON_S3_BUCKET!
                     );
                 } catch (error) {
-                    console.error("Error uploading new avatar:", error);
                     return res.status(500).json({ error: "Error uploading new avatar" });
                 }
             }
@@ -931,7 +879,6 @@ export class CompanyController {
             });
 
         } catch (error) {
-            console.error("Error updating company and user:", error);
             if (req.file) {
                 this.deleteFiles(
                     req.file.filename?.split(".")[0] + ".webp",

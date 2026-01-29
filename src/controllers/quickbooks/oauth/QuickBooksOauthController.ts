@@ -55,13 +55,11 @@ export class QuickBooksController {
 
       return res.status(200).json({ url: authorizationUri });
     } catch (error) {
-      console.error("Erro ao iniciar autorização QuickBooks:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
   //ainda nao utlizada pelo frontend
   async callback(req: Request, res: Response) {
-    console.log("inicio de callback")
     try {
       const { error, code, state, realmId } = req.query;
 
@@ -135,23 +133,11 @@ export class QuickBooksController {
       });
 
       if (existingRealmAccount && existingRealmAccount.company_id !== companyId) {
-        console.log("Quickbooks já conectado a outra empresa")
-        return res.redirect(
-          `${process.env.URL_FRONT}/stripe-config?error=realm_already_used&msg=${encodeURIComponent(
-            `This QuickBooks company is already connected to another company in the system.`
-          )}`
-        );
       }
 
       if (account) {
         // Verificar se está tentando conectar uma empresa QuickBooks diferente
         if (account.realmId !== String(realmId)) {
-          console.log("Empresa ja conectada a outra empresa: ", account.companyName)
-          return res.redirect(
-            `${process.env.URL_FRONT}/stripe-config?error=different_company&msg=${encodeURIComponent(
-              `This company is already connected to the QuickBooks company: ${account.companyName || account.realmId}. Please connect to the same company.`
-            )}`
-          );
         }
 
         account = await prisma.quickBooksAccount.update({
@@ -189,7 +175,6 @@ export class QuickBooksController {
       try {
         const api = qboClientForAccount(account.id);
         const { data } = await api.get(`/companyinfo/${account.realmId}`);
-        console.log("valor do data: ", JSON.stringify(data, null, 2))
 
         // Corrigido: dados vêm direto na resposta, não em QueryResponse
         const companyInfo = data?.CompanyInfo;
@@ -261,7 +246,6 @@ export class QuickBooksController {
         const status = e?.response?.status;
         const url = `${e?.config?.baseURL ?? ''}${e?.config?.url ?? ''}`;
         const payload = e?.response?.data;
-        console.error('CompanyInfo validation failed', { status, url, payload });
 
         await prisma.quickBooksAccount.update({
           where: { id: account.id },
@@ -278,7 +262,6 @@ export class QuickBooksController {
       return res.redirect(`${process.env.URL_FRONT}/stripe-config?success=true`);
 
     } catch (error: any) {
-      console.error("Erro no callback do QuickBooks:", error);
       return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(error.message)}`);
     }
   }
@@ -453,7 +436,6 @@ export class QuickBooksController {
         });
       }
     } catch (error: any) {
-      console.error("Erro ao verificar status do QuickBooks:", error?.message);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message
@@ -506,7 +488,6 @@ export class QuickBooksController {
         expiresAt: refreshResult.expiresAt
       });
     } catch (error: any) {
-      console.error("Error refreshing QuickBooks token:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message
@@ -560,7 +541,6 @@ export class QuickBooksController {
       // Se solicitado, revogar o token no QuickBooks
       if (revokeOnQuickBooks) {
         try {
-          console.log(" Revogando token no QuickBooks...");
 
           // Revogar refresh token no QuickBooks (isso invalida todos os tokens)
           const revokeResponse = await fetch('https://developer.api.intuit.com/v2/oauth2/tokens/revoke', {
@@ -575,12 +555,9 @@ export class QuickBooksController {
           });
 
           if (revokeResponse.ok) {
-            console.log(" Token revogado com sucesso no QuickBooks");
           } else {
-            console.warn(" Falha ao revogar token no QuickBooks, continuando com desconexão local");
           }
         } catch (revokeError: any) {
-          console.error(" Erro ao revogar token no QuickBooks:", revokeError);
           // Continua mesmo se a revogação falhar
         }
       }
@@ -594,7 +571,6 @@ export class QuickBooksController {
         }
       });
 
-      console.log(` Conta QuickBooks desabilitada para usuário ${userId}`);
 
       return res.status(200).json({
         message: "QuickBooks desconectado com sucesso",
@@ -608,7 +584,6 @@ export class QuickBooksController {
       });
 
     } catch (error: any) {
-      console.error(" Erro ao desconectar QuickBooks:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message
@@ -657,7 +632,6 @@ export class QuickBooksController {
       });
 
     } catch (error: any) {
-      console.error(" Erro ao forçar reautorização:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message
@@ -731,7 +705,6 @@ export class QuickBooksController {
       });
 
     } catch (error: any) {
-      console.error(" Erro ao reativar conta QuickBooks:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         details: error.message

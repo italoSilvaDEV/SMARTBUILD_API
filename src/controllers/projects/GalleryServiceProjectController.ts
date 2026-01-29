@@ -65,10 +65,6 @@ export class GalleryProjectController {
 
                 return response.json();
             } catch (error) {
-                console.log(error)
-                throw Error('Erro interno do servidor')
-            }
-        });
     }
 
     async find(request: Request, response: Response) {
@@ -191,7 +187,6 @@ export class GalleryProjectController {
                             fs.unlinkSync(file.path);
                         }
                     } catch (error) {
-                        console.error(`Error deleting temporary file ${file.path}:`, error);
                     }
                 });
             }
@@ -334,7 +329,6 @@ export class GalleryProjectController {
                 const attachments = [];
 
                 if (attachmentFiles && attachmentFiles.length > 0) {
-                    console.log(`📎 Processing ${attachmentFiles.length} attachment(s)...`);
                     for (const file of attachmentFiles) {
                         try {
                             const fileBuffer = fs.readFileSync(file.path);
@@ -344,9 +338,7 @@ export class GalleryProjectController {
                                 type: file.mimetype,
                                 disposition: 'attachment'
                             });
-                            console.log(`Processed attachment: ${file.originalname} (${file.mimetype})`);
                         } catch (error) {
-                            console.error(`Error reading attachment file ${file.originalname}:`, error);
                         }
                     }
                 }
@@ -373,13 +365,11 @@ export class GalleryProjectController {
                 }
 
             } catch (error: any) {
-                console.error('Error sending gallery email:', error);
 
                 for (const recipient of uniqueRecipients) {
                     results.push({ email: recipient, status: "error", message: error.message });
                 }
 
-                console.log(`Failed to send gallery email to ${uniqueRecipients.join(', ')}: ${error.message}`);
             } finally {
                 cleanupTempFiles(attachmentFiles);
             }
@@ -398,7 +388,6 @@ export class GalleryProjectController {
             });
 
         } catch (error) {
-            console.error('Unexpected error in sendGalleryEmail:', error);
             cleanupTempFiles(attachmentFiles);
             return res.status(500).json({ error: "Failed to send gallery email" });
         }

@@ -44,11 +44,8 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, templa
 
     try {
         await sgMail.send(msg);
-        console.log(`Email sent to ${to}`);
     } catch (error: any) {
-        console.error('Error sending email via SendGrid:', error);
         if (error.response) {
-            console.error(error.response.body);
         }
     }
 }

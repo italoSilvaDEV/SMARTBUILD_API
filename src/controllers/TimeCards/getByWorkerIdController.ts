@@ -207,7 +207,6 @@ export class getByWorkerIdController {
                 try {
                     avatarUrl = await getPresignedUrl(user.avatar);
                 } catch (error) {
-                    console.error("Erro ao gerar presigned URL para avatar:", error);
                     avatarUrl = user.avatar;
                 }
             }

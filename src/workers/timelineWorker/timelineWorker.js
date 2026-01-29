@@ -112,7 +112,6 @@ class TimelineWorker {
             return validation;
 
         } catch (error) {
-            console.error('[TIMELINE-WORKER] Validation error:', error);
             return { isValid: false, hasOpenAttendance: false, clientCoords: null };
         }
     }
@@ -160,11 +159,9 @@ class TimelineWorker {
                 }
             });
 
-            console.log(`[TIMELINE-WORKER] Timeline created successfully: ${timeline.id}`);
             return { success: true, timeline };
 
         } catch (error) {
-            console.error('[TIMELINE-WORKER] Error creating timeline:', error);
             return { success: false, error: 'Failed to create timeline' };
         }
     }
@@ -191,7 +188,6 @@ class TimelineWorker {
     // Adicionar job à fila
     addJob(job) {
         this.jobQueue.push(job);
-        console.log(`[TIMELINE-WORKER] Job added to queue: ${job.type}, Queue size: ${this.jobQueue.length}`);
         
         // Processar fila se não estiver processando
         if (!this.processing) {
@@ -206,7 +202,6 @@ class TimelineWorker {
         }
 
         this.processing = true;
-        console.log(`[TIMELINE-WORKER] Processing queue with ${this.jobQueue.length} jobs`);
 
         while (this.jobQueue.length > 0) {
             const job = this.jobQueue.shift();
@@ -214,7 +209,6 @@ class TimelineWorker {
         }
 
         this.processing = false;
-        console.log('[TIMELINE-WORKER] Queue processing completed');
     }
 
     // Processar job individual
@@ -239,12 +233,10 @@ class TimelineWorker {
                     break;
                     
                 default:
-                    console.error(`[TIMELINE-WORKER] Unknown job type: ${job.type}`);
                     return;
             }
 
             const processingTime = Date.now() - startTime;
-            console.log(`[TIMELINE-WORKER] Job ${job.id} completed in ${processingTime}ms`);
 
             // Notificar resultado se necessário
             if (parentPort) {
@@ -258,7 +250,6 @@ class TimelineWorker {
 
         } catch (error) {
             const processingTime = Date.now() - startTime;
-            console.error(`[TIMELINE-WORKER] Job ${job.id} failed after ${processingTime}ms:`, error);
 
             if (parentPort) {
                 parentPort.postMessage({
@@ -283,7 +274,6 @@ class TimelineWorker {
 
     // Inicializar worker
     init() {
-        console.log('[TIMELINE-WORKER] Worker initialized');
         
         // Limpar cache a cada 5 minutos
         setInterval(() => {

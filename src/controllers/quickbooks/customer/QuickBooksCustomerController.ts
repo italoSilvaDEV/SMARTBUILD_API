@@ -45,24 +45,15 @@ export class QuickBooksClientController {
       // 2. Buscar credenciais e instanciar QuickBooks SDK
       const qb = await getQbClientOrThrow(userId, companyId);
 
-      console.log("DEBUG: qb object created:", typeof qb);
-      console.log("DEBUG: qb.findCustomers exists:", typeof qb.findCustomers);
 
       // 3. Buscar todos os clientes usando o método correto da biblioteca
-      console.log("DEBUG: Buscando clientes com findCustomers...");
 
       const result: any = await limiter.schedule(() =>
         new Promise((resolve, reject) => {
           qb.findCustomers({ fetchAll: true }, (err: any, data: any) => {
             if (err) {
-              console.error("QBO ERROR DETALHADO:", JSON.stringify(err, null, 2));
-              console.error("QBO ERROR Fault:", err?.Fault);
-              console.error("QBO ERROR Message:", err?.message);
-              console.error("QBO ERROR Code:", err?.code);
-              console.error("QBO ERROR Status:", err?.status);
               reject(err);
             } else {
-              console.log(" Clientes encontrados:", data?.QueryResponse?.Customer?.length || 0);
               resolve(data);
             }
           });
@@ -212,14 +203,6 @@ export class QuickBooksClientController {
 
 
     } catch (error: any) {
-      console.error(" Erro na sincronização de clientes:", error);
-      console.error(" Erro detalhado:", {
-        message: error?.message,
-        fault: error?.Fault,
-        code: error?.code,
-        status: error?.status,
-        stack: error?.stack
-      });
       
       res.status(500).json({ 
         error: "Erro interno na sincronização", 

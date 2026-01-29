@@ -104,7 +104,6 @@ export class FindAllSubcontractorsController {
       });
 
     } catch (error) {
-      console.error("Error finding subcontractors:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

@@ -97,7 +97,6 @@ export class CreateWorkContextController {
 
       // Vincular projetos ao WorkContext se projectIds foi fornecido
       if (projectIds && Array.isArray(projectIds) && projectIds.length > 0) {
-        console.log(`Vinculando ${projectIds.length} projeto(s) ao WorkContext ${workContext.id}`);
         
         await prisma.project.updateMany({
           where: { 
@@ -107,7 +106,6 @@ export class CreateWorkContextController {
           data: { workContextId: workContext.id }
         });
         
-        console.log(` Projetos vinculados com sucesso ao WorkContext ${workContext.id}`);
       }
 
       // Fetch the complete work context with projects
@@ -132,7 +130,6 @@ export class CreateWorkContextController {
 
       return res.status(201).json(completeWorkContext);
     } catch (error: any) {
-      console.error("Error creating WorkContext:", error);
       return res.status(500).json({ 
         error: "Error creating work context" 
       });

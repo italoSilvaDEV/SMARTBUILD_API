@@ -98,7 +98,6 @@ export async function uploadFileToS3(file: Express.Multer.File, userId: string) 
         return fileName; // Retorna o nome do arquivo para armazenar no banco de dados
 
     } catch (error) {
-        console.error(error);
 
         // Em caso de erro, abortar o multipart upload
         if (uploadId) {
@@ -211,7 +210,6 @@ export async function uploadFileToS3_2(
         return fileName; // Retorna o nome do arquivo para armazenar no banco de dados
 
     } catch (error) {
-        console.error(error);
 
         // Em caso de erro, abortar o multipart upload
         if (uploadId) {
@@ -327,7 +325,6 @@ export async function uploadImageWebpToS3(filePath: string, s3Bucket: string): P
 
         return fileName; // Retorna o nome do arquivo armazenado no S3
     } catch (error) {
-        console.error('Erro durante o upload multipart:', error);
 
         // Em caso de erro, abortar o multipart upload
         if (uploadId) {
