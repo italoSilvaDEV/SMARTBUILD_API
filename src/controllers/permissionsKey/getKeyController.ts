@@ -42,6 +42,7 @@ export class GetKeyController {
             });
 
         } catch (error) {
+            console.error("Error fetching key:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });

@@ -67,6 +67,97 @@ export class SignChangeOrderController {
                     })
                 }
 
+                console.log("Valor antigo do estimate:", estimate.totalAmount)
+
+                const createdEstimateServices: string[] = []
+
+                for (const service of changeOrder.changeOrderServices) {
+                    const estimateService = await smartbuild.estimateServiceProject.create({
+                        data: {
+                            name: service.name,
+                            description: service.description,
+                            quantity: service.quantity,
+                            unitPrice: service.unitPrice,
+                            lineTotal: service.lineTotal,
+                            price: service.price,
+                            estimateId: estimate?.id,
+                            hours: service.quantity
+                        }
+                    })
+
+                    createdEstimateServices.push(estimateService.id)
+                }
+
+                const newPriceServices = await smartbuild.estimateServiceProject.findMany({
+                    where: {
+                        estimateId: estimate.id
+                    },
+                    select: {
+                        price: true
+                    }
+                })
+
+                const newPrice = newPriceServices.reduce((acc, curr) => acc + Number(curr.price), 0)
+
+                await smartbuild.estimate.update({
+                    where: {
+                        id: estimate.id
+                    },
+                    data: {
+                        totalAmount: newPrice,
+                        pdf_needs_update: true
+                    }
+                })
+
+                console.log("Valor novo do estimate:", newPrice)
+
+                if (estimate.status === "approved") {
+                    const project = await smartbuild.project.findUnique({
+                        where: {
+                            id: estimate.projectId
+                        },
+                        include: {
+                            serviceProject: true,
+                        }
+                    })
+
+                    if (!project) {
+                        return res.status(404).json({
+                            error: "Project not found"
+                        })
+                    }
+
+                    const estimateServicesToCreateInProject = await smartbuild.estimateServiceProject.findMany({
+                        where: {
+                            id: {
+                                in: createdEstimateServices
+                            }
+                        }
+                    })
+
+                    for (const estimateService of estimateServicesToCreateInProject) {
+                        await smartbuild.serviceProject.create({
+                            data: {
+                                name: estimateService.name,
+                                description: estimateService.description || "",
+                                hours: estimateService.hours || estimateService.quantity,
+                                price: estimateService.price || estimateService.lineTotal,
+                                projectId: project.id,
+                                estimateServiceId: estimateService.id,
+                                start_date: estimateService.start_date,
+                                deadline: estimateService.deadline,
+                                id_service: estimateService.id_service
+                            }
+                        })
+                    }
+                }
+            })
+
+            const pdfProject = await prisma.pdfProject.findFirst({
+                where: {
+                    changeOrderId: changeOrder.id
+                }
+            });
 
             if (!pdfProject || !pdfProject.uri) {
                 return res.status(404).json({
@@ -97,6 +188,7 @@ export class SignChangeOrderController {
                         try {
                             signatureImage = await pdfDoc.embedJpg(signatureBuffer);
                         } catch (jpgError) {
+                            console.error('Failed to embed signature as PNG or JPG:', pngError, jpgError);
                             throw new Error('Invalid signature image format');
                         }
                     }
@@ -117,6 +209,7 @@ export class SignChangeOrderController {
                         height: signatureHeight,
                     });
                 } catch (signatureError) {
+                    console.error('Error processing signature:', signatureError);
                 }
             }
             const modifiedPdfBytes = await pdfDoc.save();
@@ -204,14 +297,17 @@ export class SignChangeOrderController {
                             project.id
                         ),
                     });
+                    console.log(`Approved email sent to company: ${companyEmail}`);
                 }
             } catch (emailError) {
+                console.error('Error sending approval email to company:', emailError);
             }
 
             return res.status(200).json({
                 message: "Change order signed successfully"
             })
         } catch (error) {
+            console.error('Error signing change order:', error);
             return res.status(500).json({
                 error: "Internal server error"
             })

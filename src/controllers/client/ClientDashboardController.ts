@@ -98,6 +98,7 @@ export class ClientDashboardController {
 
             return res.json(chartData);
         } catch (error) {
+            console.error("Error in projectsChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -168,6 +169,7 @@ export class ClientDashboardController {
                 { label: 'Denied', value: canceledEstimates }
             ]);
         } catch (error) {
+            console.error("Error in estimatesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -245,6 +247,7 @@ export class ClientDashboardController {
 
             return res.json(invoicesData);
         } catch (error) {
+            console.error("Error in invoicesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }

@@ -38,12 +38,14 @@ export class DeleteWorkContextController {
       // If there are linked projects, remove the work context reference from them
       // This makes them "orphan" projects that can be linked to another work context later
       if (workContextExists.projects.length > 0) {
+        console.log(`WorkContext ${id} tem ${workContextExists.projects.length} projetos vinculados. Desvinculando...`);
         
         await prisma.project.updateMany({
           where: { workContextId: id },
           data: { workContextId: null }
         });
         
+        console.log(` ${workContextExists.projects.length} projeto(s) desvinculado(s) do WorkContext ${id}`);
       }
 
       // Delete WorkContext
@@ -51,12 +53,14 @@ export class DeleteWorkContextController {
         where: { id },
       });
 
+      console.log(` WorkContext ${id} deletado com sucesso`);
 
       return res.json({ 
         message: "Work context deleted successfully",
         orphanedProjects: workContextExists.projects.length
       });
     } catch (error: any) {
+      console.error("Error deleting WorkContext:", error);
       
       return res.status(500).json({ 
         error: "Error deleting work context" 

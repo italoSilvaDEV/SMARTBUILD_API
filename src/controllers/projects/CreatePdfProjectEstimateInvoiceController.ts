@@ -46,6 +46,7 @@ export class CreatePdfProjectEstimateInvoiceController {
 
             return { success: true, message: "PDF Project deleted successfully" };
         } catch (error) {
+            console.error("Error deleting PDF Project:", error);
             throw error;
         }
     }
@@ -91,6 +92,7 @@ export class CreatePdfProjectEstimateInvoiceController {
             return res.json(updatedPdfProject);
 
         } catch (error) {
+            console.error("Error updating PDF Project:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
@@ -226,6 +228,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                 return res.json(formattedResult);
 
             } catch (error) {
+                console.log(error);
                 if (req.file) {
                     // Limpeza não-bloqueante em caso de erro
                     setImmediate(() => {

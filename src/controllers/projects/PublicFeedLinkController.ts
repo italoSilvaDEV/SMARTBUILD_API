@@ -107,6 +107,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao criar link público:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -373,6 +374,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao buscar feed público:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -443,6 +445,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao buscar links públicos:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -485,6 +488,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao desativar link:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -538,6 +542,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao reativar link:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -644,6 +649,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao criar link multi-projeto:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',
@@ -948,6 +954,7 @@ export class PublicFeedLinkController {
             });
 
         } catch (error) {
+            console.error('Erro ao buscar feed multi-projeto:', error);
             return response.status(500).json({
                 success: false,
                 error: 'Erro interno do servidor',

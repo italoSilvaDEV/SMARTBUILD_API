@@ -72,6 +72,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
   let account = quickBooksAccount;
   if (shouldRefresh) {
     try {
+      console.log(`[getQbClientOrThrow] Iniciando refresh preventivo para companyId: ${companyId}`);
       
       const refreshResult = await refreshAccessToken(account.refreshToken, account.id);
       if (!refreshResult.success) {
@@ -86,6 +87,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
 
         // Para outros erros, tenta usar o token existente se ainda válido
         if (quickBooksAccount.expiresAt && now < quickBooksAccount.expiresAt) {
+          console.warn(`[getQbClientOrThrow] Refresh falhou (${refreshResult.code}): ${refreshResult.description}. Usando token existente.`);
           account = quickBooksAccount;
         } else {
           throw new Error(`Failed to refresh QuickBooks token: ${refreshResult.description}`);
@@ -101,6 +103,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
         }
         
         account = refreshed;
+        console.log(`[getQbClientOrThrow] Refresh bem-sucedido para companyId: ${companyId}`);
       }
     } catch (error: any) {
       // Se o erro é de autorização, propaga direto usando função padronizada
@@ -110,6 +113,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
       
       // Para outros erros, tenta usar token existente se ainda válido (com buffer simétrico)
       if (quickBooksAccount.expiresAt && now < quickBooksAccount.expiresAt) {
+        console.warn(`[getQbClientOrThrow] Erro no refresh, usando token existente: ${error.message}`);
         account = quickBooksAccount;
       } else {
         throw new Error(`Failed to prepare QuickBooks client: ${error.message}`);
@@ -154,6 +158,7 @@ export async function getQbClientOrThrow(userId: string, companyId: string): Pro
       account.refreshToken
     );
 
+    console.log(`[getQbClientOrThrow] Cliente QB criado com sucesso para companyId: ${companyId}`);
     return qb;
   } catch (error: any) {
     throw new Error(`Failed to create QuickBooks client: ${error.message}`);

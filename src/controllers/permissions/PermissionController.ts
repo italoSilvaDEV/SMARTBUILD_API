@@ -33,6 +33,7 @@ export class PermissionController {
 
       res.status(201).json(formattedPermission);
     } catch (error) {
+      console.error('Error creating permission:', error);
       res.status(500).json({ message: 'Error creating permission', error: (error as Error).message });
     }
   }
@@ -53,6 +54,7 @@ export class PermissionController {
       
       res.status(200).json(formattedPermissions);
     } catch (error) {
+      console.error('Error fetching permissions:', error);
       res.status(500).json({ message: 'Error fetching permissions', error: (error as Error).message });
     }
   }
@@ -79,6 +81,7 @@ export class PermissionController {
       
       res.status(200).json(formattedPermission);
     } catch (error) {
+      console.error('Error fetching permission:', error);
       res.status(500).json({ message: 'Error fetching permission', error: (error as Error).message });
     }
   }
@@ -119,6 +122,7 @@ export class PermissionController {
       
       res.status(200).json(formattedPermission);
     } catch (error) {
+      console.error('Error updating permission:', error);
       res.status(500).json({ message: 'Error updating permission', error: (error as Error).message });
     }
   }
@@ -143,6 +147,7 @@ export class PermissionController {
       // PrismaPermissionRepository.delete não retorna nada (void)
       res.status(204).send();
     } catch (error) {
+      console.error('Error deleting permission:', error);
       res.status(500).json({ message: 'Error deleting permission', error: (error as Error).message });
     }
   }

@@ -139,6 +139,9 @@ export class CreateInvoiceCostProjectController {
 
             } catch (error) {
 
+                console.log( error)
+                if (error instanceof Error) {
+                    return res.status(500).json({ error: error.message });
                 }
                 return res.status(500).json({ error: "Internal error" });
 

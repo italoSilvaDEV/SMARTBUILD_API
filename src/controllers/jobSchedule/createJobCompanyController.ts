@@ -168,6 +168,10 @@ export class CreateJobCompanyController {
                             });
                         }
 
+                        console.log("Email sent successfully")
+                    }
+                } catch (emailError: any) {
+                    console.error("Error sending project schedule email:", emailError);
                 }
             }
 

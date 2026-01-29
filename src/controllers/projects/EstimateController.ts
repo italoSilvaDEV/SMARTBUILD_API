@@ -56,6 +56,7 @@ export class EstimateController {
         }
       });
     } catch (error) {
+      console.error("Error adding timeline event:", error);
       // Não lançamos o erro para não interromper o fluxo principal
     }
   }
@@ -75,8 +76,10 @@ export class EstimateController {
       }
 
       const data = await response.json();
+      console.log('Webhook notification sent successfully:', data);
       return data;
     } catch (error) {
+      console.error('Error sending webhook notification:', error);
       // Não lançamos o erro para não interromper o fluxo principal
     }
   }
@@ -95,6 +98,7 @@ export class EstimateController {
         return res.status(400).json({ error: "PDF Project ID is required" });
       }
 
+      console.log('🔢 [EstimateController] Número pré-gerado recebido:', preGeneratedNumber);
 
       // Buscar o projeto com informações mínimas necessárias
       const project = await prisma.project.findUnique({
@@ -130,8 +134,10 @@ export class EstimateController {
       let nextNumber: string;
 
       if (preGeneratedNumber) {
+        console.log('✅ [EstimateController] Usando número pré-gerado:', preGeneratedNumber);
         nextNumber = preGeneratedNumber;
       } else {
+        console.log('⚠️ [EstimateController] Número pré-gerado não fornecido, gerando novo...');
 
         if (!project.contract_number) {
           return res.status(400).json({ error: "Project does not have a contract number" });
@@ -158,6 +164,7 @@ export class EstimateController {
         // Formatar: project_number/estimate_number (ex: 1358/0001)
         const formattedEstimateNumber = String(nextEstimateNumber).padStart(4, '0');
         nextNumber = `${project.contract_number}/${formattedEstimateNumber}`;
+        console.log('🔄 [EstimateController] Número gerado como fallback:', nextNumber);
       }
 
       // Buscar contract notes e preparar dados em paralelo
@@ -192,6 +199,7 @@ export class EstimateController {
       }));
 
       // Criar o estimate e atualizar o PDF em paralelo
+      console.log('💾 [EstimateController] Criando estimate com número:', nextNumber);
       const [estimate] = await Promise.all([
         prisma.estimate.create({
           data: {
@@ -226,10 +234,12 @@ export class EstimateController {
         }),
         EstimateController.addTimelineEvent(estimate.id, "Created")
       ]).catch(error => {
+        console.error("Error in final parallel operations:", error);
       });
 
       return res.status(201).json(estimate);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to create change order" });
     }
   }
@@ -389,6 +399,7 @@ export class EstimateController {
 
       return res.json(estimates);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch estimates" });
     }
   }
@@ -462,6 +473,7 @@ export class EstimateController {
 
       return res.json(estimate);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch estimate" });
     }
   }
@@ -483,6 +495,7 @@ export class EstimateController {
 
       return res.json(estimate);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to update estimate" });
     }
   }
@@ -549,6 +562,7 @@ export class EstimateController {
 
       return res.json(estimate);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to update estimate status" });
     }
   }
@@ -631,6 +645,7 @@ export class EstimateController {
             try {
               signatureImage = await pdfDoc.embedJpg(signatureBuffer);
             } catch (jpgError) {
+              console.error('Failed to embed signature as PNG or JPG:', pngError, jpgError);
               throw new Error('Invalid signature image format');
             }
           }
@@ -671,6 +686,7 @@ export class EstimateController {
             });
           }
         } catch (signatureError) {
+          console.error('Error processing signature:', signatureError);
         }
       }
 
@@ -788,6 +804,7 @@ export class EstimateController {
 
       return res.json(estimate);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to add signature to estimate" });
     }
   }
@@ -898,6 +915,7 @@ export class EstimateController {
 
       }
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to cancel estimate" });
     }
   }
@@ -943,6 +961,7 @@ export class EstimateController {
 
       return res.status(201).json(estimateServiceProject);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to add service to estimate" });
     }
   }
@@ -992,6 +1011,7 @@ export class EstimateController {
 
       return res.json({ message: "Service removed from estimate" });
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to remove service from estimate" });
     }
   }
@@ -1049,6 +1069,7 @@ export class EstimateController {
 
       return res.json(updatedRecord);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to update service in estimate" });
     }
   }
@@ -1142,6 +1163,7 @@ export class EstimateController {
         results
       });
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to resend estimate email" });
     }
   }
@@ -1156,6 +1178,7 @@ export class EstimateController {
               fs.unlinkSync(file.path);
             }
           } catch (error) {
+            console.error(`Error deleting temporary file ${file.path}:`, error);
           }
         });
       }
@@ -1281,6 +1304,7 @@ export class EstimateController {
         ];
 
         if (attachmentFiles && attachmentFiles.length > 0) {
+          console.log(`📎 Processing ${attachmentFiles.length} attachment(s)...`);
           for (const file of attachmentFiles) {
             try {
               const fileBuffer = fs.readFileSync(file.path);
@@ -1290,7 +1314,9 @@ export class EstimateController {
                 type: file.mimetype,
                 disposition: 'attachment'
               });
+              console.log(`✅ Processed attachment: ${file.originalname} (${file.mimetype})`);
             } catch (error) {
+              console.error(`Error reading attachment file ${file.originalname}:`, error);
             }
           }
         }
@@ -1367,6 +1393,7 @@ export class EstimateController {
         });
 
       } catch (error: any) {
+        console.error("Error sending estimate email:", error);
 
         await prisma.estimateEmailLog.create({
           data: {
@@ -1388,6 +1415,7 @@ export class EstimateController {
         cleanupTempFiles(attachmentFiles);
       }
     } catch (error) {
+      console.error('❌ Unexpected error in sendEmail:', error);
       if (typeof cleanupTempFiles === 'function') {
         cleanupTempFiles(attachmentFiles);
       }
@@ -1449,6 +1477,7 @@ export class EstimateController {
         projectId: projectId
       });
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to generate estimate number" });
     }
   }
@@ -1457,9 +1486,11 @@ export class EstimateController {
     try {
       const { companyId } = req.params;
 
+      console.log('🌐 [EstimateController] Chamando generateGlobalNumber para companyId:', companyId);
 
       // Validate companyId
       if (!companyId) {
+        console.log('❌ [EstimateController] Company ID não fornecido');
         return res.status(400).json({ error: "Company ID is required" });
       }
 
@@ -1492,6 +1523,8 @@ export class EstimateController {
         }
       });
 
+      console.log('🔍 [EstimateController] Último estimate encontrado:', lastEstimate);
+      console.log('🔍 [EstimateController] Último project encontrado:', lastProject);
 
       // Comparar os números e usar o maior para manter sincronização
       // Extrair apenas o número do projeto dos estimates (antes da barra)
@@ -1500,6 +1533,7 @@ export class EstimateController {
         const parts = lastEstimate.number.split('/');
         // Se tem formato projeto/estimate, pegar a primeira parte. Se não, pegar o número inteiro
         lastEstimateNumber = Number(parts[0]) || 0;
+        console.log('🔍 [EstimateController] Extraindo do estimate:', lastEstimate.number, '→', parts[0], '→', lastEstimateNumber);
       }
 
       const lastProjectNumber = Number(lastProject?.contract_number || '0');
@@ -1507,12 +1541,15 @@ export class EstimateController {
 
       const nextNumber = String(highestNumber + 1).padStart(4, '0');
 
+      console.log('✅ [EstimateController] Números comparados - Estimate:', lastEstimateNumber, 'Project:', lastProjectNumber);
+      console.log('✅ [EstimateController] Próximo número gerado:', nextNumber);
 
       return res.json({
         number: nextNumber,
         companyId: companyId
       });
     } catch (error) {
+      console.error('❌ [EstimateController] Erro ao gerar número global:', error);
       return res.status(500).json({ error: "Failed to generate global estimate number" });
     }
   }

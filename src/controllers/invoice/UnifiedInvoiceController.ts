@@ -75,6 +75,7 @@ export class UnifiedInvoiceController {
 
       return res.status(200).json(invoice);
     } catch (error) {
+      console.error("Error fetching invoice by ID:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -150,6 +151,7 @@ export class UnifiedInvoiceController {
 
       return res.status(200).json({ total, invoices: processedInvoices });
     } catch (error) {
+      console.error("Error fetching invoices:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -178,6 +180,7 @@ export class UnifiedInvoiceController {
           return res.status(400).json({ error: "Invalid invoice type" });
       }
     } catch (error) {
+      console.error("Error sending invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -206,6 +209,7 @@ export class UnifiedInvoiceController {
           return res.status(400).json({ error: "Invalid invoice type" });
       }
     } catch (error) {
+      console.error("Error canceling invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -290,6 +294,7 @@ export class UnifiedInvoiceController {
 
       return res.status(200).json({ total, invoices: processedInvoices });
     } catch (error) {
+      console.error("Error fetching invoices:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -298,6 +303,7 @@ export class UnifiedInvoiceController {
     const { invoiceId } = req.params;
 
     try {
+      console.log(` Buscando pagamentos QBO para invoice: ${invoiceId}`);
 
       // Buscar o invoice
       const invoice = await prisma.invoice.findFirst({
@@ -341,6 +347,7 @@ export class UnifiedInvoiceController {
         appliedAt: app.appliedAt
       }));
 
+      console.log(` Encontrados ${payments.length} pagamentos para o invoice`);
 
       return res.status(200).json({
         success: true,
@@ -348,6 +355,7 @@ export class UnifiedInvoiceController {
       });
 
     } catch (error: any) {
+      console.error(" Erro ao buscar pagamentos QBO:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to fetch QBO payments"
@@ -360,6 +368,7 @@ export class UnifiedInvoiceController {
     const { projectId } = req.body;
 
     try {
+      console.log(`[UnifiedInvoiceController] Linking invoice ${id} to project ${projectId}`);
 
       // Verificar se o invoice existe
       const invoice = await prisma.invoice.findUnique({
@@ -490,6 +499,7 @@ export class UnifiedInvoiceController {
         ? "Invoice linked to project successfully (first time linking - old project deleted)"
         : "Invoice moved to new project successfully (old project preserved)";
 
+      console.log(`[UnifiedInvoiceController] Invoice ${id} linked to project ${projectId} successfully`);
 
       return res.status(200).json({
         success: true,
@@ -498,6 +508,7 @@ export class UnifiedInvoiceController {
       });
 
     } catch (error: any) {
+      console.error("[UnifiedInvoiceController] Error linking invoice to project:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to link invoice to project"

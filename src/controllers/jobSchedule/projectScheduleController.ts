@@ -106,6 +106,7 @@ export class ProjectScheduleController {
             return res.status(200).json({ message: "Project schedule updated successfully", project: updatedProject });
 
         } catch (error: any) {
+            console.error("Error updating project schedule:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -195,6 +196,7 @@ export class ProjectScheduleController {
             return res.status(200).json({ message: "Reminder emails sent successfully" });
 
         } catch (error: any) {
+            console.error("Error resending project schedule emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -213,6 +215,7 @@ export class ProjectScheduleController {
 
             return res.status(200).json({ message: "Project schedule deleted successfully" });
         } catch (error: any) {
+            console.error("Error deleting project schedule:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -429,6 +432,7 @@ export class ProjectScheduleController {
 
             return res.status(200).json({ message: "Update emails sent successfully" });
         } catch (error: any) {
+            console.error("Error sending update emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -622,6 +626,7 @@ export class ProjectScheduleController {
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
 
+                    console.log("Assignment email sent to worker", email);
                 }
             }
 
@@ -636,10 +641,12 @@ export class ProjectScheduleController {
                     attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
 
+                console.log("Assignment email sent to client", clientEmail);
             }
 
             return res.status(200).json({ message: "Assignment emails sent successfully" });
         } catch (error: any) {
+            console.error("Error sending assignment emails:", error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

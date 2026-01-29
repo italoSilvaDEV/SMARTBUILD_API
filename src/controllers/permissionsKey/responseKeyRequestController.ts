@@ -54,6 +54,7 @@ export class ResponseKeyRequestController {
                         html: permissionKeyResponseEmail(user.name, approve, keyId),
                     });
                 } catch (e) {
+                    console.error("❌ Email notification failed:", e);
                 }
             }
 
@@ -70,6 +71,7 @@ export class ResponseKeyRequestController {
             `);
 
         } catch (error: any) {
+            console.error("❌ Error processing decision:", error);
             return res.status(500).send(`<h1>Error</h1><p>Internal server error</p>`);
         }
     }

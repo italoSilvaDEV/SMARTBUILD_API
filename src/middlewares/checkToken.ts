@@ -51,6 +51,7 @@ export function checkToken(req: Request, res: Response, next: NextFunction) {
           data: { last_acess: new Date() }
         }).catch((error) => {
           // Log do erro mas não bloqueia a requisição
+          console.error('Erro ao atualizar last_acess:', error);
         });
       }
     }

@@ -72,12 +72,14 @@ export class DeleteCostProjectController {
                 if (fileToDelete) {
                     // Executar de forma assíncrona sem aguardar
                     this.deleteFiles(fileToDelete).catch(error => {
+                        console.error('Erro ao deletar arquivo:', error);
                     });
                 }
             });
 
             return response.json({ message: "Cost project deleted successfully" });
         } catch (error) {
+            console.error(error);
             if (error instanceof Error) {
                 return response.status(400).json({ error: error.message });
             }

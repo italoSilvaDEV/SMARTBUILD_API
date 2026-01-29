@@ -37,6 +37,7 @@ export class PaymentElementController {
         const { invoiceId } = req.params;
 
         try {
+            console.log("Iniciando Payment Element para invoice:", invoiceId);
 
             // Buscar invoice com relacionamentos
             const invoice = await prisma.invoice.findUnique({
@@ -154,11 +155,13 @@ export class PaymentElementController {
             }
 
             const stripeAccountId = company.stripeAccountId;
+            console.log("Using Stripe Account:", stripeAccountId);
 
             // Garantir que existe um customer no Stripe (conta principal)
             let stripeCustomerId = client.stripeCustomerId;
 
             if (!stripeCustomerId) {
+                console.log("Creating new Stripe customer on connected account...");
 
                 const stripePhone = client.phone
                     ? client.phone.replace(/\D/g, '').substring(0, 20)
@@ -169,6 +172,8 @@ export class PaymentElementController {
                     phone: stripePhone
                 }, { stripeAccount: stripeAccountId }); // Criando na conta conectada
 
+                console.log('customer criado customer', customer);
+                console.log('customer id', customer.id);
                 stripeCustomerId = customer.id;
 
                 await prisma.client.update({
@@ -176,6 +181,7 @@ export class PaymentElementController {
                     data: { stripeCustomerId }
                 });
 
+                console.log("Customer created on connected account:", stripeCustomerId);
             }
 
             // Calcular valor base (sem surcharge)
@@ -200,6 +206,7 @@ export class PaymentElementController {
 
             if (existingPaymentIntent) {
                 // Usar PaymentIntent existente
+                console.log("Using existing PaymentIntent:", existingPaymentIntent.stripePaymentIntentId);
 
                 paymentIntent = await stripe.paymentIntents.retrieve(
                     existingPaymentIntent.stripePaymentIntentId,
@@ -209,6 +216,7 @@ export class PaymentElementController {
                 paymentIntentRecord = existingPaymentIntent;
             } else {
                 // Criar novo PaymentIntent (sem surcharge inicialmente)
+                console.log("Creating new PaymentIntent...");
 
                 // DIRECT CHARGE: Criar PaymentIntent na CONTA CONECTADA
                 // Responsabilidade por chargebacks/refunds fica com a conta conectada
@@ -229,6 +237,7 @@ export class PaymentElementController {
                     }
                 }, { stripeAccount: stripeAccountId }); // CRIADO NA CONTA CONECTADA
 
+                console.log("PaymentIntent created:", paymentIntent.id);
 
                 // Salvar no banco
                 paymentIntentRecord = await prisma.paymentIntentRecord.create({
@@ -244,6 +253,7 @@ export class PaymentElementController {
                     }
                 });
 
+                console.log("PaymentIntentRecord created:", paymentIntentRecord.id);
             }
 
             // Preparar breakdown dos valores
@@ -264,6 +274,7 @@ export class PaymentElementController {
             });
 
         } catch (error) {
+            console.error("Erro ao iniciar Payment Element:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });
@@ -277,6 +288,7 @@ export class PaymentElementController {
         const { paymentIntentId, methodType } = req.body;
 
         try {
+            console.log("Recalculando pagamento para:", { paymentIntentId, methodType });
 
             // Buscar o PaymentIntentRecord
             const paymentRecord = await prisma.paymentIntentRecord.findUnique({
@@ -316,6 +328,12 @@ export class PaymentElementController {
             const surcharge = this.calculateSurcharge(baseAmount, methodType);
             const newTotal = baseAmount + surcharge;
 
+            console.log("Cálculo de valores:", {
+                baseAmount,
+                methodType,
+                surcharge,
+                newTotal
+            });
 
             // Atualizar PaymentIntent no Stripe (conta conectada)
             const updatedPaymentIntent = await stripe.paymentIntents.update(
@@ -337,6 +355,7 @@ export class PaymentElementController {
                 }
             });
 
+            console.log("PaymentIntent atualizado com sucesso");
 
             return res.status(200).json({
                 ok: true,
@@ -347,6 +366,7 @@ export class PaymentElementController {
             });
 
         } catch (error) {
+            console.error("Erro ao recalcular pagamento:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });
@@ -399,7 +419,9 @@ export class PaymentElementController {
 
                     const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: paymentRecord.stripeAccountId });
                     receiptUrl = charge.receipt_url;
+                    console.log("Receipt URL obtido do charge:", receiptUrl);
                 } catch (chargeError) {
+                    console.error("Erro ao buscar charge para receipt URL:", chargeError);
                 }
             }
 
@@ -432,6 +454,7 @@ export class PaymentElementController {
             });
 
         } catch (error) {
+            console.error("Erro ao obter status do pagamento:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });
@@ -465,6 +488,7 @@ export class PaymentElementController {
             });
 
         } catch (error) {
+            console.error("Erro ao listar PaymentIntents:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });
@@ -478,6 +502,7 @@ export class PaymentElementController {
         const { invoiceId } = req.params;
 
         try {
+            console.log("Buscando PDF para invoice:", invoiceId);
 
             // Buscar invoice com PDFs relacionados
             const invoice = await prisma.invoice.findUnique({
@@ -512,6 +537,7 @@ export class PaymentElementController {
             // Gerar URL presigned para o PDF
             const pdfUrl = await getPresignedUrl(pdf.uri);
 
+            console.log("PDF URL gerada com sucesso");
 
             return res.status(200).json({
                 pdfUrl: pdfUrl,
@@ -519,6 +545,7 @@ export class PaymentElementController {
             });
 
         } catch (error) {
+            console.error("Erro ao buscar PDF da invoice:", error);
             return res.status(500).json({
                 error: "Internal Server Error"
             });

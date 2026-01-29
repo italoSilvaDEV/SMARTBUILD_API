@@ -80,6 +80,7 @@ export class CreateSubcontractorController {
       });
 
     } catch (error) {
+      console.error("Error creating subcontractor:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

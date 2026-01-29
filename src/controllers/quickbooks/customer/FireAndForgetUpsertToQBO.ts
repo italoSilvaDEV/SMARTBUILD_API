@@ -20,6 +20,7 @@ async function isSyncEnabled(companyId: string, userId: string): Promise<boolean
     
     return !!syncPreference;
   } catch (error) {
+    console.error("[isSyncEnabled] Erro ao verificar preferências:", error);
     return false;
   }
 }
@@ -35,6 +36,7 @@ async function isQuickBooksAccountActive(companyId: string, userId: string): Pro
     
     return !!(qbAccount && !qbAccount.isDisabled);
   } catch (error) {
+    console.error("[isQuickBooksAccountActive] Erro ao verificar conta QuickBooks:", error);
     return false;
   }
 }
@@ -60,6 +62,7 @@ export async function createSyncLog(data: {
       }
     });
   } catch (error) {
+    console.error("[createSyncLog] Erro ao criar log:", error);
   }
 }
 
@@ -71,6 +74,7 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
       const syncEnabled = await isSyncEnabled(companyId, userId);
       
       if (!syncEnabled) {
+        console.log(`[fireAndForgetUpsertToQBO] Sincronização desabilitada para company=${companyId} user=${userId}`);
         
         // Log avulso (sem vinculação com execução)
         await createSyncLog({
@@ -88,6 +92,7 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
       const qbAccountActive = await isQuickBooksAccountActive(companyId, userId);
       
       if (!qbAccountActive) {
+        console.log(`[fireAndForgetUpsertToQBO] Conta QuickBooks desabilitada para company=${companyId} user=${userId}`);
         
         // Log avulso (sem vinculação com execução)
         await createSyncLog({
@@ -104,6 +109,7 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
       const { created } = await outbound.upsertOneLocalClientToQBOInternal(companyId, userId, clientId);
       return created;
     } catch (e) {
+      console.error("[fireAndForgetUpsertToQBO] failed:", (e as any)?.message || e);
       
       // Log de erro avulso
       await createSyncLog({

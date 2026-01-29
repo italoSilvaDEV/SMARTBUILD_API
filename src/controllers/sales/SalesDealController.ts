@@ -84,6 +84,7 @@ export class SalesDealController {
 
       return res.status(201).json(deal);
     } catch (error: any) {
+      console.error("Error creating deal:", error);
       return res.status(500).json({ 
         error: "Erro ao criar deal",
         message: error.message 
@@ -177,6 +178,7 @@ export class SalesDealController {
 
       return res.status(200).json(updatedDeal);
     } catch (error: any) {
+      console.error("Error updating deal:", error);
       return res.status(500).json({ 
         error: "Erro ao atualizar deal",
         message: error.message 
@@ -278,6 +280,7 @@ export class SalesDealController {
 
       return res.status(200).json(updatedDeal);
     } catch (error: any) {
+      console.error("Error moving deal stage:", error);
       return res.status(500).json({ 
         error: "Erro ao mover deal",
         message: error.message 
@@ -323,6 +326,7 @@ export class SalesDealController {
 
       return res.status(200).json({ message: "Deals reordenados com sucesso" });
     } catch (error: any) {
+      console.error("Error reordering deals:", error);
       return res.status(500).json({ 
         error: "Erro ao reordenar deals",
         message: error.message 
@@ -431,6 +435,7 @@ export class SalesDealController {
         subscription
       });
     } catch (error: any) {
+      console.error("Error converting deal:", error);
       return res.status(500).json({ 
         error: "Erro ao converter deal",
         message: error.message 
@@ -449,6 +454,7 @@ export class SalesDealController {
 
       return res.status(200).json({ message: "Deal deletado com sucesso" });
     } catch (error: any) {
+      console.error("Error deleting deal:", error);
       return res.status(500).json({ 
         error: "Erro ao deletar deal",
         message: error.message 
@@ -559,6 +565,7 @@ export class SalesDealController {
 
       return res.status(200).json(deal);
     } catch (error: any) {
+      console.error("Error getting deal:", error);
       return res.status(500).json({ 
         error: "Erro ao buscar deal",
         message: error.message 

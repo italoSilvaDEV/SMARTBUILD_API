@@ -20,6 +20,7 @@ export class PermissionGroupController {
       res.status(201).json(permissionGroup);
     } catch (error: unknown) {
       // Erro ao criar grupo de permissões
+      console.error('Error creating permission group:', error);
       res.status(500).json({ message: 'Error creating permission group', error: (error as Error).message });
     }
   }
@@ -34,6 +35,7 @@ export class PermissionGroupController {
       const groups = await this.permissionGroupService.getAllPermissionGroups();
       res.status(200).json(groups);
     } catch (error: unknown) {
+      console.error('Error fetching permission groups:', error);
       res.status(500).json({ message: 'Error fetching permission groups', error: (error as Error).message });
     }
   }
@@ -57,6 +59,7 @@ export class PermissionGroupController {
       res.status(200).json(permissionGroup);
     } catch (error: unknown) {
       // Erro ao buscar grupo de permissões
+      console.error('Error fetching permission group:', error);
       res.status(500).json({ message: 'Error fetching permission group', error: (error as Error).message });
     }
   }
@@ -76,6 +79,7 @@ export class PermissionGroupController {
       // Simply return success, no need to check result
       res.status(200).json({ message: 'Permissions added successfully' });
     } catch (error: unknown) {
+      console.error('Error adding permissions to group:', error);
       res.status(500).json({ message: 'Error adding permissions to group', error: (error as Error).message });
     }
   }
@@ -95,6 +99,7 @@ export class PermissionGroupController {
       // Simply return success, no need to check result
       res.status(200).json({ message: 'Permissions removed successfully' });
     } catch (error: unknown) {
+      console.error('Error removing permissions from group:', error);
       res.status(500).json({ message: 'Error removing permissions from group', error: (error as Error).message });
     }
   }
@@ -118,6 +123,7 @@ export class PermissionGroupController {
       res.status(200).send(); // No content to return
     } catch (error: unknown) {
       // Error updating permission group
+      console.error('Error updating permission group:', error);
       res.status(500).json({ message: 'Error updating permission group', error: (error as Error).message });
     }
   }
@@ -134,6 +140,7 @@ export class PermissionGroupController {
       res.status(204).send();
     } catch (error: unknown) {
       // Erro ao excluir grupo de permissões
+      console.error('Error deleting permission group:', error);
       res.status(500).json({ message: 'Error deleting permission group', error: (error as Error).message });
     }
   }

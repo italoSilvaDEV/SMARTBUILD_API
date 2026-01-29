@@ -148,6 +148,7 @@ export class FindWorkedHoursProjectController {
             const combinedResults = [...result, ...formattedResult];
             return response.json({ total, result: combinedResults });
         } catch (error) {
+            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }
@@ -313,6 +314,7 @@ export class FindWorkedHoursProjectController {
             const combinedResults = [...formattedResult, ...formattedAttendance];
             return response.json({ result: combinedResults });
         } catch (error) {
+            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

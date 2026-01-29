@@ -115,6 +115,7 @@ export class PlanController {
       
       res.status(201).json(formattedPlan);
     } catch (error) {
+      console.error('Error creating plan:', error);
       res.status(500).json({ message: 'Error creating plan', error: (error as Error).message });
     }
   }
@@ -184,6 +185,7 @@ export class PlanController {
       
       res.status(200).json(formattedPlans);
     } catch (error) {
+      console.error('Error fetching plans:', error);
       res.status(500).json({ message: 'Error fetching plans', error: (error as Error).message });
     }
   }
@@ -220,6 +222,7 @@ export class PlanController {
       
       res.status(200).json(formattedPlan);
     } catch (error) {
+      console.error('Error fetching plan:', error);
       res.status(500).json({ message: 'Error fetching plan', error: (error as Error).message });
     }
   }
@@ -266,6 +269,11 @@ export class PlanController {
         const newPrice = price ? parseFloat(price) : 0;
         const priceChanged = newPrice !== currentPrice;
         
+        console.log('Verificando mudança de preço:', {
+          currentPrice,
+          newPrice,
+          priceChanged
+        });
         
         if (priceChanged && newPrice > 0) {
           const priceInCents = Math.round(newPrice * 100);
@@ -290,10 +298,12 @@ export class PlanController {
             }
           });
           
+          console.log('Novo preço criado no Stripe:', stripePrice.id);
           
           // Salvar ID do novo preço
           stripePriceId = stripePrice.id;
         } else {
+          console.log('Preço não alterado, mantendo o mesmo stripePriceId:', stripePriceId);
         }
       } else if (stripeProductId && validityType === 'FREE' && currentPlan.validityType !== 'FREE') {
         // Desativar produto e preço se o plano mudou para gratuito
@@ -352,6 +362,7 @@ export class PlanController {
       
       res.status(200).json(formattedPlan);
     } catch (error) {
+      console.error('Error updating plan:', error);
       res.status(500).json({ message: 'Error updating plan', error: (error as Error).message });
     }
   }
@@ -394,6 +405,7 @@ export class PlanController {
             });
           }
         } catch (stripeError) {
+          console.error('Error archiving Stripe product/price:', stripeError);
           // Continuamos mesmo se houver erro no Stripe, para não bloquear a exclusão local
         }
       }
@@ -405,6 +417,7 @@ export class PlanController {
       
       res.status(200).json({ message: 'Plan deleted successfully' });
     } catch (error) {
+      console.error('Error deleting plan:', error);
       res.status(500).json({ message: 'Error deleting plan', error: (error as Error).message });
     }
   }

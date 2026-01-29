@@ -95,8 +95,10 @@ export class QuickBooksInvoiceController {
           () => new Promise((resolve, reject) => {
             qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
               if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
                 reject(err);
               } else {
+                console.log("Informações da empresa obtidas com sucesso");
                 resolve(data);
               }
             });
@@ -105,6 +107,7 @@ export class QuickBooksInvoiceController {
           200 // 200ms de delay inicial
         );
       } catch (companyError: any) {
+        console.error("Erro ao buscar informações da empresa:", companyError);
         
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
@@ -120,8 +123,11 @@ export class QuickBooksInvoiceController {
       }
 
       // Preparar os itens da fatura com logs detalhados
+      console.log("Serviços do projeto:", services);
+      console.log("Coeficiente recebido:", coefficientPerfentage);
 
       // Buscar invoices pagos do projeto para calcular valor já pago
+      console.log("Buscando invoices pagos do projeto para QuickBooks...");
       const paidInvoices = await prisma.invoice.findMany({
         where: {
           projectId: project.id,
@@ -133,6 +139,7 @@ export class QuickBooksInvoiceController {
       });
 
       const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+      console.log(`Total já pago no projeto (QB): $${totalPaidAmount}`);
 
       // Calcular valor total original do projeto (sem coeficiente)
       const originalProjectValue = services.reduce((sum: number, service: any) => {
@@ -141,9 +148,11 @@ export class QuickBooksInvoiceController {
         return sum + (service.total || (quantity * price));
       }, 0);
 
+      console.log(`Valor original do projeto (QB): $${originalProjectValue}`);
 
       // Calcular saldo restante após pagamentos
       const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
+      console.log(`Saldo restante (QB): $${remainingBalance}`);
 
       const processedLineItems = [];
 
@@ -153,6 +162,7 @@ export class QuickBooksInvoiceController {
 
       // Aplicar coeficiente sobre o saldo restante
       const invoiceAmountWithCoefficient = remainingBalance * coef;
+      console.log(`Valor da fatura QB após coeficiente (${coef}): $${invoiceAmountWithCoefficient}`);
 
       // Validar se há serviços
       if (!services || !Array.isArray(services) || services.length === 0) {
@@ -166,6 +176,7 @@ export class QuickBooksInvoiceController {
       for (const service of services) {
         // Validações básicas do serviço
         if (!service || typeof service !== 'object') {
+          console.warn("Serviço inválido encontrado, ignorando:", service);
           continue;
         }
 
@@ -174,6 +185,7 @@ export class QuickBooksInvoiceController {
         
         // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
+          console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
           continue;
         }
 
@@ -215,6 +227,7 @@ export class QuickBooksInvoiceController {
       // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
       const totalTargetAmount = totalAmountTarget || invoiceAmountWithCoefficient;
       
+      console.log(`Total com coeficiente calculado: ${totalWithCoefficientCalculated}, Total alvo: ${totalTargetAmount}`);
 
       // Agora processar os itens com ajuste para garantir o total exato
       let totalProcessed = 0;
@@ -246,13 +259,16 @@ export class QuickBooksInvoiceController {
         totalProcessed += exactAmount;
         
         // Log detalhado para monitoramento
+        console.log(`QB - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
 
         // Validação melhorada
         if (qtyForQB <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQB) || !Number.isFinite(exactAmount)) {
+          console.warn(` Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQB}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
         try {
+          console.log(`Verificando/criando Item "${calc.itemName}" no QuickBooks...`);
 
           // IMPORTANTe: use o id de conta de receita válido que você obteve antes do loop (incomeAccount.id)
           const { id: itemId, name: qboItemName } = await this.findOrCreateServiceItem(
@@ -282,15 +298,22 @@ export class QuickBooksInvoiceController {
         });
 
           // Logs defensivos
+          console.log(
+            `[DBG] ${calc.itemName} -> qtyOriginal=${calc.qty} qtyQB=${qtyForQB} basePrice=${calc.priceParsed} originalAmount=${calc.originalServiceAmount} ` +
+            `serviceAmountWithCoef=${calc.serviceAmountWithCoefficient} unitPrice=${unitPrice} exactAmount=${exactAmount}`
+          );
         } catch (itemError: any) {
+          console.error(`Erro ao processar item "${calc.itemName}":`, itemError);
           // Continua para o próximo serviço
         }
       }
 
+      console.log(`Total calculado: ${totalProcessed}, Total target: ${totalTargetAmount}, Diferença: ${Math.abs(totalProcessed - totalTargetAmount)}`);
       
 
       // Calcular o total
       const totalAmount = processedLineItems.reduce((sum: number, item: InvoiceLineItem) => sum + item.Amount, 0);
+      console.log("Total calculado:", totalAmount);
 
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date();
@@ -300,15 +323,20 @@ export class QuickBooksInvoiceController {
         let clientId;
         
         try {
+          console.log(" Verificando cliente no QuickBooks...");
+          console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
+          console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
 
           // 1) Primeiro verificar se o cliente local já tem idQuickbooks
           if (project.client!.idQuickbooks) {
+            console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
             
             // Verificar se o cliente ainda existe no QuickBooks
             try {
               const existingCustomer = await new Promise((resolve, reject) => {
                 qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
                   if (err) {
+                    console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
                     resolve(null);
                   } else {
                     resolve(data);
@@ -319,13 +347,17 @@ export class QuickBooksInvoiceController {
               if (existingCustomer) {
                 const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
                 clientId = customer.Id;
+                console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
               }
             } catch (getError: any) {
+              console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
+              console.log("Continuando para criação de novo cliente...");
             }
           }
 
           // 2) Se não tem idQuickbooks válido, criar novo cliente
           if (!clientId) {
+            console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
             
             // Validar dados do cliente antes de criar
             const clientName = project.client!.name?.trim();
@@ -334,6 +366,7 @@ export class QuickBooksInvoiceController {
             }
 
             const clientEmail = project.client!.email?.trim() || "noemail@example.com";
+            console.log(`Email do cliente: ${clientEmail}`);
             
             const createCustomerData = {
               DisplayName: clientName,
@@ -343,13 +376,17 @@ export class QuickBooksInvoiceController {
               }
             };
 
+            console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
 
             try {
               const createCustomerResult = await new Promise((resolve, reject) => {
                 qb.createCustomer(createCustomerData, (err: any, data: any) => {
                   if (err) {
+                    console.error(" Erro ao criar cliente no QuickBooks:", err);
+                    console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
                     reject(err);
                   } else {
+                    console.log(" Cliente criado com sucesso no QuickBooks");
                     resolve(data);
                   }
                 });
@@ -357,12 +394,15 @@ export class QuickBooksInvoiceController {
 
               const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
               
+              console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
               
               if (!createdCustomer || !createdCustomer.Id) {
+                console.error(" Resposta inválida do QuickBooks ao criar cliente");
                 throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
               }
 
               clientId = createdCustomer.Id;
+              console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
 
               // Atualizar cliente local com o novo idQuickbooks
               try {
@@ -370,21 +410,28 @@ export class QuickBooksInvoiceController {
                   where: { id: project.client!.id },
                   data: { idQuickbooks: clientId }
                 });
+                console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
               } catch (updateError: any) {
+                console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
                 // Não falhar a criação do invoice por causa disso
               }
             } catch (createError: any) {
+              console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
               throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
             }
           }
 
           // 3) Validação final: garantir que temos um clientId válido
           if (!clientId) {
+            console.error(" ERRO CRÍTICO: clientId não foi definido após processamento");
             throw new Error("Failed to obtain valid QuickBooks customer ID");
           }
 
+          console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
 
         } catch (clientError: any) {
+          console.error(" ERRO ao processar cliente no QuickBooks:", clientError);
+          console.error("Stack trace:", clientError?.stack);
           throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
         }
 
@@ -403,6 +450,7 @@ export class QuickBooksInvoiceController {
         const workContext = project.workContext;
         const recipientEmail = workContext?.Email || project.client?.email || "noemail@example.com";
         
+        console.log(` Email de cobrança que será usado: ${recipientEmail}`);
 
         // Preparar dados da fatura
         const invoiceData = {
@@ -420,6 +468,7 @@ export class QuickBooksInvoiceController {
         };
 
         // Criar a fatura usando SDK
+        console.log("Criando fatura no QuickBooks usando SDK...");
 
 
         // 1) Criar a fatura
@@ -442,6 +491,7 @@ export class QuickBooksInvoiceController {
         inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
 
         // 5) Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
+        console.log(` Iniciando busca do InvoiceLink com retry...`); 
         const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, createdId);
         
         // 6) Derive o status de pagamento
@@ -462,7 +512,15 @@ export class QuickBooksInvoiceController {
         let invoiceLink = invoiceLinkFromRetry || inv?.InvoiceLink || null;
         
         if (invoiceLink) {
+          console.log(`  Link de pagamento QuickBooks capturado com sucesso!`);
+          console.log(` URL: ${invoiceLink}`);
+          console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
         } else {
+          console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas`);
+          console.warn(` Isso pode indicar:`);
+          console.warn(` 1) Pagamentos online não estão habilitados para esta empresa no QuickBooks`);
+          console.warn(` 2) Email de cobrança (BillEmail) pode estar inválido ou ausente`);
+          console.warn(` 3) Configurações de pagamento precisam ser revisadas no QuickBooks`);
           // temporario ate o teste real depois excluir a linha abaixo
           invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
         }
@@ -504,6 +562,7 @@ export class QuickBooksInvoiceController {
             nextInvoiceNumber = maxNumber + 1;
           }
 
+          console.log(` Número sequencial do invoice: ${nextInvoiceNumber}`);
 
           const newInvoice = await prisma.invoice.create({
             data: {
@@ -553,6 +612,7 @@ export class QuickBooksInvoiceController {
             }
           });
 
+          console.log(` Invoice criado com sucesso: ${newInvoice.id}`);
 
           return {
             success: true,
@@ -562,6 +622,7 @@ export class QuickBooksInvoiceController {
         }
 
     } catch (error: any) {
+      console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
 
       // Extrair mensagem de erro do QuickBooks
       let errorMessage = error.message || error.toString();
@@ -570,6 +631,7 @@ export class QuickBooksInvoiceController {
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
         errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error(" Erro do QuickBooks:", errorMessage);
       }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
@@ -591,6 +653,7 @@ export class QuickBooksInvoiceController {
             });
           }
         } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
         }
 
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
@@ -658,8 +721,10 @@ export class QuickBooksInvoiceController {
           () => new Promise((resolve, reject) => {
             qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
               if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
                 reject(err);
               } else {
+                console.log("Informações da empresa obtidas com sucesso");
                 resolve(data);
               }
             });
@@ -668,6 +733,7 @@ export class QuickBooksInvoiceController {
           200 // 200ms de delay inicial
         );
       } catch (companyError: any) {
+        console.error("Erro ao buscar informações da empresa:", companyError);
         
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
@@ -683,9 +749,11 @@ export class QuickBooksInvoiceController {
       }
 
       // Primeiro, buscar a fatura atual para obter o SyncToken e outras informações
+      console.log(`Buscando invoice ${quickBooksInvoiceId} no QuickBooks para atualização...`);
       const currentInvoiceData = await new Promise((resolve, reject) => {
         qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
           if (err) {
+            console.error("Erro ao buscar fatura para atualização:", err);
             reject(err);
           } else {
             resolve(data);
@@ -699,6 +767,7 @@ export class QuickBooksInvoiceController {
         throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
       }
 
+      console.log(`Invoice encontrado. SyncToken: ${currentInvoice.SyncToken}`);
 
       // ETAPA 8: Validações de edição
       // Verificar se a fatura pode ser editada (não pode estar paga, cancelada ou com pagamento parcial)
@@ -719,8 +788,11 @@ export class QuickBooksInvoiceController {
       }
 
       // Preparar os itens da fatura com logs detalhados
+      console.log("Preparando serviços para atualização:", services);
+      console.log("Coeficiente recebido:", coefficientPerfentage);
 
       // Buscar invoices pagos do projeto para calcular valor já pago
+      console.log("Buscando invoices pagos do projeto para atualização QB...");
       const paidInvoices = await prisma.invoice.findMany({
         where: {
           projectId: project.id,
@@ -733,6 +805,7 @@ export class QuickBooksInvoiceController {
       });
 
       const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+      console.log(`Total já pago no projeto (QB Update): $${totalPaidAmount}`);
 
       // Calcular valor total original do projeto (sem coeficiente)
       const originalProjectValue = services.reduce((sum: number, service: any) => {
@@ -741,9 +814,11 @@ export class QuickBooksInvoiceController {
         return sum + (service.total || (quantity * price));
       }, 0);
 
+      console.log(`Valor original do projeto (QB Update): $${originalProjectValue}`);
 
       // Calcular saldo restante após pagamentos
       const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
+      console.log(`Saldo restante (QB Update): $${remainingBalance}`);
 
       const processedLineItems = [];
 
@@ -752,6 +827,7 @@ export class QuickBooksInvoiceController {
 
       // Aplicar coeficiente sobre o saldo restante
       const invoiceAmountWithCoefficient = remainingBalance * coef;
+      console.log(`Valor da fatura QB após coeficiente para update (${coef}): $${invoiceAmountWithCoefficient}`);
 
       // Validar se há serviços
       if (!services || !Array.isArray(services) || services.length === 0) {
@@ -765,6 +841,7 @@ export class QuickBooksInvoiceController {
       for (const service of services) {
         // Validações básicas do serviço
         if (!service || typeof service !== 'object') {
+          console.warn("Serviço inválido encontrado, ignorando:", service);
           continue;
         }
 
@@ -773,6 +850,7 @@ export class QuickBooksInvoiceController {
         
         // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
+          console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
           continue;
         }
 
@@ -814,6 +892,7 @@ export class QuickBooksInvoiceController {
       // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
       const totalTargetAmountUpdate = totalAmountTarget || invoiceAmountWithCoefficient;
       
+      console.log(`Total com coeficiente calculado (Update): ${totalWithCoefficientCalculatedUpdate}, Total alvo: ${totalTargetAmountUpdate}`);
 
       // Agora processar os itens com ajuste para garantir o total exato (UPDATE)
       let totalProcessedUpdate = 0;
@@ -845,13 +924,16 @@ export class QuickBooksInvoiceController {
         totalProcessedUpdate += exactAmount;
         
         // Log detalhado para monitoramento
+        console.log(`QB Update - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
 
         // Validação melhorada
         if (qtyForQBUpdate <= 0 || exactAmount <= 0 || !Number.isFinite(qtyForQBUpdate) || !Number.isFinite(exactAmount)) {
+          console.warn(`Valor inválido para o serviço: ${calc.itemName}. qty=${qtyForQBUpdate}, amount=${exactAmount}. Ignorando item.`);
           continue;
         }
 
         try {
+          console.log(`Verificando/criando Item "${calc.itemName}" no QuickBooks para update...`);
 
           // Usar o id de conta de receita válido
           const { id: itemId, name: qboItemName } = await this.findOrCreateServiceItem(
@@ -881,11 +963,17 @@ export class QuickBooksInvoiceController {
           });
 
           // Logs defensivos
+          console.log(
+            `[DBG Update] ${calc.itemName} -> qtyOriginal=${calc.qty} qtyQB=${qtyForQBUpdate} basePrice=${calc.priceParsed} originalAmount=${calc.originalServiceAmount} ` +
+            `serviceAmountWithCoef=${calc.serviceAmountWithCoefficient} unitPrice=${unitPrice} exactAmount=${exactAmount}`
+          );
         } catch (itemError: any) {
+          console.error(`Erro ao processar item "${calc.itemName}" para update:`, itemError);
           // Continua para o próximo serviço
         }
       }
 
+      console.log(`Total calculado (Update): ${totalProcessedUpdate}, Total target: ${totalTargetAmountUpdate}, Diferença: ${Math.abs(totalProcessedUpdate - totalTargetAmountUpdate)}`);
       
 
       // Verificar se há itens processados
@@ -895,6 +983,7 @@ export class QuickBooksInvoiceController {
 
       // Calcular o total
       const calculatedTotal = processedLineItems.reduce((sum: number, item: InvoiceLineItem) => sum + item.Amount, 0);
+      console.log("Total calculado para update:", calculatedTotal);
 
       // Preparar a data de vencimento
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date(currentInvoice.DueDate);
@@ -909,6 +998,7 @@ export class QuickBooksInvoiceController {
       const workContext = project.workContext;
       const recipientEmail = workContext?.Email || project.client?.email || currentInvoice.BillEmail?.Address || "noemail@example.com";
       
+      console.log(` Email de cobrança para update: ${recipientEmail}`);
 
       // Preparar dados da fatura para atualização
       const updateInvoiceData = {
@@ -927,10 +1017,12 @@ export class QuickBooksInvoiceController {
       };
 
       // Atualizar a fatura usando SDK
+      console.log("Atualizando fatura no QuickBooks usando SDK...");
 
       const updateResult = await new Promise((resolve, reject) => {
         qb.updateInvoice(updateInvoiceData, (err: any, data: any) => {
           if (err) {
+            console.error("Erro na atualização do QuickBooks:", err);
             return reject(err);
           }
           resolve(data);
@@ -946,6 +1038,7 @@ export class QuickBooksInvoiceController {
       let updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
 
       // Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
+      console.log(` Iniciando busca do InvoiceLink após update com retry...`); 
       const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, updatedId);
 
       // Derive o status de pagamento
@@ -962,7 +1055,11 @@ export class QuickBooksInvoiceController {
       let invoiceLink = invoiceLinkFromRetry || updatedInv?.InvoiceLink || null;
       
       if (invoiceLink) {
+        console.log(`  Link de pagamento QuickBooks atualizado com sucesso!`);
+        console.log(` URL: ${invoiceLink}`);
+        console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
       } else {
+        console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas (update)`);
     
         // temporario ate o teste real depois excluir a linha abaixo
         invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${updatedInv.Id}`;
@@ -970,6 +1067,7 @@ export class QuickBooksInvoiceController {
       
       const invoiceUrl = invoiceLink;
 
+      console.log(`Invoice ${quickBooksInvoiceId} atualizado com sucesso no QuickBooks`);
 
       if (calledFromStripe) {
         // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
@@ -1034,6 +1132,7 @@ export class QuickBooksInvoiceController {
       }
 
     } catch (error: any) {
+      console.error("Erro detalhado ao atualizar fatura no QuickBooks:", error);
 
       // Extrair mensagem de erro do QuickBooks
       let errorMessage = error.message || error.toString();
@@ -1042,6 +1141,7 @@ export class QuickBooksInvoiceController {
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
         errorMessage = `${qbError.Message}${qbError.Detail ? ` - ${qbError.Detail}` : ''} (Code: ${qbError.code || 'Unknown'})`;
+        console.error(" Erro do QuickBooks (Update):", errorMessage);
       }
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
@@ -1063,6 +1163,7 @@ export class QuickBooksInvoiceController {
             });
           }
         } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
         }
 
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
@@ -1077,6 +1178,10 @@ export class QuickBooksInvoiceController {
     const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
 
     try {
+      console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
+      console.log("ProjectId:", projectId);
+      console.log("UserId:", userId);
+      console.log("TotalAmount:", totalAmount);
 
       // Validações básicas
       if (!projectId || !userId) {
@@ -1131,6 +1236,7 @@ export class QuickBooksInvoiceController {
         }, 0);
       }
 
+      console.log(" Delegando criação para createInvoiceInternal...");
 
       // Chamar createInvoiceInternal que vai criar o invoice e sincronizar com QuickBooks
       const result = await this.createInvoiceInternal({
@@ -1150,6 +1256,7 @@ export class QuickBooksInvoiceController {
       });
 
       if (result?.invoice) {
+        console.log(" Invoice criado com sucesso:", result.invoice.id);
 
         return res.status(201).json({
           success: true,
@@ -1167,6 +1274,7 @@ export class QuickBooksInvoiceController {
       }
 
     } catch (error: any) {
+      console.error(" Erro detalhado ao criar fatura:", error);
 
       // Verificar se é erro de autorização
       if (error.message && (
@@ -1294,6 +1402,7 @@ export class QuickBooksInvoiceController {
             const invoiceResult = await new Promise((resolve, reject) => {
               qb.getInvoice(invoice.externalInvoiceId, (err: any, data: any) => {
                 if (err) {
+                  console.error(`Erro ao buscar fatura ${invoice.externalInvoiceId}:`, err);
                   reject(err);
                 } else {
                   resolve(data);
@@ -1316,6 +1425,7 @@ export class QuickBooksInvoiceController {
 
             return { ...invoice, status, lastSentAt: lastSend };
           } catch (error: any) {
+            console.error(`Error fetching QuickBooks invoice ${invoice.externalInvoiceId}:`, error);
             return { ...invoice, error: error.message };
           }
         })
@@ -1323,6 +1433,7 @@ export class QuickBooksInvoiceController {
 
       return res.status(200).json({ total, invoices: updatedInvoices });
     } catch (error: any) {
+      console.error("Error fetching QuickBooks invoices:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1332,6 +1443,7 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando envio de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
@@ -1356,6 +1468,7 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
 
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
@@ -1391,6 +1504,7 @@ export class QuickBooksInvoiceController {
       }
 
       const emailSource = workContext?.Email ? "work context" : "client";
+      console.log(` Email do destinatário obtido do ${emailSource}: ${recipientEmail} (${recipientName})`);
 
       // Buscar conta QuickBooks
       const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -1416,6 +1530,7 @@ export class QuickBooksInvoiceController {
       // Obter cliente QuickBooks configurado
       const { qb } = await getQbClientWithAccountOrThrow(userId, invoice.project.company_id);
 
+      console.log(` Enviando invoice QB ID ${invoice.idQuickbookContabio} para ${recipientEmail}`);
 
       // Enviar a fatura pelo QuickBooks usando o ID real do QuickBooks
       await new Promise((resolve, reject) => {
@@ -1424,8 +1539,10 @@ export class QuickBooksInvoiceController {
           recipientEmail, 
           (err: any, data: any) => {
             if (err) {
+              console.error("Erro ao enviar invoice pelo QuickBooks SDK:", err);
               return reject(err);
             }
+            console.log(" Invoice enviado com sucesso pelo QuickBooks");
             resolve(data);
           }
         );
@@ -1448,6 +1565,7 @@ export class QuickBooksInvoiceController {
         }
       });
 
+      console.log(` Invoice enviado com sucesso para ${recipientName} (${recipientEmail})`);
 
       return res.status(200).json({
         success: true,
@@ -1457,6 +1575,7 @@ export class QuickBooksInvoiceController {
         emailSource: emailSource
       });
     } catch (error: any) {
+      console.error(" Erro ao enviar QuickBooks invoice:", error);
 
       // Verificar se é erro de autorização
       if (error.message && (
@@ -1506,8 +1625,10 @@ export class QuickBooksInvoiceController {
           () => new Promise((resolve, reject) => {
             qb.getCompanyInfo(account.realmId, (err: any, data: any) => {
               if (err) {
+                console.error("Erro ao buscar informações da empresa:", err);
                 reject(err);
               } else {
+                console.log("Informações da empresa obtidas com sucesso");
                 resolve(data);
               }
             });
@@ -1516,6 +1637,7 @@ export class QuickBooksInvoiceController {
           200 // 200ms de delay inicial
         );
       } catch (companyError: any) {
+        console.error("Erro ao buscar informações da empresa:", companyError);
         
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
@@ -1531,9 +1653,11 @@ export class QuickBooksInvoiceController {
       }
 
       // Primeiro, buscar a fatura atual para obter o SyncToken e verificar status
+      console.log(`Buscando invoice ${quickBooksInvoiceId} no QuickBooks para cancelamento...`);
       const currentInvoiceData = await new Promise((resolve, reject) => {
         qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
           if (err) {
+            console.error("Erro ao buscar fatura para cancelamento:", err);
             reject(err);
           } else {
             resolve(data);
@@ -1547,9 +1671,11 @@ export class QuickBooksInvoiceController {
         throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
       }
 
+      console.log(`Invoice encontrado para cancelamento. SyncToken: ${currentInvoice.SyncToken}, Status: ${currentInvoice.TxnStatus}`);
 
       // Verificar se a fatura já está cancelada
       if (currentInvoice.TxnStatus === "Voided") {
+        console.log("Invoice já está cancelado no QuickBooks");
         return {
           success: true,
           message: "Invoice was already voided in QuickBooks",
@@ -1574,9 +1700,11 @@ export class QuickBooksInvoiceController {
         PrivateNote: calledFromStripe ? "Voided by Stripe integration" : "Voided by system"
       };
 
+      console.log("Cancelando fatura no QuickBooks usando SDK...");
       const voidResult = await new Promise((resolve, reject) => {
         qb.voidInvoice(voidInvoiceData, (err: any, data: any) => {
           if (err) {
+            console.error("Erro ao cancelar fatura:", err);
             reject(err);
           } else {
             resolve(data);
@@ -1587,6 +1715,7 @@ export class QuickBooksInvoiceController {
       // Normalize o objeto retornado
       const voided = (voidResult as any)?.Invoice ?? (voidResult as any);
       
+      console.log(`Invoice ${quickBooksInvoiceId} cancelado com sucesso no QuickBooks`);
 
       if (calledFromStripe) {
         // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
@@ -1610,6 +1739,7 @@ export class QuickBooksInvoiceController {
         if (localInvoice) {
           // IMPORTANTE: Manter o valor original (totalAmount) no banco local
           // QuickBooks pode zerar o valor ao fazer void, mas queremos preservar o histórico
+          console.log(`Mantendo totalAmount original: ${localInvoice.totalAmount}`);
           
           await prisma.invoice.update({
             where: { id: localInvoice.id },
@@ -1638,6 +1768,7 @@ export class QuickBooksInvoiceController {
       }
 
     } catch (error: any) {
+      console.error("Erro detalhado ao cancelar fatura no QuickBooks:", error);
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -1650,6 +1781,7 @@ export class QuickBooksInvoiceController {
             }
           });
         } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
         }
 
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
@@ -1687,11 +1819,13 @@ export class QuickBooksInvoiceController {
     calledFromStripe?: boolean;
   }) {
     try {
+      console.log(`Iniciando deleção do invoice ${quickBooksInvoiceId} no QuickBooks...`);
 
       // Obter cliente QuickBooks
       const { qb } = await getQbClientWithAccountOrThrow(userId, companyId );
 
       // Buscar a fatura atual para obter o SyncToken
+      console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
       let currentInvoiceData;
       try {
         currentInvoiceData = await new Promise((resolve, reject) => {
@@ -1701,8 +1835,10 @@ export class QuickBooksInvoiceController {
               if (err.statusCode === 404 || err.statusCode === 400 || 
                   (err.Fault && err.Fault.Error && Array.isArray(err.Fault.Error) && 
                    err.Fault.Error.some((e: any) => e.code === '610' || e.code === '100'))) {
+                console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks (pode ter sido deletado manualmente)`);
                 resolve(null); // Retornar null ao invés de rejeitar
               } else {
+                console.error("Erro ao buscar fatura:", err);
                 reject(err);
               }
             } else {
@@ -1713,6 +1849,7 @@ export class QuickBooksInvoiceController {
       } catch (error: any) {
         // Se der erro na busca, verificar se é "not found"
         if (error.statusCode === 404 || error.message?.includes('not found')) {
+          console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks`);
           // Retornar um objeto especial indicando que não foi encontrado
           return {
             success: true,
@@ -1727,6 +1864,7 @@ export class QuickBooksInvoiceController {
 
       // Se não encontrou o invoice no QBO, retornar indicando isso
       if (!currentInvoiceData) {
+        console.warn(`Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks - pode ter sido deletado manualmente`);
         return {
           success: true,
           message: "Invoice not found in QuickBooks (may have been deleted manually)",
@@ -1739,6 +1877,7 @@ export class QuickBooksInvoiceController {
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
       
       if (!currentInvoice || !currentInvoice.Id) {
+        console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
         return {
           success: true,
           message: "Invoice not found in QuickBooks (may have been deleted manually)",
@@ -1748,6 +1887,7 @@ export class QuickBooksInvoiceController {
         };
       }
 
+      console.log(`Invoice encontrado para deleção. SyncToken: ${currentInvoice.SyncToken}`);
 
       // Verificar se está paga (Balance = 0 e TotalAmt > 0)
       const totalAmt = Number(currentInvoice.TotalAmt || 0);
@@ -1758,6 +1898,7 @@ export class QuickBooksInvoiceController {
 
       // Deletar a fatura no QuickBooks usando deleteInvoice do SDK
       // O método deleteInvoice espera um objeto com Id e SyncToken
+      console.log("Deletando fatura no QuickBooks usando SDK...");
       const deletePayload = {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken
@@ -1766,8 +1907,10 @@ export class QuickBooksInvoiceController {
       const deleteResult = await new Promise((resolve, reject) => {
         qb.deleteInvoice(deletePayload, (err: any, data: any) => {
           if (err) {
+            console.error("Erro ao deletar fatura:", err);
             reject(err);
           } else {
+            console.log("Resposta do QuickBooks delete:", JSON.stringify(data, null, 2));
             resolve(data);
           }
         });
@@ -1776,6 +1919,7 @@ export class QuickBooksInvoiceController {
       // Normalize o objeto retornado
       const deleted = (deleteResult as any)?.Invoice ?? (deleteResult as any);
       
+      console.log(`Invoice ${quickBooksInvoiceId} deletado com sucesso no QuickBooks`);
 
       if (calledFromStripe) {
         // Quando chamado pelo StripeController, retornar apenas informações do QuickBooks
@@ -1816,6 +1960,7 @@ export class QuickBooksInvoiceController {
       }
 
     } catch (error: any) {
+      console.error("Erro detalhado ao deletar fatura no QuickBooks:", error);
 
       // Verificar se é um erro de autorização usando nossa função mais robusta
       if (shouldRequireReauthorization(error)) {
@@ -1828,6 +1973,7 @@ export class QuickBooksInvoiceController {
             }
           });
         } catch (updateError) {
+          console.error("Erro ao atualizar status de reautorização:", updateError);
         }
 
         throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
@@ -1851,6 +1997,9 @@ export class QuickBooksInvoiceController {
     const { description, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount } = req.body;
 
     try {
+      console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
+      console.log("InvoiceId:", invoiceId);
+      console.log("UserId:", userId);
 
       // Validações básicas
       if (!invoiceId || !userId) {
@@ -1889,10 +2038,14 @@ export class QuickBooksInvoiceController {
       let hadAdministrativeQboInvoice = false;
       
       if (invoice.invoiceType === "stripe" || invoice.invoiceType === "custom") {
+        console.log(" Invoice is being converted from", invoice.invoiceType, "to quickbooks");
         isConvertingToQuickbooks = true;
         
         // Check if there was an administrative QBO invoice that needs to be deleted
         if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+          console.log(" Found administrative QBO invoice that needs to be deleted");
+          console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+          console.log("QB DocNumber:", invoice.docNumberQuickBooksContabio);
           hadAdministrativeQboInvoice = true;
         }
       } else if (invoice.invoiceType !== "quickbooks") {
@@ -1932,6 +2085,7 @@ export class QuickBooksInvoiceController {
 
       // Delete administrative QBO invoice if converting from stripe/custom
       if (hadAdministrativeQboInvoice && invoice.idQuickbookContabio) {
+        console.log(" Deleting administrative QBO invoice before conversion...");
         try {
           const deleteResult = await this.deleteInvoiceInternal({
             quickBooksInvoiceId: invoice.idQuickbookContabio,
@@ -1941,6 +2095,7 @@ export class QuickBooksInvoiceController {
           });
 
           if (deleteResult.success || deleteResult.notFound) {
+            console.log(" Administrative QBO invoice deleted successfully");
             
             // Clear QB references from local invoice
             await prisma.invoice.update({
@@ -1951,8 +2106,11 @@ export class QuickBooksInvoiceController {
               }
             });
           } else {
+            console.warn(" Failed to delete administrative QBO invoice, continuing anyway...");
           }
         } catch (deleteError: any) {
+          console.warn(" Error deleting administrative QBO invoice:", deleteError.message);
+          console.log(" Continuing with conversion despite deletion error...");
         }
       }
 
@@ -1965,6 +2123,7 @@ export class QuickBooksInvoiceController {
         }, 0);
       }
 
+      console.log(" Delegando atualização para", isConvertingToQuickbooks ? "createInvoiceInternal" : "updateInvoiceInternal...");
 
       let result;
       
@@ -1984,6 +2143,10 @@ export class QuickBooksInvoiceController {
           calledFromStripe: true // Only create in QBO, return QBO data
         });
 
+        console.log(" QBO invoice created, updating existing local invoice...");
+        console.log("QB Invoice ID:", qboResult.quickbooksId);
+        console.log("QB DocNumber:", qboResult.docNumber);
+        console.log("Invoice URL:", qboResult.invoiceUrl);
 
         // Update the existing local invoice with QBO data
         const updatedInvoice = await prisma.invoice.update({
@@ -2055,6 +2218,7 @@ export class QuickBooksInvoiceController {
           }
         });
 
+        console.log(" Existing invoice updated successfully with QBO data");
 
         result = {
           ...qboResult,
@@ -2076,6 +2240,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      console.log(" Invoice update completed successfully:", invoice.id);
 
       return res.status(200).json({
         success: true,
@@ -2088,6 +2253,7 @@ export class QuickBooksInvoiceController {
       });
 
     } catch (error: any) {
+      console.error(" Erro detalhado ao atualizar fatura:", error);
 
       // Verificar se é erro de invoice parcialmente pago
       if (error.message && error.message.includes("partially paid and locked")) {
@@ -2126,6 +2292,7 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando deleção de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
@@ -2148,6 +2315,7 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
 
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
@@ -2155,6 +2323,7 @@ export class QuickBooksInvoiceController {
 
       if (!invoice.idQuickbookContabio) {
         // Se não tem ID do QuickBooks, apenas deletar localmente
+        console.log("Invoice não sincronizado com QuickBooks, deletando apenas localmente...");
         await prisma.invoice.delete({
           where: { id: invoice.id }
         });
@@ -2184,6 +2353,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      console.log(` Deletando invoice QB ID ${invoice.idQuickbookContabio}...`);
 
       // Deletar no QuickBooks
       const result = await this.deleteInvoiceInternal({
@@ -2195,6 +2365,7 @@ export class QuickBooksInvoiceController {
 
       // Se o invoice não foi encontrado no QBO, deletar apenas localmente
       if (result.notFound) {
+        console.log(` Invoice não encontrado no QuickBooks, deletando apenas localmente...`);
         await prisma.invoice.delete({
           where: { id: invoice.id }
         });
@@ -2211,6 +2382,7 @@ export class QuickBooksInvoiceController {
         where: { id: invoice.id }
       });
 
+      console.log(` Invoice deletado com sucesso (local e QuickBooks): ${invoice.id}`);
 
       return res.status(200).json({
         success: true,
@@ -2218,6 +2390,7 @@ export class QuickBooksInvoiceController {
         quickbooksResult: result
       });
     } catch (error: any) {
+      console.error(" Erro ao deletar QuickBooks invoice:", error);
 
       // Verificar se é um erro de autorização
       if (error.message && (
@@ -2265,6 +2438,7 @@ export class QuickBooksInvoiceController {
             });
           }
         } catch (deleteError) {
+          console.error("Error deleting invoice locally:", deleteError);
         }
       }
 
@@ -2281,6 +2455,7 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando cancelamento de invoice QuickBooks. invoiceId: ${invoiceId}, userId: ${userId}`);
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
@@ -2303,6 +2478,7 @@ export class QuickBooksInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      console.log(` Invoice encontrado: ${invoice.id}, QB ID: ${invoice.idQuickbookContabio}`);
 
       if (invoice.invoiceType !== "quickbooks") {
         return res.status(400).json({ error: "Not a QuickBooks invoice" });
@@ -2336,6 +2512,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      console.log(` Cancelando invoice QB ID ${invoice.idQuickbookContabio}...`);
 
       const result = await this.cancelInvoiceInternal({
         quickBooksInvoiceId: invoice.idQuickbookContabio,
@@ -2344,9 +2521,11 @@ export class QuickBooksInvoiceController {
         calledFromStripe: false
       });
 
+      console.log(` Invoice cancelado com sucesso: ${invoice.id}`);
 
       return res.status(200).json(result);
     } catch (error: any) {
+      console.error(" Erro ao cancelar QuickBooks invoice:", error);
 
       // Verificar se é um erro de autorização
       if (error.message && (
@@ -2452,6 +2631,7 @@ export class QuickBooksInvoiceController {
     const item = created?.Item || created;
     
     if (!item || !item.Id) {
+      console.error('Item criado mas sem ID válido:', created);
       throw new Error(`Failed to create or retrieve item ID for: ${name}`);
     }
 
@@ -2596,9 +2776,12 @@ export class QuickBooksInvoiceController {
   async fetchInvoiceWithRetryForDocNumber(qb: any, invoiceId: string, fallbackInvoice: any): Promise<any> {
     // Verificar se já temos DocNumber no fallback
     if (fallbackInvoice?.DocNumber) {
+      console.log(`DocNumber disponível: ${fallbackInvoice.DocNumber}`);
       return fallbackInvoice;
     }
     
+    console.log(`DocNumber não disponível para invoice ${invoiceId}.`);
+    console.log(`Isso é esperado quando a empresa tem "Custom transaction numbers" habilitado no QuickBooks.`);
     
     // Retornar o invoice sem DocNumber (será null)
     return fallbackInvoice;
@@ -2615,17 +2798,21 @@ export class QuickBooksInvoiceController {
    */
   async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
     try {
+      console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
       
       // Usar o SDK do QuickBooks diretamente
       return new Promise((resolve, reject) => {
         qb.getInvoice(invoiceId, (err: any, data: any) => {
           if (err) {
+            console.error(` Erro ao buscar invoice com link de pagamento:`, err);
             return reject(err);
           }
+          console.log(` Invoice obtido com sucesso via SDK`);
           resolve(data);
         });
       });
     } catch (error: any) {
+      console.error(` Erro ao buscar invoice com link de pagamento:`, error);
       throw error;
     }
   }
@@ -2640,10 +2827,12 @@ export class QuickBooksInvoiceController {
    * @returns InvoiceLink ou null se não disponível
    */
   async getInvoiceLinkWithRetry(qb: any, realmId: string, invoiceId: string): Promise<string | null> {
+    console.log(` [Retry] Iniciando polling para InvoiceLink: ${invoiceId}`);
     
     // Tentar até 6 vezes com backoff exponencial usando o SDK do QuickBooks
     for (let attempt = 1; attempt <= 6; attempt++) {
       try {
+        console.log(` [Retry] Tentativa ${attempt}/6 para obter InvoiceLink usando SDK...`);
         
         // Usar o SDK do QuickBooks em vez de axios direto (resolve problemas de autenticação)
         const result: any = await new Promise((resolve, reject) => {
@@ -2658,22 +2847,29 @@ export class QuickBooksInvoiceController {
         
         // Log completo da resposta para debug na primeira tentativa
         if (attempt === 1) {
+          console.log(` [Retry] Resposta do SDK (primeira tentativa):`);
+          console.log(JSON.stringify(inv, null, 2));
         }
         
         if (link && !link.includes('comingSoonview')) {
           // Só aceitar se o link for válido (não for o placeholder do sandbox)
+          console.log(` [Retry]  InvoiceLink encontrado na tentativa ${attempt}: ${link}`);
           return link;
         }
         
         if (link) {
+          console.log(` [Retry]  InvoiceLink encontrado mas é placeholder do Sandbox: ${link}`);
         } else {
+          console.log(` [Retry]  InvoiceLink não disponível na tentativa ${attempt}`);
         }
         
         // Backoff exponencial: 500ms, 1s, 1.5s, 2s, 2.5s, 3s
         const delay = 500 * attempt;
+        console.log(` [Retry] Aguardando ${delay}ms antes da próxima tentativa...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         
       } catch (error: any) {
+        console.warn(` [Retry] Erro na tentativa ${attempt}:`, error?.message || error);
         
         // Se não for a última tentativa, continuar
         if (attempt < 6) {
@@ -2683,6 +2879,7 @@ export class QuickBooksInvoiceController {
       }
     }
     
+    console.warn(` [Retry]  InvoiceLink não disponível após 6 tentativas`);
     return null;
   }
 
@@ -2696,6 +2893,7 @@ export class QuickBooksInvoiceController {
     const { userId } = req.body;
 
     try {
+      console.log(` Iniciando recuperação de payment link para invoice: ${invoiceId}`);
 
       // Buscar o invoice no banco de dados
       const invoice = await prisma.invoice.findFirst({
@@ -2731,6 +2929,7 @@ export class QuickBooksInvoiceController {
 
       // Se já tiver invoiceUrl salvo, retornar
       if (invoice.invoiceUrl) {
+        console.log(` Invoice já possui link salvo: ${invoice.invoiceUrl}`);
         return res.status(200).json({
           success: true,
           invoiceUrl: invoice.invoiceUrl,
@@ -2753,6 +2952,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      console.log(` Buscando link no QuickBooks para invoice QB ID: ${invoice.idQuickbookContabio}`);
 
       // Obter cliente QuickBooks
       const { qb, account } = await getQbClientWithAccountOrThrow(userId, invoice.project.company_id);
@@ -2761,6 +2961,7 @@ export class QuickBooksInvoiceController {
       const invoiceLink = await this.getInvoiceLinkWithRetry(qb, account.realmId, invoice.idQuickbookContabio);
 
       if (!invoiceLink) {
+        console.warn(` InvoiceLink não disponível para invoice ${invoice.idQuickbookContabio}`);
         return res.status(404).json({
           error: "Invoice link not available",
           message: "The payment link is not available for this invoice. This may indicate that online payments are not enabled for your QuickBooks account or the invoice email is invalid.",
@@ -2777,6 +2978,7 @@ export class QuickBooksInvoiceController {
         }
       });
 
+      console.log(` Link de pagamento recuperado e salvo com sucesso: ${invoiceLink}`);
 
       return res.status(200).json({
         success: true,
@@ -2785,6 +2987,7 @@ export class QuickBooksInvoiceController {
       });
 
     } catch (error: any) {
+      console.error(" Erro ao recuperar payment link:", error);
 
       // Verificar se é erro de autorização
       if (error.message && (
@@ -2818,6 +3021,7 @@ export class QuickBooksInvoiceController {
     const { paymentMethod, notes, amount, userId } = req.body;
 
     try {
+      console.log(`[QuickBooks Payment] Iniciando registro de pagamento para invoice: ${invoiceId}`);
 
       // Validações
       if (!userId) {
@@ -2897,6 +3101,7 @@ export class QuickBooksInvoiceController {
         });
       }
 
+      console.log(`[QuickBooks Payment] Iniciando processo de registro de pagamento para QB ID: ${invoice.idQuickbookContabio}`);
 
       // Tentar obter cliente QuickBooks
       let hasQbConnection = false;
@@ -2905,10 +3110,14 @@ export class QuickBooksInvoiceController {
       let newStatus = invoice.status;
 
       try {
+        console.log(`[QuickBooks Payment] Tentando conectar ao QuickBooks...`);
         const qbClient = await getQbClientWithAccountOrThrow(userId, invoice.project.company_id);
         qb = qbClient.qb;
         hasQbConnection = true;
+        console.log(`[QuickBooks Payment] Conexão com QuickBooks estabelecida com sucesso`);
       } catch (qbError: any) {
+        console.warn(`[QuickBooks Payment] Não foi possível conectar ao QuickBooks: ${qbError.message}`);
+        console.warn(`[QuickBooks Payment] Prosseguindo apenas com registro local do pagamento`);
         hasQbConnection = false;
       }
 
@@ -2916,6 +3125,7 @@ export class QuickBooksInvoiceController {
       if (hasQbConnection && qb) {
         try {
           // 1. Buscar o invoice no QuickBooks para obter dados atualizados
+          console.log(`[QuickBooks Payment] Buscando invoice no QuickBooks...`);
           const qbInvoice = await callWithRetry(
             () => new Promise((resolve, reject) => {
               qb.getInvoice(invoice.idQuickbookContabio, (err: any, inv: any) => {
@@ -2926,9 +3136,11 @@ export class QuickBooksInvoiceController {
           );
 
           if (!qbInvoice) {
+            console.warn(`[QuickBooks Payment] Invoice não encontrado no QuickBooks, prosseguindo apenas com registro local`);
             hasQbConnection = false;
           } else {
             // 2. Criar o pagamento no QuickBooks
+            console.log(`[QuickBooks Payment] Criando pagamento no QuickBooks...`);
             const paymentPayload = {
               TotalAmt: amount,
               CustomerRef: {
@@ -2956,8 +3168,10 @@ export class QuickBooksInvoiceController {
               })
             );
 
+            console.log(`[QuickBooks Payment] Pagamento criado no QuickBooks com sucesso. Payment ID: ${(qbPayment as any).Id}`);
 
             // 3. Buscar o invoice atualizado no QuickBooks para pegar o novo status
+            console.log(`[QuickBooks Payment] Buscando invoice atualizado no QuickBooks...`);
             const updatedQbInvoice = await callWithRetry(
               () => new Promise((resolve, reject) => {
                 qb.getInvoice(invoice.idQuickbookContabio, (err: any, inv: any) => {
@@ -2977,14 +3191,18 @@ export class QuickBooksInvoiceController {
               newStatus = "partial";
             }
 
+            console.log(`[QuickBooks Payment] Status atualizado do QuickBooks: ${newStatus}, Balance: ${balance}`);
           }
         } catch (qbOperationError: any) {
+          console.error(`[QuickBooks Payment] Erro ao operar com QuickBooks: ${qbOperationError.message}`);
+          console.warn(`[QuickBooks Payment] Prosseguindo apenas com registro local do pagamento`);
           hasQbConnection = false;
         }
       }
 
       // Se não tiver conexão QB, calcular status baseado nos dados locais
       if (!hasQbConnection) {
+        console.log(`[QuickBooks Payment] Calculando status baseado em dados locais...`);
         
         // Buscar todos os pagamentos já registrados para este invoice
         const existingPayments = await prisma.invoicePayment.findMany({
@@ -3006,6 +3224,7 @@ export class QuickBooksInvoiceController {
           newStatus = "partial";
         }
 
+        console.log(`[QuickBooks Payment] Status calculado localmente: ${newStatus}, Balance: ${balance}, Total Paid: ${totalPaid}`);
       }
 
       // 4. Criar registro de pagamento no banco local
@@ -3050,6 +3269,7 @@ export class QuickBooksInvoiceController {
 
       // 6.1. Criar invoice payment timeline entry
       if (invoice.type_invoicebase === "project" && invoice.project) {
+        console.log("[QuickBooks Payment] Criando invoice payment timeline para project");
         await prisma.invoicePaymentTimeLine.create({
           data: {
             description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
@@ -3060,6 +3280,7 @@ export class QuickBooksInvoiceController {
           }
         });
       } else if (invoice.type_invoicebase === "estimate" && invoice.estimate) {
+        console.log("[QuickBooks Payment] Criando invoice payment timeline para estimate");
         await prisma.invoicePaymentTimeLine.create({
           data: {
             description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
@@ -3074,8 +3295,10 @@ export class QuickBooksInvoiceController {
       // 7. Se o invoice foi totalmente pago, enviar email de confirmação
       if (newStatus === "paid") {
         try {
+          console.log(`[QuickBooks Payment] Invoice totalmente pago. Enviando email de confirmação...`);
           await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
         } catch (emailError) {
+          console.error("[QuickBooks Payment] Erro ao enviar email de confirmação:", emailError);
           // Não falhar a requisição se o email falhar
         }
       }
@@ -3084,6 +3307,7 @@ export class QuickBooksInvoiceController {
         ? "Payment registered successfully in QuickBooks and locally"
         : "Payment registered successfully locally (QuickBooks connection unavailable)";
 
+      console.log(`[QuickBooks Payment] ${successMessage}. Novo status: ${newStatus}`);
 
       return res.status(201).json({
         success: true,
@@ -3098,6 +3322,7 @@ export class QuickBooksInvoiceController {
       });
 
     } catch (error: any) {
+      console.error("[QuickBooks Payment] Erro ao registrar pagamento:", error);
 
       // Verificar se é erro de autorização
       if (error.message && (
@@ -3139,6 +3364,7 @@ export class QuickBooksInvoiceController {
 
       return res.status(200).json(payment);
     } catch (error: any) {
+      console.error("Erro ao buscar pagamento:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to fetch payment"
@@ -3172,6 +3398,7 @@ export class QuickBooksInvoiceController {
 
       return res.status(200).json(updatedPayment);
     } catch (error: any) {
+      console.error("Erro ao atualizar pagamento:", error);
       return res.status(500).json({
         error: "Internal Server Error",
         message: error.message || "Failed to update payment"
@@ -3184,6 +3411,7 @@ export class QuickBooksInvoiceController {
    */
   private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number) {
     try {
+      console.log(`[QuickBooks Payment] Iniciando envio de email de confirmação para invoice ${invoiceData.id}`);
 
       // Buscar detalhes do cliente
       const client = invoiceData.project?.client;
@@ -3191,6 +3419,7 @@ export class QuickBooksInvoiceController {
       const recipientName = client?.name || 'Client';
 
       if (!recipientEmail) {
+        console.log("[QuickBooks Payment] Email do cliente não encontrado, pulando envio");
         return;
       }
 
@@ -3200,6 +3429,7 @@ export class QuickBooksInvoiceController {
       });
 
       if (!company) {
+        console.error("[QuickBooks Payment] Company not found");
         return;
       }
 
@@ -3210,6 +3440,7 @@ export class QuickBooksInvoiceController {
       });
 
       if (!pdfInvoicePaid) {
+        console.log(`[QuickBooks Payment] Nenhum PDF pago encontrado para invoice ${invoiceData.id}`);
       }
 
       // Obter avatar da empresa
@@ -3235,6 +3466,7 @@ export class QuickBooksInvoiceController {
             });
           }
         } catch (error) {
+          console.error("[QuickBooks Payment] Erro ao buscar PDF:", error);
         }
       }
 
@@ -3277,7 +3509,9 @@ ${company?.name || ''}
         `.trim()
       });
 
+      console.log(`[QuickBooks Payment] Email de confirmação enviado com sucesso para ${recipientEmail}`);
     } catch (error) {
+      console.error("[QuickBooks Payment] Erro ao enviar email de confirmação:", error);
       // Não propagar erro - o pagamento já foi registrado
     }
   }

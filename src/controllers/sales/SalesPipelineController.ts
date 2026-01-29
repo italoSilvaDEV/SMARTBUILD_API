@@ -43,6 +43,7 @@ export class SalesPipelineController {
 
       return res.status(201).json(pipeline);
     } catch (error: any) {
+      console.error("Error creating default pipeline:", error);
       return res.status(500).json({ 
         error: "Erro ao criar pipeline padrão",
         message: error.message 
@@ -71,6 +72,7 @@ export class SalesPipelineController {
 
       return res.status(200).json(pipelines);
     } catch (error: any) {
+      console.error("Error listing pipelines:", error);
       return res.status(500).json({ 
         error: "Erro ao listar pipelines",
         message: error.message 
@@ -160,6 +162,7 @@ export class SalesPipelineController {
 
       return res.status(200).json(pipeline);
     } catch (error: any) {
+      console.error("Error getting pipeline:", error);
       return res.status(500).json({ 
         error: "Erro ao buscar pipeline",
         message: error.message 
@@ -199,6 +202,7 @@ export class SalesPipelineController {
 
       return res.status(201).json(pipeline);
     } catch (error: any) {
+      console.error("Error creating pipeline:", error);
       return res.status(500).json({ 
         error: "Erro ao criar pipeline",
         message: error.message 
@@ -228,6 +232,7 @@ export class SalesPipelineController {
 
       return res.status(200).json(pipeline);
     } catch (error: any) {
+      console.error("Error updating pipeline:", error);
       return res.status(500).json({ 
         error: "Erro ao atualizar pipeline",
         message: error.message 
@@ -323,6 +328,7 @@ export class SalesPipelineController {
         pipeline: defaultPipeline
       });
     } catch (error: any) {
+      console.error("Error restoring default stages:", error);
       return res.status(500).json({
         error: "Error restoring default columns",
         message: error.message
@@ -366,6 +372,7 @@ export class SalesPipelineController {
 
       return res.status(200).json({ message: "Pipeline deletado com sucesso" });
     } catch (error: any) {
+      console.error("Error deleting pipeline:", error);
       return res.status(500).json({ 
         error: "Erro ao deletar pipeline",
         message: error.message 

@@ -43,7 +43,9 @@ export class RevokeKeyController {
                         ),
                     });
 
+                    console.log(`Revocation request email sent to: ${user.email}`);
                 } catch (e) {
+                    console.error("Email notification failed:", e);
                     return res.status(500).json({ error: "Failed to send confirmation email" });
                 }
             }
@@ -54,6 +56,7 @@ export class RevokeKeyController {
             });
 
         } catch (error) {
+            console.error('Error in RevokeKeyController:', error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }
@@ -100,6 +103,7 @@ export class RevokeKeyController {
             `);
 
         } catch (error) {
+            console.error('Error confirming revocation:', error);
             return res.status(500).send('<h1>Error</h1><p>Internal server error</p>');
         }
     }

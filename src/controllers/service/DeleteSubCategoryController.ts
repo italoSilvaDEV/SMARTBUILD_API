@@ -38,6 +38,7 @@ export class DeleteSubCategoryController {
 
             return response.json();
         } catch (error) {
+            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

@@ -34,6 +34,7 @@ export async function refreshAccessToken(refreshToken: string, accountId: string
   
   // Se já há um refresh em progresso localmente, aguarda o resultado
   if (refreshInProgress.has(accountId)) {
+    console.log(`[RefreshToken] Aguardando refresh local em progresso para accountId: ${accountId}`);
     try {
       const result = await refreshInProgress.get(accountId)!;
       // Re-busca a conta atualizada do banco após o refresh concluído
@@ -55,6 +56,7 @@ export async function refreshAccessToken(refreshToken: string, accountId: string
     } catch (error) {
       // Se o refresh concorrente falhou, remove da cache e tenta novamente
       refreshInProgress.delete(accountId);
+      console.log(`[RefreshToken] Refresh local falhou, tentando novamente para accountId: ${accountId}`);
     }
   }
 
@@ -77,6 +79,7 @@ export async function refreshAccessToken(refreshToken: string, accountId: string
       const JITTER_MS = stableJitterMs(accountId, 60_000); // até 1 min estável por conta
       const BUFFER_MS = BASE_BUFFER_MS + JITTER_MS;
       if (currentAccount.expiresAt && (now.getTime() + BUFFER_MS) < currentAccount.expiresAt.getTime()) {
+        console.log(`[RefreshToken] Token já foi atualizado por outro processo: ${accountId}`);
         return {
           success: true as const,
           accessToken: currentAccount.accessToken,
@@ -128,6 +131,7 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
   let tokenUsed = refreshToken;
   
   try {
+    console.log(`[RefreshToken] Iniciando refresh para accountId: ${accountId}`);
     
     // Verifica se a conta ainda existe e não foi desabilitada durante a espera
     const currentAccount = await prisma.quickBooksAccount.findUnique({
@@ -144,6 +148,7 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
 
     // Verificar se o refresh token já expirou antes de chamar a Intuit
     if (currentAccount.refreshExpiresAt && new Date() >= currentAccount.refreshExpiresAt) {
+      console.log(`[RefreshToken] Refresh token expirado para accountId: ${accountId}`);
       // Marca reauth de forma determinística
       await prisma.quickBooksAccount.update({
         where: { id: accountId },
@@ -210,6 +215,7 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
 
     // Se count === 0, alguém atualizou antes de nós
     if (updateResult.count === 0) {
+      console.log(`[RefreshToken] Race condition detectada - re-buscando conta atualizada: ${accountId}`);
       // Re-busque e retorne sucesso a partir do registro atual
       const latestAccount = await prisma.quickBooksAccount.findUnique({ 
         where: { id: accountId } 
@@ -228,6 +234,7 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
       };
     }
 
+    console.log(`[RefreshToken] Refresh bem-sucedido para accountId: ${accountId}`);
 
     return {
       success: true as const,
@@ -237,6 +244,7 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
       refreshExpiresAt,
     };
   } catch (error: any) {
+    console.error(`[RefreshToken] Erro no refresh para accountId: ${accountId}`, error);
     
     const status = error?.response?.status;
     const errCode = error?.response?.data?.error;
@@ -259,10 +267,13 @@ async function refreshAccessTokenInternal(refreshToken: string, accountId: strin
               where: { id: accountId },
               data: { needsReauthorization: true },
             });
+            console.log(`[RefreshToken] Marcando conta como needsReauthorization: ${accountId}`);
           } else {
+            console.log(`[RefreshToken] Token já foi atualizado por outro processo, não marcando como inválido: ${accountId}`);
           }
         }
       } catch (dbError) {
+        console.error(`[RefreshToken] Erro ao atualizar needsReauthorization: ${dbError}`);
       }
     }
 

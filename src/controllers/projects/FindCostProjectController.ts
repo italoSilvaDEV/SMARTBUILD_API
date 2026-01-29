@@ -46,6 +46,7 @@ export class FindCostProjectController {
 
             return response.json({ total, result });
         } catch (error) {
+            console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

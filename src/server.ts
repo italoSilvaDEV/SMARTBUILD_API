@@ -63,6 +63,8 @@ app.use(express.static('public'));
 })();
 
 app.listen(4003, () =>
+  console.log("server is running on http://localhost:4003")
+)
 
 
 

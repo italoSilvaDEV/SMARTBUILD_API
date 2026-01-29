@@ -64,6 +64,7 @@ export class FildsPdfProjectController {
 
       return res.status(201).json(fildsPdfProject);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to create fildsPdfProject" });
     }
   }
@@ -135,6 +136,7 @@ export class FildsPdfProjectController {
 
       return res.json(updatedFildsPdfProject);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to update fildsPdfProject" });
     }
   }
@@ -159,6 +161,7 @@ export class FildsPdfProjectController {
 
       return res.json({ message: "FildsPdfProject deleted successfully" });
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to delete fildsPdfProject" });
     }
   }
@@ -182,6 +185,7 @@ export class FildsPdfProjectController {
 
       return res.json(fildsPdfProject);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch fildsPdfProject" });
     }
   }
@@ -204,6 +208,7 @@ export class FildsPdfProjectController {
 
       return res.json(fildsPdfProjects);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch fildsPdfProjects by PDF Project" });
     }
   }
@@ -226,6 +231,7 @@ export class FildsPdfProjectController {
 
       return res.json(fildsPdfProjects);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch fildsPdfProjects by Estimate" });
     }
   }
@@ -248,6 +254,7 @@ export class FildsPdfProjectController {
 
       return res.json(fildsPdfProjects);
     } catch (error) {
+      console.error(error);
       return res.status(500).json({ error: "Failed to fetch fildsPdfProjects by Invoice" });
     }
   }

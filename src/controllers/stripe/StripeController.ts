@@ -116,6 +116,10 @@ export class StripeController {
             );
 
             if (blockingPaymentIntents.length > 0) {
+                console.log("Found blocking PaymentIntents:", blockingPaymentIntents.map(pi => ({
+                    id: pi.stripePaymentIntentId,
+                    status: pi.status
+                })));
 
                 return {
                     canConvert: false,
@@ -130,6 +134,7 @@ export class StripeController {
             );
 
             if (cancelablePaymentIntents.length > 0) {
+                console.log("Canceling PaymentIntents before conversion...");
 
                 for (const paymentIntent of cancelablePaymentIntents) {
                     try {
@@ -151,9 +156,12 @@ export class StripeController {
                                 data: { status: 'canceled', updatedAt: new Date() }
                             });
 
+                            console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
                         } else {
+                            console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
                         }
                     } catch (piError: any) {
+                        console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
                         // Continue with other PaymentIntents
                     }
                 }
@@ -162,6 +170,7 @@ export class StripeController {
             return { canConvert: true };
 
         } catch (error: any) {
+            console.error("Error validating PaymentIntents:", error);
             return {
                 canConvert: false,
                 error: `Error checking payment status: ${error.message}`
@@ -209,6 +218,7 @@ export class StripeController {
 
             return res.status(200).json({ url: accountLink.url });
         } catch (error) {
+            console.error("Erro ao criar conta Stripe:", error);
             return res.status(500).json({ error: "Error creating Stripe account" });
         }
     }
@@ -253,7 +263,21 @@ export class StripeController {
             const pendingRequirements = account.requirements?.currently_due || [];
             const requiresOnboarding = !isConnected || pendingRequirements.length > 0;
 
+            console.log("StripeAccountId: ", company.stripeAccountId)
+            console.log("details_submitted: ", account.details_submitted)
+            console.log("charges_enabled: ", account.charges_enabled)
+            console.log("payouts_enabled: ", account.payouts_enabled)
+            console.log("Requirements: ", account.requirements?.currently_due)
+
+
+            return res.status(200).json({
+                hasStripeAccount: true,
+                connected: isConnected,
+                requiresOnboarding,
+                pendingRequirements
+            });
         } catch (error) {
+            console.error("Erro ao verificar status do Stripe:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -275,6 +299,7 @@ export class StripeController {
         } = req.body;
 
         try {
+            console.log("Buscando o projeto no banco de dados...");
             const project = await prisma.project.findUnique({
                 where: { id: projectId },
                 include: {
@@ -284,30 +309,38 @@ export class StripeController {
             });
 
             if (!project) {
+                console.error("Projeto não encontrado!");
                 return res.status(404).json({ error: "Project not found" });
             }
 
             if (!project.client) {
+                console.error("Cliente não encontrado para este projeto!");
                 return res.status(400).json({ error: "Client not found" });
             }
 
             if (!project.company || !project.company.stripeAccountId) {
+                console.error("Empresa não conectada ao Stripe!");
                 return res.status(400).json({ error: "Company not connected to Stripe" });
             }
 
+            console.log("Projeto, cliente e empresa encontrados com sucesso!");
 
             const emailClient = project.client.email || "";
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
             if (!emailRegex.test(emailClient)) {
+                console.error("Endereço de email inválido!");
                 return res.status(400).json({ error: "Invalid client email address" });
             }
 
+            console.log("Processando serviços e calculando valores...");
             const servicesArray = Array.isArray(services) ? services : [];
             if (servicesArray.length === 0) {
+                console.warn("Nenhum serviço fornecido. Invoice será criada sem itens.");
             }
 
             // Buscar invoices pagos do projeto para calcular valor já pago
+            console.log("Buscando invoices pagos do projeto...");
             const paidInvoices = await prisma.invoice.findMany({
                 where: {
                     projectId: project.id,
@@ -319,6 +352,7 @@ export class StripeController {
             });
 
             const totalPaidAmount = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+            console.log(`Total já pago no projeto: $${totalPaidAmount}`);
 
             // Calcular valor total original do projeto (sem coeficiente)
             const originalProjectValue = servicesArray.reduce((sum, service) => {
@@ -327,13 +361,16 @@ export class StripeController {
                 return sum + (service.total || (quantity * price));
             }, 0);
 
+            console.log(`Valor original do projeto: $${originalProjectValue}`);
 
             // Calcular saldo restante após pagamentos
             const remainingBalance = Math.max(0, originalProjectValue - totalPaidAmount);
+            console.log(`Saldo restante: $${remainingBalance}`);
 
             // Aplicar coeficiente sobre o saldo restante
             const validCoefficient = typeof coefficientPerfentage === 'number' && !isNaN(coefficientPerfentage) ? coefficientPerfentage : 1;
             const invoiceAmountWithCoefficient = remainingBalance * validCoefficient;
+            console.log(`Valor da fatura após coeficiente (${validCoefficient}): $${invoiceAmountWithCoefficient}`);
 
             let totalInvoiceAmount = 0;
             const lineItems: any[] = [];
@@ -353,6 +390,7 @@ export class StripeController {
                 const adjustedAmount = invoiceAmountWithCoefficient * serviceProportion;
 
                 if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+                    console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                     continue;
                 }
 
@@ -367,6 +405,7 @@ export class StripeController {
                     totalAmount: adjustedAmount
                 });
 
+                console.log(`Serviço ${service.name}: Valor original $${originalServiceAmount}, Valor ajustado $${adjustedAmount.toFixed(2)}`);
             }
 
             // Buscar todos os invoices com externalInvoiceId numérico para a empresa
@@ -406,6 +445,7 @@ export class StripeController {
                 })
             }
 
+            console.log("Salvando Invoice no banco de dados...");
             const newInvoice = await prisma.invoice.create({
                 data: {
                     // NÃO MAIS CRIADO NO STRIPE - apenas local
@@ -430,6 +470,7 @@ export class StripeController {
                 },
             });
 
+            console.log("Invoice salva no banco com ID:", newInvoice.id);
 
             // Adicionar os InvoiceItems
             if (lineItems && lineItems.length > 0) {
@@ -460,6 +501,7 @@ export class StripeController {
             let quickBooksError = null;
 
             try {
+                console.log("Verificando configuração do QuickBooks...");
 
                 // Verificar se a criação de invoices no QuickBooks está habilitada
                 const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
@@ -472,8 +514,10 @@ export class StripeController {
                 });
 
                 const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
+                console.log(`QuickBooks invoice creation enabled: ${isQuickBooksInvoiceCreationEnabled}`);
 
                 if (!isQuickBooksInvoiceCreationEnabled) {
+                    console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks integration.");
 
                     // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
@@ -485,6 +529,7 @@ export class StripeController {
                         }
                     });
                 } else {
+                    console.log("Tentando criar invoice no QuickBooks...");
 
                     // Verificar se o usuário tem uma conta QuickBooks conectada
                     const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -521,6 +566,7 @@ export class StripeController {
                             calledFromStripe: true // Indicar que foi chamado pelo Stripe
                         });
 
+                        console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
 
                         // Atualizar o invoice Stripe com os dados do QuickBooks
                         if (quickBooksResult?.quickbooksId) {
@@ -543,6 +589,7 @@ export class StripeController {
                             }
                         });
                     } else {
+                        console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
 
                         // Adicionar evento na timeline sobre conta não conectada
                         await prisma.invoiceTimeline.create({
@@ -556,6 +603,7 @@ export class StripeController {
                     }
                 }
             } catch (qbError: any) {
+                console.error("Erro ao criar invoice no QuickBooks:", qbError.message);
                 quickBooksError = qbError.message;
 
                 // Adicionar evento na timeline sobre erro no QuickBooks
@@ -569,6 +617,7 @@ export class StripeController {
                         }
                     });
                 } catch (timelineError) {
+                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
                 }
             }
 
@@ -584,6 +633,7 @@ export class StripeController {
             });
 
         } catch (error) {
+            console.error("Erro ao criar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -621,8 +671,10 @@ export class StripeController {
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "invoice" && invoice.stripeInvoiceId) {
                 const stripeAccountId = invoice.project.company.stripeAccountId ?? undefined;
 
+                console.log("Enviando Invoice por e-mail...");
                 await stripe.invoices.sendInvoice(invoice.stripeInvoiceId, { stripeAccount: stripeAccountId });
 
+                console.log("Invoice enviada por e-mail para:", invoice.project.client.email);
 
                 const sendHistory = await prisma.invoiceSendHistory.create({
                     data: {
@@ -647,6 +699,7 @@ export class StripeController {
             return res.status(400).json({ error: "Invoice type not supported for email sending" });
 
         } catch (error) {
+            console.error("Erro ao enviar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -713,6 +766,7 @@ export class StripeController {
             // Cancelar PaymentIntents pendentes do tipo Payment Element
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
                 try {
+                    console.log("Checking and canceling pending PaymentIntents...");
 
                     // Buscar PaymentIntents que podem ser cancelados
                     const pendingPaymentIntents = await prisma.paymentIntentRecord.findMany({
@@ -749,15 +803,20 @@ export class StripeController {
                                         data: { status: 'canceled', updatedAt: new Date() }
                                     });
 
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
                                 } else {
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
                                 }
                             } catch (piError: any) {
+                                console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
                                 // Continue to next PaymentIntent
                             }
                         }
                     } else {
+                        console.log("No pending PaymentIntents found to cancel");
                     }
                 } catch (paymentIntentError) {
+                    console.warn("Error processing PaymentIntent cancellation:", paymentIntentError);
                     // Don't fail the deletion process
                 }
             }
@@ -767,6 +826,8 @@ export class StripeController {
             let quickBooksDeleteError = null;
 
             if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
+                console.log("Stripe invoice has administrative QB invoice - deleting it...");
+                console.log("QB Invoice ID:", invoice.idQuickbookContabio);
 
                 try {
                     const qbController = this.quickBooksController;
@@ -779,10 +840,13 @@ export class StripeController {
                         });
 
                         if (quickBooksDeleteResult.success || quickBooksDeleteResult.notFound) {
+                            console.log("Administrative QB invoice deleted successfully");
                         } else {
+                            console.warn("Failed to delete administrative QB invoice, continuing anyway...");
                         }
                     }
                 } catch (qbError: any) {
+                    console.warn("Error deleting administrative QB invoice:", qbError.message);
                     quickBooksDeleteError = qbError.message;
                     // Continue with local deletion despite QB error
                 }
@@ -795,6 +859,7 @@ export class StripeController {
                 }
             });
 
+            console.log("Invoice deleted successfully:", invoiceId);
 
             return res.status(200).json({
                 message: "Invoice deleted successfully",
@@ -806,6 +871,7 @@ export class StripeController {
             });
 
         } catch (error: any) {
+            console.error("Error deleting invoice:", error);
             return res.status(500).json({ 
                 error: "Internal Server Error",
                 message: error.message 
@@ -857,13 +923,16 @@ export class StripeController {
 
                 try {
                     await stripe.invoices.voidInvoice(invoice.stripeInvoiceId, { stripeAccount: stripeAccountId });
+                    console.log("Invoice cancelado no Stripe também");
                 } catch (stripeError) {
+                    console.warn("Erro ao cancelar no Stripe, continuando com cancelamento local:", stripeError);
                 }
             }
 
             // Cancelar PaymentIntents pendentes do tipo Payment Element
             if (invoice.invoiceType === "stripe" && invoice.invoiceTypeStripe === "payment_element") {
                 try {
+                    console.log("Verificando PaymentIntents pendentes para cancelar...");
 
                     // Buscar PaymentIntents que podem ser cancelados
                     const pendingPaymentIntents = await prisma.paymentIntentRecord.findMany({
@@ -900,15 +969,20 @@ export class StripeController {
                                         data: { status: 'canceled', updatedAt: new Date() }
                                     });
 
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} cancelado com sucesso`);
                                 } else {
+                                    console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} está em status ${stripePI.status} - não pode ser cancelado`);
                                 }
                             } catch (piError: any) {
+                                console.warn(`Erro ao cancelar PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
                                 // Continua para o próximo PaymentIntent
                             }
                         }
                     } else {
+                        console.log("Nenhum PaymentIntent pendente encontrado para cancelar");
                     }
                 } catch (paymentIntentError) {
+                    console.warn("Erro ao processar cancelamento de PaymentIntents:", paymentIntentError);
                     // Não falha o processo de cancelamento do invoice
                 }
             }
@@ -940,6 +1014,7 @@ export class StripeController {
             let quickBooksCancelError = null;
 
             try {
+                console.log("Tentando cancelar invoice no QuickBooks...");
 
                 // Verificar se o usuário tem uma conta QuickBooks conectada
                 const quickBooksAccount = invoice.user_id ? await prisma.quickBooksAccount.findFirst({
@@ -962,6 +1037,7 @@ export class StripeController {
                         calledFromStripe: true // Indicar que foi chamado pelo Stripe
                     });
 
+                    console.log("Invoice cancelado no QuickBooks com sucesso:", quickBooksCancelResult?.quickbooksId);
 
                     // Adicionar evento na timeline sobre sucesso no QuickBooks
                     await prisma.invoiceTimeline.create({
@@ -974,10 +1050,13 @@ export class StripeController {
                     });
                 } else {
                     if (!quickBooksAccount) {
+                        console.log("Usuário não possui conta QuickBooks conectada. Pulando cancelamento no QB.");
                     } else {
+                        console.log("Invoice não possui referência do QuickBooks. Pulando cancelamento no QB.");
                     }
                 }
             } catch (qbError: any) {
+                console.error("Erro ao cancelar invoice no QuickBooks:", qbError.message);
                 quickBooksCancelError = qbError.message;
 
                 // Adicionar evento na timeline sobre erro no QuickBooks
@@ -991,6 +1070,7 @@ export class StripeController {
                         }
                     });
                 } catch (timelineError) {
+                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
                 }
             }
 
@@ -1005,6 +1085,7 @@ export class StripeController {
             });
 
         } catch (error) {
+            console.error("Erro ao cancelar Invoice:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -1015,6 +1096,7 @@ export class StripeController {
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
         try {
+            console.log("Buscando invoices do projeto:", projectId);
 
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
             const itemsLimit = Number(itemsPerPage);
@@ -1125,10 +1207,12 @@ export class StripeController {
             const total = await prisma.invoice.count({ where: filtro });
 
             if (invoices.length === 0) {
+                console.log("Nenhuma invoice encontrada para este projeto.");
                 // return res.status(200).json({ message: "No invoices found for this project." });
                 return res.status(200).json({ total, invoices: [], message: "No invoices found for this project." });
             }
 
+            console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
@@ -1173,6 +1257,7 @@ export class StripeController {
             return res.status(200).json({ total, invoices: updatedInvoices });
 
         } catch (error) {
+            console.error("Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -1369,6 +1454,7 @@ export class StripeController {
             const total = await prisma.invoice.count({ where: filtro });
 
             if (invoices.length === 0) {
+                console.log("Nenhuma invoice encontrada para este projeto.");
                 return res.status(200).json({
                     total,
                     invoices: [],
@@ -1376,6 +1462,7 @@ export class StripeController {
                 });
             }
 
+            console.log(`${invoices.length} invoices encontradas.`);
 
             const updatedInvoices = await Promise.all(
                 invoices.map(async (invoice) => {
@@ -1427,6 +1514,7 @@ export class StripeController {
                 invoices: updatedInvoices
             });
         } catch (error) {
+            console.error("Erro ao buscar invoices:", error);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -1480,6 +1568,7 @@ export class StripeController {
                 });
             }
 
+            console.log("Processando serviços e calculando valores para update...");
             const servicesArray = Array.isArray(services) ? services : [];
 
             let calculatedTotalAmount = 0;
@@ -1488,6 +1577,7 @@ export class StripeController {
 
             // Usar totalAmount fornecido e distribuir proporcionalmente
             if (totalAmount && totalAmount > 0 && servicesArray.length > 0) {
+                console.log(`Usando totalAmount fornecido: $${totalAmount}`);
 
                 // Calcular o valor total dos serviços enviados (para calcular proporções)
                 const totalServicesValue = servicesArray.reduce((sum, service) => {
@@ -1496,6 +1586,7 @@ export class StripeController {
                     return sum + (service.totalAmount || service.total || (quantity * price));
                 }, 0);
 
+                console.log(`Valor total dos serviços enviados: $${totalServicesValue}`);
 
                 // Distribuir o totalAmount proporcionalmente entre os serviços
                 for (const service of servicesArray) {
@@ -1509,8 +1600,10 @@ export class StripeController {
                     // Aplicar a proporção ao totalAmount do invoice
                     const adjustedAmount = totalAmount * serviceProportion;
 
+                    console.log(`Serviço: ${service.name}, Valor original: $${serviceValue}, Proporção: ${(serviceProportion * 100).toFixed(2)}%, Valor ajustado: $${adjustedAmount.toFixed(2)}`);
 
                     if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
+                        console.warn(`Valor inválido para o serviço: ${service.name}. O item será ignorado.`);
                         continue;
                     }
 
@@ -1526,7 +1619,9 @@ export class StripeController {
                     });
                 }
 
+                console.log(`Total calculado após distribuição: $${calculatedTotalAmount.toFixed(2)}`);
             } else {
+                console.warn("totalAmount não fornecido ou inválido. Serviços não serão processados.");
             }
 
             // Determine new invoice type to check for conversions
@@ -1541,6 +1636,8 @@ export class StripeController {
             // This applies when converting stripe -> custom OR stripe -> quickbooks
             // (Note: stripe -> stripe is not a conversion, so this won't trigger)
             if (existingInvoice.invoiceType === "stripe" && targetInvoiceType !== "stripe") {
+                console.log(` Invoice is being converted from stripe to ${targetInvoiceType}`);
+                console.log(" Validating PaymentIntents before conversion...");
 
                 const validation = await this.validateAndCancelPaymentIntents(
                     invoiceId,
@@ -1554,15 +1651,19 @@ export class StripeController {
                     });
                 }
 
+                console.log(" PaymentIntents validated - conversion can proceed");
             }
 
             // RULE 2: Handle conversion from quickbooks to stripe
             let isConvertingFromQuickbooks = false;
             if (existingInvoice.invoiceType === "quickbooks") {
+                console.log(" Invoice is being converted from quickbooks to stripe");
                 isConvertingFromQuickbooks = true;
 
                 // Delete invoice from QuickBooks before conversion
                 if (existingInvoice.idQuickbookContabio && existingInvoice.project.company_id) {
+                    console.log(" Deleting QuickBooks invoice before conversion to stripe");
+                    console.log("QB Invoice ID:", existingInvoice.idQuickbookContabio);
                     
                     try {
                         const qbController = this.quickBooksController;
@@ -1575,10 +1676,14 @@ export class StripeController {
                             });
 
                             if (deleteResult.success || deleteResult.notFound) {
+                                console.log(" QuickBooks invoice deleted successfully during conversion");
                             } else {
+                                console.warn(" Failed to delete QuickBooks invoice, continuing anyway...");
                             }
                         }
                     } catch (deleteError: any) {
+                        console.warn(" Error deleting QuickBooks invoice:", deleteError.message);
+                        console.log(" Continuing with conversion despite deletion error...");
                     }
                 }
             }
@@ -1644,6 +1749,7 @@ export class StripeController {
             let quickBooksUpdateError = null;
 
             try {
+                console.log("Verificando configuração do QuickBooks para update...");
 
                 // Verificar se a criação de invoices no QuickBooks está habilitada
                 const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
@@ -1656,8 +1762,10 @@ export class StripeController {
                 });
 
                 const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
+                console.log(`QuickBooks invoice creation enabled (update): ${isQuickBooksInvoiceCreationEnabled}`);
 
                 if (!isQuickBooksInvoiceCreationEnabled) {
+                    console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks update.");
 
                     // Adicionar evento na timeline sobre configuração desabilitada
                     await prisma.invoiceTimeline.create({
@@ -1669,6 +1777,7 @@ export class StripeController {
                         }
                     });
                 } else {
+                    console.log("Tentando atualizar invoice no QuickBooks...");
 
                     // Verificar se o usuário tem uma conta QuickBooks conectada
                     const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -1677,6 +1786,7 @@ export class StripeController {
 
                     // If converting from QBO to Stripe, create administrative invoice
                     if (isConvertingFromQuickbooks && quickBooksAccount) {
+                        console.log("Converting from QBO to Stripe - creating administrative QB invoice...");
 
                         // Use the processed lineItems for consistency
                         const qbServicesForCreate = lineItems.length > 0
@@ -1711,6 +1821,7 @@ export class StripeController {
                             calledFromStripe: true, // Only create in QB, return QB data
                         });
 
+                        console.log("Administrative QB invoice created:", createResult?.quickbooksId);
 
                         // Update local invoice with QB references
                         if (createResult?.quickbooksId) {
@@ -1747,6 +1858,7 @@ export class StripeController {
                             total: item.totalAmount // Usar o valor ajustado calculado
                         }));
 
+                        console.log(`Enviando ${qbServices.length} serviço(s) para QuickBooks com valor total: $${totalAmount || calculatedTotalAmount}`);
 
                         // Usar o controller instanciado no constructor
                         const qbController = this.quickBooksController;
@@ -1767,6 +1879,7 @@ export class StripeController {
                             calledFromStripe: true // Indicar que foi chamado pelo Stripe
                         });
 
+                        console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
 
                         // Adicionar evento na timeline sobre sucesso no QuickBooks
                         await prisma.invoiceTimeline.create({
@@ -1779,6 +1892,7 @@ export class StripeController {
                         });
                     } else {
                         if (!quickBooksAccount) {
+                            console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
 
                             // Adicionar evento na timeline sobre conta não conectada
                             await prisma.invoiceTimeline.create({
@@ -1790,6 +1904,7 @@ export class StripeController {
                                 }
                             });
                         } else {
+                            console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
 
                             // Usar os lineItems processados para manter consistência
                             const qbServicesForCreate = lineItems.length > 0
@@ -1808,6 +1923,7 @@ export class StripeController {
                                     total: Number(ii.totalAmount || 0),
                                 }));
 
+                            console.log(`Criando invoice no QB com ${qbServicesForCreate.length} serviço(s), valor total: $${totalAmount || calculatedTotalAmount}`);
 
                             const qbController = this.quickBooksController;
                             if (!qbController) throw new Error("QuickBooksController is not initialized");
@@ -1825,6 +1941,7 @@ export class StripeController {
                                 calledFromStripe: true,
                             });
 
+                            console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
 
                             // Atualizar a fatura local com os identificadores do QuickBooks
                             if (createResult?.quickbooksId) {
@@ -1853,6 +1970,7 @@ export class StripeController {
                     }
                 }
             } catch (qbError: any) {
+                console.error("Erro ao atualizar invoice no QuickBooks:", qbError.message);
                 quickBooksUpdateError = qbError.message;
 
                 // Adicionar evento na timeline sobre erro no QuickBooks
@@ -1866,6 +1984,7 @@ export class StripeController {
                         }
                     });
                 } catch (timelineError) {
+                    console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
                 }
             }
 
@@ -1880,6 +1999,7 @@ export class StripeController {
             });
 
         } catch (err) {
+            console.error("Erro no updateInvoice:", err);
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }
@@ -1946,7 +2066,9 @@ export class StripeController {
             const clientReferenceId = referralId || null; // Apenas referral ID (ou null)
 
             if (referralId) {
+                console.log(' [Rewardful] Referral ID enviado para rastreamento:', referralId);
             } else {
+                console.log(' [Info] Nenhum referral ID - checkout direto');
             }
 
             // Configuração base da sessão de checkout
@@ -1983,13 +2105,16 @@ export class StripeController {
 
             // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação
             if (company.stripeCustomerId) {
+                console.log(`Usando cliente Stripe existente: ${company.stripeCustomerId}`);
                 sessionConfig.customer = company.stripeCustomerId;
             }
 
             // Criar a sessão de checkout
             const session = await stripe.checkout.sessions.create(sessionConfig);
 
+            console.log(' [StripeController] Sessão de checkout criada com sucesso:', session.id);
             if (referralId) {
+                console.log(' [Rewardful] Referral ID incluído no checkout para rastreamento');
             }
 
             return res.status(200).json({
@@ -1997,6 +2122,7 @@ export class StripeController {
                 sessionId: session.id
             });
         } catch (error) {
+            console.error("Erro ao criar sessão de checkout:", error);
             return res.status(500).json({ error: "Erro interno ao processar o checkout" });
         }
     }
@@ -2037,6 +2163,7 @@ export class StripeController {
 
             // Obter a assinatura do Stripe para encontrar o cliente
             const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+            console.log("Assinatura Stripe verificada:", subscription.stripeSubscriptionId, "status:", stripeSubscription.status);
 
             if (!stripeSubscription.customer) {
                 return res.status(400).json({ error: "Stripe customer not found for this subscription." });
@@ -2050,6 +2177,7 @@ export class StripeController {
 
             return res.json({ url: session.url });
         } catch (error) {
+            console.error("Erro ao criar sessão do portal do cliente:", error);
             return res.status(500).json({
                 error: error instanceof Error ? error.message : "Internal server error"
             });

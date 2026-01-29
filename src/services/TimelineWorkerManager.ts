@@ -42,18 +42,22 @@ class TimelineWorkerManager {
                 });
                 
                 worker.on('error', (error) => {
+                    console.error(`[TIMELINE-WORKER-MANAGER] Worker ${i} error:`, error);
                     this.restartWorker(i);
                 });
                 
                 worker.on('exit', (code) => {
                     if (code !== 0) {
+                        console.error(`[TIMELINE-WORKER-MANAGER] Worker ${i} stopped with exit code ${code}`);
                         this.restartWorker(i);
                     }
                 });
                 
                 this.workers[i] = worker;
+                console.log(`[TIMELINE-WORKER-MANAGER] Worker ${i} initialized`);
                 
             } catch (error) {
+                console.error(`[TIMELINE-WORKER-MANAGER] Failed to create worker ${i}:`, error);
             }
         }
     }
@@ -72,11 +76,14 @@ class TimelineWorkerManager {
             });
             
             worker.on('error', (error) => {
+                console.error(`[TIMELINE-WORKER-MANAGER] Restarted worker ${index} error:`, error);
             });
             
             this.workers[index] = worker;
+            console.log(`[TIMELINE-WORKER-MANAGER] Worker ${index} restarted`);
             
         } catch (error) {
+            console.error(`[TIMELINE-WORKER-MANAGER] Failed to restart worker ${index}:`, error);
         }
     }
 
@@ -93,6 +100,7 @@ class TimelineWorkerManager {
                 pendingJob.reject(new Error(message.error || 'Worker job failed'));
             }
             
+            console.log(`[TIMELINE-WORKER-MANAGER] Job ${message.jobId} completed in ${message.processingTime}ms`);
         }
     }
 
@@ -146,6 +154,7 @@ class TimelineWorkerManager {
             const result = await this.executeJob(job);
             return result;
         } catch (error) {
+            console.error('[TIMELINE-WORKER-MANAGER] Create timeline failed:', error);
             throw error;
         }
     }
@@ -163,6 +172,7 @@ class TimelineWorkerManager {
             const result = await this.executeJob(job);
             return result;
         } catch (error) {
+            console.error('[TIMELINE-WORKER-MANAGER] Batch create timeline failed:', error);
             throw error;
         }
     }
@@ -183,7 +193,9 @@ class TimelineWorkerManager {
                 type: 'ADD_JOB',
                 job
             });
+            console.log(`[TIMELINE-WORKER-MANAGER] Async job ${job.id} sent to worker`);
         } else {
+            console.error('[TIMELINE-WORKER-MANAGER] No workers available for async job');
         }
     }
 
@@ -199,6 +211,7 @@ class TimelineWorkerManager {
 
     // Parar todos os workers
     async terminate(): Promise<void> {
+        console.log('[TIMELINE-WORKER-MANAGER] Terminating all workers...');
         
         // Cancelar jobs pendentes
         for (const [jobId, pendingJob] of this.pendingJobs.entries()) {
@@ -212,6 +225,7 @@ class TimelineWorkerManager {
         await Promise.all(terminationPromises);
         
         this.workers = [];
+        console.log('[TIMELINE-WORKER-MANAGER] All workers terminated');
     }
 }
 

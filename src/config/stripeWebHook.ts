@@ -34,6 +34,7 @@ export async function setupWebhook() {
       });
 
       if (existing) {
+        console.log(`Webhook já existe na base: ${event} (ID: ${existing.id})`);
         continue;
       }
 
@@ -57,8 +58,10 @@ export async function setupWebhook() {
         },
       });
 
+      console.log(`Webhook criado para ${event}: ${stripeWebhook.id}`);
     }
   } catch (err) {
+    console.error("Erro ao configurar webhooks:", err);
   }
 }
 

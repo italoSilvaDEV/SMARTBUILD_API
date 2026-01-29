@@ -72,6 +72,7 @@ export class UpdateWorkContextController {
 
       // Handle project associations if projectIds is provided
       if (projectIds !== undefined && Array.isArray(projectIds)) {
+        console.log(`Atualizando projetos do WorkContext ${id}. Projetos selecionados:`, projectIds);
         
         // Remove this work context from all projects first
         await prisma.project.updateMany({
@@ -90,6 +91,7 @@ export class UpdateWorkContextController {
           });
         }
         
+        console.log(` Projetos atualizados com sucesso para o WorkContext ${id}`);
       }
 
       // Update WorkContext
@@ -115,6 +117,7 @@ export class UpdateWorkContextController {
 
       return res.json(workContext);
     } catch (error: any) {
+      console.error("Error updating WorkContext:", error);
       return res.status(500).json({ 
         error: "Error updating work context" 
       });
@@ -170,6 +173,7 @@ export class UpdateWorkContextController {
         }
       });
 
+      console.log(`✅ Work context do projeto ${projectId} atualizado para: ${work_context_id || 'null'}`);
 
       return res.json({
         success: true,
@@ -177,6 +181,7 @@ export class UpdateWorkContextController {
         project: updatedProject
       });
     } catch (error: any) {
+      console.error("❌ Erro ao atualizar work context do projeto:", error);
       return res.status(500).json({ 
         error: "Error updating project work context" 
       });

@@ -49,6 +49,7 @@ export class FindPdfProjectEstimateInvoiceController {
                         try {
                             presignedUrl = await getPresignedUrl(pdf.uri);
                         } catch (error) {
+                            console.log(`Error generating presigned URL for ${pdf.uri}:`, error);
                         }
                     }
 
@@ -71,6 +72,7 @@ export class FindPdfProjectEstimateInvoiceController {
             });
 
         } catch (error) {
+            console.log(error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }

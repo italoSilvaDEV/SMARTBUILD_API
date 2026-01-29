@@ -29,7 +29,9 @@ export async function setupWebhook() {
                 },
             });
 
+            console.log('Webhook para pagamentos de invoice criado com sucesso:', invoiceWebhook.id);
         } else {
+            console.log('Webhook para pagamentos de invoice já configurado:', existingInvoiceWebhook.id);
         }
 
         const existingCheckoutWebhook = await prisma.webhooks.findFirst({
@@ -53,8 +55,11 @@ export async function setupWebhook() {
                 },
             });
 
+            console.log('Webhook para checkout concluído criado com sucesso:', checkoutWebhook.id);
         } else {
+            console.log('Webhook para checkout concluído já configurado:', existingCheckoutWebhook.id);
         }
     } catch (error) {
+        console.error('Erro ao configurar webhooks:', error);
     }
 }
