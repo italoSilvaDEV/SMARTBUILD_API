@@ -853,6 +853,11 @@ export class UserController {
           profession: true,
           isDisabled: true,
           isOverTime: true,
+          attendanceMode: true,
+          clockOutMode: true,
+          canEditTimeCard: true,
+          dailyRate: true,
+          defaultBreakMinutes: true,
           seller_project: {
             select: {
               status_project: true,
