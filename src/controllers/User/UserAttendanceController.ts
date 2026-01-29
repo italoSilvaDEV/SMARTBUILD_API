@@ -855,7 +855,7 @@ export class UserAttendanceController {
                 return;
             }
 
-            // Verifica se o usuário existe
+            // Verifica se o usuário existe e modo de visibilidade da company
             const userExists = await prisma.user.findUnique({
                 where: { id: user_id },
                 select: {
@@ -864,7 +864,8 @@ export class UserAttendanceController {
                         select: {
                             id: true,
                             workStartTime: true,
-                            workEndTime: true
+                            workEndTime: true,
+                            projectVisibilityMode: true
                         }
                     }
                 }
@@ -874,6 +875,8 @@ export class UserAttendanceController {
                 res.status(400).json({ error: 'User not found.' });
                 return;
             }
+
+            const visibilityMode = userExists.company?.projectVisibilityMode || 'assignedOnly';
 
             // Verifica se o serviço existe e está ativo
             const serviceProject = await prisma.serviceProject.findUnique({
@@ -915,7 +918,15 @@ export class UserAttendanceController {
             });
 
             if (!userServiceProject) {
-                // Cria automaticamente a relação
+                // Em assignedOnly, só permite check-in se o funcionário já estiver vinculado ao serviço
+                if (visibilityMode === 'assignedOnly') {
+                    res.status(403).json({
+                        error: 'You are not assigned to this service. Check-in is only allowed for assigned services in your company.',
+                        code: 'NOT_ASSIGNED'
+                    });
+                    return;
+                }
+                // allActive: cria automaticamente a relação
                 userServiceProject = await prisma.userServiceProject.create({
                     data: {
                         user_id: user_id,

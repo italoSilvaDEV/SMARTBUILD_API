@@ -509,11 +509,16 @@ export class UserServiceProjectController {
         return res.status(400).json({ error: 'User ID is required.' });
       }
 
-      // Verifica se o usuário existe
+      // Verifica se o usuário existe e modo de visibilidade da company
       const user = await prisma.user.findUnique({
         where: { id: userId as string },
         select: {
           company_id: true,
+          company: {
+            select: {
+              projectVisibilityMode: true
+            }
+          },
           companies: {
             select: {
               companyId: true
@@ -525,6 +530,8 @@ export class UserServiceProjectController {
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
       }
+
+      const visibilityMode = user.company?.projectVisibilityMode || 'assignedOnly';
 
       // Conjunto de empresas do usuário
       const userCompanyIds = new Set<string>();
@@ -555,7 +562,7 @@ export class UserServiceProjectController {
         });
       }
 
-      // Busca todos os projetos em andamento
+      // Busca todos os projetos em andamento (respeitando projectVisibilityMode)
       const projects = await prisma.project.findMany({
         where: {
           // Status do projeto: apenas "In Progress" e "Final walkthrough"
@@ -566,6 +573,20 @@ export class UserServiceProjectController {
           company_id: {
             in: Array.from(userCompanyIds)
           },
+          // assignedOnly: só projetos onde o usuário tem pelo menos um serviço vinculado
+          ...(visibilityMode === 'assignedOnly'
+            ? {
+                serviceProject: {
+                  some: {
+                    UserServiceProject: {
+                      some: {
+                        user_id: userId as string
+                      }
+                    }
+                  }
+                }
+              }
+            : {}),
           // Busca por endereço ou nome do cliente (opcional)
           ...(search && {
             OR: [
