@@ -154,7 +154,7 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
                 height: logoHeight,
             });
         } catch (error) {
-            console.error("Error loading logo from URL:", error);
+            // console.error("Error loading logo from URL:", error);
         }
     }
 
@@ -566,7 +566,7 @@ export async function generatePdf(data: DataProps, clientName: string, returnPat
             });
 
           } catch (error) {
-            console.error("Erro ao carregar imagem:", error);
+            // console.error("Erro ao carregar imagem:", error);
           }
         }
         currentY -= maxImageHeight + 40;

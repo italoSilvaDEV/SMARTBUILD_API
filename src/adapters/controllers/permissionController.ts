@@ -20,7 +20,7 @@ export class PermissionController {
       res.status(201).json(permission);
     } catch (error: unknown) {
       // Erro ao criar permissão
-      console.error('Error creating permission:', error);
+      // console.error('Error creating permission:', error);
       res.status(500).json({ message: 'Error creating permission', error: (error as Error).message });
     }
   }
@@ -36,7 +36,7 @@ export class PermissionController {
       res.status(200).json(permissions);
     } catch (error: unknown) {
       // Erro ao listar permissões
-      console.error('Error listing permissions:', error);
+      // console.error('Error listing permissions:', error);
       res.status(500).json({ message: 'Error listing permissions', error: (error as Error).message });
     }
   }
@@ -60,7 +60,7 @@ export class PermissionController {
       res.status(200).json(permission);
     } catch (error: unknown) {
       // Erro ao buscar permissão
-      console.error('Error fetching permission:', error);
+      // console.error('Error fetching permission:', error);
       res.status(500).json({ message: 'Error fetching permission', error: (error as Error).message });
     }
   }
@@ -88,7 +88,7 @@ export class PermissionController {
       res.status(200).json(updatedPermission);
     } catch (error: unknown) {
       // Erro ao atualizar permissão
-      console.error('Error updating permission:', error);
+      // console.error('Error updating permission:', error);
       res.status(500).json({ message: 'Error updating permission', error: (error as Error).message });
     }
   }
@@ -105,7 +105,7 @@ export class PermissionController {
       res.status(204).send();
     } catch (error: unknown) {
       // Erro ao excluir permissão
-      console.error('Error deleting permission:', error);
+      // console.error('Error deleting permission:', error);
       res.status(500).json({ message: 'Error deleting permission', error: (error as Error).message });
     }
   }

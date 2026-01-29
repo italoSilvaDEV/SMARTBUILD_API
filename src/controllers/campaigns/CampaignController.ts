@@ -65,7 +65,7 @@ export class CampaignController {
 
       res.status(201).json(campaign);
     } catch (error) {
-      console.error('Error creating campaign:', error);
+      // console.error('Error creating campaign:', error);
       res.status(500).json({ 
         message: 'Error creating campaign', 
         error: (error as Error).message 
@@ -128,7 +128,7 @@ export class CampaignController {
 
       res.status(200).json(updatedCampaigns);
     } catch (error) {
-      console.error('Error fetching campaigns:', error);
+      // console.error('Error fetching campaigns:', error);
       res.status(500).json({ 
         message: 'Error fetching campaigns', 
         error: (error as Error).message 
@@ -172,7 +172,7 @@ export class CampaignController {
 
       res.status(200).json(campaign);
     } catch (error) {
-      console.error('Error fetching campaign:', error);
+      // console.error('Error fetching campaign:', error);
       res.status(500).json({ 
         message: 'Error fetching campaign', 
         error: (error as Error).message 
@@ -261,7 +261,7 @@ export class CampaignController {
 
       res.status(200).json(updatedCampaign);
     } catch (error) {
-      console.error('Error updating campaign:', error);
+      // console.error('Error updating campaign:', error);
       res.status(500).json({ 
         message: 'Error updating campaign', 
         error: (error as Error).message 
@@ -303,7 +303,7 @@ export class CampaignController {
 
       res.status(200).json({ message: 'Campaign deleted successfully' });
     } catch (error) {
-      console.error('Error deleting campaign:', error);
+      // console.error('Error deleting campaign:', error);
       res.status(500).json({ 
         message: 'Error deleting campaign', 
         error: (error as Error).message 
@@ -342,7 +342,7 @@ export class CampaignController {
 
       res.status(200).json(formattedPlans);
     } catch (error) {
-      console.error('Error fetching campaign plans:', error);
+      // console.error('Error fetching campaign plans:', error);
       res.status(500).json({ 
         message: 'Error fetching campaign plans', 
         error: (error as Error).message 
@@ -414,7 +414,7 @@ export class CampaignController {
         clients: formattedClients
       });
     } catch (error) {
-      console.error('Error fetching campaign clients:', error);
+      // console.error('Error fetching campaign clients:', error);
       res.status(500).json({ 
         message: 'Error fetching campaign clients', 
         error: (error as Error).message 

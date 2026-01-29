@@ -232,7 +232,7 @@ export class FinanceDashboardController {
 
             res.json(cashflow);
         } catch (error) {
-            console.error("Error in cashflow:", error);
+            // console.error("Error in cashflow:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
@@ -399,7 +399,7 @@ export class FinanceDashboardController {
 
             return res.json(formattedExpenses);
         } catch (error) {
-            console.error("Error in findMany:", error);
+            // console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -420,7 +420,7 @@ export class FinanceDashboardController {
                 profit: Number(totalIncome._sum.totalAmount || 0) - Number(totalExpenses._sum.price || 0),
             });
         } catch (error) {
-            console.error("Error in findMany:", error);
+            // console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -581,7 +581,7 @@ export class FinanceDashboardController {
                 cost: Number(costWorkerTotal.toFixed(2))
             })
         } catch (error) {
-            console.error("Error in project:", error);
+            // console.error("Error in project:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -631,7 +631,7 @@ export class FinanceDashboardController {
 
             return res.json({ profit, sales: formattedSalesData });
         } catch (error) {
-            console.error("Error in findMany:", error);
+            // console.error("Error in findMany:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
@@ -763,7 +763,7 @@ export class FinanceDashboardController {
                 canceledProjects
             });
         } catch (error) {
-            console.error("Error in indicators:", error);
+            // console.error("Error in indicators:", error);
 
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });

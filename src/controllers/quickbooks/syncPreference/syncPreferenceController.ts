@@ -16,7 +16,7 @@ export class SyncPreferencesController {
 
       return res.json(prefs);
     } catch (error: any) {
-      console.error("Erro ao listar preferências por empresa:", error);
+      // console.error("Erro ao listar preferências por empresa:", error);
       return res.status(500).json({ error: "Erro interno ao listar preferências" });
     }
   }
@@ -32,7 +32,7 @@ export class SyncPreferencesController {
 
       return res.json(prefs);
     } catch (error: any) {
-      console.error("Erro ao listar preferências por usuário:", error);
+      // console.error("Erro ao listar preferências por usuário:", error);
       return res.status(500).json({ error: "Erro interno ao listar preferências" });
     }
   }
@@ -60,7 +60,7 @@ export class SyncPreferencesController {
 
       return res.status(201).json(created);
     } catch (error: any) {
-      console.error("Erro ao criar preferência:", error);
+      // console.error("Erro ao criar preferência:", error);
       return res.status(500).json({ error: "Erro interno ao criar preferência" });
     }
   }
@@ -77,7 +77,7 @@ export class SyncPreferencesController {
 
       return res.json(updated);
     } catch (error: any) {
-      console.error("Erro ao atualizar preferência:", error);
+      // console.error("Erro ao atualizar preferência:", error);
       return res.status(500).json({ error: "Erro interno ao atualizar preferência" });
     }
   }
@@ -89,7 +89,7 @@ export class SyncPreferencesController {
       await prisma.syncPreferences.delete({ where: { id } });
       return res.status(204).send();
     } catch (error: any) {
-      console.error("Erro ao deletar preferência:", error);
+      // console.error("Erro ao deletar preferência:", error);
       return res.status(500).json({ error: "Erro interno ao deletar preferência" });
     }
   }
@@ -110,7 +110,7 @@ export class SyncPreferencesController {
 
       return res.json(updated);
     } catch (error: any) {
-      console.error("Erro ao atualizar isDisable:", error);
+      // console.error("Erro ao atualizar isDisable:", error);
       return res.status(500).json({ error: "Erro interno ao atualizar isDisable" });
     }
   }

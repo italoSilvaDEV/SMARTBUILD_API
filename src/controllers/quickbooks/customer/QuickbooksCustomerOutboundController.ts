@@ -418,14 +418,14 @@ export class QuickBooksCustomerOutboundController {
         batchStats: stats,
       });
     } catch (error: any) {
-      console.error(" Erro na exportação inicial (batch):", error);
-      console.error(" Erro detalhado:", {
-        message: error?.message,
-        fault: error?.Fault,
-        code: error?.code,
-        status: error?.status,
-        stack: error?.stack,
-      });
+      // console.error(" Erro na exportação inicial (batch):", error);
+      // console.error(" Erro detalhado:", {
+      //   message: error?.message,
+      //   fault: error?.Fault,
+      //   code: error?.code,
+      //   status: error?.status,
+      //   stack: error?.stack,
+      // });
 
       return res.status(500).json({
         error: "Erro na exportação inicial",
@@ -699,8 +699,8 @@ export class QuickBooksCustomerOutboundController {
 
       return res.status(200).json({ message: "Push to QBO finished", updated: updatedCount });
     } catch (error: any) {
-      console.error(" Erro ao enviar atualizações ao QBO:", error);
-      console.error(" Erro detalhado no push:", {
+      // console.error(" Erro ao enviar atualizações ao QBO:", error);
+      // console.error(" Erro detalhado no push:", {
         message: error?.message,
         fault: error?.Fault,
         code: error?.code,

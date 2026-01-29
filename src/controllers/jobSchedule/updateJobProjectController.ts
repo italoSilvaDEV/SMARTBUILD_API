@@ -239,7 +239,7 @@ export class UpdateJobProjectController {
 
             return res.status(200).json({ message: "Service project updated successfully" });
         } catch (error) {
-            console.error(error);
+            // console.error(error);
             return res.status(500).json({ error: "Internal server error" });
         }
     }

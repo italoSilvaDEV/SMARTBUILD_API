@@ -116,7 +116,6 @@ export class OpenAIController {
                     }));
 
                 } catch (error: any) {
-                    console.error('❌ Erro ao transcrever áudio:', error);
 
                     return resolve(response.status(500).json({
                         error: 'Erro ao transcrever áudio',
@@ -163,7 +162,6 @@ export class OpenAIController {
             });
 
         } catch (error: any) {
-            console.error('❌ Erro ao melhorar descrição:', error);
 
             return response.status(500).json({
                 error: 'Erro ao melhorar descrição',
@@ -218,7 +216,6 @@ export class OpenAIController {
                     }));
 
                 } catch (error: any) {
-                    console.error('❌ Erro ao processar áudio:', error);
 
                     return resolve(response.status(500).json({
                         error: 'Erro ao processar áudio',
@@ -272,7 +269,6 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error(error);
             return res.status(500).json({
                 error: "Internal server error",
                 message: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -324,7 +320,6 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error(error);
             return res.status(500).json({
                 error: "Internal server error"
             });
@@ -348,9 +343,7 @@ export class OpenAIController {
                 prompt: OpenIaPrompt.transcribeAudio()
             })
 
-            fs.unlink(file.path, (err) => {
-                if (err) console.error("Error deleting temp file:", err);
-            });
+            fs.unlink(file.path, () => {});
 
             return res.status(200).json({
                 data: {
@@ -409,7 +402,6 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error('❌ Erro ao melhorar descrição para worker:', error);
             return res.status(500).json({
                 error: "Internal server error",
                 message: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -448,7 +440,6 @@ export class OpenAIController {
                 }
             });
         } catch (error) {
-            console.error('Erro ao melhorar escopo de Change Order:', error);
             return res.status(500).json({
                 error: "Internal server error",
                 message: error instanceof Error ? error.message : 'Erro desconhecido'

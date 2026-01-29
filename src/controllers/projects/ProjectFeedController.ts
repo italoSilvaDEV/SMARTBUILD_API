@@ -25,7 +25,7 @@ export class ProjectFeedController {
                     const decoded = Jwt.verify(token, String(process.env.SECRET_JWT)) as { id?: string; userId?: string; sub?: string };
                     userId = decoded?.id || decoded?.userId || (decoded?.sub as string | undefined);
                 } catch (error) {
-                    console.error('Erro ao decodificar token para resolver empresa do usuário:', error);
+                    // console.error('Erro ao decodificar token para resolver empresa do usuário:', error);
                 }
             }
         }
@@ -222,7 +222,7 @@ export class ProjectFeedController {
                                 date_creation: galleryPhoto.date_creation
                             });
                         } catch (uploadError) {
-                            console.error('Erro ao fazer upload da foto:', uploadError);
+                            // console.error('Erro ao fazer upload da foto:', uploadError);
                         }
                     }
                 }
@@ -250,7 +250,7 @@ export class ProjectFeedController {
                 });
 
             } catch (error) {
-                console.error('Erro ao criar post no feed:', error);
+                // console.error('Erro ao criar post no feed:', error);
                 return response.status(500).json({
                     error: 'Erro interno do servidor',
                     details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -579,7 +579,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar feed do projeto:', error);
+            // console.error('Erro ao buscar feed do projeto:', error);
             return response.status(500).json({
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -654,7 +654,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao editar post:', error);
+            // console.error('Erro ao editar post:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -700,7 +700,7 @@ export class ProjectFeedController {
                     try {
                         await deleteFileFromS3(photo.url);
                     } catch (s3Error) {
-                        console.error(`Erro ao deletar foto ${photo.id} do S3:`, s3Error);
+                        // console.error(`Erro ao deletar foto ${photo.id} do S3:`, s3Error);
                     }
                 }
 
@@ -749,7 +749,7 @@ export class ProjectFeedController {
             }
 
         } catch (error) {
-            console.error('Erro ao deletar post:', error);
+            // console.error('Erro ao deletar post:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -802,7 +802,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao deletar foto:', error);
+            // console.error('Erro ao deletar foto:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -981,7 +981,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar feed do serviço:', error);
+            // console.error('Erro ao buscar feed do serviço:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1292,7 +1292,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar feed geral:', error);
+            // console.error('Erro ao buscar feed geral:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1641,7 +1641,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar feed do usuário:', error);
+            // console.error('Erro ao buscar feed do usuário:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1755,7 +1755,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao criar comentário:', error);
+            // console.error('Erro ao criar comentário:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1813,7 +1813,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar comentários:', error);
+            // console.error('Erro ao buscar comentários:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1859,7 +1859,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao deletar comentário:', error);
+            // console.error('Erro ao deletar comentário:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -1960,7 +1960,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao dar like:', error);
+            // console.error('Erro ao dar like:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -2019,7 +2019,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao remover like:', error);
+            // console.error('Erro ao remover like:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -2075,7 +2075,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar likes:', error);
+            // console.error('Erro ao buscar likes:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -2165,7 +2165,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao buscar notificações:', error);
+            // console.error('Erro ao buscar notificações:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -2193,7 +2193,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao marcar notificação:', error);
+            // console.error('Erro ao marcar notificação:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -2224,7 +2224,7 @@ export class ProjectFeedController {
             });
 
         } catch (error) {
-            console.error('Erro ao marcar todas notificações:', error);
+            // console.error('Erro ao marcar todas notificações:', error);
             return response.status(500).json({ 
                 error: 'Erro interno do servidor',
                 details: error instanceof Error ? error.message : 'Erro desconhecido'

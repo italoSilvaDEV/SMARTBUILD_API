@@ -105,7 +105,7 @@ export class UpdateSubcontractorController {
       });
 
     } catch (error) {
-      console.error("Error updating subcontractor:", error);
+      // console.error("Error updating subcontractor:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

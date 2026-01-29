@@ -36,7 +36,7 @@ export class SalesStageController {
 
       return res.status(201).json(stage);
     } catch (error: any) {
-      console.error("Error creating stage:", error);
+      // console.error("Error creating stage:", error);
       return res.status(500).json({ 
         error: "Erro ao criar stage",
         message: error.message 
@@ -64,7 +64,7 @@ export class SalesStageController {
 
       return res.status(200).json(stage);
     } catch (error: any) {
-      console.error("Error updating stage:", error);
+      // console.error("Error updating stage:", error);
       return res.status(500).json({ 
         error: "Erro ao atualizar stage",
         message: error.message 
@@ -102,7 +102,7 @@ export class SalesStageController {
 
       return res.status(200).json({ message: "Stage deletado com sucesso" });
     } catch (error: any) {
-      console.error("Error deleting stage:", error);
+      // console.error("Error deleting stage:", error);
       return res.status(500).json({ 
         error: "Erro ao deletar stage",
         message: error.message 
@@ -141,7 +141,7 @@ export class SalesStageController {
 
       return res.status(200).json({ message: "Stages reordenados com sucesso" });
     } catch (error: any) {
-      console.error("Error reordering stages:", error);
+      // console.error("Error reordering stages:", error);
       return res.status(500).json({ 
         error: "Erro ao reordenar stages",
         message: error.message 

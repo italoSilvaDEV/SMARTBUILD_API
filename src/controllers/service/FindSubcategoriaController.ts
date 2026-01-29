@@ -24,7 +24,7 @@ export class FindSubCategoryController {
 
             return response.json(subCategories);
         } catch (error) {
-            console.error(error);
+            // console.error(error);
             if (error instanceof Error) {
                 return response.json({ error: error.message });
             }

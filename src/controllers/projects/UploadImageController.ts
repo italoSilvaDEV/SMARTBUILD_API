@@ -34,7 +34,7 @@ export class UploadImageController {
         deleteFile(`./public/tmp/image-upload/${req.file?.filename}`);
       }
       
-      console.error("Error uploading image:", error);
+      // console.error("Error uploading image:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
       }

@@ -115,7 +115,7 @@ export class UserMultiCompanyController {
         }
       });
     } catch (error) {
-      console.error("Erro na autenticação multi-company:", error);
+      // console.error("Erro na autenticação multi-company:", error);
       return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
@@ -321,7 +321,7 @@ export class UserMultiCompanyController {
             //   }
             // }
             catch (stripeError) {
-              console.error('Erro ao verificar assinatura no Stripe:', stripeError);
+              // console.error('Erro ao verificar assinatura no Stripe:', stripeError);
               // Fallback para verificação local em caso de erro
               isExpired = new Date(subscription.endDate) < new Date();
             }
@@ -385,7 +385,7 @@ export class UserMultiCompanyController {
         paymentFailed
       });
     } catch (error) {
-      console.error("Erro na autenticação:", error);
+      // console.error("Erro na autenticação:", error);
       return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }

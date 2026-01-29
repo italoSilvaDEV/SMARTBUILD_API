@@ -42,10 +42,10 @@ export class CustomInvoiceController {
       );
 
       if (blockingPaymentIntents.length > 0) {
-        console.log("Found blocking PaymentIntents:", blockingPaymentIntents.map(pi => ({
-          id: pi.stripePaymentIntentId,
-          status: pi.status
-        })));
+        // console.log("Found blocking PaymentIntents:", blockingPaymentIntents.map(pi => ({
+        //   id: pi.stripePaymentIntentId,
+        //   status: pi.status
+        // })));
 
         return {
           canConvert: false,
@@ -60,7 +60,7 @@ export class CustomInvoiceController {
       );
 
       if (cancelablePaymentIntents.length > 0) {
-        console.log("Canceling PaymentIntents before conversion...");
+        // console.log("Canceling PaymentIntents before conversion...");
 
         for (const paymentIntent of cancelablePaymentIntents) {
           try {
@@ -82,12 +82,12 @@ export class CustomInvoiceController {
                 data: { status: 'canceled', updatedAt: new Date() }
               });
 
-              console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
+              // console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} canceled successfully`);
             } else {
-              console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
+              // console.log(`PaymentIntent ${paymentIntent.stripePaymentIntentId} is in status ${stripePI.status} - cannot be canceled`);
             }
           } catch (piError: any) {
-            console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
+            // console.warn(`Error canceling PaymentIntent ${paymentIntent.stripePaymentIntentId}:`, piError.message);
             // Continue with other PaymentIntents
           }
         }
@@ -96,7 +96,7 @@ export class CustomInvoiceController {
       return { canConvert: true };
 
     } catch (error: any) {
-      console.error("Error validating PaymentIntents:", error);
+      // console.error("Error validating PaymentIntents:", error);
       return {
         canConvert: false,
         error: `Error checking payment status: ${error.message}`
@@ -241,7 +241,7 @@ export class CustomInvoiceController {
         return invoice;
       });
 
-      console.log("Invoice salva no banco com ID:", newInvoice.id);
+      // console.log("Invoice salva no banco com ID:", newInvoice.id);
 
       // Tentar criar invoice no QuickBooks (não deve falhar o processo se der erro)
       // Isso está FORA da transaction para garantir que o invoice já foi commitado
@@ -249,7 +249,7 @@ export class CustomInvoiceController {
       let quickBooksError = null;
 
       try {
-        console.log("Verificando configuração do QuickBooks...");
+        // console.log("Verificando configuração do QuickBooks...");
 
         // Verificar se a criação de invoices no QuickBooks está habilitada
         const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
@@ -262,10 +262,10 @@ export class CustomInvoiceController {
         });
 
         const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
-        console.log(`QuickBooks invoice creation enabled: ${isQuickBooksInvoiceCreationEnabled}`);
+        // console.log(`QuickBooks invoice creation enabled: ${isQuickBooksInvoiceCreationEnabled}`);
 
         if (!isQuickBooksInvoiceCreationEnabled) {
-          console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks integration.");
+          // console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks integration.");
 
           // Adicionar evento na timeline sobre configuração desabilitada
           await prisma.invoiceTimeline.create({
@@ -277,7 +277,7 @@ export class CustomInvoiceController {
             }
           });
         } else {
-          console.log("Tentando criar invoice no QuickBooks...");
+          // console.log("Tentando criar invoice no QuickBooks...");
 
           // Verificar se o usuário tem uma conta QuickBooks conectada
           const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -314,7 +314,7 @@ export class CustomInvoiceController {
               calledFromStripe: true // Indicar que foi chamado pelo Custom
             });
 
-            console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
+            // console.log("Invoice criado no QuickBooks com sucesso:", quickBooksResult?.quickbooksId);
 
             // Atualizar o invoice Custom com os dados do QuickBooks
             if (quickBooksResult?.quickbooksId) {
@@ -337,7 +337,7 @@ export class CustomInvoiceController {
               }
             });
           } else {
-            console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
+            // console.log("Usuário não possui conta QuickBooks conectada. Pulando criação no QB.");
 
             // Adicionar evento na timeline sobre conta não conectada
             await prisma.invoiceTimeline.create({
@@ -351,7 +351,7 @@ export class CustomInvoiceController {
           }
         }
       } catch (qbError: any) {
-        console.error("Erro ao criar invoice no QuickBooks:", qbError.message);
+        // console.error("Erro ao criar invoice no QuickBooks:", qbError.message);
         quickBooksError = qbError.message;
 
         // Adicionar evento na timeline sobre erro no QuickBooks
@@ -365,7 +365,7 @@ export class CustomInvoiceController {
             }
           });
         } catch (timelineError) {
-          console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+          // console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
         }
       }
 
@@ -379,7 +379,7 @@ export class CustomInvoiceController {
         }
       });
     } catch (error: any) {
-      console.error("Error creating custom invoice:", error);
+      // console.error("Error creating custom invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -448,7 +448,7 @@ export class CustomInvoiceController {
 
       return res.status(200).json({ total, invoices: invoicesWithLastSent });
     } catch (error) {
-      console.error("Error fetching custom invoices:", error);
+      // console.error("Error fetching custom invoices:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -632,7 +632,7 @@ export class CustomInvoiceController {
               }
             }
           } catch (error) {
-            console.error(`Error fetching document attachment ${document.id}:`, error);
+            // console.error(`Error fetching document attachment ${document.id}:`, error);
           }
         }
       }
@@ -771,7 +771,7 @@ export class CustomInvoiceController {
         totalAttempted: emailsToSend.length
       });
     } catch (error) {
-      console.error("Error sending custom invoice:", error);
+      // console.error("Error sending custom invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -853,7 +853,7 @@ export class CustomInvoiceController {
               fileName = pdfProject.original_file_name || `invoice_${invoice.externalInvoiceId || invoiceId.substring(0, 8)}.pdf`;
             }
           } catch (error) {
-            console.warn("Failed to fetch PDF, will send email without attachment:", error);
+            // console.warn("Failed to fetch PDF, will send email without attachment:", error);
           }
         }
       }
@@ -982,7 +982,7 @@ export class CustomInvoiceController {
         results
       });
     } catch (error) {
-      console.error("Error sending custom invoice:", error);
+      // console.error("Error sending custom invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1021,7 +1021,7 @@ export class CustomInvoiceController {
         invoice: updatedInvoice
       });
     } catch (error) {
-      console.error("Error updating custom invoice status:", error);
+      // console.error("Error updating custom invoice status:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1073,7 +1073,7 @@ export class CustomInvoiceController {
           const pdfController = new CreatePdfProjectEstimateInvoiceController();
           await pdfController.deletePdfProject(pdfProject.id);
         } catch (error) {
-          console.error("Error deleting PDF and related records:", error);
+          // console.error("Error deleting PDF and related records:", error);
         }
       }
 
@@ -1082,8 +1082,8 @@ export class CustomInvoiceController {
       let quickBooksVoidError = null;
 
       if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio && companyId) {
-        console.log("Custom invoice has administrative QB invoice - voiding it...");
-        console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+        // console.log("Custom invoice has administrative QB invoice - voiding it...");
+        // console.log("QB Invoice ID:", invoice.idQuickbookContabio);
 
         try {
           const qbController = this.quickBooksController;
@@ -1100,16 +1100,16 @@ export class CustomInvoiceController {
               });
 
               if (quickBooksVoidResult.success) {
-                console.log("Administrative QB invoice voided successfully");
+                // console.log("Administrative QB invoice voided successfully");
               } else {
-                console.warn("Failed to void administrative QB invoice, continuing anyway...");
+                // console.warn("Failed to void administrative QB invoice, continuing anyway...");
               }
             } else {
-              console.warn("UserId not available, skipping QB void");
+              // console.warn("UserId not available, skipping QB void");
             }
           }
         } catch (qbError: any) {
-          console.warn("Error voiding administrative QB invoice:", qbError.message);
+          // console.warn("Error voiding administrative QB invoice:", qbError.message);
           quickBooksVoidError = qbError.message;
           // Continue with local cancellation despite QB error
         }
@@ -1142,7 +1142,7 @@ export class CustomInvoiceController {
         quickBooksError: quickBooksVoidError
       });
     } catch (error: any) {
-      console.error("Error cancelling custom invoice:", error);
+      // console.error("Error cancelling custom invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1319,7 +1319,7 @@ export class CustomInvoiceController {
       }, 1000);
 
     } catch (error) {
-      console.error("Error generating invoice PDF:", error);
+      // console.error("Error generating invoice PDF:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1378,8 +1378,8 @@ export class CustomInvoiceController {
 
       // RULE 3: If converting FROM stripe to custom/quickbooks, validate PaymentIntents first
       if (existingInvoice.invoiceType === "stripe") {
-        console.log(" Invoice is being converted from stripe to custom");
-        console.log(" Validating PaymentIntents before conversion...");
+        // console.log(" Invoice is being converted from stripe to custom");
+        // console.log(" Validating PaymentIntents before conversion...");
 
         const validation = await this.validateAndCancelPaymentIntents(
           invoiceId,
@@ -1393,19 +1393,19 @@ export class CustomInvoiceController {
           });
         }
 
-        console.log(" PaymentIntents validated - conversion can proceed");
+        // console.log(" PaymentIntents validated - conversion can proceed");
       }
 
       // RULE 2: Handle conversion from quickbooks to custom
       let isConvertingFromQuickbooks = false;
       if (existingInvoice.invoiceType === "quickbooks") {
-        console.log(" Invoice is being converted from quickbooks to custom");
+        // console.log(" Invoice is being converted from quickbooks to custom");
         isConvertingFromQuickbooks = true;
 
         // Delete invoice from QuickBooks before conversion
         if (existingInvoice.idQuickbookContabio && companyId) {
-          console.log(" Deleting QuickBooks invoice before conversion to custom");
-          console.log("QB Invoice ID:", existingInvoice.idQuickbookContabio);
+          // console.log(" Deleting QuickBooks invoice before conversion to custom");
+          // console.log("QB Invoice ID:", existingInvoice.idQuickbookContabio);
 
           try {
             const qbController = this.quickBooksController;
@@ -1418,14 +1418,14 @@ export class CustomInvoiceController {
               });
 
               if (deleteResult.success || deleteResult.notFound) {
-                console.log(" QuickBooks invoice deleted successfully during conversion");
+                // console.log(" QuickBooks invoice deleted successfully during conversion");
               } else {
-                console.warn(" Failed to delete QuickBooks invoice, continuing anyway...");
+                // console.warn(" Failed to delete QuickBooks invoice, continuing anyway...");
               }
             }
           } catch (deleteError: any) {
-            console.warn(" Error deleting QuickBooks invoice:", deleteError.message);
-            console.log(" Continuing with conversion despite deletion error...");
+            // console.warn(" Error deleting QuickBooks invoice:", deleteError.message);
+            // console.log(" Continuing with conversion despite deletion error...");
           }
         }
       }
@@ -1503,7 +1503,7 @@ export class CustomInvoiceController {
       let quickBooksUpdateError = null;
 
       try {
-        console.log("Verificando configuração do QuickBooks para update...");
+        // console.log("Verificando configuração do QuickBooks para update...");
 
         // Verificar se a criação de invoices no QuickBooks está habilitada
         const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
@@ -1516,10 +1516,10 @@ export class CustomInvoiceController {
         });
 
         const isQuickBooksInvoiceCreationEnabled = quickBooksConfig?.isActive || false;
-        console.log(`QuickBooks invoice creation enabled (update): ${isQuickBooksInvoiceCreationEnabled}`);
+        // console.log(`QuickBooks invoice creation enabled (update): ${isQuickBooksInvoiceCreationEnabled}`);
 
         if (!isQuickBooksInvoiceCreationEnabled) {
-          console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks update.");
+          // console.log("QuickBooks invoice creation is disabled. Skipping QuickBooks update.");
 
           // Adicionar evento na timeline sobre configuração desabilitada
           await prisma.invoiceTimeline.create({
@@ -1531,7 +1531,7 @@ export class CustomInvoiceController {
             }
           });
         } else {
-          console.log("Tentando atualizar invoice no QuickBooks...");
+          // console.log("Tentando atualizar invoice no QuickBooks...");
 
           // Verificar se o usuário tem uma conta QuickBooks conectada
           const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
@@ -1540,7 +1540,7 @@ export class CustomInvoiceController {
 
           // If converting from QBO to Custom, create administrative invoice
           if (isConvertingFromQuickbooks && quickBooksAccount) {
-            console.log("Converting from QBO to Custom - creating administrative QB invoice...");
+            // console.log("Converting from QBO to Custom - creating administrative QB invoice...");
 
             // Prepare services for QB format
             const qbServicesSource =
@@ -1580,7 +1580,7 @@ export class CustomInvoiceController {
               calledFromStripe: true, // Only create in QB, return QB data
             });
 
-            console.log("Administrative QB invoice created:", createResult?.quickbooksId);
+            // console.log("Administrative QB invoice created:", createResult?.quickbooksId);
 
             // Update local invoice with QB references
             if (createResult?.quickbooksId) {
@@ -1635,7 +1635,7 @@ export class CustomInvoiceController {
               calledFromStripe: true // Indicar que foi chamado pelo Custom
             });
 
-            console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
+            // console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
 
             // Adicionar evento na timeline sobre sucesso no QuickBooks
             await prisma.invoiceTimeline.create({
@@ -1648,7 +1648,7 @@ export class CustomInvoiceController {
             });
           } else {
             if (!quickBooksAccount) {
-              console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
+              // console.log("Usuário não possui conta QuickBooks conectada. Pulando atualização no QB.");
 
               // Adicionar evento na timeline sobre conta não conectada
               await prisma.invoiceTimeline.create({
@@ -1660,7 +1660,7 @@ export class CustomInvoiceController {
                 }
               });
             } else {
-              console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
+              // console.log("Invoice não possui referência do QuickBooks. Criando referencia.");
 
               // TENTAR DE CRIAÇÃO DE INVOICE NO QBO
               const qbServicesSource =
@@ -1700,7 +1700,7 @@ export class CustomInvoiceController {
                 calledFromStripe: true,
               });
 
-              console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
+              // console.log("Invoice criado no QuickBooks com sucesso:", createResult?.quickbooksId);
 
               // Atualizar a fatura local com os identificadores do QuickBooks
               if (createResult?.quickbooksId) {
@@ -1729,7 +1729,7 @@ export class CustomInvoiceController {
           }
         }
       } catch (qbError: any) {
-        console.error("Erro ao atualizar invoice no QuickBooks:", qbError.message);
+        // console.error("Erro ao atualizar invoice no QuickBooks:", qbError.message);
         quickBooksUpdateError = qbError.message;
 
         // Adicionar evento na timeline sobre erro no QuickBooks
@@ -1743,7 +1743,7 @@ export class CustomInvoiceController {
             }
           });
         } catch (timelineError) {
-          console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
+          // console.error("Erro ao registrar falha do QuickBooks na timeline:", timelineError);
         }
       }
 
@@ -1757,7 +1757,7 @@ export class CustomInvoiceController {
         }
       });
     } catch (error: any) {
-      console.error("Error updating invoice:", error);
+      // console.error("Error updating invoice:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1808,7 +1808,7 @@ export class CustomInvoiceController {
         invoiceType: "custom"
       });
     } catch (error: any) {
-      console.error("Error generating custom invoice number:", error);
+      // console.error("Error generating custom invoice number:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1855,7 +1855,7 @@ export class CustomInvoiceController {
         invoiceType: "custom"
       });
     } catch (error: any) {
-      console.error("Error generating global invoice number:", error);
+      // console.error("Error generating global invoice number:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
@@ -1893,8 +1893,8 @@ export class CustomInvoiceController {
       let quickBooksDeleteError = null;
 
       if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
-        console.log("Custom invoice has administrative QB invoice - deleting it...");
-        console.log("QB Invoice ID:", invoice.idQuickbookContabio);
+        // console.log("Custom invoice has administrative QB invoice - deleting it...");
+        // console.log("QB Invoice ID:", invoice.idQuickbookContabio);
 
         try {
           const qbController = this.quickBooksController;
@@ -1907,13 +1907,13 @@ export class CustomInvoiceController {
             });
 
             if (quickBooksDeleteResult.success || quickBooksDeleteResult.notFound) {
-              console.log("Administrative QB invoice deleted successfully");
+              // console.log("Administrative QB invoice deleted successfully");
             } else {
-              console.warn("Failed to delete administrative QB invoice, continuing anyway...");
+              // console.warn("Failed to delete administrative QB invoice, continuing anyway...");
             }
           }
         } catch (qbError: any) {
-          console.warn("Error deleting administrative QB invoice:", qbError.message);
+          // console.warn("Error deleting administrative QB invoice:", qbError.message);
           quickBooksDeleteError = qbError.message;
           // Continue with local deletion despite QB error
         }
@@ -1949,7 +1949,7 @@ export class CustomInvoiceController {
     const { invoiceId } = req.params;
 
     try {
-      console.log("Buscando invoice custom para visualização:", invoiceId);
+      // console.log("Buscando invoice custom para visualização:", invoiceId);
 
       // Buscar invoice com relacionamentos
       const invoice = await prisma.invoice.findUnique({
@@ -2058,7 +2058,7 @@ export class CustomInvoiceController {
       return res.status(200).json(response);
 
     } catch (error) {
-      console.error("Erro ao buscar invoice custom:", error);
+      // console.error("Erro ao buscar invoice custom:", error);
       return res.status(500).json({
         error: "Internal Server Error"
       });
@@ -2072,7 +2072,7 @@ export class CustomInvoiceController {
     const { invoiceId } = req.params;
 
     try {
-      console.log("Buscando PDF para invoice custom:", invoiceId);
+      // console.log("Buscando PDF para invoice custom:", invoiceId);
 
       // Buscar invoice com PDFs relacionados
       const invoice = await prisma.invoice.findUnique({
@@ -2114,7 +2114,7 @@ export class CustomInvoiceController {
       // Gerar URL presigned para o PDF
       const pdfUrl = await getPresignedUrl(pdf.uri);
 
-      console.log("PDF URL gerada com sucesso");
+      // console.log("PDF URL gerada com sucesso");
 
       return res.status(200).json({
         pdfUrl: pdfUrl,
@@ -2122,7 +2122,7 @@ export class CustomInvoiceController {
       });
 
     } catch (error) {
-      console.error("Erro ao buscar PDF da invoice custom:", error);
+      // console.error("Erro ao buscar PDF da invoice custom:", error);
       return res.status(500).json({
         error: "Internal Server Error"
       });
@@ -2245,7 +2245,7 @@ export class CustomInvoiceController {
               }
             }
           } catch (error) {
-            console.error(`Error fetching document attachment ${document.id}:`, error);
+            // console.error(`Error fetching document attachment ${document.id}:`, error);
           }
         }
       }
@@ -2377,7 +2377,7 @@ export class CustomInvoiceController {
         totalAttempted: emailsToSend.length
       });
     } catch (error) {
-      console.error("Error sending payment confirmation email:", error);
+      // console.error("Error sending payment confirmation email:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }

@@ -87,10 +87,10 @@ export class UpdateClientController {
 
         
           if (clientId && company_id) {
-            console.log(`[QBO][update] disparando upsert fire-and-forget client=${result.id} company=${company_id} user=${autorId}`);
+            // console.log(`[QBO][update] disparando upsert fire-and-forget client=${result.id} company=${company_id} user=${autorId}`);
             fireAndForgetUpsertToQBO(company_id, autorId, result.id);
           } else {
-            console.warn("[QBO][update] Não foi possível disparar sync: userId ou company_id ausentes");
+            // console.warn("[QBO][update] Não foi possível disparar sync: userId ou company_id ausentes");
           }
       
           return res.json(result);

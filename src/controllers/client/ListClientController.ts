@@ -116,7 +116,7 @@ export class ListClientController {
             });
 
         } catch (error) {
-            console.error("Error listing clients:", error);
+            // console.error("Error listing clients:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
@@ -285,7 +285,7 @@ export class ListClientController {
                 duplicatesFound: false,
             });
         } catch (error) {
-            console.error("Error listing clients:", error);
+            // console.error("Error listing clients:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }
@@ -359,7 +359,7 @@ export class ListClientController {
                 total: clientsQuery.length,
             });
         } catch (error) {
-            console.error("Error listing clients with work contexts:", error);
+            // console.error("Error listing clients with work contexts:", error);
             if (error instanceof Error) {
                 return res.status(500).json({ error: error.message });
             }

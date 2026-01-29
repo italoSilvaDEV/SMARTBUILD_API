@@ -47,7 +47,7 @@ export class FindPdfContractProjectAllController {
       });
 
     } catch (error) {
-      console.error(error);
+      // console.error(error);
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
       }

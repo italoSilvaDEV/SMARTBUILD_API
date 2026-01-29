@@ -23,12 +23,12 @@ export const compressImage = (url: string) => {
       req.file.filename.replace(/\s/g, "")
     );
 
-    console.log("Caminho do arquivo no compressImage:", filePath);
+    // console.log("Caminho do arquivo no compressImage:", filePath);
     try {
     
     const dimensions = getImageDimensions(filePath);
     if (!dimensions) {
-      console.log("Dimensões inválidas para o arquivo:", filePath);
+      // console.log("Dimensões inválidas para o arquivo:", filePath);
       // Não é uma imagem válida, pule para o próximo middleware
       return next();
     }
@@ -49,8 +49,8 @@ export const compressImage = (url: string) => {
       next();
     } catch (error) {
       // Lide com o erro aqui
-      console.error("Erro no compressImage:", error);
-      console.error(error);
+      // console.error("Erro no compressImage:", error);
+      // console.error(error);
       next(error);
     }
   };
@@ -61,7 +61,7 @@ export function getImageDimensions(filePath: string) {
     return sizeOf(filePath);
   } catch (error) {
     // Não foi possível obter as dimensões da imagem
-    console.error('Error getting image dimensions:', error);
+    // console.error('Error getting image dimensions:', error);
     return null;
   }
 }

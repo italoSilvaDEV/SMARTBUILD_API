@@ -15,7 +15,7 @@ export class UploadController {
 
             const file = req.file;
 
-            console.log(type_images_attachments);
+            // console.log(type_images_attachments);
 
             if (!file) {
                 return res.status(400).json({

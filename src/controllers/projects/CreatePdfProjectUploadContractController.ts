@@ -45,12 +45,12 @@ export class CreatePdContractfProjectController {
                     emailClient,
                 } = req.body;
 
-                console.log("companyAvatar", companyAvatar)
-                console.log("projectId", projectId)
-                console.log("clientName", clientName)
-                console.log("companyName", companyName)
-                console.log("totalPrice", totalPrice)
-                console.log("emailClient", emailClient) 
+                // console.log("companyAvatar", companyAvatar)
+                // console.log("projectId", projectId)
+                // console.log("clientName", clientName)
+                // console.log("companyName", companyName)
+                // console.log("totalPrice", totalPrice)
+                // console.log("emailClient", emailClient) 
 
                 const file = req.file;
 
@@ -64,7 +64,7 @@ export class CreatePdContractfProjectController {
                 }
 
                 const fileName = await uploadFileToS3_2(file, '', false);
-                console.log("fileName", fileName)
+                // console.log("fileName", fileName)
                 const result = await prisma.contractProject.create({
                     data: {
                         original_file_name: fileName,
@@ -107,7 +107,7 @@ export class CreatePdContractfProjectController {
     // Método para enviar e-mail em background
     private async sendEmailInBackground(additionalData: AdditionalData, pdfPath: string) {
         try {
-            console.log("ENVIANDO EMAIL");
+            // console.log("ENVIANDO EMAIL");
             const startTime = Date.now(); // Captura o tempo de início
 
             const templateEmail = createPreviewContract(
@@ -133,13 +133,13 @@ export class CreatePdContractfProjectController {
 
             const endTime = Date.now(); // Captura o tempo de término
             const durationInSeconds = (endTime - startTime) / 1000; // Calcula a duração em segundos
-            console.log(`Tempo total para enviar o e-mail: ${durationInSeconds} segundos`);
+            // console.log(`Tempo total para enviar o e-mail: ${durationInSeconds} segundos`);
 
             // Deletar arquivo após envio
             this.deleteFiles(path.basename(pdfPath));
-            console.log('Email sent successfully');
+            // console.log('Email sent successfully');
         } catch (error) {
-            console.error('Error sending email:', error);
+            // console.error('Error sending email:', error);
             this.deleteFiles(path.basename(pdfPath));
         }
     }

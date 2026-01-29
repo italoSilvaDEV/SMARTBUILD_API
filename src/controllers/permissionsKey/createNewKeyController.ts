@@ -93,12 +93,12 @@ export class CreateNewKeyController {
                             instagramIcon
                         ),
                     });
-                    console.log(`Approval email sent to owner: ${ownerEmail}`);
+                    // console.log(`Approval email sent to owner: ${ownerEmail}`);
                 } catch (emailError) {
-                    console.error('Error sending approval email to owner:', emailError);
+                    // console.error('Error sending approval email to owner:', emailError);
                 }
             } else {
-                console.warn('OWNER_EMAIL not found in environment variables.');
+                // console.warn('OWNER_EMAIL not found in environment variables.');
             }
 
             return res.status(201).json({
@@ -111,7 +111,7 @@ export class CreateNewKeyController {
             })
 
         } catch (error) {
-            console.error('Error in CreateNewKeyController:', error);
+            // console.error('Error in CreateNewKeyController:', error);
             return res.status(500).json({
                 error: "Internal server error"
             })

@@ -129,7 +129,7 @@ export class MergeClientController {
                 quickbooksData: client.QuickBooksCustomerRaw
             });
         } catch (error) {
-            console.error("Error in getClientMergePreview:", error);
+            // console.error("Error in getClientMergePreview:", error);
             return res.status(500).json({ 
                 error: error instanceof Error ? error.message : "Internal server error" 
             });
@@ -245,7 +245,7 @@ export class MergeClientController {
                 }
             });
         } catch (error) {
-            console.error("Error in validateMerge:", error);
+            // console.error("Error in validateMerge:", error);
             return res.status(500).json({ 
                 error: error instanceof Error ? error.message : "Internal server error" 
             });
@@ -379,11 +379,11 @@ export class MergeClientController {
                 maxWait: 5000
             });
 
-            console.log('[Client Merge] Local merge completed successfully. No QuickBooks merge attempted (conservative approach).');
+            // console.log('[Client Merge] Local merge completed successfully. No QuickBooks merge attempted (conservative approach).');
 
             return res.json(result);
         } catch (error) {
-            console.error("Error in executeClientMerge:", error);
+            // console.error("Error in executeClientMerge:", error);
             return res.status(500).json({ 
                 error: error instanceof Error ? error.message : "Internal server error" 
             });

@@ -24,7 +24,7 @@ export class GetUserProgressController {
                 data: progress
             });
         } catch (error) {
-            console.error("Error fetching user progress:", error);
+            // console.error("Error fetching user progress:", error);
             return res.status(500).json({
                 error: "Internal server error"
             });
