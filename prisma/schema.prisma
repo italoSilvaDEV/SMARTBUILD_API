@@ -311,6 +311,7 @@ model ServiceProject {
   estimateService              EstimateServiceProject?       @relation(fields: [estimateServiceId], references: [id])
   subServicesProjects          SubServicesProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  tasks                        Task[]
 }
 
 model SubServicesProject {
