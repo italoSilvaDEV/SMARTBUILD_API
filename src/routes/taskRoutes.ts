@@ -2,11 +2,11 @@ import { Router } from "express";
 import { TaskController } from "../controllers/tasks/TaskController";
 import { checkToken } from "../middlewares/checkToken";
 import multer from "multer";
-import { multerConfig } from "../config/multer";
+import uploadConfig from "../config/upload";
 
 const taskRoutes = Router();
 const taskController = new TaskController();
-const upload = multer(multerConfig);
+const upload = multer(uploadConfig.upload("./public/tmp/task-files"));
 
 // CRUD de Tasks
 taskRoutes.post("/", checkToken, taskController.create);
