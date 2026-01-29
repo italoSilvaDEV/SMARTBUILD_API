@@ -92,6 +92,9 @@ model User {
   // Sales CRM
   salesDeals      SalesDeal[]     @relation("AssignedDeals")
   salesActivities SalesActivity[] // Atividades realizadas pelo usuário
+  
+  createdTasks    Task[]          @relation("CreatedTasks")
+  assignedTasks   Task[]          @relation("AssignedTasks")
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -573,6 +576,7 @@ model Project {
   PublicFeedLinkProjects PublicFeedLinkProject[]
   imagesAttachments      ImagesAttachments[]
   customServiceSchedules CustomServiceSchedule[]
+  tasks                  Task[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -2000,4 +2004,66 @@ model MasterActionsHistory {
   date_creation DateTime @default(now())
 
   @@map("master_actions_history")
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?      @db.Text
+  status        TaskStatus   @default(OPEN)
+  priority      TaskPriority @default(MEDIUM)
+  dueDate       DateTime?
+  
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  serviceProjectId String?
+  serviceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: SetNull)
+
+  creatorId     String
+  creator       User         @relation("CreatedTasks", fields: [creatorId], references: [id])
+  
+  assignedUserId String?
+  assignedUser   User?        @relation("AssignedTasks", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  files         TaskFile[]
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([projectId])
+  @@index([assignedUserId])
+  @@index([creatorId])
+  @@map("tasks")
+}
+
+model TaskFile {
+  id        String   @id @default(uuid())
+  name      String
+  url       String   @db.Text
+  key       String?  // S3 Key
+  size      Int?
+  type      String?  // mime type
+  
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@map("task_files")
 }
