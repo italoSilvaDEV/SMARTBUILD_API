@@ -124,7 +124,7 @@ model Company {
   workStartTime  String? // Format: "HH:mm" (24-hour)
   workEndTime    String? // Format: "HH:mm" (24-hour)
   attendanceMode AttendanceMode @default(manual)
-  projectVisibilityMode String? @default("assignedOnly") // assignedOnly, allActive
+  projectVisibilityMode String? @default("allActive") // assignedOnly, allActive
 
   // Relacionamento original 1:N (mantido)
   User User[]

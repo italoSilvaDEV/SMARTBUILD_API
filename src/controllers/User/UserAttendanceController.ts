@@ -675,7 +675,7 @@ export class UserAttendanceController {
                 return;
             }
 
-            const visibilityMode = user.company?.projectVisibilityMode || 'assignedOnly';
+            const visibilityMode = user.company?.projectVisibilityMode || 'allActive';
 
             // Monta conjunto de empresas do usuário
             const userCompanyIds = new Set<string>();
@@ -876,7 +876,7 @@ export class UserAttendanceController {
                 return;
             }
 
-            const visibilityMode = userExists.company?.projectVisibilityMode || 'assignedOnly';
+            const visibilityMode = userExists.company?.projectVisibilityMode || 'allActive';
 
             // Verifica se o serviço existe e está ativo
             const serviceProject = await prisma.serviceProject.findUnique({

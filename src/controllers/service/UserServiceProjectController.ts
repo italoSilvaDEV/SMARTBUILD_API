@@ -121,6 +121,35 @@ export class UserServiceProjectController {
     }
   }
 
+  /** Remove the user-service link (UserServiceProject) by id. Does NOT delete existing attendance records. */
+  async deleteLink(req: Request, res: Response) {
+    try {
+      const { id } = req.params; // UserServiceProject id
+      const existing = await prisma.userServiceProject.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!existing) {
+        return res.status(404).json({ error: "Link not found." });
+      }
+      const attendanceCount = await prisma.userAttendance.count({
+        where: { user_service_project_id: id },
+      });
+      if (attendanceCount > 0) {
+        return res.status(409).json({
+          error: "Cannot remove link.",
+          code: "HAS_ATTENDANCE_RECORDS",
+          message: "This user has attendance records for this service. Removing the link would affect historical data. Attendance records are preserved.",
+        });
+      }
+      await prisma.userServiceProject.delete({ where: { id } });
+      return res.status(200).json({ message: "Link removed successfully." });
+    } catch (error: any) {
+      console.error(error);
+      return res.status(500).json({ error: "Error while removing link.", details: error.message });
+    }
+  }
+
   async getById(req: Request, res: Response) {
     try {
       const { id, id_company } = req.params; // ID do ServiceProject
@@ -354,7 +383,7 @@ export class UserServiceProjectController {
           id: usp.id,
           service_project_id: usp.service_project_id,
           name: usp.service_project?.name,
-          address: usp.service_project?.Project?.client?.location || null,
+          address: usp.service_project?.Project?.location || usp.service_project?.Project?.client?.location || null,
           startDate: startDate ? startDate.toLocaleDateString("pt-BR") : null,
           daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
           workedHours: workedHours?.toFixed(1), // Horas trabalhadas formatadas
@@ -531,7 +560,7 @@ export class UserServiceProjectController {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      const visibilityMode = user.company?.projectVisibilityMode || 'assignedOnly';
+      const visibilityMode = user.company?.projectVisibilityMode || 'allActive';
 
       // Conjunto de empresas do usuário
       const userCompanyIds = new Set<string>();
