@@ -12,11 +12,8 @@ export class FindClientById {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            },
+                            user: true,
+                            office: true // Office do usuário nesta empresa (UserCompany.office_id)
                         }
                     },
                     Project: {
@@ -49,8 +46,8 @@ export class FindClientById {
                 });
             }
 
-            const ownerUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Owner"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
             if (!ownerUser) {
@@ -70,9 +67,9 @@ export class FindClientById {
             }
 
             const usersByRole = {
-                admin: company.userCompanies.filter(user => user.user.office?.name === "Administrator").length,
-                worker: company.userCompanies.filter(user => user.user.office?.name === "Worker").length,
-                seller: company.userCompanies.filter(user => user.user.office?.name === "Seller").length,
+                admin: company.userCompanies.filter(uc => uc.office?.name === "Administrator").length,
+                worker: company.userCompanies.filter(uc => uc.office?.name === "Worker").length,
+                seller: company.userCompanies.filter(uc => uc.office?.name === "Seller").length,
                 total: company.userCompanies.length
             };
 
@@ -131,11 +128,8 @@ export class GetClientEditData {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            }
+                            user: true,
+                            office: true
                         }
                     }
                 }
@@ -148,8 +142,8 @@ export class GetClientEditData {
             }
 
             // Buscar o usuário admin
-            const ownerUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Owner"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
             if (!ownerUser) {
@@ -227,11 +221,8 @@ export class UpdateClientData {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            }
+                            user: true,
+                            office: true
                         }
                     }
                 }
@@ -243,8 +234,8 @@ export class UpdateClientData {
                 });
             }
 
-            const ownerUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Owner"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
             if (!ownerUser) {

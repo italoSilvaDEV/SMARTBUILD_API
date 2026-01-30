@@ -1,33 +1,34 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma"; 
 
-const PROTECTED_OFFICE_NAMES = ["worker", "seller", "administrator", "general manager", "master"];
+const PROTECTED_OFFICE_NAMES = ["worker", "seller", "administrator", "general manager", "master", "owner"];
 
 export class OfficeController {
   async create(req: Request, res: Response) {
     try {
-      const { name, permissions } = req.body;
+      const { name, permissions, companyId } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: "Name is required" });
       }
-
-      // Verificar se já existe um office com esse nome (case insensitive)
-      const allOffices = await prisma.office.findMany({
-        select: { id: true, name: true },
-      });
-      const existingOffice = allOffices.find(
-        (office) => office.name.toLowerCase() === name.toLowerCase()
-      );
-
-      if (existingOffice) {
-        return res.status(400).json({ error: "Office with this name already exists" });
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
       }
 
-      // Criar office
+      // Nome único por companhia (case insensitive via collation ou filtro)
+      const officesInCompany = await prisma.office.findMany({
+        where: { company_id: companyId },
+        select: { id: true, name: true },
+      });
+      const existingOffice = officesInCompany.find((o) => o.name.toLowerCase() === name.trim().toLowerCase());
+      if (existingOffice) {
+        return res.status(400).json({ error: "Office with this name already exists for this company" });
+      }
+
       const office = await prisma.office.create({
         data: {
           name,
+          company_id: companyId,
           ...(permissions && permissions.length > 0 && {
             userPermissions: {
               create: permissions.map((permissionId: string) => ({
@@ -59,11 +60,12 @@ export class OfficeController {
   async update(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, permissions } = req.body;
+      const { name, permissions, companyId } = req.body;
+      const companyIdFromQuery = req.query.companyId as string;
+      const companyIdToUse = companyId || companyIdFromQuery;
 
-      // Verificar se o office existe
-      const office = await prisma.office.findUnique({
-        where: { id },
+      const office = await prisma.office.findFirst({
+        where: companyIdToUse ? { id, company_id: companyIdToUse } : { id },
         include: { userPermissions: true },
       });
 
@@ -71,33 +73,28 @@ export class OfficeController {
         return res.status(404).json({ error: "Office not found" });
       }
 
-      // Verificar se é um office protegido
-      if (PROTECTED_OFFICE_NAMES.includes(office.name.toLowerCase())) {
-        return res.status(403).json({ 
-          error: `Cannot edit office with name: ${office.name}` 
-        });
-      }
+      const isProtected = PROTECTED_OFFICE_NAMES.includes(office.name.toLowerCase());
 
-      // Verificar se o novo nome já existe (se estiver mudando)
-      if (name && name !== office.name) {
-        const allOffices = await prisma.office.findMany({
-          where: { id: { not: id } },
-          select: { id: true, name: true },
-        });
-        const existingOffice = allOffices.find(
-          (o) => o.name.toLowerCase() === name.toLowerCase()
-        );
+      // Offices protegidos: só permitir alterar permissões (não o nome)
+      const nameToApply = isProtected ? undefined : name;
 
-        if (existingOffice) {
-          return res.status(400).json({ error: "Office with this name already exists" });
+      // Verificar se o novo nome já existe na mesma companhia (se estiver mudando e não for protegido)
+      if (nameToApply && nameToApply !== office.name && office.company_id) {
+        const othersInCompany = await prisma.office.findMany({
+          where: { company_id: office.company_id, id: { not: id } },
+          select: { name: true },
+        });
+        const existingByName = othersInCompany.some((o) => o.name.toLowerCase() === nameToApply.trim().toLowerCase());
+        if (existingByName) {
+          return res.status(400).json({ error: "Office with this name already exists for this company" });
         }
       }
 
-      // Atualizar office e userPermissions
+      // Atualizar office e userPermissions (protegidos: só userPermissions)
       const updatedOffice = await prisma.office.update({
         where: { id },
         data: {
-          ...(name && { name }),
+          ...(nameToApply && { name: nameToApply }),
           userPermissions: {
             deleteMany: {},
             ...(permissions && permissions.length > 0 && {
@@ -130,27 +127,32 @@ export class OfficeController {
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const companyId = (req.query.companyId as string) || (req.body?.companyId as string);
 
-      // Verificar se o office existe
-      const office = await prisma.office.findUnique({
-        where: { id },
+      const office = await prisma.office.findFirst({
+        where: companyId ? { id, company_id: companyId } : { id },
       });
 
       if (!office) {
         return res.status(404).json({ error: "Office not found" });
       }
 
-      // Verificar se é um office protegido
-      if (PROTECTED_OFFICE_NAMES.includes(office.name.toLowerCase())) {
-        return res.status(403).json({ 
-          error: `Cannot delete office with name: ${office.name}` 
+      // Não permitir excluir: Worker, Administrator, Owner, Master, General Manager (Seller pode)
+      const cannotDelete = ["worker", "administrator", "owner", "master", "general manager"];
+      if (cannotDelete.includes(office.name.toLowerCase())) {
+        return res.status(403).json({
+          error: `Cannot delete office with name: ${office.name}`,
         });
       }
 
-      // Verificar se há usuários usando este office
-      const usersCount = await prisma.user.count({
-        where: { office_id: id },
-      });
+      // Verificar se há usuários nesta empresa usando este office (UserCompany, não User)
+      const usersCount = companyId
+        ? await prisma.userCompany.count({
+            where: { office_id: id, companyId },
+          })
+        : await prisma.user.count({
+            where: { office_id: id },
+          });
 
       if (usersCount > 0) {
         return res.status(400).json({ 
@@ -158,7 +160,6 @@ export class OfficeController {
         });
       }
 
-      // Deletar office (userPermissions será deletado em cascade)
       await prisma.office.delete({
         where: { id },
       });
@@ -175,21 +176,20 @@ export class OfficeController {
 
   async list(req: Request, res: Response) {
     try {
+      const companyId = (req.query.companyId as string) || (req.body?.companyId as string);
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required (query: companyId)" });
+      }
+
       const offices = await prisma.office.findMany({
         where: {
-          name: {
-            not: "Master"
-          }
+          company_id: companyId,
+          name: { notIn: ["Master", "Owner"] },
         },
         include: {
           userPermissions: {
             include: {
               permission: true,
-            },
-          },
-          _count: {
-            select: {
-              User: true,
             },
           },
         },
@@ -198,7 +198,22 @@ export class OfficeController {
         },
       });
 
-      return res.json(offices);
+      // Contagem de usuários por office nesta empresa: UserCompany (não User.office_id)
+      const userCountByOffice = await prisma.userCompany.groupBy({
+        by: ["office_id"],
+        where: { companyId },
+        _count: { userId: true },
+      });
+      const countMap = new Map(userCountByOffice.map((c) => [c.office_id, c._count.userId]));
+
+      const officesWithCount = offices.map((office) => ({
+        ...office,
+        _count: {
+          User: countMap.get(office.id) ?? 0,
+        },
+      }));
+
+      return res.json(officesWithCount);
     } catch (error) {
       console.error("Error listing offices:", error);
       if (error instanceof Error) {
@@ -211,9 +226,13 @@ export class OfficeController {
   async getById(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const companyId = req.query.companyId as string;
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required (query: companyId)" });
+      }
 
-      const office = await prisma.office.findUnique({
-        where: { id },
+      const office = await prisma.office.findFirst({
+        where: { id, company_id: companyId },
         include: {
           userPermissions: {
             include: {

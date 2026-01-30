@@ -118,6 +118,15 @@ export class getByWorkerIdController {
                 });
             }
 
+            // Office no contexto de uma empresa vem de UserCompany (por empresa)
+            const userCompany = await prisma.userCompany.findUnique({
+                where: {
+                    userId_companyId: { userId: workerId, companyId }
+                },
+                select: { office: { select: { name: true } } }
+            });
+            const officeName = userCompany?.office?.name ?? user.office?.name ?? "";
+
             const attendances = await prisma.userAttendance.findMany({
                 where: {
                     user_id: workerId,
@@ -216,7 +225,7 @@ export class getByWorkerIdController {
                 id: user.id,
                 name: user.name,
                 avatar: avatarUrl,
-                office: user.office.name,
+                office: officeName,
                 isOverTime: overtimeTotals.totalOvertimeHours > 0
             };
 
