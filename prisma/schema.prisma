@@ -168,6 +168,8 @@ model Company {
 
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
+
+  offices Office[]
 }
 
 model ContractNotes {
@@ -202,9 +204,13 @@ model Office {
   name          String
   date_creation DateTime      @default(now())
   date_update   DateTime      @updatedAt
+  company_id    String?
+  company       Company?      @relation(fields: [company_id], references: [id], onDelete: Cascade)
   User          User[]
   UserCompany   UserCompany[]
   userPermissions UserPermission[]
+
+  @@index([company_id])
 }
 
 model Rules {
