@@ -1237,16 +1237,21 @@ export class UserController {
 
   async serchOfficeUser(request: Request, response: Response) {
     try {
+      const companyId = (request.query.companyId as string) || (request.body?.companyId as string);
+      if (!companyId) {
+        return response.status(400).json({ error: "Company ID is required (query: companyId)" });
+      }
+
       const result = await prisma.office.findMany({
         where: {
-          name: {
-            not: "Master" // Excluir office com nome "Master"
-          }
+          company_id: companyId,
+          name: { notIn: ["Master", "Owner"] },
         },
         select: {
           id: true,
           name: true,
         },
+        orderBy: { name: "asc" },
       });
       return response.json(result);
     } catch (error) {
