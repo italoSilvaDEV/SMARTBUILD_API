@@ -440,7 +440,6 @@ AND index_name = ${indexName}
                 }
             });
             if (!userServiceProject) {
-                console.log(user_service_project_id, 'UserServiceProject not found')
                 return res.status(404).json({ error: "UserServiceProject not found" });
             }
             // Gerar URL assinada para o avatar do usuário, se existir

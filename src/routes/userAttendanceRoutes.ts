@@ -42,4 +42,10 @@ userAttendanceRoutes.get('/available-projects-for-checkin', checkToken, userAtte
 // Nova rota para check-in simplificado (aceita serviceProjectId diretamente)
 userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceControlller.checkInByServiceProject.bind(userAttendanceControlller));
 
+// Nova rota para salvar lote de timeline
+userAttendanceRoutes.post('/timeline/batch', checkToken, userAttendanceControlller.saveTimelineBatch.bind(userAttendanceControlller));
+
+// Nova rota para resumo de tempo dentro/fora
+userAttendanceRoutes.get('/user-attendance/:id/summary', checkToken, userAttendanceControlller.getAttendanceSummary.bind(userAttendanceControlller));
+
 export { userAttendanceRoutes };

@@ -154,6 +154,34 @@ export class UserAttendanceController {
         }
     }
 
+    // Salvar lote de timeline
+    async saveTimelineBatch(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId, userServiceProjectId, locations } = req.body;
+            if (!userId || !userServiceProjectId || !locations) {
+                res.status(400).json({ error: 'Missing required fields' });
+                return;
+            }
+
+            await attendanceService.saveTimelineBatch(userId, userServiceProjectId, locations);
+            res.status(201).json({ success: true });
+        } catch (error) {
+            res.status(500).json({ error: 'Error saving timeline batch' });
+        }
+    }
+
+    // Resumo de tempo dentro/fora
+    async getAttendanceSummary(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const summary = await attendanceService.getAttendanceTimelineSummary(id);
+            res.status(200).json(summary);
+        } catch (error: any) {
+            const status = this.mapErrorToStatus(error.message);
+            res.status(status).json({ error: error.message });
+        }
+    }
+
     // Atualizar horários de um registro
     async updateAttendanceTimes(req: Request, res: Response): Promise<void> {
         try {

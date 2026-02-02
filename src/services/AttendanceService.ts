@@ -165,18 +165,58 @@ export class AttendanceService {
     }
 
     /**
-     * Prepara as coordenadas do projeto para o App (Geofencing).
+     * Calcula o resumo de tempo dentro/fora da obra para um atendimento.
      */
-    getProjectCoordinates(attendance: any) {
-        const project = attendance.UserServiceProject?.service_project?.Project;
-        if (!project) return null;
+    async getAttendanceTimelineSummary(attendanceId: string) {
+        const attendance = await prisma.userAttendance.findUnique({
+            where: { id: attendanceId },
+            include: {
+                UserServiceProject: true
+            }
+        });
+
+        if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+
+        const startTime = attendance.check_in_time;
+        const endTime = attendance.check_out_time || new Date();
+
+        const timelines = await prisma.timeLine.findMany({
+            where: {
+                userServiceProjectId: attendance.user_service_project_id,
+                check_in_time: {
+                    gte: startTime,
+                    lte: endTime
+                }
+            },
+            orderBy: { check_in_time: 'asc' }
+        });
+
+        let insideMs = 0;
+        let outsideMs = 0;
+
+        if (timelines.length > 0) {
+            for (let i = 0; i < timelines.length; i++) {
+                const current = timelines[i];
+                const next = timelines[i + 1] || { check_in_time: endTime };
+                
+                const duration = next.check_in_time.getTime() - current.check_in_time.getTime();
+                
+                if (current.is_local_work) {
+                    insideMs += duration;
+                } else {
+                    outsideMs += duration;
+                }
+            }
+        } else {
+            // Se não houver pontos de timeline, assumimos o estado inicial do check-in
+            // (ou simplesmente retornamos 0 se não houver dados suficientes)
+        }
 
         return {
-            location: project.location || null,
-            latitude: project.lat ? Number(project.lat) : null,
-            longitude: project.log ? Number(project.log) : null,
-            radius: project.radius ? Number(project.radius) : null,
-            radiusInKm: project.radius ? Number(project.radius) / 1000 : null
+            totalMinutes: Math.floor((endTime.getTime() - startTime.getTime()) / 60000),
+            insideMinutes: Math.floor(insideMs / 60000),
+            outsideMinutes: Math.floor(outsideMs / 60000),
+            timelinePoints: timelines.length
         };
     }
 }
