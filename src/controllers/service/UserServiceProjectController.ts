@@ -543,9 +543,10 @@ export class UserServiceProjectController {
         where: { id: userId as string },
         select: {
           company_id: true,
+          projectVisibilityMode: true, // Novo campo individual
           company: {
             select: {
-              projectVisibilityMode: true
+              projectVisibilityMode: true // Fallback global
             }
           },
           companies: {
@@ -560,7 +561,8 @@ export class UserServiceProjectController {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      const visibilityMode = user.company?.projectVisibilityMode || 'allActive';
+      // Prioriza configuração individual do usuário, fallback para a empresa
+      const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
 
       // Conjunto de empresas do usuário
       const userCompanyIds = new Set<string>();

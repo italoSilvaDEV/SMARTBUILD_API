@@ -110,6 +110,9 @@ export class UserMultiCompanyController {
           phone: user.phone,
           hourly_price: user.hourly_price,
           profession: user.profession,
+          attendanceMode: user.attendanceMode,
+          clockOutMode: user.clockOutMode,
+          projectVisibilityMode: user.projectVisibilityMode,
           companies: companiesWithAvatarUrls, // Array de companies com avatarUrl
           last_acess: user.last_acess,
           office: user.office
@@ -364,6 +367,9 @@ export class UserMultiCompanyController {
           phone: user.phone,
           hourly_price: user.hourly_price,
           profession: user.profession,
+          attendanceMode: user.attendanceMode,
+          clockOutMode: user.clockOutMode,
+          projectVisibilityMode: user.projectVisibilityMode,
           company: {
             id: company?.id,
             name: company?.name,

@@ -31,12 +31,13 @@ export class AttendanceService {
             where: { id: user_id },
             select: {
                 isOverTime: true,
+                projectVisibilityMode: true, // Novo campo individual
                 company: {
                     select: {
                         id: true,
                         workStartTime: true,
                         workEndTime: true,
-                        projectVisibilityMode: true
+                        projectVisibilityMode: true // Fallback global
                     }
                 }
             }
@@ -44,7 +45,8 @@ export class AttendanceService {
 
         if (!user) throw new Error('USER_NOT_FOUND');
 
-        const visibilityMode = user.company?.projectVisibilityMode || 'allActive';
+        // Prioriza configuração individual do usuário, fallback para a empresa
+        const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
 
         // 2. Validar Serviço e Projeto
         const serviceProject = await prisma.serviceProject.findUnique({

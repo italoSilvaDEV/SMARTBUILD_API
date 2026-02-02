@@ -299,6 +299,8 @@ export class UserAttendanceController {
 
             if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
+            const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
+
             const userCompanyIds = [user.company_id, ...user.companies.map(c => c.companyId)].filter(Boolean) as string[];
             const finalCompanyIds = companyId ? [companyId as string].filter(id => userCompanyIds.includes(id)) : userCompanyIds;
 
@@ -309,6 +311,14 @@ export class UserAttendanceController {
                         status_project: { in: ["In Progress", "Final walkthrough", "Pre-Start"] },
                         company_id: { in: finalCompanyIds }
                     },
+                    // Se o modo for 'assignedOnly', filtra apenas onde o usuário está atribuído
+                    ...(visibilityMode === 'assignedOnly' ? {
+                        UserServiceProject: {
+                            some: {
+                                user_id: userId as string
+                            }
+                        }
+                    } : {}),
                     ...(search && { name: { contains: (search as string).toLowerCase() } })
                 },
                 include: {

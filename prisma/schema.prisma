@@ -39,6 +39,7 @@ model User {
   canEditTimeCard     Boolean? @default(false)
   dailyRate           Decimal? @db.Decimal(10, 2)
   defaultBreakMinutes Int?     @default(0)
+  projectVisibilityMode String? @default("allActive") // assignedOnly, allActive
 
   invoiceEditAll      Boolean? @default(false)
   projectEditAll      Boolean? @default(false)
