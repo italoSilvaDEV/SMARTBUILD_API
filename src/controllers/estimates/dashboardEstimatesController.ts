@@ -40,6 +40,18 @@ export class DashboardEstimatesController {
             });
         }
 
+        const userId = (req as any).userId as string | undefined;
+        let projectFilterBySeller: { seller_user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { estimateEditAll: true },
+            });
+            if (user?.estimateEditAll !== true) {
+                projectFilterBySeller = { seller_user_id: userId };
+            }
+        }
+
         try {
             const getDateRange = (periodType: string) => {
                 const now = new Date();
@@ -108,6 +120,7 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                         status_project: {
                             in: ["Pending", "Accepted"]
                         }
@@ -128,6 +141,7 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                         status_project: {
                             in: ["Pending", "Accepted"]
                         }
@@ -148,6 +162,7 @@ export class DashboardEstimatesController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                         status_project: {
                             in: ["Pending", "Accepted"]
                         }

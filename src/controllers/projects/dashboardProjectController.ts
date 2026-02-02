@@ -61,6 +61,18 @@ export class DashboardProjectController {
             });
         }
 
+        const userId = (req as any).userId as string | undefined;
+        let projectFilterBySeller: { seller_user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { projectEditAll: true },
+            });
+            if (user?.projectEditAll !== true) {
+                projectFilterBySeller = { seller_user_id: userId };
+            }
+        }
+
         try {
             const getDateRange = (periodType: string) => {
                 const now = new Date();
@@ -131,6 +143,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: "approved",
                     type_estimate: "estimate",
@@ -146,6 +159,7 @@ export class DashboardProjectController {
             const totalSalesProjectsResult = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
@@ -211,6 +225,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter,
@@ -222,6 +237,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: "approved",
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -255,6 +271,7 @@ export class DashboardProjectController {
             const projectsForChart = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),

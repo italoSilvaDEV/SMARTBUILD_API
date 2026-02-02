@@ -89,6 +89,18 @@ export class GetAllEstimatesByCompanyController {
             })
         }
 
+        const userId = (req as any).userId as string | undefined;
+        let projectFilterBySeller: { seller_user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { estimateEditAll: true },
+            });
+            if (user?.estimateEditAll !== true) {
+                projectFilterBySeller = { seller_user_id: userId };
+            }
+        }
+
         const { startDate, endDate } = getDateRange(period as string);
 
         const dateFilter: any = {};
@@ -104,6 +116,7 @@ export class GetAllEstimatesByCompanyController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
