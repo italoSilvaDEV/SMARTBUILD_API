@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AttendanceService } from '../../services/AttendanceService';
+import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 
 const prisma = new PrismaClient();
 const attendanceService = new AttendanceService();
