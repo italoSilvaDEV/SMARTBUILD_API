@@ -227,8 +227,8 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProjectExists) {
-                console.log('error', 'UserServiceProject not found.')
-                res.status(400).json({ error: 'UserServiceProject not found.' });
+                // console.log('error', 'UserServiceProject not found.')
+                res.status(200).json({ message: 'UserServiceProject not found, skipping timeline update.' });
                 return;
             }
 
@@ -339,8 +339,8 @@ AND index_name = ${indexName}
             });
 
             if (!serviceProjectExists) {
-                console.log('error', 'UserServiceProject not found.')
-                res.status(400).json({ error: 'UserServiceProject not found.' });
+                // console.log('error', 'UserServiceProject not found.')
+                res.status(200).json({ message: 'UserServiceProject not found, skipping timeline update.' });
                 return;
             }
 
