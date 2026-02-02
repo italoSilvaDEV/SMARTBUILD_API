@@ -66,6 +66,22 @@ export class UserAttendanceController {
         }
     }
 
+    // Listar todos os registros de um usuário
+    async getAllByUser(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+            const attendances = await prisma.userAttendance.findMany({
+                where: { user_id: userId },
+                include: {
+                    user: { select: { id: true, name: true } },
+                },
+            });
+            res.status(200).json(attendances);
+        } catch (error) {
+            res.status(500).json({ error: 'Error while fetching user attendances.' });
+        }
+    }
+
     // Listar registros ativos de um usuário
     async getActiveAttendancesByUser(req: Request, res: Response): Promise<void> {
         try {
@@ -137,9 +153,172 @@ export class UserAttendanceController {
         }
     }
 
-    // Métodos legados mantidos para compatibilidade (mas usando o service por baixo)
+    // Atualizar horários de um registro
+    async updateAttendanceTimes(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { check_in_time, check_out_time } = req.body;
+
+            const checkInDate = new Date(check_in_time);
+            const checkOutDate = check_out_time ? new Date(check_out_time) : null;
+
+            if (checkOutDate && checkInDate > checkOutDate) {
+                res.status(400).json({ error: 'Check-in time cannot be later than check-out time.' });
+                return;
+            }
+
+            const updated = await prisma.userAttendance.update({
+                where: { id },
+                data: { check_in_time: checkInDate, check_out_time: checkOutDate },
+            });
+
+            res.status(200).json(updated);
+        } catch (error) {
+            res.status(500).json({ error: 'Error while updating attendance times.' });
+        }
+    }
+
+    // Mudar projeto de um registro de presença
+    async changeProject(req: Request, res: Response) {
+        try {
+            const { attendanceId } = req.params;
+            const { newServiceProjectId } = req.body;
+
+            if (!attendanceId || !newServiceProjectId) {
+                return res.status(400).json({ error: 'Attendance record ID and new project ID are required' });
+            }
+
+            const attendance = await prisma.userAttendance.findUnique({ where: { id: attendanceId } });
+            if (!attendance) return res.status(404).json({ error: 'Attendance record not found' });
+
+            let userServiceProject = await prisma.userServiceProject.findFirst({
+                where: { user_id: attendance.user_id, service_project_id: newServiceProjectId }
+            });
+
+            if (!userServiceProject) {
+                userServiceProject = await prisma.userServiceProject.create({
+                    data: { user_id: attendance.user_id, service_project_id: newServiceProjectId }
+                });
+            }
+
+            const updated = await prisma.userAttendance.update({
+                where: { id: attendanceId },
+                data: { user_service_project_id: userServiceProject.id },
+                include: {
+                    user: { select: { id: true, name: true } },
+                    UserServiceProject: { include: { service_project: { select: { id: true, name: true } } } }
+                }
+            });
+
+            return res.status(200).json({ message: 'Project changed successfully', attendance: updated });
+        } catch (error) {
+            return res.status(500).json({ error: 'Error processing request' });
+        }
+    }
+
+    // Clock In/Out unificado
+    async clockInOut(req: Request, res: Response) {
+        try {
+            const { userId, serviceProjectId, checkInTime, checkOutTime, date } = req.body;
+            if (!userId || !serviceProjectId || !date) return res.status(400).json({ error: "Required data not provided" });
+
+            if (!checkInTime && checkOutTime) {
+                // Modo Check-out
+                const active = await prisma.userAttendance.findFirst({
+                    where: { user_id: userId, UserServiceProject: { service_project_id: serviceProjectId }, check_out_time: null },
+                    orderBy: { check_in_time: 'desc' }
+                });
+
+                if (!active) return res.status(404).json({ error: "No active record found" });
+
+                const updated = await prisma.userAttendance.update({
+                    where: { id: active.id },
+                    data: { check_out_time: new Date(checkOutTime) }
+                });
+                return res.status(200).json({ success: true, data: updated });
+            } else {
+                // Modo Check-in (ou ambos)
+                const result = await attendanceService.processCheckIn({
+                    user_id: userId,
+                    service_project_id: serviceProjectId,
+                });
+                
+                if (checkOutTime) {
+                    await prisma.userAttendance.update({
+                        where: { id: result.attendance.id },
+                        data: { check_out_time: new Date(checkOutTime) }
+                    });
+                }
+
+                return res.status(201).json({ success: true, data: result.attendance });
+            }
+        } catch (error: any) {
+            return res.status(500).json({ error: error.message });
+        }
+    }
+
+    // Listar projetos disponíveis para check-in
+    async getAvailableProjectsForCheckIn(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId, companyId, search } = req.query;
+            if (!userId) { res.status(400).json({ error: 'User ID is required.' }); return; }
+
+            const user = await prisma.user.findUnique({
+                where: { id: userId as string },
+                include: { companies: true, company: true }
+            });
+
+            if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+
+            const userCompanyIds = [user.company_id, ...user.companies.map(c => c.companyId)].filter(Boolean) as string[];
+            const finalCompanyIds = companyId ? [companyId as string].filter(id => userCompanyIds.includes(id)) : userCompanyIds;
+
+            const serviceProjects = await prisma.serviceProject.findMany({
+                where: {
+                    OR: [{ status: { not: "Canceled" } }, { status: null }],
+                    Project: {
+                        status_project: { in: ["In Progress", "Final walkthrough", "Pre-Start"] },
+                        company_id: { in: finalCompanyIds }
+                    },
+                    ...(search && { name: { contains: (search as string).toLowerCase() } })
+                },
+                include: {
+                    Project: { include: { client: true } },
+                    UserServiceProject: { where: { user_id: userId as string }, take: 1 }
+                },
+                orderBy: { date_creation: 'desc' }
+            });
+
+            const formatted = await Promise.all(serviceProjects.map(async (sp) => {
+                let coverPhotoUrl = null;
+                if (sp.Project?.cover_photo) coverPhotoUrl = await getPresignedUrl(sp.Project.cover_photo);
+
+                return {
+                    id: sp.id,
+                    name: sp.name,
+                    status: sp.status,
+                    project: {
+                        id: sp.Project!.id,
+                        contract_number: sp.Project!.contract_number,
+                        location: sp.Project!.location || sp.Project!.client?.location || null,
+                        coordinates: { lat: sp.Project!.lat, lng: sp.Project!.log, radius: sp.Project!.radius },
+                        cover_photo: coverPhotoUrl,
+                        client: { id: sp.Project!.client?.id || null, name: sp.Project!.client?.name || null }
+                    },
+                    isAssigned: sp.UserServiceProject.length > 0,
+                    userServiceProjectId: sp.UserServiceProject[0]?.id || null
+                };
+            }));
+
+            res.status(200).json({ services: formatted, total: formatted.length });
+        } catch (error) {
+            res.status(500).json({ error: 'Error while fetching available projects.' });
+        }
+    }
+
+    // Métodos legados
     async checkIn(req: Request, res: Response): Promise<void> {
-        req.body.service_project_id = req.body.user_service_project_id; // Mapeia campo legado
+        req.body.service_project_id = req.body.user_service_project_id;
         return this.checkInByServiceProject(req, res);
     }
 

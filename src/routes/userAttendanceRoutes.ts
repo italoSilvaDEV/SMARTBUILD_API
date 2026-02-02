@@ -6,40 +6,40 @@ const userAttendanceControlller = new UserAttendanceController()
 const timeLineController = new TimeLineController()
 const userAttendanceRoutes = Router();
 
-userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn);
-userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControlller.checkOut);
-userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser);
+userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn.bind(userAttendanceControlller));
+userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControlller.checkOut.bind(userAttendanceControlller));
+userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser.bind(userAttendanceControlller));
 
 // Nova rota para registrar clock in/out em um único endpoint
-userAttendanceRoutes.post('/user-attendance/clock-in-out', checkToken, userAttendanceControlller.clockInOut);
+userAttendanceRoutes.post('/user-attendance/clock-in-out', checkToken, userAttendanceControlller.clockInOut.bind(userAttendanceControlller));
 
 // Rota para buscar registros ativos (check-in feito, sem check-out)
 userAttendanceRoutes.get(
     '/user-attendance/active/:userId',
     checkToken,
-    userAttendanceControlller.getActiveAttendancesByUser
+    userAttendanceControlller.getActiveAttendancesByUser.bind(userAttendanceControlller)
 );
 
 userAttendanceRoutes.get(
     "/attendance-all",
     checkToken,
-    userAttendanceControlller.getAttendanceByUserAndService
+    userAttendanceControlller.getAttendanceByUserAndService.bind(userAttendanceControlller)
 );
 
-userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceControlller.updateAttendanceTimes);
+userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceControlller.updateAttendanceTimes.bind(userAttendanceControlller));
 
-userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine);
-userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient);
-userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker);
-userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline);
+userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine.bind(timeLineController));
+userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient.bind(timeLineController));
+userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker.bind(timeLineController));
+userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline.bind(timeLineController));
 
 // Nova rota para mudança de projeto
-userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject); 
+userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject.bind(userAttendanceControlller)); 
 
 // Nova rota para listar projetos disponíveis para check-in (sem necessidade de estar atribuído)
-userAttendanceRoutes.get('/available-projects-for-checkin', checkToken, userAttendanceControlller.getAvailableProjectsForCheckIn);
+userAttendanceRoutes.get('/available-projects-for-checkin', checkToken, userAttendanceControlller.getAvailableProjectsForCheckIn.bind(userAttendanceControlller));
 
 // Nova rota para check-in simplificado (aceita serviceProjectId diretamente)
-userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceControlller.checkInByServiceProject);
+userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceControlller.checkInByServiceProject.bind(userAttendanceControlller));
 
 export { userAttendanceRoutes };

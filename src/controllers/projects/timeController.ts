@@ -19,7 +19,6 @@ export class TimeController {
             const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
             const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
 
-            // 1. Buscar dados brutos do banco
             const allAttendances = await prisma.userAttendance.findMany({
                 where: {
                     AND: [
@@ -60,10 +59,7 @@ export class TimeController {
                 orderBy: { check_in_time: 'desc' }
             });
 
-            // 2. Processar via Service
             const processed = timeService.calculatePeriodTotals(allAttendances as any);
-
-            // 3. Agrupar para resposta
             const indicators = this.calculateIndicators(processed);
             const consolidated = this.consolidateByWorker(processed);
             
@@ -76,7 +72,6 @@ export class TimeController {
                 indicators,
                 workers: paginatedWorkers,
                 totalPages: Math.ceil(consolidated.length / pageSize),
-                // Mantendo estrutura de projetos para compatibilidade
                 projects: this.groupByProject(processed)
             });
 
@@ -141,6 +136,85 @@ export class TimeController {
                 totalPages: Math.ceil(processed.length / 10)
             });
 
+        } catch (error: any) {
+            return res.status(500).json({ error: error.message });
+        }
+    }
+
+    async findManyByIdWorkerWeb(req: Request, res: Response) {
+        return this.findManyByIdWorker(req, res); // Reutiliza lógica para Web
+    }
+
+    async findManyActivies(req: Request, res: Response) {
+        const { id, start_date, deadline, page } = req.query;
+        const pageNumber = Number(page) || 0;
+
+        try {
+            if (!id || !start_date || !deadline) return res.status(400).json({ error: "Params invalid" });
+
+            const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
+            const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+
+            const attendances = await prisma.userAttendance.findMany({
+                where: {
+                    check_in_time: { gte: startDate },
+                    OR: [{ check_out_time: { lte: endDeadline } }, { check_out_time: null }],
+                    UserServiceProject: {
+                        service_project: {
+                            Project: {
+                                company_id: String(id),
+                                status_project: { in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"] }
+                            }
+                        }
+                    }
+                },
+                include: {
+                    user: { select: { id: true, name: true } },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: {
+                                    Project: { include: { client: true } }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: { check_in_time: 'desc' }
+            });
+
+            // Agrupar apenas a última atividade por usuário
+            const latestByWorker: Record<string, any> = {};
+            attendances.forEach(att => {
+                if (!latestByWorker[att.user_id] || new Date(att.check_in_time) > new Date(latestByWorker[att.user_id].check_in_time)) {
+                    latestByWorker[att.user_id] = {
+                        name: att.user.name,
+                        serviceName: att.UserServiceProject?.service_project?.name,
+                        address: att.check_in_address,
+                        status: att.check_out_time ? 'Out' : 'In',
+                        check_in_time: att.check_in_time,
+                        check_out_time: att.check_out_time,
+                        client: {
+                            clientName: att.UserServiceProject?.service_project?.Project?.client?.name,
+                            clientAddress: att.UserServiceProject?.service_project?.Project?.location
+                        }
+                    };
+                }
+            });
+
+            const workers = Object.values(latestByWorker);
+            const pageSize = 10;
+
+            return res.json({
+                indicators: {
+                    totalIn: workers.filter(w => w.status === 'In').length,
+                    totalOut: workers.filter(w => w.status === 'Out').length,
+                    totalServices: new Set(attendances.map(a => a.user_service_project_id)).size,
+                    totalProjects: new Set(attendances.map(a => a.UserServiceProject?.service_project?.Project?.id)).size
+                },
+                workers: workers.slice(pageNumber * pageSize, (pageNumber + 1) * pageSize),
+                totalPages: Math.ceil(workers.length / pageSize)
+            });
         } catch (error: any) {
             return res.status(500).json({ error: error.message });
         }
