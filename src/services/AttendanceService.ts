@@ -165,6 +165,43 @@ export class AttendanceService {
     }
 
     /**
+     * Prepara as coordenadas do projeto para o App (Geofencing).
+     */
+    getProjectCoordinates(attendance: any) {
+        const project = attendance.UserServiceProject?.service_project?.Project;
+        if (!project) return null;
+
+        return {
+            location: project.location || null,
+            latitude: project.lat ? Number(project.lat) : null,
+            longitude: project.log ? Number(project.log) : null,
+            radius: project.radius ? Number(project.radius) : null,
+            radiusInKm: project.radius ? Number(project.radius) / 1000 : null
+        };
+    }
+
+    /**
+     * Salva um lote de localizações na timeline.
+     * Otimizado para reduzir chamadas ao banco.
+     */
+    async saveTimelineBatch(userId: string, userServiceProjectId: string, locations: any[]) {
+        if (!locations.length) return;
+
+        return await prisma.timeLine.createMany({
+            data: locations.map(loc => ({
+                user_id: userId,
+                userServiceProjectId: userServiceProjectId,
+                check_in_time: new Date(loc.timestamp),
+                check_in_latitude: loc.latitude,
+                check_in_longitude: loc.longitude,
+                check_in_address: loc.address || '',
+                is_local_work: loc.isInside,
+                service_project_id: loc.serviceProjectId
+            }))
+        });
+    }
+
+    /**
      * Calcula o resumo de tempo dentro/fora da obra para um atendimento.
      */
     async getAttendanceTimelineSummary(attendanceId: string) {
