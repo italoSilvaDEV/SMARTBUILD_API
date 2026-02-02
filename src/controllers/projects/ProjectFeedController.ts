@@ -1690,6 +1690,10 @@ export class ProjectFeedController {
                 });
             }
 
+            if (!prisma || !prisma.feedNotification) {
+                throw new Error("Prisma client or FeedNotification model is not initialized");
+            }
+
             // Verifica se o usuário existe
             const user = await prisma.user.findUnique({
                 where: { id: userId },
@@ -1898,6 +1902,10 @@ export class ProjectFeedController {
                 });
             }
 
+            if (!prisma || !prisma.feedNotification) {
+                throw new Error("Prisma client or FeedNotification model is not initialized");
+            }
+
             // Verifica se já deu like
             const existingLike = await prisma.feedLike.findUnique({
                 where: {
@@ -2093,6 +2101,10 @@ export class ProjectFeedController {
             const { userId } = request.params;
             const { unreadOnly = 'false', limit = '50', offset = '0' } = request.query;
 
+            if (!prisma || !prisma.feedNotification) {
+                throw new Error("Prisma client or FeedNotification model is not initialized");
+            }
+
             const whereClause: any = {
                 userId: userId
             };
@@ -2180,6 +2192,10 @@ export class ProjectFeedController {
         try {
             const { notificationId } = request.params;
 
+            if (!prisma || !prisma.feedNotification) {
+                throw new Error("Prisma client or FeedNotification model is not initialized");
+            }
+
             await prisma.feedNotification.update({
                 where: { id: notificationId },
                 data: {
@@ -2207,6 +2223,10 @@ export class ProjectFeedController {
     async markAllNotificationsAsRead(request: Request, response: Response) {
         try {
             const { userId } = request.params;
+
+            if (!prisma || !prisma.feedNotification) {
+                throw new Error("Prisma client or FeedNotification model is not initialized");
+            }
 
             await prisma.feedNotification.updateMany({
                 where: {

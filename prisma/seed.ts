@@ -8,7 +8,7 @@ async function main() {
     const hashedPassword = bcrypt.hashSync(senha, 10);
 
     const offices = await prisma.office.findMany({})
-    const dataOffice = ['Master', 'Administrator', 'Seller', 'Worker']
+    const dataOffice = ['Master', 'Administrator', 'Seller', 'Worker', 'Owner']
     const officeDataBase = offices.map(i => i.name)
     dataOffice.map(async i => !officeDataBase.includes(i) && await prisma.office.create({ data: { name: i } }))
 

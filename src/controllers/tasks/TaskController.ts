@@ -22,6 +22,10 @@ export class TaskController {
         return res.status(400).json({ error: "Title, projectId and creatorId are required" });
       }
 
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
+
       const task = await prisma.task.create({
         data: {
           title,
@@ -54,6 +58,10 @@ export class TaskController {
   async listByProject(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
 
       const tasks = await prisma.task.findMany({
         where: { projectId },
@@ -104,6 +112,10 @@ export class TaskController {
       const { userId } = req.params;
       const { status } = req.query;
 
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
+
       const tasks = await prisma.task.findMany({
         where: { 
           assignedUserId: userId,
@@ -148,6 +160,10 @@ export class TaskController {
         serviceProjectId
       } = req.body;
 
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
+
       const task = await prisma.task.update({
         where: { id },
         data: {
@@ -177,6 +193,11 @@ export class TaskController {
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
+
       await prisma.task.delete({ where: { id } });
       return res.status(204).send();
     } catch (error: any) {
@@ -193,6 +214,10 @@ export class TaskController {
 
       if (!file) {
         return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      if (!prisma || !prisma.taskFile) {
+        throw new Error("Prisma client or TaskFile model is not initialized");
       }
 
       const fileName = await uploadFileToS3_2(file, "system");
@@ -220,6 +245,11 @@ export class TaskController {
   async deleteFile(req: Request, res: Response) {
     try {
       const { fileId } = req.params;
+
+      if (!prisma || !prisma.taskFile) {
+        throw new Error("Prisma client or TaskFile model is not initialized");
+      }
+
       // Nota: Idealmente deletar do S3 também, mas seguindo o padrão do projeto de manter no S3 por enquanto
       await prisma.taskFile.delete({ where: { id: fileId } });
       return res.status(204).send();

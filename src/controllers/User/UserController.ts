@@ -219,6 +219,9 @@ export class UserController {
           canEditTimeCard: (data as any).canEditTimeCard === 'true' || (data as any).canEditTimeCard === true,
           dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
           defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
+          invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
+          projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
+          estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
@@ -515,10 +518,10 @@ export class UserController {
         }
 
         // Se o plano expirou e o usuário não é administrador, bloquear acesso
-        const isAdmin = user.office.name.toLowerCase() === 'administrator';
+        const isAdmin = user.office.name.toLowerCase() === 'administrator' || user.office.name.toLowerCase() === 'owner';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
-            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
+            error: "Your subscription has expired. Please renew your plan to continue using the system."
           });
         }
       }
@@ -596,6 +599,9 @@ export class UserController {
       canEditTimeCard,
       dailyRate,
       defaultBreakMinutes,
+      invoiceEditAll,
+      projectEditAll,
+      estimateEditAll,
     } = request.body;
 
     // Função de validação
@@ -665,7 +671,44 @@ export class UserController {
         }
       }
 
+      // Buscar permissões do office para validar os campos editAll
+      let finalInvoiceEditAll = invoiceEditAll || false;
+      let finalProjectEditAll = projectEditAll || false;
+      let finalEstimateEditAll = estimateEditAll || false;
+
       if (office && company_id) {
+        // Buscar o office com suas permissões
+        const officeWithPermissions = await prisma.office.findUnique({
+          where: { id: office.id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (officeWithPermissions) {
+          // Verificar se o office tem permissões de Invoice, Project ou Estimate
+          const hasInvoicePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office
+          // Se o office não tem a permissão, forçar false
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
+
+        // Atualizar office_id na tabela UserCompany
         await prisma.userCompany.update({
           where: {
             userId_companyId: {
@@ -676,7 +719,44 @@ export class UserController {
           data: {
             office_id: office.id,
           }
-        })
+        });
+
+        // Atualizar office_id na tabela User
+        await prisma.user.update({
+          where: { id },
+          data: {
+            office_id: office.id,
+          },
+        });
+      } else if (user.office_id) {
+        // Se não mudou o office, buscar o office atual para validar
+        const currentOffice = await prisma.office.findUnique({
+          where: { id: user.office_id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (currentOffice) {
+          const hasInvoicePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office atual
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
       }
 
       if (current_password && password) {
@@ -710,6 +790,9 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       } else {
@@ -729,6 +812,9 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       }
@@ -858,6 +944,9 @@ export class UserController {
           canEditTimeCard: true,
           dailyRate: true,
           defaultBreakMinutes: true,
+          invoiceEditAll: true,
+          projectEditAll: true,
+          estimateEditAll: true,
           seller_project: {
             select: {
               status_project: true,
@@ -1173,16 +1262,21 @@ export class UserController {
 
   async serchOfficeUser(request: Request, response: Response) {
     try {
+      const companyId = (request.query.companyId as string) || (request.body?.companyId as string);
+      if (!companyId) {
+        return response.status(400).json({ error: "Company ID is required (query: companyId)" });
+      }
+
       const result = await prisma.office.findMany({
         where: {
-          name: {
-            not: "Master" // Excluir office com nome "Master"
-          }
+          company_id: companyId,
+          name: { notIn: ["Master", "Owner"] },
         },
         select: {
           id: true,
           name: true,
         },
+        orderBy: { name: "asc" },
       });
       return response.json(result);
     } catch (error) {
@@ -1537,6 +1631,7 @@ export class UserController {
       }
 
       let office = null;
+      let officePermissions: string[] = [];
 
       if (company_id) {
         const userCompany = await prisma.userCompany.findUnique({
@@ -1546,13 +1641,29 @@ export class UserController {
               companyId: company_id
             }
           },
-          select: {
-            office: true
+          include: {
+            office: {
+              include: {
+                userPermissions: {
+                  include: {
+                    permission: true
+                  }
+                }
+              }
+            }
           }
         })
 
         office = userCompany?.office;
+
+        // Buscar permissões do office do usuário
+        if (office?.userPermissions) {
+          officePermissions = office.userPermissions.map(up => up.permission.description);
+        }
       }
+
+      // Usar permissões do Office se disponíveis, senão usar permissões do plano
+      const finalPermissions = officePermissions.length > 0 ? officePermissions : permissions;
 
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
@@ -1560,7 +1671,7 @@ export class UserController {
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
-        permissions,
+        permissions: finalPermissions, // Permissões do Office do usuário
         plan: planInfo,
         office: office
       });
@@ -1636,7 +1747,7 @@ export class UserController {
       })
     }
 
-    if (userCompany.office.name === "administrator" || userCompany.office.name === "Administrator") {
+    if (userCompany.office.name.toLowerCase() === "administrator" || userCompany.office.name === "Owner") {
       return res.status(400).json({
         error: "Não é possível remover o usuário administrador da empresa"
       })

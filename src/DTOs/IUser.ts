@@ -39,6 +39,9 @@ export interface INewUser {
   canEditTimeCard?: boolean | string
   dailyRate?: number | string
   defaultBreakMinutes?: number | string
+  invoiceEditAll?: boolean | string
+  projectEditAll?: boolean | string
+  estimateEditAll?: boolean | string
 }
 
 

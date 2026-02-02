@@ -99,6 +99,7 @@ export class UserMultiCompanyController {
       return res.json({
         msg: "Authentication completed successfully!",
         token,
+        rules: user.office.name, // Adicionar rules para compatibilidade com frontend
         user: {
           id: user.id,
           name: user.name,
@@ -204,27 +205,25 @@ export class UserMultiCompanyController {
 
       const selectedOffice = userCompany?.office;
 
-      if (company?.id) {
-        if (company.planId) {
-          const plan = await prisma.plan.findUnique({
-            where: { id: company.planId },
-            include: {
-              permissionGroup: {
-                include: {
-                  GroupPermissionsList: {
-                    include: {
-                      Permissions: true
-                    }
-                  }
-                }
+      // Buscar permissões do office do usuário
+      if (selectedOffice?.id) {
+        const officeWithPermissions = await prisma.office.findUnique({
+          where: { id: selectedOffice.id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
               }
             }
-          });
-
-          if (plan?.permissionGroup?.GroupPermissionsList) {
-            permissions = plan.permissionGroup.GroupPermissionsList.map(item => item.Permissions.description);
           }
+        });
+
+        if (officeWithPermissions?.userPermissions) {
+          permissions = officeWithPermissions.userPermissions.map(up => up.permission.description);
         }
+      }
+
+      if (company?.id) {
 
 
         planInfo = company.Plan ? {
@@ -330,7 +329,7 @@ export class UserMultiCompanyController {
 
         // Se o plano expirou e o usuário não é administrador, bloquear acesso
         // Usar o office específico da empresa selecionada
-        const isAdmin = selectedOffice?.name.toLowerCase() === 'administrator';
+        const isAdmin = selectedOffice?.name.toLowerCase() === 'administrator' || selectedOffice?.name.toLowerCase() === 'owner';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
             error: "Your company's subscription has expired. Please ask your company administrator to renew your plan to continue using the system."

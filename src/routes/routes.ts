@@ -52,6 +52,7 @@ import { imagesAttachmentsRoutes } from './imagesAttachments'
 import jobScheduleRoutes from './jobScheduleRoutes'
 import { permissionsKeyRoutes } from './permissionsKeyRoutes'
 import { taskRoutes } from './taskRoutes'
+import { officeRoutes } from './officeRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -119,6 +120,7 @@ router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)
 router.use(jobScheduleRoutes)
 router.use("/tasks", taskRoutes)
+router.use(officeRoutes)
 
 export { router }
 

@@ -33,13 +33,16 @@ model User {
   isDisabled          Boolean? @default(false)
   isOverTime          Boolean? @default(false)
   onBoardingCompleted Boolean? @default(true)
-  
   // Configurações de Ponto (Time Card)
   attendanceMode      String?  @default("manual") // manual, auto
   clockOutMode        String?  @default("manual") // manual, auto
   canEditTimeCard     Boolean? @default(false)
   dailyRate           Decimal? @db.Decimal(10, 2)
   defaultBreakMinutes Int?     @default(0)
+
+  invoiceEditAll      Boolean? @default(false)
+  projectEditAll      Boolean? @default(false)
+  estimateEditAll     Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -65,7 +68,7 @@ model User {
   // Nova relação N:N através da tabela UserCompany
   companies UserCompany[]
 
-  Invoice  Invoice[]
+  Invoice  Invoice[] 
   TimeLine TimeLine[]
 
   quickBooksAccount    QuickBooksAccount?
@@ -176,6 +179,8 @@ model Company {
 
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
+
+  offices Office[]
 }
 
 model ContractNotes {
@@ -210,8 +215,13 @@ model Office {
   name          String
   date_creation DateTime      @default(now())
   date_update   DateTime      @updatedAt
+  company_id    String?
+  company       Company?      @relation(fields: [company_id], references: [id], onDelete: Cascade)
   User          User[]
   UserCompany   UserCompany[]
+  userPermissions UserPermission[]
+
+  @@index([company_id])
 }
 
 model Rules {
@@ -1281,6 +1291,7 @@ model Permissions {
 
   description          String
   GroupPermissionsList GroupPermissionsList[]
+  UserPermissions     UserPermission[]
   date_creation        DateTime               @default(now())
   date_update          DateTime               @updatedAt
 }
@@ -1306,6 +1317,22 @@ model GroupPermissionsList {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+model UserPermission {
+  id            String   @id @default(uuid())
+  editAll       Boolean  @default(false)
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  
+  office_id String
+  office     Office  @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  
+  permission_id String
+  permission   Permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  
+  @@index([office_id])
+  @@index([permission_id])
 }
 
 model Subscription {
