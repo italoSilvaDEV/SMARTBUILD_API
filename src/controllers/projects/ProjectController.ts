@@ -135,7 +135,8 @@ export class ProjectController {
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
     const query: any = {};
-
+    const userId = (req as any).userId as string | undefined;
+    console.log("valor do userId", userId);
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
 
@@ -164,8 +165,23 @@ export class ProjectController {
       };
     }
 
-    if (company_id) query.company_id = { equals: String(company_id) };
-    if (id_seller) query.seller_user_id = { equals: id_seller };
+    if (company_id) query.company_id = { equals: String(company_id) }
+
+    // Filtro por permissão: projectEditAll = ver/editar todos; senão só os do usuário
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { projectEditAll: true },
+      });
+      const canEditAll = user?.projectEditAll === true;
+      if (canEditAll) {
+        if (id_seller) query.seller_user_id = { equals: id_seller };
+      } else {
+        query.seller_user_id = { equals: userId };
+      }
+    } else if (id_seller) {
+      query.seller_user_id = { equals: id_seller };
+    }
 
     if (status_project) {
       const statusArray =
@@ -674,7 +690,7 @@ export class ProjectController {
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
                 project_cost_invoice_exists: cost.invoiceCostProject?.project_cost_invoice_exists,
-                invoice_cost_project: cost.invoiceCostProject?.uri 
+                invoice_cost_project: cost.invoiceCostProject?.uri
                   ? await getPresignedUrl(String(cost.invoiceCostProject.uri))
                   : null,
               }))
@@ -1236,7 +1252,7 @@ export class ProjectController {
       if (!data.client.name || !data.client.email) {
         return res.status(400).json({ error: "client name and email are required" });
       }
-      
+
       // Validações de localização apenas se não for fluxo standalone
       if (!skipLocationValidation) {
         if (!data.location) {
@@ -1272,11 +1288,11 @@ export class ProjectController {
           name: data.client.name,
           phone: data.client.phone,
         };
-        
+
         if (data.client.birth_date !== undefined) {
           updateData.birth_date = data.client.birth_date;
         }
-        
+
         client = await prisma.client.update({
           where: { id: client.id },
           data: updateData,
@@ -1355,7 +1371,7 @@ export class ProjectController {
 
       // Criar serviceProjects se fornecidos (fluxo standalone invoice)
       if (data.serviceProject && data.serviceProject.length > 0) {
-        const serviceProjectPromises = data.serviceProject.map(service => 
+        const serviceProjectPromises = data.serviceProject.map(service =>
           prisma.serviceProject.create({
             data: {
               projectId: project.id,
@@ -1367,7 +1383,7 @@ export class ProjectController {
             },
           })
         );
-        
+
         await Promise.all(serviceProjectPromises);
       }
 
@@ -1434,11 +1450,11 @@ export class ProjectController {
         client_id,
         autorId,
       };
-      
+
       if (work_context_id !== undefined) {
         updateData.workContextId = work_context_id || null;
       }
-      
+
       const project = await prisma.project.update({
         where: { id },
         data: updateData,
