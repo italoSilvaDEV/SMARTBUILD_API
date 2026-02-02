@@ -1023,6 +1023,7 @@ export class UserController {
   async getUserDetails(request: Request, response: Response) {
     try {
       const { id } = request.params;
+      console.log(`[getUserDetails] Buscando detalhes para o usuário: ${id}`);
 
       // Consulta o usuário no banco de dados
       const result = await prisma.user.findUnique({
@@ -1039,13 +1040,24 @@ export class UserController {
           number_home: true,
           neighborhood: true,
           avatar: true,
+          attendanceMode: true,
+          clockOutMode: true,
+          projectVisibilityMode: true,
+          company: {
+            select: {
+              attendanceMode: true,
+            }
+          }
         },
       });
 
       // Verifica se o usuário foi encontrado
       if (!result) {
+        console.log(`[getUserDetails] Usuário ${id} não encontrado`);
         throw new Error("User not found!");
       }
+
+      console.log(`[getUserDetails] Resultado: attendanceMode=${result.attendanceMode}, companyAttendanceMode=${result.company?.attendanceMode}`);
 
       // Formata o resultado e obtém o link do avatar (se houver)
       const formattedResult = {
