@@ -1043,9 +1043,12 @@ export class UserController {
           attendanceMode: true,
           clockOutMode: true,
           projectVisibilityMode: true,
+          id: true, // Adicionado ID explicitamente
           company: {
             select: {
               attendanceMode: true,
+              id: true, // Adicionado ID da empresa
+              name: true
             }
           }
         },
