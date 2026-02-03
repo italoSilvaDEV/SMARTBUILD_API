@@ -23,7 +23,7 @@ export class TaskNotificationController {
         include: {
           actor: { select: { id: true, name: true, avatar: true } },
           task: { select: { id: true, title: true } }
-        } as any,
+        },
         orderBy: { createdAt: "desc" },
         take: parseInt(limit as string),
         skip: parseInt(offset as string)

@@ -2074,6 +2074,7 @@ model Task {
 
   files         TaskFile[]
   comments      TaskComment[]
+  notifications TaskNotification[]
   
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -2126,6 +2127,7 @@ model TaskNotification {
   isRead      Boolean  @default(false)
   
   taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   
   userId      String   // Destinatário
   user        User     @relation("TaskNotifications", fields: [userId], references: [id])
