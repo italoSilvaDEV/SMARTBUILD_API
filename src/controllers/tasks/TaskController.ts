@@ -4,6 +4,23 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 export class TaskController {
+  private async createTaskNotification(
+    type: string,
+    message: string,
+    taskId: string,
+    userId: string,
+    actorId?: string
+  ) {
+    if (!prisma || !prisma.taskNotification) return;
+    try {
+      await prisma.taskNotification.create({
+        data: { type, message, taskId, userId, actorId: actorId || null }
+      });
+    } catch (error) {
+      console.error("[TaskController.createTaskNotification] Error:", error);
+    }
+  }
+
   // Criar uma nova task
   async create(req: Request, res: Response) {
     try {
@@ -47,6 +64,16 @@ export class TaskController {
         }
       });
 
+      if (assignedUserId) {
+        await this.createTaskNotification(
+          "assigned",
+          `${task.creator.name || "Someone"} assigned the task "${title}" to you`,
+          task.id,
+          assignedUserId,
+          creatorId
+        );
+      }
+
       return res.status(201).json(task);
     } catch (error: any) {
       console.error("[TaskController.create] Error:", error);
@@ -72,6 +99,9 @@ export class TaskController {
           files: true,
           serviceProject: {
             select: { id: true, name: true }
+          },
+          _count: {
+            select: { comments: true }
           }
         },
         orderBy: { createdAt: "desc" }
@@ -164,6 +194,15 @@ export class TaskController {
         throw new Error("Prisma client or Task model is not initialized");
       }
 
+      const currentTask = await prisma.task.findUnique({
+        where: { id },
+        include: { creator: { select: { id: true, name: true } } }
+      });
+
+      if (!currentTask) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+
       const task = await prisma.task.update({
         where: { id },
         data: {
@@ -181,6 +220,43 @@ export class TaskController {
           }
         }
       });
+
+      // Notificações em inglês
+      if (assignedUserId && assignedUserId !== currentTask.assignedUserId) {
+        await this.createTaskNotification(
+          "assigned",
+          `${currentTask.creator.name || "Someone"} assigned the task "${task.title}" to you`,
+          task.id,
+          assignedUserId,
+          currentTask.creatorId
+        );
+      }
+
+      if (status && status !== currentTask.status) {
+        const targetUserId = assignedUserId || currentTask.assignedUserId;
+        if (targetUserId) {
+          await this.createTaskNotification(
+            "status_change",
+            `The status of task "${task.title}" was changed to ${status.toLowerCase().replace("_", " ")}`,
+            task.id,
+            targetUserId,
+            currentTask.creatorId
+          );
+        }
+      }
+
+      if (priority && priority !== currentTask.priority) {
+        const targetUserId = assignedUserId || currentTask.assignedUserId;
+        if (targetUserId) {
+          await this.createTaskNotification(
+            "priority_change",
+            `The priority of task "${task.title}" was changed to ${priority.toLowerCase()}`,
+            task.id,
+            targetUserId,
+            currentTask.creatorId
+          );
+        }
+      }
 
       return res.json(task);
     } catch (error: any) {
