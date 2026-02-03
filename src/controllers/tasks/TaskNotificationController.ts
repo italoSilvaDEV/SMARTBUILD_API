@@ -23,14 +23,14 @@ export class TaskNotificationController {
         include: {
           actor: { select: { id: true, name: true, avatar: true } },
           task: { select: { id: true, title: true } }
-        },
+        } as any,
         orderBy: { createdAt: "desc" },
         take: parseInt(limit as string),
         skip: parseInt(offset as string)
       });
 
       const notificationsWithUrls = await Promise.all(
-        notifications.map(async (notification) => {
+        notifications.map(async (notification: any) => {
           let actorAvatarUrl = null;
           if (notification.actor?.avatar) {
             actorAvatarUrl = await getPresignedUrl(notification.actor.avatar);
