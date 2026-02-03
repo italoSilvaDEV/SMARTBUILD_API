@@ -51,6 +51,18 @@ export class InvoiceStatisticsController {
   async getInvoiceStatistics(req: Request, res: Response) {
     const { companyId } = req.params;
 
+    const userId = (req as any).userId as string | undefined;
+    let invoiceFilterByUser: { user_id?: string } = {};
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { invoiceEditAll: true },
+      });
+      if (user?.invoiceEditAll !== true) {
+        invoiceFilterByUser = { user_id: userId };
+      }
+    }
+
     try {
       const { period = "thisYear", startDate: queryStartDate, endDate: queryEndDate } = req.query;
 
@@ -126,6 +138,7 @@ export class InvoiceStatisticsController {
       const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
+          ...invoiceFilterByUser,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
@@ -141,6 +154,7 @@ export class InvoiceStatisticsController {
       const currentPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
+          ...invoiceFilterByUser,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
@@ -157,6 +171,7 @@ export class InvoiceStatisticsController {
       const lastPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
+          ...invoiceFilterByUser,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
@@ -236,6 +251,7 @@ export class InvoiceStatisticsController {
         paid: await prisma.invoice.count({
           where: {
             companyId,
+            ...invoiceFilterByUser,
             status: 'paid',
             OR: [
               { cancel_invoice_edit: false },
@@ -249,6 +265,7 @@ export class InvoiceStatisticsController {
         pending: await prisma.invoice.count({
           where: {
             companyId,
+            ...invoiceFilterByUser,
             status: { in: ['open', 'draft'] },
             OR: [
               { cancel_invoice_edit: false },
@@ -262,6 +279,7 @@ export class InvoiceStatisticsController {
         canceled: await prisma.invoice.count({
           where: {
             companyId,
+            ...invoiceFilterByUser,
             status: 'void',
             OR: [
               { cancel_invoice_edit: false },
@@ -278,6 +296,7 @@ export class InvoiceStatisticsController {
       const invoices = await prisma.invoice.findMany({
         where: {
           companyId,
+          ...invoiceFilterByUser,
           status: 'paid',
           OR: [
             { cancel_invoice_edit: false },
