@@ -1095,6 +1095,18 @@ export class StripeController {
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
+        const userId = (req as any).userId as string | undefined;
+        let invoiceFilterByUser: { user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { invoiceEditAll: true },
+            });
+            if (user?.invoiceEditAll !== true) {
+                invoiceFilterByUser = { user_id: userId };
+            }
+        }
+
         try {
             console.log("Buscando invoices do projeto:", projectId);
 
@@ -1103,8 +1115,9 @@ export class StripeController {
             const search = typeof searchTerm === 'string' ? searchTerm : "";
 
             // Filtro para incluir faturas com cancel_invoice_edit = false OU null
-            const filtro = {
+            const filtro: any = {
                 projectId,
+                ...invoiceFilterByUser,
                 OR: [
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }
@@ -1275,6 +1288,18 @@ export class StripeController {
             endDate: queryEndDate
         } = req.query;
 
+        const userId = (req as any).userId as string | undefined;
+        let invoiceFilterByUser: { user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { invoiceEditAll: true },
+            });
+            if (user?.invoiceEditAll !== true) {
+                invoiceFilterByUser = { user_id: userId };
+            }
+        }
+
         try {
             const validPeriods = [
                 "thisYear",
@@ -1322,6 +1347,7 @@ export class StripeController {
 
             const filtro: any = {
                 companyId,
+                ...invoiceFilterByUser,
                 OR: [
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }

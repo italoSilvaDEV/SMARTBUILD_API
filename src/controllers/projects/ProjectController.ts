@@ -136,7 +136,7 @@ export class ProjectController {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
     const query: any = {};
     const userId = (req as any).userId as string | undefined;
-    console.log("valor do userId", userId);
+    // console.log("valor do userId", userId);
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
 
