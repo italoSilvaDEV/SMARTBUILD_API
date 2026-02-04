@@ -126,6 +126,7 @@ export class TaskController {
         return {
           ...task,
           files: filesWithUrls,
+          commentCount: task._count?.comments || 0,
           assignedUser: task.assignedUser ? {
             ...task.assignedUser,
             avatar: avatarUrl
@@ -159,18 +160,25 @@ export class TaskController {
           project: {
             select: { id: true, contract_number: true, location: true }
           },
-          files: true
+          files: true,
+          _count: {
+            select: { comments: true }
+          }
         },
         orderBy: { priority: "desc" }
       });
 
-      const tasksWithUrls = await Promise.all(tasks.map(async (task) => {
-        const filesWithUrls = await Promise.all(task.files.map(async (file) => ({
+      const tasksWithUrls = await Promise.all(tasks.map(async (task: any) => {
+        const filesWithUrls = await Promise.all(task.files.map(async (file: any) => ({
           ...file,
           url: await getPresignedUrl(file.url)
         })));
 
-        return { ...task, files: filesWithUrls };
+        return { 
+          ...task, 
+          files: filesWithUrls,
+          commentCount: task._count?.comments || 0
+        };
       }));
 
       return res.json(tasksWithUrls);
