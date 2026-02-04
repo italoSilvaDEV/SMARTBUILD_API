@@ -1560,7 +1560,8 @@ export class StripeController {
             type_value,
             services,
             totalAmount,
-            multi_emails
+            multi_emails,
+            showPaymentMethods
         } = req.body;
 
         try {
@@ -1733,6 +1734,7 @@ export class StripeController {
                     percentageCoefficient: coefficientPerfentage,
                     invoiceType: newInvoiceType,
                     invoiceTypeStripe: "payment_element",
+                    showPaymentMethods: showPaymentMethods || true,
                     type_value: type_value,
                     user_id: userId,
                     updatedAt: new Date(),

@@ -1340,6 +1340,7 @@ export class CustomInvoiceController {
       totalAmount,
       multi_emails,
       date_creation,
+      showPaymentMethods,
       userId
     } = req.body;
 
@@ -1451,6 +1452,7 @@ export class CustomInvoiceController {
             description: description || existingInvoice.description,
             type_value: type_value || existingInvoice.type_value,
             percentageCoefficient: coefficientPerfentage,
+            showPaymentMethods: showPaymentMethods || true,
             invoiceType: newInvoiceType,
             invoiceTypeStripe: null,
             multi_emails: multi_emails || existingInvoice.multi_emails,

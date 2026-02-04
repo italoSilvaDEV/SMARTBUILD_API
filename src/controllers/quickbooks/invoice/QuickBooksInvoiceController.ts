@@ -1997,7 +1997,7 @@ export class QuickBooksInvoiceController {
 
   async updateInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { description, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount } = req.body;
+    const { description, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount } = req.body;
 
     try {
       console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
@@ -2164,6 +2164,7 @@ export class QuickBooksInvoiceController {
             invoiceUrl: qboResult.invoiceUrl || null,
             status: qboResult.status || invoice.status,
             totalAmount: calculatedTotalAmount || invoice.totalAmount,
+            showPaymentMethods: showPaymentMethods || true,
             dueDate: dueDate ? new Date(dueDate) : invoice.dueDate,
             description: description || invoice.description,
             type_value: type_value || invoice.type_value,
