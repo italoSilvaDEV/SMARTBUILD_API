@@ -202,7 +202,7 @@ export class CustomInvoiceController {
             invoiceType: "custom",
             status: "open",
             totalAmount: totalAmount,
-            showPaymentMethods: showPaymentMethods || true,
+            showPaymentMethods: showPaymentMethods ?? true,
             dueDate: dueDateObj,
             description: description,
             projectId: project.id,
@@ -1440,8 +1440,6 @@ export class CustomInvoiceController {
         newInvoiceType = existingInvoice.invoiceType;
       }
 
-      console.log("showPaymentMethods", showPaymentMethods);
-
       // Atualizar invoice dentro da transaction
       const updatedInvoice = await prisma.$transaction(async (smartbuild) => {
         const invoice = await smartbuild.invoice.update({
@@ -1454,7 +1452,7 @@ export class CustomInvoiceController {
             description: description || existingInvoice.description,
             type_value: type_value || existingInvoice.type_value,
             percentageCoefficient: coefficientPerfentage,
-            showPaymentMethods: showPaymentMethods || true,
+            showPaymentMethods: showPaymentMethods ?? true,
             invoiceType: newInvoiceType,
             invoiceTypeStripe: null,
             multi_emails: multi_emails || existingInvoice.multi_emails,
@@ -1580,7 +1578,7 @@ export class CustomInvoiceController {
               dueDate: dueDate,
               userId: userId,
               coefficientPerfentage: coefficientPerfentage,
-              showPaymentMethods: showPaymentMethods || true,
+              showPaymentMethods: showPaymentMethods ?? true,
               services: qbServicesForCreate,
               type_value: type_value,
               totalAmountTarget: totalAmount ?? 0,
@@ -1637,6 +1635,7 @@ export class CustomInvoiceController {
               dueDate: dueDate,
               userId: userId,
               coefficientPerfentage: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods ?? true,
               services: qbServices,
               totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
               calledFromStripe: true // Indicar que foi chamado pelo Custom

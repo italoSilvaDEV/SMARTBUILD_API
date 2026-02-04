@@ -456,7 +456,7 @@ export class StripeController {
                     invoiceTypeStripe: "payment_element", // Subtipo específico do Stripe
                     projectId: project.id,
                     companyId: project.company_id,
-                    showPaymentMethods: showPaymentMethods || true,
+                    showPaymentMethods: showPaymentMethods ?? true,
                     totalAmount: totalAmount,
                     status: "open", // Sempre começa como open
                     invoiceUrl: null, // Não tem URL do Stripe
@@ -1734,7 +1734,7 @@ export class StripeController {
                     percentageCoefficient: coefficientPerfentage,
                     invoiceType: newInvoiceType,
                     invoiceTypeStripe: "payment_element",
-                    showPaymentMethods: showPaymentMethods || true,
+                    showPaymentMethods: showPaymentMethods ?? true,
                     type_value: type_value,
                     user_id: userId,
                     updatedAt: new Date(),

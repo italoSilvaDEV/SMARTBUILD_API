@@ -569,7 +569,7 @@ export class QuickBooksInvoiceController {
           data: {
             externalInvoiceId: nextInvoiceNumber.toString(), // Número sequencial
             invoiceType: "quickbooks",
-            showPaymentMethods: showPaymentMethods || true,
+            showPaymentMethods: showPaymentMethods ?? true,
             invoiceUrl: invoiceUrl, // Link público de pagamento do QuickBooks
             externalDocNumber: inv.DocNumber,
             idQuickbookContabio: inv.Id, // ID real do QuickBooks
@@ -1096,7 +1096,7 @@ export class QuickBooksInvoiceController {
               totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
               status: deriveQboInvoicePaymentStatus(updatedInv),
               percentageCoefficient: coefficientPerfentage,
-              showPaymentMethods: showPaymentMethods || true,
+              showPaymentMethods: showPaymentMethods ?? true,
               type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
@@ -1248,7 +1248,7 @@ export class QuickBooksInvoiceController {
         projectId,
         description,
         type_invoicebase,
-        showPaymentMethods: showPaymentMethods || true,
+        showPaymentMethods: showPaymentMethods ?? true,
         dueDate,
         userId,
         coefficientPerfentage,
@@ -2167,7 +2167,7 @@ export class QuickBooksInvoiceController {
             invoiceUrl: qboResult.invoiceUrl || null,
             status: qboResult.status || invoice.status,
             totalAmount: calculatedTotalAmount || invoice.totalAmount,
-            showPaymentMethods: showPaymentMethods || true,
+            showPaymentMethods: showPaymentMethods ?? true,
             dueDate: dueDate ? new Date(dueDate) : invoice.dueDate,
             description: description || invoice.description,
             type_value: type_value || invoice.type_value,
