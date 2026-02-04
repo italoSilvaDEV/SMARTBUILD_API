@@ -9,9 +9,15 @@ export class ChatController {
   async listChats(req: Request, res: Response) {
     try {
       const { userId } = req.params;
+      const { companyId } = req.query;
 
       const chatMemberships = await prisma.chatMember.findMany({
-        where: { userId },
+        where: { 
+          userId,
+          chat: {
+            ...(companyId ? { companyId: companyId as string } : {})
+          }
+        },
         include: {
           chat: {
             include: {
@@ -205,8 +211,20 @@ export class ChatController {
   async sendMessage(req: Request, res: Response) {
     try {
       const { chatId } = req.params;
-      const { senderId, text } = req.body;
+      const { senderId, text, companyId } = req.body;
       const file = req.file;
+
+      // Validar se o chat pertence à empresa
+      if (companyId) {
+        const chat = await prisma.chat.findUnique({
+          where: { id: chatId },
+          select: { companyId: true }
+        });
+
+        if (chat && chat.companyId !== companyId) {
+          return res.status(403).json({ error: "Chat does not belong to the specified company" });
+        }
+      }
 
       let fileUrl = null;
       let fileName = null;
@@ -268,7 +286,19 @@ export class ChatController {
   async listMessages(req: Request, res: Response) {
     try {
       const { chatId } = req.params;
-      const { limit = "50", offset = "0" } = req.query;
+      const { limit = "50", offset = "0", companyId } = req.query;
+
+      // Validar se o chat pertence à empresa
+      if (companyId) {
+        const chat = await prisma.chat.findUnique({
+          where: { id: chatId },
+          select: { companyId: true }
+        });
+
+        if (chat && chat.companyId !== companyId) {
+          return res.status(403).json({ error: "Chat does not belong to the specified company" });
+        }
+      }
 
       const messages = await prisma.chatMessage.findMany({
         where: { chatId },
