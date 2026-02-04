@@ -120,6 +120,7 @@ export class CustomInvoiceController {
       services,
       multi_emails,
       date_creation,
+      showPaymentMethods,
       isStandaloneInvoice
     } = req.body
 
@@ -201,6 +202,7 @@ export class CustomInvoiceController {
             invoiceType: "custom",
             status: "open",
             totalAmount: totalAmount,
+            showPaymentMethods: showPaymentMethods || true,
             dueDate: dueDateObj,
             description: description,
             projectId: project.id,
@@ -880,7 +882,7 @@ export class CustomInvoiceController {
       if (invoice.invoiceType === 'stripe') {
         paymentUrl = `${process.env.URL_FRONT}/pay/${invoice.id}`;
       } else if (invoice.invoiceUrl && invoice.invoiceType === 'custom') {
-        paymentUrl = invoice.invoiceUrl ||  '';
+        paymentUrl = invoice.invoiceUrl || '';
       }
 
       const emailSubject = String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`;

@@ -292,6 +292,7 @@ export class StripeController {
             services,
             type_value,
             totalAmount,
+            showPaymentMethods,
             type_invoicebase,
             estimateId,
             multi_emails,
@@ -455,6 +456,7 @@ export class StripeController {
                     invoiceTypeStripe: "payment_element", // Subtipo específico do Stripe
                     projectId: project.id,
                     companyId: project.company_id,
+                    showPaymentMethods: showPaymentMethods || true,
                     totalAmount: totalAmount,
                     status: "open", // Sempre começa como open
                     invoiceUrl: null, // Não tem URL do Stripe

@@ -14,7 +14,7 @@ function shouldRequireReauthorization(err: any): boolean {
   const status = err?.status || err?.response?.status;
   const code = err?.code || err?.response?.data?.error;
   const desc = err?.response?.data?.error_description || "";
-  
+
   return (
     status === 401 ||
     status === 403 ||
@@ -40,14 +40,15 @@ async function callWithRetry<T>(operation: () => Promise<T>, attempts = 2, delay
 interface InvoiceLineItem {
   Amount: number; // ou o tipo correto que você espera
   // Adicione outros campos que você espera que o item tenha
-} 
+}
 
-export class QuickBooksInvoiceController { 
+export class QuickBooksInvoiceController {
 
 
   // Método interno para criação de invoice sem req/res
-  async createInvoiceInternal(params: {  
+  async createInvoiceInternal(params: {
     projectId: string;
+    showPaymentMethods?: boolean;
     description?: string;
     type_invoicebase?: string;
     dueDate?: string;
@@ -61,7 +62,7 @@ export class QuickBooksInvoiceController {
     date_creation?: string; // Data customizada de criação
     isStandaloneInvoice?: boolean; // Se é um invoice criado sem projeto pré-existente
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice } = params;
 
     try {
       // Buscar o projeto
@@ -108,7 +109,7 @@ export class QuickBooksInvoiceController {
         );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        
+
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
           await prisma.quickBooksAccount.update({
@@ -117,7 +118,7 @@ export class QuickBooksInvoiceController {
           });
           throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
         }
-        
+
         // Para outros erros (timeout, 500, etc.), não marcar como reauth
         throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
@@ -182,7 +183,7 @@ export class QuickBooksInvoiceController {
 
         const rawItemName = service?.name?.trim() || "Service";
         const itemName = this.cleanServiceNameForQuickBooks(rawItemName);
-        
+
         // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
           console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
@@ -207,7 +208,7 @@ export class QuickBooksInvoiceController {
 
         // Calcular proporção do serviço no valor total original do projeto
         const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-        
+
         // Aplicar a proporção ao valor da fatura com coeficiente
         const serviceAmountWithCoefficient = invoiceAmountWithCoefficient * serviceProportion;
 
@@ -226,7 +227,7 @@ export class QuickBooksInvoiceController {
 
       // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
       const totalTargetAmount = totalAmountTarget || invoiceAmountWithCoefficient;
-      
+
       console.log(`Total com coeficiente calculado: ${totalWithCoefficientCalculated}, Total alvo: ${totalTargetAmount}`);
 
       // Agora processar os itens com ajuste para garantir o total exato
@@ -239,10 +240,10 @@ export class QuickBooksInvoiceController {
         let finalAmount;
         let unitPrice;
         let exactAmount;
-        
+
         // SOLUÇÃO: Usar Qty=1 e Rate=valor total para evitar limitação de arredondamento do QB
         const qtyForQB = 1; // Sempre usar quantidade 1 no QuickBooks
-        
+
         if (isLastItem) {
           // Para o último item, usar o valor restante para garantir total exato
           const remainingAmount = await this.round2(totalTargetAmount - totalProcessed);
@@ -255,9 +256,9 @@ export class QuickBooksInvoiceController {
           unitPrice = await this.round2(finalAmount); // Rate = valor total (já que Qty=1)
           exactAmount = await this.round2(unitPrice * qtyForQB); // Amount = Rate × 1
         }
-        
+
         totalProcessed += exactAmount;
-        
+
         // Log detalhado para monitoramento
         console.log(`QB - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
 
@@ -282,20 +283,20 @@ export class QuickBooksInvoiceController {
             throw new Error("ERR_ITEM_NOT_FOUND_AND_ERR_TO_CREATE");
           }
 
-        // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
-        processedLineItems.push({
-          DetailType: "SalesItemLineDetail",
-          Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
-          Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
-          SalesItemLineDetail: {
-            ItemRef: { value: itemId, name: qboItemName },
-            Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
-            UnitPrice: unitPrice // Rate = valor total do serviço
-          },
-          // Armazenar valores reais para salvar no banco
-          _realQuantity: calc.qty,
-          _realPrice: calc.priceParsed
-        });
+          // Monta a linha garantindo consistência Amount = UnitPrice * Qty (com Qty=1)
+          processedLineItems.push({
+            DetailType: "SalesItemLineDetail",
+            Amount: exactAmount, // <- valor exato que fecha com UnitPrice * Qty
+            Description: this.cleanDescriptionForQuickBooks(calc.service?.description || ""), // Limpar HTML e truncar
+            SalesItemLineDetail: {
+              ItemRef: { value: itemId, name: qboItemName },
+              Qty: qtyForQB, // Sempre 1 para evitar limitação de arredondamento
+              UnitPrice: unitPrice // Rate = valor total do serviço
+            },
+            // Armazenar valores reais para salvar no banco
+            _realQuantity: calc.qty,
+            _realPrice: calc.priceParsed
+          });
 
           // Logs defensivos
           console.log(
@@ -309,7 +310,7 @@ export class QuickBooksInvoiceController {
       }
 
       console.log(`Total calculado: ${totalProcessed}, Total target: ${totalTargetAmount}, Diferença: ${Math.abs(totalProcessed - totalTargetAmount)}`);
-      
+
 
       // Calcular o total
       const totalAmount = processedLineItems.reduce((sum: number, item: InvoiceLineItem) => sum + item.Amount, 0);
@@ -319,314 +320,315 @@ export class QuickBooksInvoiceController {
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date();
       // dueDateObj.setDate(dueDateObj.getDate() + 30);
 
-        // Verificar cliente no QuickBooks - abordagem conservadora
-        let clientId;
-        
-        try {
-          console.log(" Verificando cliente no QuickBooks...");
-          console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
-          console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
+      // Verificar cliente no QuickBooks - abordagem conservadora
+      let clientId;
 
-          // 1) Primeiro verificar se o cliente local já tem idQuickbooks
-          if (project.client!.idQuickbooks) {
-            console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
-            
-            // Verificar se o cliente ainda existe no QuickBooks
-            try {
-              const existingCustomer = await new Promise((resolve, reject) => {
-                qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
-                  if (err) {
-                    console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
-                    resolve(null);
-                  } else {
-                    resolve(data);
-                  }
-                });
+      try {
+        console.log(" Verificando cliente no QuickBooks...");
+        console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
+        console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
+
+        // 1) Primeiro verificar se o cliente local já tem idQuickbooks
+        if (project.client!.idQuickbooks) {
+          console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
+
+          // Verificar se o cliente ainda existe no QuickBooks
+          try {
+            const existingCustomer = await new Promise((resolve, reject) => {
+              qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
+                if (err) {
+                  console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
+                  resolve(null);
+                } else {
+                  resolve(data);
+                }
               });
+            });
 
-              if (existingCustomer) {
-                const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
-                clientId = customer.Id;
-                console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
-              }
-            } catch (getError: any) {
-              console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
-              console.log("Continuando para criação de novo cliente...");
+            if (existingCustomer) {
+              const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
+              clientId = customer.Id;
+              console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
             }
+          } catch (getError: any) {
+            console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
+            console.log("Continuando para criação de novo cliente...");
           }
-
-          // 2) Se não tem idQuickbooks válido, criar novo cliente
-          if (!clientId) {
-            console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
-            
-            // Validar dados do cliente antes de criar
-            const clientName = project.client!.name?.trim();
-            if (!clientName || clientName.length === 0) {
-              throw new Error("Client name is required to create QuickBooks customer");
-            }
-
-            const clientEmail = project.client!.email?.trim() || "noemail@example.com";
-            console.log(`Email do cliente: ${clientEmail}`);
-            
-            const createCustomerData = {
-              DisplayName: clientName,
-              CompanyName: clientName,
-              PrimaryEmailAddr: {
-                Address: clientEmail
-              }
-            };
-
-            console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
-
-            try {
-              const createCustomerResult = await new Promise((resolve, reject) => {
-                qb.createCustomer(createCustomerData, (err: any, data: any) => {
-                  if (err) {
-                    console.error(" Erro ao criar cliente no QuickBooks:", err);
-                    console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
-                    reject(err);
-                  } else {
-                    console.log(" Cliente criado com sucesso no QuickBooks");
-                    resolve(data);
-                  }
-                });
-              });
-
-              const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
-              
-              console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
-              
-              if (!createdCustomer || !createdCustomer.Id) {
-                console.error(" Resposta inválida do QuickBooks ao criar cliente");
-                throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
-              }
-
-              clientId = createdCustomer.Id;
-              console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
-
-              // Atualizar cliente local com o novo idQuickbooks
-              try {
-                await prisma.client.update({
-                  where: { id: project.client!.id },
-                  data: { idQuickbooks: clientId }
-                });
-                console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
-              } catch (updateError: any) {
-                console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
-                // Não falhar a criação do invoice por causa disso
-              }
-            } catch (createError: any) {
-              console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
-              throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
-            }
-          }
-
-          // 3) Validação final: garantir que temos um clientId válido
-          if (!clientId) {
-            console.error(" ERRO CRÍTICO: clientId não foi definido após processamento");
-            throw new Error("Failed to obtain valid QuickBooks customer ID");
-          }
-
-          console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
-
-        } catch (clientError: any) {
-          console.error(" ERRO ao processar cliente no QuickBooks:", clientError);
-          console.error("Stack trace:", clientError?.stack);
-          throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
         }
 
-        // Verificar se há itens processados
-        if (processedLineItems.length === 0) {
-          throw new Error("No valid items to include in the invoice. Please check the services data.");
+        // 2) Se não tem idQuickbooks válido, criar novo cliente
+        if (!clientId) {
+          console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
+
+          // Validar dados do cliente antes de criar
+          const clientName = project.client!.name?.trim();
+          if (!clientName || clientName.length === 0) {
+            throw new Error("Client name is required to create QuickBooks customer");
+          }
+
+          const clientEmail = project.client!.email?.trim() || "noemail@example.com";
+          console.log(`Email do cliente: ${clientEmail}`);
+
+          const createCustomerData = {
+            DisplayName: clientName,
+            CompanyName: clientName,
+            PrimaryEmailAddr: {
+              Address: clientEmail
+            }
+          };
+
+          console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
+
+          try {
+            const createCustomerResult = await new Promise((resolve, reject) => {
+              qb.createCustomer(createCustomerData, (err: any, data: any) => {
+                if (err) {
+                  console.error(" Erro ao criar cliente no QuickBooks:", err);
+                  console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
+                  reject(err);
+                } else {
+                  console.log(" Cliente criado com sucesso no QuickBooks");
+                  resolve(data);
+                }
+              });
+            });
+
+            const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
+
+            console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
+
+            if (!createdCustomer || !createdCustomer.Id) {
+              console.error(" Resposta inválida do QuickBooks ao criar cliente");
+              throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
+            }
+
+            clientId = createdCustomer.Id;
+            console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
+
+            // Atualizar cliente local com o novo idQuickbooks
+            try {
+              await prisma.client.update({
+                where: { id: project.client!.id },
+                data: { idQuickbooks: clientId }
+              });
+              console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
+            } catch (updateError: any) {
+              console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
+              // Não falhar a criação do invoice por causa disso
+            }
+          } catch (createError: any) {
+            console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
+            throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
+          }
         }
 
-        // Limpar campos internos antes de enviar para QuickBooks
-        const cleanLineItems = processedLineItems.map((item: any) => {
-          const { _realQuantity, _realPrice, ...cleanItem } = item;
-          return cleanItem;
+        // 3) Validação final: garantir que temos um clientId válido
+        if (!clientId) {
+          console.error(" ERRO CRÍTICO: clientId não foi definido após processamento");
+          throw new Error("Failed to obtain valid QuickBooks customer ID");
+        }
+
+        console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
+
+      } catch (clientError: any) {
+        console.error(" ERRO ao processar cliente no QuickBooks:", clientError);
+        console.error("Stack trace:", clientError?.stack);
+        throw new Error(`Error processing client in QuickBooks: ${clientError?.message || clientError?.toString() || 'Unknown error occurred'}`);
+      }
+
+      // Verificar se há itens processados
+      if (processedLineItems.length === 0) {
+        throw new Error("No valid items to include in the invoice. Please check the services data.");
+      }
+
+      // Limpar campos internos antes de enviar para QuickBooks
+      const cleanLineItems = processedLineItems.map((item: any) => {
+        const { _realQuantity, _realPrice, ...cleanItem } = item;
+        return cleanItem;
+      });
+
+      // Obter email do destinatário: prioridade work context, fallback client
+      const workContext = project.workContext;
+      const recipientEmail = workContext?.Email || project.client?.email || "noemail@example.com";
+
+      console.log(` Email de cobrança que será usado: ${recipientEmail}`);
+
+      // Preparar dados da fatura
+      const invoiceData = {
+        Line: cleanLineItems, // Usar itens limpos sem campos internos
+        CustomerRef: {
+          value: clientId
+        },
+        BillEmail: {
+          Address: recipientEmail // CRÍTICO: necessário para gerar InvoiceLink
+        },
+        DueDate: dueDateObj.toISOString().split('T')[0],
+        PrivateNote: description || `Invoice for Project ${project.contract_number}`,
+        AllowOnlineCreditCardPayment: true,
+        AllowOnlineACHPayment: true
+      };
+
+      // Criar a fatura usando SDK
+      console.log("Criando fatura no QuickBooks usando SDK...");
+
+
+      // 1) Criar a fatura
+      const invoiceResult = await new Promise((resolve, reject) => {
+        qb.createInvoice(invoiceData, (err: any, data: any) => {
+          if (err) return reject(err);
+          resolve(data);
         });
+      });
 
-        // Obter email do destinatário: prioridade work context, fallback client
-        const workContext = project.workContext;
-        const recipientEmail = workContext?.Email || project.client?.email || "noemail@example.com";
-        
-        console.log(` Email de cobrança que será usado: ${recipientEmail}`);
+      // 2) Normalize o objeto retornado (alguns SDKs retornam { Invoice: {...} })
+      const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
+      const createdId = created?.Id;
 
-        // Preparar dados da fatura
-        const invoiceData = {
-          Line: cleanLineItems, // Usar itens limpos sem campos internos
-          CustomerRef: {
-            value: clientId
-          },
-          BillEmail: { 
-            Address: recipientEmail // CRÍTICO: necessário para gerar InvoiceLink
-          },
-          DueDate: dueDateObj.toISOString().split('T')[0],
-          PrivateNote: description || `Invoice for Project ${project.contract_number}`,
-          AllowOnlineCreditCardPayment: true,
-          AllowOnlineACHPayment: true
+      // 3) Leia o invoice completo COM include=invoiceLink (garante Balance/TotalAmt/TxnStatus atualizados + link de pagamento)
+      const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId);
+      let inv = (fetched as any)?.Invoice ?? (fetched as any);
+
+      // 4) Tentar obter DocNumber com retry robusto
+      inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
+
+      // 5) Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
+      console.log(` Iniciando busca do InvoiceLink com retry...`);
+      const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, createdId);
+
+      // 6) Derive o status de pagamento
+      function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
+        if (i?.TxnStatus === "Voided") return "voided";
+        const total = Number(i?.TotalAmt ?? 0);
+        const bal = Number(i?.Balance ?? 0);
+        if (total > 0 && bal === 0) return "paid";
+        if (bal > 0 && bal < total) return "partial";
+        return "open";
+      }
+
+      // (opcional) status de entrega
+      const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
+      const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
+
+      // Usar o link obtido via retry (mais confiável) ou fallback para o da resposta inicial
+      let invoiceLink = invoiceLinkFromRetry || inv?.InvoiceLink || null;
+
+      if (invoiceLink) {
+        console.log(`  Link de pagamento QuickBooks capturado com sucesso!`);
+        console.log(` URL: ${invoiceLink}`);
+        console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
+      } else {
+        console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas`);
+        console.warn(` Isso pode indicar:`);
+        console.warn(` 1) Pagamentos online não estão habilitados para esta empresa no QuickBooks`);
+        console.warn(` 2) Email de cobrança (BillEmail) pode estar inválido ou ausente`);
+        console.warn(` 3) Configurações de pagamento precisam ser revisadas no QuickBooks`);
+        // temporario ate o teste real depois excluir a linha abaixo
+        invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
+      }
+
+      const invoiceUrl = invoiceLink;
+
+
+      // 5) Persistir no banco - comportamento baseado na origem da chamada
+      if (calledFromStripe) {
+        // Quando chamado pelo StripeController, retornar apenas IDs do QuickBooks
+        return {
+          success: true,
+          message: "QuickBooks invoice created successfully",
+          quickbooksId: inv.Id,
+          docNumber: inv.DocNumber,
+          invoiceUrl: invoiceUrl, // Incluir URL de pagamento
+          totalAmount: Number(inv?.TotalAmt ?? totalAmount),
+          status: deriveQboInvoicePaymentStatus(inv)
         };
-
-        // Criar a fatura usando SDK
-        console.log("Criando fatura no QuickBooks usando SDK...");
-
-
-        // 1) Criar a fatura
-        const invoiceResult = await new Promise((resolve, reject) => {
-          qb.createInvoice(invoiceData, (err: any, data: any) => {
-            if (err) return reject(err);
-            resolve(data);
-          });
+      } else {
+        // Quando chamado diretamente (rota QuickBooks), persistir no banco local
+        // Primeiro, gerar número sequencial para o invoice
+        const allInvoices = await prisma.invoice.findMany({
+          where: {
+            companyId: project.company_id
+          },
+          select: {
+            externalInvoiceId: true
+          }
         });
 
-        // 2) Normalize o objeto retornado (alguns SDKs retornam { Invoice: {...} })
-        const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
-        const createdId = created?.Id;
+        const numericIds = allInvoices
+          .map(invoice => parseInt(invoice.externalInvoiceId || ""))
+          .filter(num => !isNaN(num) && num > 0);
 
-        // 3) Leia o invoice completo COM include=invoiceLink (garante Balance/TotalAmt/TxnStatus atualizados + link de pagamento)
-        const fetched = await this.getInvoiceWithPaymentLink(qb, account.realmId, createdId); 
-        let inv = (fetched as any)?.Invoice ?? (fetched as any);
-        
-        // 4) Tentar obter DocNumber com retry robusto
-        inv = await this.fetchInvoiceWithRetryForDocNumber(qb, createdId, inv);
-
-        // 5) Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
-        console.log(` Iniciando busca do InvoiceLink com retry...`); 
-        const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, createdId);
-        
-        // 6) Derive o status de pagamento
-        function deriveQboInvoicePaymentStatus(i: any): "voided" | "paid" | "partial" | "open" {
-          if (i?.TxnStatus === "Voided") return "voided";
-          const total = Number(i?.TotalAmt ?? 0);
-          const bal = Number(i?.Balance ?? 0);
-          if (total > 0 && bal === 0) return "paid";
-          if (bal > 0 && bal < total) return "partial";
-          return "open";
+        let nextInvoiceNumber = 1000;
+        if (numericIds.length > 0) {
+          const maxNumber = Math.max(...numericIds);
+          nextInvoiceNumber = maxNumber + 1;
         }
 
-        // (opcional) status de entrega
-        const emailStatus = inv?.EmailStatus ?? null;   // "NotSet" | "NeedToSend" | "EmailSent"
-        const printStatus = inv?.PrintStatus ?? null;   // "NotSet" | "NeedToPrint" | "PrintComplete"
+        console.log(` Número sequencial do invoice: ${nextInvoiceNumber}`);
 
-        // Usar o link obtido via retry (mais confiável) ou fallback para o da resposta inicial
-        let invoiceLink = invoiceLinkFromRetry || inv?.InvoiceLink || null;
-        
-        if (invoiceLink) {
-          console.log(`  Link de pagamento QuickBooks capturado com sucesso!`);
-          console.log(` URL: ${invoiceLink}`);
-          console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
-        } else {
-          console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas`);
-          console.warn(` Isso pode indicar:`);
-          console.warn(` 1) Pagamentos online não estão habilitados para esta empresa no QuickBooks`);
-          console.warn(` 2) Email de cobrança (BillEmail) pode estar inválido ou ausente`);
-          console.warn(` 3) Configurações de pagamento precisam ser revisadas no QuickBooks`);
-          // temporario ate o teste real depois excluir a linha abaixo
-          invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${inv.Id}`;
-        }
-        
-        const invoiceUrl = invoiceLink;
-        
-
-        // 5) Persistir no banco - comportamento baseado na origem da chamada
-        if (calledFromStripe) {
-          // Quando chamado pelo StripeController, retornar apenas IDs do QuickBooks
-          return {
-            success: true,
-            message: "QuickBooks invoice created successfully",
-            quickbooksId: inv.Id,
-            docNumber: inv.DocNumber,
-            invoiceUrl: invoiceUrl, // Incluir URL de pagamento
+        const newInvoice = await prisma.invoice.create({
+          data: {
+            externalInvoiceId: nextInvoiceNumber.toString(), // Número sequencial
+            invoiceType: "quickbooks",
+            showPaymentMethods: showPaymentMethods || true,
+            invoiceUrl: invoiceUrl, // Link público de pagamento do QuickBooks
+            externalDocNumber: inv.DocNumber,
+            idQuickbookContabio: inv.Id, // ID real do QuickBooks
+            idQuickBooksRef: inv.Id, // Referência duplicada
+            docNumberQuickBooksContabio: inv.DocNumber, // DocNumber do QB
+            status: deriveQboInvoicePaymentStatus(inv), // Status real do QB
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
-            status: deriveQboInvoicePaymentStatus(inv)
-          };
-        } else {
-          // Quando chamado diretamente (rota QuickBooks), persistir no banco local
-          // Primeiro, gerar número sequencial para o invoice
-          const allInvoices = await prisma.invoice.findMany({
-            where: {
-              companyId: project.company_id
-            },
-            select: {
-              externalInvoiceId: true
+            dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
+            description: description || `Invoice for Project ${project.contract_number}`,
+            projectId: project.id,
+            companyId: project.company_id,
+            user_id: userId,
+            percentageCoefficient: coefficientPerfentage || 1,
+            type_value: type_value,
+            type_invoicebase: type_invoicebase as "project" | "estimate" | null,
+            multi_emails: multi_emails || project.client?.email,
+            isStandaloneInvoice: isStandaloneInvoice || false,
+            createdAt: date_creation ? new Date(date_creation) : new Date(),
+
+            InvoiceItems: {
+              create: processedLineItems.map((item: any) => ({
+                name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
+                description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
+                // Valores reais para exibição/cálculo local
+                quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
+                price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
+                totalAmount: item.Amount,
+                // Valores ajustados enviados ao QuickBooks
+                qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
+                qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
+              }))
             }
-          });
+          },
+          include: { InvoiceItems: true }
+        });
 
-          const numericIds = allInvoices
-            .map(invoice => parseInt(invoice.externalInvoiceId || ""))
-            .filter(num => !isNaN(num) && num > 0);
-
-          let nextInvoiceNumber = 1000;
-          if (numericIds.length > 0) {
-            const maxNumber = Math.max(...numericIds);
-            nextInvoiceNumber = maxNumber + 1;
+        // Registrar na timeline
+        await prisma.invoiceTimeline.create({
+          data: {
+            description: `QuickBooks invoice created successfully (Invoice #${nextInvoiceNumber}, QB ID: ${inv.Id}, DocNumber: ${inv.DocNumber || 'N/A'})`,
+            invoiceId: newInvoice.id
           }
+        });
 
-          console.log(` Número sequencial do invoice: ${nextInvoiceNumber}`);
+        console.log(` Invoice criado com sucesso: ${newInvoice.id}`);
 
-          const newInvoice = await prisma.invoice.create({
-            data: {
-              externalInvoiceId: nextInvoiceNumber.toString(), // Número sequencial
-              invoiceType: "quickbooks",
-              invoiceUrl: invoiceUrl, // Link público de pagamento do QuickBooks
-              externalDocNumber: inv.DocNumber,
-              idQuickbookContabio: inv.Id, // ID real do QuickBooks
-              idQuickBooksRef: inv.Id, // Referência duplicada
-              docNumberQuickBooksContabio: inv.DocNumber, // DocNumber do QB
-              status: deriveQboInvoicePaymentStatus(inv), // Status real do QB
-              totalAmount: Number(inv?.TotalAmt ?? totalAmount),
-              dueDate: inv?.DueDate ? new Date(inv.DueDate) : dueDateObj,
-              description: description || `Invoice for Project ${project.contract_number}`,
-              projectId: project.id,
-              companyId: project.company_id,
-              user_id: userId,
-              percentageCoefficient: coefficientPerfentage || 1,
-              type_value: type_value,
-              type_invoicebase: type_invoicebase as "project" | "estimate" | null,
-              multi_emails: multi_emails || project.client?.email,
-              isStandaloneInvoice: isStandaloneInvoice || false,
-              createdAt: date_creation ? new Date(date_creation) : new Date(),
-
-              InvoiceItems: {
-                create: processedLineItems.map((item: any) => ({
-                  name: item?.SalesItemLineDetail?.ItemRef?.name || "Service",
-                  description: item.Description, // Já foi limpo pela função cleanDescriptionForQuickBooks
-                  // Valores reais para exibição/cálculo local
-                  quantity: item._realQuantity || item?.SalesItemLineDetail?.Qty || 1,
-                  price: item._realPrice || item?.SalesItemLineDetail?.UnitPrice || item.Amount,
-                  totalAmount: item.Amount,
-                  // Valores ajustados enviados ao QuickBooks
-                  qboQuantity: item?.SalesItemLineDetail?.Qty || 1,
-                  qboPrice: item?.SalesItemLineDetail?.UnitPrice || item.Amount
-                }))
-              }
-            },
-            include: { InvoiceItems: true }
-          });
-
-          // Registrar na timeline
-          await prisma.invoiceTimeline.create({
-            data: {
-              description: `QuickBooks invoice created successfully (Invoice #${nextInvoiceNumber}, QB ID: ${inv.Id}, DocNumber: ${inv.DocNumber || 'N/A'})`,
-              invoiceId: newInvoice.id
-            }
-          });
-
-          console.log(` Invoice criado com sucesso: ${newInvoice.id}`);
-
-          return {
-            success: true,
-            message: "QuickBooks invoice created successfully",
-            invoice: newInvoice
-          };
-        }
+        return {
+          success: true,
+          message: "QuickBooks invoice created successfully",
+          invoice: newInvoice
+        };
+      }
 
     } catch (error: any) {
       console.error("Erro detalhado ao criar fatura no QuickBooks:", error);
 
       // Extrair mensagem de erro do QuickBooks
       let errorMessage = error.message || error.toString();
-      
+
       // Se for um erro do QuickBooks com estrutura Fault
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
@@ -643,7 +645,7 @@ export class QuickBooksInvoiceController {
             where: { id: projectId },
             select: { company_id: true }
           });
-          
+
           if (projectForError?.company_id) {
             await prisma.quickBooksAccount.update({
               where: { company_id: projectForError.company_id },
@@ -676,17 +678,17 @@ export class QuickBooksInvoiceController {
     totalAmountTarget?: number; // Valor total alvo (vindo do Stripe/banco local)
     calledFromStripe?: boolean; // Parâmetro para identificar origem
   }) {
-    const { 
-      quickBooksInvoiceId, 
-      projectId, 
-      description, 
-      dueDate, 
-      userId, 
-      coefficientPerfentage, 
-      type_value, 
-      services, 
+    const {
+      quickBooksInvoiceId,
+      projectId,
+      description,
+      dueDate,
+      userId,
+      coefficientPerfentage,
+      type_value,
+      services,
       totalAmountTarget,
-      calledFromStripe = false 
+      calledFromStripe = false
     } = params;
 
     try {
@@ -734,7 +736,7 @@ export class QuickBooksInvoiceController {
         );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        
+
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
           await prisma.quickBooksAccount.update({
@@ -743,7 +745,7 @@ export class QuickBooksInvoiceController {
           });
           throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
         }
-        
+
         // Para outros erros (timeout, 500, etc.), não marcar como reauth
         throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
@@ -762,7 +764,7 @@ export class QuickBooksInvoiceController {
       });
 
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
-      
+
       if (!currentInvoice || !currentInvoice.Id) {
         throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
       }
@@ -847,7 +849,7 @@ export class QuickBooksInvoiceController {
 
         const rawItemName = service?.name?.trim() || "Service";
         const itemName = this.cleanServiceNameForQuickBooks(rawItemName);
-        
+
         // Validar se o nome do item não está vazio após limpeza
         if (!itemName || itemName === "Service") {
           console.warn("Nome do serviço vazio ou inválido após limpeza, ignorando:", service);
@@ -872,7 +874,7 @@ export class QuickBooksInvoiceController {
 
         // Calcular proporção do serviço no valor total original do projeto
         const serviceProportion = originalProjectValue > 0 ? originalServiceAmount / originalProjectValue : 0;
-        
+
         // Aplicar a proporção ao valor da fatura com coeficiente
         const serviceAmountWithCoefficient = invoiceAmountWithCoefficient * serviceProportion;
 
@@ -891,7 +893,7 @@ export class QuickBooksInvoiceController {
 
       // Definir o valor alvo do Stripe/banco local se fornecido, senão usar o calculado
       const totalTargetAmountUpdate = totalAmountTarget || invoiceAmountWithCoefficient;
-      
+
       console.log(`Total com coeficiente calculado (Update): ${totalWithCoefficientCalculatedUpdate}, Total alvo: ${totalTargetAmountUpdate}`);
 
       // Agora processar os itens com ajuste para garantir o total exato (UPDATE)
@@ -904,10 +906,10 @@ export class QuickBooksInvoiceController {
         let finalAmount;
         let unitPrice;
         let exactAmount;
-        
+
         // SOLUÇÃO: Usar Qty=1 e Rate=valor total para evitar limitação de arredondamento do QB (UPDATE)
         const qtyForQBUpdate = 1; // Sempre usar quantidade 1 no QuickBooks
-        
+
         if (isLastItem) {
           // Para o último item, usar o valor restante para garantir total exato
           const remainingAmount = await this.round2(totalTargetAmountUpdate - totalProcessedUpdate);
@@ -920,9 +922,9 @@ export class QuickBooksInvoiceController {
           unitPrice = await this.round2(finalAmount); // Rate = valor total (já que Qty=1)
           exactAmount = await this.round2(unitPrice * qtyForQBUpdate); // Amount = Rate × 1
         }
-        
+
         totalProcessedUpdate += exactAmount;
-        
+
         // Log detalhado para monitoramento
         console.log(`QB Update - ${calc.itemName}: Valor original $${calc.originalServiceAmount}, Valor c/ coeficiente $${calc.serviceAmountWithCoefficient}, Qty QB=1, Rate $${unitPrice}, Amount exato $${exactAmount}${isLastItem ? ' (último item - ajustado)' : ''}`);
 
@@ -974,7 +976,7 @@ export class QuickBooksInvoiceController {
       }
 
       console.log(`Total calculado (Update): ${totalProcessedUpdate}, Total target: ${totalTargetAmountUpdate}, Diferença: ${Math.abs(totalProcessedUpdate - totalTargetAmountUpdate)}`);
-      
+
 
       // Verificar se há itens processados
       if (processedLineItems.length === 0) {
@@ -997,7 +999,7 @@ export class QuickBooksInvoiceController {
       // Obter email do destinatário para garantir que o BillEmail esteja configurado
       const workContext = project.workContext;
       const recipientEmail = workContext?.Email || project.client?.email || currentInvoice.BillEmail?.Address || "noemail@example.com";
-      
+
       console.log(` Email de cobrança para update: ${recipientEmail}`);
 
       // Preparar dados da fatura para atualização
@@ -1006,7 +1008,7 @@ export class QuickBooksInvoiceController {
         SyncToken: currentInvoice.SyncToken,
         Line: cleanLineItemsUpdate, // Usar itens limpos sem campos internos
         CustomerRef: currentInvoice.CustomerRef, // Manter o cliente atual
-        BillEmail: { 
+        BillEmail: {
           Address: recipientEmail //  necessário para gerar InvoiceLink
         },
         DueDate: dueDateObj.toISOString().split('T')[0],
@@ -1038,7 +1040,7 @@ export class QuickBooksInvoiceController {
       let updatedInv = (fetchedUpdated as any)?.Invoice ?? (fetchedUpdated as any);
 
       // Buscar InvoiceLink com retry/polling (pode não estar disponível imediatamente)
-      console.log(` Iniciando busca do InvoiceLink após update com retry...`); 
+      console.log(` Iniciando busca do InvoiceLink após update com retry...`);
       const invoiceLinkFromRetry = await this.getInvoiceLinkWithRetry(qb, account.realmId, updatedId);
 
       // Derive o status de pagamento
@@ -1053,18 +1055,18 @@ export class QuickBooksInvoiceController {
 
       // Usar o link obtido via retry (mais confiável) ou fallback para o da resposta inicial
       let invoiceLink = invoiceLinkFromRetry || updatedInv?.InvoiceLink || null;
-      
+
       if (invoiceLink) {
         console.log(`  Link de pagamento QuickBooks atualizado com sucesso!`);
         console.log(` URL: ${invoiceLink}`);
         console.log(` Origem: ${invoiceLinkFromRetry ? 'Retry (confiável)' : 'Resposta inicial'}`);
       } else {
         console.warn(`  ATENÇÃO: InvoiceLink não disponível após todas as tentativas (update)`);
-    
+
         // temporario ate o teste real depois excluir a linha abaixo
         invoiceLink = `${process.env.URL_API}/api/quickbooks/invoice/payment-link/${updatedInv.Id}`;
       }
-      
+
       const invoiceUrl = invoiceLink;
 
       console.log(`Invoice ${quickBooksInvoiceId} atualizado com sucesso no QuickBooks`);
@@ -1136,7 +1138,7 @@ export class QuickBooksInvoiceController {
 
       // Extrair mensagem de erro do QuickBooks
       let errorMessage = error.message || error.toString();
-      
+
       // Se for um erro do QuickBooks com estrutura Fault
       if (error.Fault && error.Fault.Error && Array.isArray(error.Fault.Error) && error.Fault.Error.length > 0) {
         const qbError = error.Fault.Error[0];
@@ -1153,7 +1155,7 @@ export class QuickBooksInvoiceController {
             where: { id: projectId },
             select: { company_id: true }
           });
-          
+
           if (projectForError?.company_id) {
             await prisma.quickBooksAccount.update({
               where: { company_id: projectForError.company_id },
@@ -1175,7 +1177,7 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
+    const { description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
 
     try {
       console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
@@ -1243,6 +1245,7 @@ export class QuickBooksInvoiceController {
         projectId,
         description,
         type_invoicebase,
+        showPaymentMethods: showPaymentMethods || true,
         dueDate,
         userId,
         coefficientPerfentage,
@@ -1278,8 +1281,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -1447,7 +1450,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -1475,9 +1478,9 @@ export class QuickBooksInvoiceController {
       }
 
       if (!invoice.idQuickbookContabio) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "QuickBooks invoice ID missing",
-          message: "This invoice has not been synced with QuickBooks yet" 
+          message: "This invoice has not been synced with QuickBooks yet"
         });
       }
 
@@ -1492,14 +1495,14 @@ export class QuickBooksInvoiceController {
       // Obter email do destinatário: prioridade para work context, fallback para cliente
       const workContext = invoice.project?.workContext;
       const client = invoice.project?.client;
-      
+
       const recipientEmail = workContext?.Email || client?.email;
       const recipientName = workContext?.Name || client?.name || 'Client';
-      
+
       if (!recipientEmail) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Recipient email not found",
-          message: "Neither work context nor client has a valid email address" 
+          message: "Neither work context nor client has a valid email address"
         });
       }
 
@@ -1512,9 +1515,9 @@ export class QuickBooksInvoiceController {
       });
 
       if (!quickBooksAccount) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: "QuickBooks account not found",
-          message: "Please connect your QuickBooks account first" 
+          message: "Please connect your QuickBooks account first"
         });
       }
 
@@ -1535,8 +1538,8 @@ export class QuickBooksInvoiceController {
       // Enviar a fatura pelo QuickBooks usando o ID real do QuickBooks
       await new Promise((resolve, reject) => {
         qb.sendInvoicePdf(
-          invoice.idQuickbookContabio, 
-          recipientEmail, 
+          invoice.idQuickbookContabio,
+          recipientEmail,
           (err: any, data: any) => {
             if (err) {
               console.error("Erro ao enviar invoice pelo QuickBooks SDK:", err);
@@ -1579,8 +1582,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -1611,7 +1614,7 @@ export class QuickBooksInvoiceController {
 
     try {
       // Se não foi fornecido companyId, busca pela userId (fallback)
-         
+
       if (!companyId) {
         throw new Error("Company ID is required for QuickBooks operations");
       }
@@ -1638,7 +1641,7 @@ export class QuickBooksInvoiceController {
         );
       } catch (companyError: any) {
         console.error("Erro ao buscar informações da empresa:", companyError);
-        
+
         // Só marcar needsReauthorization se for realmente um erro de autorização
         if (shouldRequireReauthorization(companyError)) {
           await prisma.quickBooksAccount.update({
@@ -1647,7 +1650,7 @@ export class QuickBooksInvoiceController {
           });
           throw new Error("Insufficient permissions - You need to reconnect your QuickBooks account with additional permissions");
         }
-        
+
         // Para outros erros (timeout, 500, etc.), não marcar como reauth
         throw new Error(`QuickBooks connection error: ${companyError.message || 'Unknown error'}`);
       }
@@ -1666,7 +1669,7 @@ export class QuickBooksInvoiceController {
       });
 
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
-      
+
       if (!currentInvoice || !currentInvoice.Id) {
         throw new Error(`Invoice ${quickBooksInvoiceId} not found in QuickBooks`);
       }
@@ -1714,7 +1717,7 @@ export class QuickBooksInvoiceController {
 
       // Normalize o objeto retornado
       const voided = (voidResult as any)?.Invoice ?? (voidResult as any);
-      
+
       console.log(`Invoice ${quickBooksInvoiceId} cancelado com sucesso no QuickBooks`);
 
       if (calledFromStripe) {
@@ -1728,7 +1731,7 @@ export class QuickBooksInvoiceController {
       } else {
         // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
         const localInvoice = await prisma.invoice.findFirst({
-          where: { 
+          where: {
             OR: [
               { externalInvoiceId: quickBooksInvoiceId },
               { idQuickbookContabio: quickBooksInvoiceId }
@@ -1740,10 +1743,10 @@ export class QuickBooksInvoiceController {
           // IMPORTANTE: Manter o valor original (totalAmount) no banco local
           // QuickBooks pode zerar o valor ao fazer void, mas queremos preservar o histórico
           console.log(`Mantendo totalAmount original: ${localInvoice.totalAmount}`);
-          
+
           await prisma.invoice.update({
             where: { id: localInvoice.id },
-            data: { 
+            data: {
               status: "void",
               updatedAt: new Date()
               // NÃO atualizar totalAmount - manter o valor original
@@ -1822,7 +1825,7 @@ export class QuickBooksInvoiceController {
       console.log(`Iniciando deleção do invoice ${quickBooksInvoiceId} no QuickBooks...`);
 
       // Obter cliente QuickBooks
-      const { qb } = await getQbClientWithAccountOrThrow(userId, companyId );
+      const { qb } = await getQbClientWithAccountOrThrow(userId, companyId);
 
       // Buscar a fatura atual para obter o SyncToken
       console.log(`Buscando fatura ${quickBooksInvoiceId} no QuickBooks...`);
@@ -1832,9 +1835,9 @@ export class QuickBooksInvoiceController {
           qb.getInvoice(quickBooksInvoiceId, (err: any, data: any) => {
             if (err) {
               // Verificar se é erro de "not found" (404 ou erro específico)
-              if (err.statusCode === 404 || err.statusCode === 400 || 
-                  (err.Fault && err.Fault.Error && Array.isArray(err.Fault.Error) && 
-                   err.Fault.Error.some((e: any) => e.code === '610' || e.code === '100'))) {
+              if (err.statusCode === 404 || err.statusCode === 400 ||
+                (err.Fault && err.Fault.Error && Array.isArray(err.Fault.Error) &&
+                  err.Fault.Error.some((e: any) => e.code === '610' || e.code === '100'))) {
                 console.warn(`⚠️ Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks (pode ter sido deletado manualmente)`);
                 resolve(null); // Retornar null ao invés de rejeitar
               } else {
@@ -1875,7 +1878,7 @@ export class QuickBooksInvoiceController {
       }
 
       const currentInvoice = (currentInvoiceData as any)?.Invoice || (currentInvoiceData as any);
-      
+
       if (!currentInvoice || !currentInvoice.Id) {
         console.warn(` Invoice ${quickBooksInvoiceId} não encontrado no QuickBooks após parse`);
         return {
@@ -1903,7 +1906,7 @@ export class QuickBooksInvoiceController {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken
       };
-      
+
       const deleteResult = await new Promise((resolve, reject) => {
         qb.deleteInvoice(deletePayload, (err: any, data: any) => {
           if (err) {
@@ -1918,7 +1921,7 @@ export class QuickBooksInvoiceController {
 
       // Normalize o objeto retornado
       const deleted = (deleteResult as any)?.Invoice ?? (deleteResult as any);
-      
+
       console.log(`Invoice ${quickBooksInvoiceId} deletado com sucesso no QuickBooks`);
 
       if (calledFromStripe) {
@@ -1932,7 +1935,7 @@ export class QuickBooksInvoiceController {
       } else {
         // Quando chamado diretamente (rota QuickBooks), atualizar no banco local
         const localInvoice = await prisma.invoice.findFirst({
-          where: { 
+          where: {
             OR: [
               { externalInvoiceId: quickBooksInvoiceId },
               { idQuickbookContabio: quickBooksInvoiceId }
@@ -1943,7 +1946,7 @@ export class QuickBooksInvoiceController {
         if (localInvoice) {
           await prisma.invoice.update({
             where: { id: localInvoice.id },
-            data: { 
+            data: {
               idQuickbookContabio: null,
               docNumberQuickBooksContabio: null,
               updatedAt: new Date()
@@ -2011,7 +2014,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -2036,11 +2039,11 @@ export class QuickBooksInvoiceController {
       // RULE 1: Handle conversion from stripe/custom to quickbooks
       let isConvertingToQuickbooks = false;
       let hadAdministrativeQboInvoice = false;
-      
+
       if (invoice.invoiceType === "stripe" || invoice.invoiceType === "custom") {
         console.log(" Invoice is being converted from", invoice.invoiceType, "to quickbooks");
         isConvertingToQuickbooks = true;
-        
+
         // Check if there was an administrative QBO invoice that needs to be deleted
         if (invoice.idQuickbookContabio && invoice.docNumberQuickBooksContabio) {
           console.log(" Found administrative QBO invoice that needs to be deleted");
@@ -2096,7 +2099,7 @@ export class QuickBooksInvoiceController {
 
           if (deleteResult.success || deleteResult.notFound) {
             console.log(" Administrative QBO invoice deleted successfully");
-            
+
             // Clear QB references from local invoice
             await prisma.invoice.update({
               where: { id: invoice.id },
@@ -2126,7 +2129,7 @@ export class QuickBooksInvoiceController {
       console.log(" Delegando atualização para", isConvertingToQuickbooks ? "createInvoiceInternal" : "updateInvoiceInternal...");
 
       let result;
-      
+
       if (isConvertingToQuickbooks) {
         // Create new QBO invoice (conversion from stripe/custom)
         // Use calledFromStripe: true to only create in QBO, not in local DB
@@ -2227,7 +2230,7 @@ export class QuickBooksInvoiceController {
       } else {
         // Update existing QBO invoice
         result = await this.updateInvoiceInternal({
-          quickBooksInvoiceId: invoice.idQuickbookContabio!, 
+          quickBooksInvoiceId: invoice.idQuickbookContabio!,
           projectId: invoice.projectId,
           description,
           dueDate,
@@ -2266,8 +2269,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -2296,7 +2299,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -2394,8 +2397,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é um erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -2419,14 +2422,14 @@ export class QuickBooksInvoiceController {
         // Se não encontrou no QuickBooks, deletar apenas localmente
         try {
           const invoice = await prisma.invoice.findFirst({
-            where: { 
+            where: {
               OR: [
                 { id: invoiceId },
                 { externalInvoiceId: invoiceId }
               ]
             }
           });
-          
+
           if (invoice) {
             await prisma.invoice.delete({
               where: { id: invoice.id }
@@ -2459,7 +2462,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice pelo ID local (pode ser UUID ou número sequencial)
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -2485,9 +2488,9 @@ export class QuickBooksInvoiceController {
       }
 
       if (!invoice.idQuickbookContabio) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "QuickBooks invoice ID missing",
-          message: "This invoice has not been synced with QuickBooks yet" 
+          message: "This invoice has not been synced with QuickBooks yet"
         });
       }
 
@@ -2529,8 +2532,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é um erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -2629,7 +2632,7 @@ export class QuickBooksInvoiceController {
 
     // Extrair o item da resposta (pode estar em created.Item ou diretamente em created)
     const item = created?.Item || created;
-    
+
     if (!item || !item.Id) {
       console.error('Item criado mas sem ID válido:', created);
       throw new Error(`Failed to create or retrieve item ID for: ${name}`);
@@ -2654,7 +2657,7 @@ export class QuickBooksInvoiceController {
 
     // remove símbolos de moeda e espaços, mantém apenas números, pontos e vírgulas
     s = s.replace(/[^\d.,-]/g, '');
-    
+
     // Se ficou vazio após limpeza, retornar 0
     if (!s) return 0;
 
@@ -2763,7 +2766,7 @@ export class QuickBooksInvoiceController {
     return cleanName;
   }
 
-  
+
 
   /**
    * Função para obter DocNumber
@@ -2779,10 +2782,10 @@ export class QuickBooksInvoiceController {
       console.log(`DocNumber disponível: ${fallbackInvoice.DocNumber}`);
       return fallbackInvoice;
     }
-    
+
     console.log(`DocNumber não disponível para invoice ${invoiceId}.`);
     console.log(`Isso é esperado quando a empresa tem "Custom transaction numbers" habilitado no QuickBooks.`);
-    
+
     // Retornar o invoice sem DocNumber (será null)
     return fallbackInvoice;
   }
@@ -2799,7 +2802,7 @@ export class QuickBooksInvoiceController {
   async getInvoiceWithPaymentLink(qb: any, realmId: string, invoiceId: string): Promise<any> {
     try {
       console.log(` Buscando invoice com link de pagamento: ${invoiceId}`);
-      
+
       // Usar o SDK do QuickBooks diretamente
       return new Promise((resolve, reject) => {
         qb.getInvoice(invoiceId, (err: any, data: any) => {
@@ -2828,12 +2831,12 @@ export class QuickBooksInvoiceController {
    */
   async getInvoiceLinkWithRetry(qb: any, realmId: string, invoiceId: string): Promise<string | null> {
     console.log(` [Retry] Iniciando polling para InvoiceLink: ${invoiceId}`);
-    
+
     // Tentar até 6 vezes com backoff exponencial usando o SDK do QuickBooks
     for (let attempt = 1; attempt <= 6; attempt++) {
       try {
         console.log(` [Retry] Tentativa ${attempt}/6 para obter InvoiceLink usando SDK...`);
-        
+
         // Usar o SDK do QuickBooks em vez de axios direto (resolve problemas de autenticação)
         const result: any = await new Promise((resolve, reject) => {
           qb.getInvoice(invoiceId, (err: any, invoice: any) => {
@@ -2841,36 +2844,36 @@ export class QuickBooksInvoiceController {
             resolve(invoice);
           });
         });
-        
+
         const inv = result?.Invoice ?? result;
         const link = inv?.InvoiceLink;
-        
+
         // Log completo da resposta para debug na primeira tentativa
         if (attempt === 1) {
           console.log(` [Retry] Resposta do SDK (primeira tentativa):`);
           console.log(JSON.stringify(inv, null, 2));
         }
-        
+
         if (link && !link.includes('comingSoonview')) {
           // Só aceitar se o link for válido (não for o placeholder do sandbox)
           console.log(` [Retry]  InvoiceLink encontrado na tentativa ${attempt}: ${link}`);
           return link;
         }
-        
+
         if (link) {
           console.log(` [Retry]  InvoiceLink encontrado mas é placeholder do Sandbox: ${link}`);
         } else {
           console.log(` [Retry]  InvoiceLink não disponível na tentativa ${attempt}`);
         }
-        
+
         // Backoff exponencial: 500ms, 1s, 1.5s, 2s, 2.5s, 3s
         const delay = 500 * attempt;
         console.log(` [Retry] Aguardando ${delay}ms antes da próxima tentativa...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        
+
       } catch (error: any) {
         console.warn(` [Retry] Erro na tentativa ${attempt}:`, error?.message || error);
-        
+
         // Se não for a última tentativa, continuar
         if (attempt < 6) {
           const delay = 500 * attempt;
@@ -2878,7 +2881,7 @@ export class QuickBooksInvoiceController {
         }
       }
     }
-    
+
     console.warn(` [Retry]  InvoiceLink não disponível após 6 tentativas`);
     return null;
   }
@@ -2897,7 +2900,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice no banco de dados
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -2913,17 +2916,17 @@ export class QuickBooksInvoiceController {
       });
 
       if (!invoice) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: "Invoice not found",
-          message: "The specified invoice does not exist" 
+          message: "The specified invoice does not exist"
         });
       }
 
       // Verificar se é um invoice QuickBooks
       if (invoice.invoiceType !== "quickbooks") {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Invalid invoice type",
-          message: "This endpoint is only for QuickBooks invoices" 
+          message: "This endpoint is only for QuickBooks invoices"
         });
       }
 
@@ -2939,16 +2942,16 @@ export class QuickBooksInvoiceController {
 
       // Se não tiver invoiceUrl, buscar no QuickBooks
       if (!invoice.idQuickbookContabio) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "QuickBooks invoice ID missing",
-          message: "This invoice has not been synced with QuickBooks yet" 
+          message: "This invoice has not been synced with QuickBooks yet"
         });
       }
 
       if (!invoice.project?.company_id) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Company not found",
-          message: "Invoice does not have an associated company" 
+          message: "Invoice does not have an associated company"
         });
       }
 
@@ -2972,7 +2975,7 @@ export class QuickBooksInvoiceController {
       // Salvar o link no banco de dados
       await prisma.invoice.update({
         where: { id: invoice.id },
-        data: { 
+        data: {
           invoiceUrl: invoiceLink,
           updatedAt: new Date()
         }
@@ -2991,8 +2994,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
@@ -3038,7 +3041,7 @@ export class QuickBooksInvoiceController {
 
       // Buscar o invoice no banco de dados
       const invoice = await prisma.invoice.findFirst({
-        where: { 
+        where: {
           OR: [
             { id: invoiceId },
             { externalInvoiceId: invoiceId }
@@ -3065,39 +3068,39 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é um invoice QuickBooks
       if (invoice.invoiceType !== "quickbooks") {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Invalid invoice type",
-          message: "This endpoint is only for QuickBooks invoices" 
+          message: "This endpoint is only for QuickBooks invoices"
         });
       }
 
       // Verificar se o invoice já está pago
       if (invoice.status === "paid") {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Invoice already paid",
-          message: "This invoice has already been marked as paid" 
+          message: "This invoice has already been marked as paid"
         });
       }
 
       // Verificar se o invoice já foi cancelado
       if (invoice.status === "void" || invoice.status === "canceled") {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Invoice canceled",
-          message: "Cannot register payment for a canceled invoice" 
+          message: "Cannot register payment for a canceled invoice"
         });
       }
 
       if (!invoice.idQuickbookContabio) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "QuickBooks invoice ID missing",
-          message: "This invoice has not been synced with QuickBooks yet" 
+          message: "This invoice has not been synced with QuickBooks yet"
         });
       }
 
       if (!invoice.project?.company_id) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Company not found",
-          message: "Invoice does not have an associated company" 
+          message: "Invoice does not have an associated company"
         });
       }
 
@@ -3203,7 +3206,7 @@ export class QuickBooksInvoiceController {
       // Se não tiver conexão QB, calcular status baseado nos dados locais
       if (!hasQbConnection) {
         console.log(`[QuickBooks Payment] Calculando status baseado em dados locais...`);
-        
+
         // Buscar todos os pagamentos já registrados para este invoice
         const existingPayments = await prisma.invoicePayment.findMany({
           where: { invoiceId: invoice.id }
@@ -3303,7 +3306,7 @@ export class QuickBooksInvoiceController {
         }
       }
 
-      const successMessage = hasQbConnection 
+      const successMessage = hasQbConnection
         ? "Payment registered successfully in QuickBooks and locally"
         : "Payment registered successfully locally (QuickBooks connection unavailable)";
 
@@ -3326,8 +3329,8 @@ export class QuickBooksInvoiceController {
 
       // Verificar se é erro de autorização
       if (error.message && (
-        error.message.includes("401") || 
-        error.message.includes("403") || 
+        error.message.includes("401") ||
+        error.message.includes("403") ||
         error.message.includes("Insufficient permissions") ||
         error.message.includes("invalid_grant") ||
         error.message.includes("token")
