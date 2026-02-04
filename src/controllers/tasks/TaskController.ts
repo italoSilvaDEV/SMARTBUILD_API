@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { SocketService } from "../../services/SocketService";
 
 export class TaskController {
   private async createTaskNotification(
@@ -13,9 +14,12 @@ export class TaskController {
   ) {
     if (!prisma || !prisma.taskNotification) return;
     try {
-      await prisma.taskNotification.create({
+      const notification = await prisma.taskNotification.create({
         data: { type, message, taskId, userId, actorId: actorId || null }
       });
+
+      // Emitir via Socket.io
+      SocketService.emitToUser(userId, 'new_notification', notification);
     } catch (error) {
       console.error("[TaskController.createTaskNotification] Error:", error);
     }

@@ -1,4 +1,6 @@
 import express from 'express';
+import { createServer } from 'http';
+import { SocketService } from './services/SocketService';
 import { router } from './routes/routes';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -16,6 +18,10 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
+const server = createServer(app);
+
+// Inicializar Socket.io
+SocketService.init(server);
 
 app.use(cors({
   origin: '*',
@@ -62,7 +68,7 @@ app.use(express.static('public'));
   setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
 })();
 
-app.listen(4003, () =>
+server.listen(4003, () =>
   console.log("server is running on http://localhost:4003")
 )
 

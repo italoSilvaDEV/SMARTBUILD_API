@@ -42,7 +42,10 @@ export class UserAttendanceController {
         } catch (error: any) {
             console.error('[AttendanceController] Error in checkInByServiceProject:', error);
             const status = this.mapErrorToStatus(error.message);
-            res.status(status).json({ error: error.message });
+            res.status(status).json({ 
+                error: error.message,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+            });
         }
     }
 

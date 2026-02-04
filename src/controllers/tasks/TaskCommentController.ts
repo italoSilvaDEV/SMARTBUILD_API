@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { SocketService } from "../../services/SocketService";
 
 export class TaskCommentController {
   // Criar um comentário em uma task
@@ -73,8 +74,16 @@ export class TaskCommentController {
       }
 
       if (notificationsToCreate.length > 0 && prisma.taskNotification) {
-        await prisma.taskNotification.createMany({
-          data: notificationsToCreate
+        const createdNotifications = await Promise.all(
+          notificationsToCreate.map(n => prisma.taskNotification.create({ data: n }))
+        );
+
+        // Emitir via Socket.io para cada usuário notificado
+        createdNotifications.forEach(notification => {
+          SocketService.emitToUser(notification.userId, 'new_notification', {
+            ...notification,
+            actor: { id: authorId, name: author?.name }
+          });
         });
       }
 

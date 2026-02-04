@@ -22,7 +22,7 @@ export class TaskNotificationController {
         where: whereClause,
         include: {
           actor: { select: { id: true, name: true, avatar: true } },
-          task: { select: { id: true, title: true } }
+          task: { select: { id: true, title: true, projectId: true } }
         },
         orderBy: { createdAt: "desc" },
         take: parseInt(limit as string),
