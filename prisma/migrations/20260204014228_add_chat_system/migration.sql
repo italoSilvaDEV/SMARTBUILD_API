@@ -1,11 +1,8 @@
--- DropForeignKey
-ALTER TABLE `sales_deal` DROP FOREIGN KEY `sales_deal_stageId_fkey`;
+-- AlterTable
+ALTER TABLE `Company` ADD COLUMN `projectVisibilityMode` VARCHAR(191) NULL DEFAULT 'allActive';
 
 -- AlterTable
-ALTER TABLE `company` ADD COLUMN `projectVisibilityMode` VARCHAR(191) NULL DEFAULT 'allActive';
-
--- AlterTable
-ALTER TABLE `user` ADD COLUMN `attendanceMode` VARCHAR(191) NULL DEFAULT 'manual',
+ALTER TABLE `User` ADD COLUMN `attendanceMode` VARCHAR(191) NULL DEFAULT 'manual',
     ADD COLUMN `canEditTimeCard` BOOLEAN NULL DEFAULT false,
     ADD COLUMN `clockOutMode` VARCHAR(191) NULL DEFAULT 'manual',
     ADD COLUMN `dailyRate` DECIMAL(10, 2) NULL,
@@ -141,9 +138,6 @@ ALTER TABLE `chat_messages` ADD CONSTRAINT `chat_messages_chatId_fkey` FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE `chat_messages` ADD CONSTRAINT `chat_messages_senderId_fkey` FOREIGN KEY (`senderId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `sales_deal` ADD CONSTRAINT `sales_deal_stageId_fkey` FOREIGN KEY (`stageId`) REFERENCES `sales_stage`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `tasks` ADD CONSTRAINT `tasks_projectId_fkey` FOREIGN KEY (`projectId`) REFERENCES `project`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
