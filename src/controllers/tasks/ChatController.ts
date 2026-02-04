@@ -174,6 +174,70 @@ export class ChatController {
     }
   }
 
+  // Atualizar grupo
+  async updateGroup(req: Request, res: Response) {
+    try {
+      const { chatId } = req.params;
+      const { name, memberIds, companyId } = req.body;
+      const file = req.file;
+
+      if (!prisma || !prisma.chat) {
+        throw new Error("Prisma client or Chat model is not initialized");
+      }
+
+      const currentChat = await prisma.chat.findUnique({
+        where: { id: chatId },
+        include: { members: true }
+      });
+
+      if (!currentChat || !currentChat.isGroup) {
+        return res.status(404).json({ error: "Group not found" });
+      }
+
+      let avatar = currentChat.avatar;
+      if (file) {
+        avatar = await uploadFileToS3_2(file, "chat-avatars");
+      }
+
+      const parsedMemberIds = typeof memberIds === 'string' ? JSON.parse(memberIds) : memberIds;
+
+      // Atualizar o chat
+      const updatedChat = await prisma.chat.update({
+        where: { id: chatId },
+        data: {
+          name: name || currentChat.name,
+          avatar,
+          members: parsedMemberIds ? {
+            deleteMany: {},
+            create: parsedMemberIds.map((id: string) => ({
+              userId: id,
+              isAdmin: currentChat.members.find(m => m.userId === id)?.isAdmin || false
+            }))
+          } : undefined
+        },
+        include: {
+          members: {
+            include: { user: { select: { id: true, name: true, avatar: true } } }
+          }
+        }
+      });
+
+      if (updatedChat.avatar) {
+        updatedChat.avatar = await getPresignedUrl(updatedChat.avatar);
+      }
+
+      // Notificar membros via Socket
+      updatedChat.members.forEach(member => {
+        SocketService.emitToUser(member.userId, 'group_updated', updatedChat);
+      });
+
+      return res.json(updatedChat);
+    } catch (error: any) {
+      console.error("[ChatController.updateGroup] Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
   // Listar usuários da empresa para convidar para o chat
   async listCompanyUsers(req: Request, res: Response) {
     try {

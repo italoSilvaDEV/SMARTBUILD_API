@@ -17,6 +17,9 @@ chatRoutes.post("/private", checkToken, chatController.getOrCreatePrivateChat);
 // Criar grupo (com suporte a foto)
 chatRoutes.post("/group", checkToken, upload.single("file"), chatController.createGroup);
 
+// Atualizar grupo
+chatRoutes.put("/group/:chatId", checkToken, upload.single("file"), chatController.updateGroup);
+
 // Listar usuários da empresa para o chat
 chatRoutes.get("/company/:companyId/users", checkToken, chatController.listCompanyUsers);
 
