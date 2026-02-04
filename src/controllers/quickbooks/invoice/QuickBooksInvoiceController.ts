@@ -672,6 +672,7 @@ export class QuickBooksInvoiceController {
     description?: string;
     dueDate?: string;
     userId: string;
+    showPaymentMethods?: boolean;
     coefficientPerfentage?: number;
     type_value?: string;
     services: any[];
@@ -686,6 +687,7 @@ export class QuickBooksInvoiceController {
       userId,
       coefficientPerfentage,
       type_value,
+      showPaymentMethods,
       services,
       totalAmountTarget,
       calledFromStripe = false
@@ -1094,6 +1096,7 @@ export class QuickBooksInvoiceController {
               totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
               status: deriveQboInvoicePaymentStatus(updatedInv),
               percentageCoefficient: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods || true,
               type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,

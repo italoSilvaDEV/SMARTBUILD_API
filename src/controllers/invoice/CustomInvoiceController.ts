@@ -1580,6 +1580,7 @@ export class CustomInvoiceController {
               dueDate: dueDate,
               userId: userId,
               coefficientPerfentage: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods || true,
               services: qbServicesForCreate,
               type_value: type_value,
               totalAmountTarget: totalAmount ?? 0,
