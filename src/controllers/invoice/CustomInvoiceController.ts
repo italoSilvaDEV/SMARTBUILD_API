@@ -1440,6 +1440,8 @@ export class CustomInvoiceController {
         newInvoiceType = existingInvoice.invoiceType;
       }
 
+      console.log("showPaymentMethods", showPaymentMethods);
+
       // Atualizar invoice dentro da transaction
       const updatedInvoice = await prisma.$transaction(async (smartbuild) => {
         const invoice = await smartbuild.invoice.update({
