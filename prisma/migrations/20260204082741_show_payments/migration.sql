@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `invoice` ADD COLUMN `showPaymentMethods` BOOLEAN NULL DEFAULT true;
+ALTER TABLE `Invoice` ADD COLUMN `showPaymentMethods` BOOLEAN NULL DEFAULT true;
