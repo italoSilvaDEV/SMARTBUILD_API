@@ -1102,9 +1102,20 @@ export class StripeController {
                 where: { id: userId },
                 select: { invoiceEditAll: true },
             });
-            if (user?.invoiceEditAll !== true) {
+
+            // Verificar se o usuário é project manager deste projeto
+            const project = await prisma.project.findUnique({
+                where: { id: projectId },
+                select: { project_manager_id: true },
+            });
+
+            const isProjectManager = project?.project_manager_id === userId;
+
+            // Se não tem invoiceEditAll E não é project manager, filtrar por user_id
+            if (user?.invoiceEditAll !== true && !isProjectManager) {
                 invoiceFilterByUser = { user_id: userId };
             }
+            // Se tem invoiceEditAll OU é project manager, não filtra (vê todos os invoices do projeto)
         }
 
         try {
@@ -1289,14 +1300,20 @@ export class StripeController {
         } = req.query;
 
         const userId = (req as any).userId as string | undefined;
-        let invoiceFilterByUser: { user_id?: string } = {};
+        let invoiceFilterByUser: any = {};
         if (userId) {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: { invoiceEditAll: true },
             });
             if (user?.invoiceEditAll !== true) {
-                invoiceFilterByUser = { user_id: userId };
+                // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto
+                invoiceFilterByUser = {
+                    OR: [
+                        { user_id: userId },
+                        { project: { project_manager_id: userId } },
+                    ],
+                };
             }
         }
 
@@ -1347,33 +1364,35 @@ export class StripeController {
 
             const filtro: any = {
                 companyId,
-                ...invoiceFilterByUser,
                 OR: [
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }
                 ],
-                AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
+                AND: [
+                    ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
+                    {
+                        OR: [
+                            {
+                                project: {
+                                    is: {
+                                        client: {
+                                            is: {
+                                                name: {
+                                                    contains: search,
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            {
+                                stripeInvoiceId: {
+                                    contains: search,
+                                }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
-                        }
-                    ]
-                }
+                        ]
+                    }
+                ]
             };
 
             if (Object.keys(dateFilter).length > 0) {

@@ -2084,7 +2084,7 @@ export class UserController {
         });
       }
 
-      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : ''; 
       const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, passwordToUse);
 
       try {
@@ -2107,6 +2107,115 @@ export class UserController {
       console.error("[resendPassword] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
+      });
+    }
+  }
+
+  // Buscar usuários que podem ser project managers (filtrados: sem work e master)
+  async getProjectManagers(req: Request, res: Response) {
+    try {
+      const { company_id, search = "" } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      const isMultiCompany = await isMultiCompanyEnabled();
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          rules: true,
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são work nem master
+      const filteredUsers = users.filter((user) => {
+        try {
+          const rules = typeof user.rules === "string" ? JSON.parse(user.rules) : user.rules;
+          const userType = rules?.type?.toLowerCase() || "";
+          return userType !== "work" && userType !== "master";
+        } catch (error) {
+          console.error(`Error parsing rules for user ${user.id}:`, error);
+          return false;
+        }
+      });
+
+      // Buscar contagem de projetos para cada usuário
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar projetos Pre-Start
+          const preStartCount = await prisma.project.count({
+            where: {
+              project_manager_id: user.id,
+              company_id: company_id as string,
+              status_project: "Pre-Start",
+            },
+          });
+
+          // Contar projetos In Progress
+          const inProgressCount = await prisma.project.count({
+            where: {
+              project_manager_id: user.id,
+              company_id: company_id as string,
+              status_project: "In Progress",
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            projectCounts: {
+              preStart: preStartCount,
+              inProgress: inProgressCount,
+              total: preStartCount + inProgressCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getProjectManagers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
       });
     }
   }

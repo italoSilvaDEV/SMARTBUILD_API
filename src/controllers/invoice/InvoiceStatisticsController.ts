@@ -52,14 +52,20 @@ export class InvoiceStatisticsController {
     const { companyId } = req.params;
 
     const userId = (req as any).userId as string | undefined;
-    let invoiceFilterByUser: { user_id?: string } = {};
+    let invoiceFilterByUser: any = {};
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { invoiceEditAll: true },
       });
       if (user?.invoiceEditAll !== true) {
-        invoiceFilterByUser = { user_id: userId };
+        // Incluir invoices criadas pelo usuário OU onde o usuário é project manager do projeto
+        invoiceFilterByUser = {
+          OR: [
+            { user_id: userId },
+            { project: { project_manager_id: userId } },
+          ],
+        };
       }
     }
 
@@ -135,10 +141,12 @@ export class InvoiceStatisticsController {
         previousPeriodEnd = new Date(lastMonthYear, lastMonth + 1, 0, 23, 59, 59);
       }
 
+      const userFilterClause = Object.keys(invoiceFilterByUser).length > 0 ? { AND: [invoiceFilterByUser] } : {};
+
       const allInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
-          ...invoiceFilterByUser,
+          ...userFilterClause,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
@@ -154,7 +162,7 @@ export class InvoiceStatisticsController {
       const currentPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
-          ...invoiceFilterByUser,
+          ...userFilterClause,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
@@ -171,7 +179,7 @@ export class InvoiceStatisticsController {
       const lastPeriodInvoices = await prisma.invoice.findMany({
         where: {
           companyId,
-          ...invoiceFilterByUser,
+          ...userFilterClause,
           status: { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
