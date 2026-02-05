@@ -94,4 +94,7 @@ userRoutes.post("/user/check-email", checkToken, User.checkEmailAvailability);
 // Check user companies
 userRoutes.post("/user/check-companies", checkToken, User.checkUserCompanies);
 
+// Get project managers (users that are not work or master)
+userRoutes.get("/user/project-managers", checkToken, User.getProjectManagers);
+
 export { userRoutes }

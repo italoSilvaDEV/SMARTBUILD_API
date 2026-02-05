@@ -59,6 +59,8 @@ model User {
   UserServiceProject     UserServiceProject[]
   UserAttendance         UserAttendance[]
   Activities             Activities[]
+  project_manager_project Project[]            @relation("project_manager")
+  project_manager_invoice Invoice[]            @relation("project_manager_invoice")
 
   InvoiceSendHistory InvoiceSendHistory[]
 
@@ -639,6 +641,10 @@ model Project {
 
   user           User?    @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
+
+  project_manager    User?    @relation("project_manager", fields: [project_manager_id], references: [id])
+  project_manager_id String?
+
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
@@ -1124,6 +1130,9 @@ model Invoice {
 
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
+
+  project_manager    User?    @relation("project_manager_invoice", fields: [project_manager_id], references: [id])
+  project_manager_id String?
 
   estimate           Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId         String?

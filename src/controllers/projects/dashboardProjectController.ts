@@ -62,14 +62,20 @@ export class DashboardProjectController {
         }
 
         const userId = (req as any).userId as string | undefined;
-        let projectFilterBySeller: { seller_user_id?: string } = {};
+        let projectFilterBySeller: any = {};
         if (userId) {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: { projectEditAll: true },
             });
             if (user?.projectEditAll !== true) {
-                projectFilterBySeller = { seller_user_id: userId };
+                // Ver projetos onde o usuário é seller OU project manager
+                projectFilterBySeller = {
+                    OR: [
+                        { seller_user_id: userId },
+                        { project_manager_id: userId },
+                    ],
+                };
             }
         }
 
