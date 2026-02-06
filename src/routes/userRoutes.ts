@@ -98,4 +98,7 @@ userRoutes.post("/user/check-companies", checkToken, User.checkUserCompanies);
 userRoutes.put("/user/push-token", checkToken, User.updatePushToken);
 userRoutes.delete("/user/push-token", checkToken, User.removePushToken);
 
+// Get project managers (users that are not work or master)
+userRoutes.get("/user/project-managers", checkToken, User.getProjectManagers);
+
 export { userRoutes }
