@@ -100,5 +100,6 @@ userRoutes.delete("/user/push-token", checkToken, User.removePushToken);
 
 // Get project managers (users that are not work or master)
 userRoutes.get("/user/project-managers", checkToken, User.getProjectManagers);
+userRoutes.get("/user/invoice-managers", checkToken, User.getInvoiceManagers);
 
 export { userRoutes }

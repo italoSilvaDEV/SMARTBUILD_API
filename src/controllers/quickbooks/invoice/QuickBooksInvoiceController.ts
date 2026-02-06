@@ -61,8 +61,9 @@ export class QuickBooksInvoiceController {
     multi_emails?: string; // Emails adicionais para envio
     date_creation?: string; // Data customizada de criação
     isStandaloneInvoice?: boolean; // Se é um invoice criado sem projeto pré-existente
+    project_manager_id?: string | null; // Project manager do invoice
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = params;
 
     try {
       // Buscar o projeto
@@ -588,6 +589,7 @@ export class QuickBooksInvoiceController {
             multi_emails: multi_emails || project.client?.email,
             isStandaloneInvoice: isStandaloneInvoice || false,
             createdAt: date_creation ? new Date(date_creation) : new Date(),
+            project_manager_id: project_manager_id || null,
 
             InvoiceItems: {
               create: processedLineItems.map((item: any) => ({
@@ -1180,7 +1182,7 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice } = req.body;
+    const { description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = req.body;
 
     try {
       console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
@@ -1258,7 +1260,8 @@ export class QuickBooksInvoiceController {
         calledFromStripe: false, // Criar como invoice completo (banco + QB)
         multi_emails,
         date_creation,
-        isStandaloneInvoice
+        isStandaloneInvoice,
+        project_manager_id
       });
 
       if (result?.invoice) {
@@ -2000,7 +2003,7 @@ export class QuickBooksInvoiceController {
 
   async updateInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { description, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount } = req.body;
+    const { description, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, project_manager_id } = req.body;
 
     try {
       console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
@@ -2172,7 +2175,8 @@ export class QuickBooksInvoiceController {
             description: description || invoice.description,
             type_value: type_value || invoice.type_value,
             percentageCoefficient: coefficientPerfentage || invoice.percentageCoefficient,
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            project_manager_id: project_manager_id !== undefined ? project_manager_id : undefined
           },
           include: {
             project: {

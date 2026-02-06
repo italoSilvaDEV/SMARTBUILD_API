@@ -271,6 +271,13 @@ export class UnifiedInvoiceController {
                 select: { id: true, name: true, email: true }
               }
             }
+          },
+          project_manager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            }
           }
         },
         skip: pageNumber * itemsLimit,

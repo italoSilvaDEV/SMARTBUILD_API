@@ -2193,23 +2193,21 @@ export class UserController {
           name: true,
           email: true,
           avatar: true,
-          rules: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
         },
         orderBy: {
           name: "asc",
         },
       });
 
-      // Filtrar usuários que não são work nem master
+      // Filtrar usuários que não são Worker nem Master usando office
       const filteredUsers = users.filter((user) => {
-        try {
-          const rules = typeof user.rules === "string" ? JSON.parse(user.rules) : user.rules;
-          const userType = rules?.type?.toLowerCase() || "";
-          return userType !== "work" && userType !== "master";
-        } catch (error) {
-          console.error(`Error parsing rules for user ${user.id}:`, error);
-          return false;
-        }
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
       });
 
       // Buscar contagem de projetos para cada usuário
@@ -2263,6 +2261,118 @@ export class UserController {
       });
     } catch (error) {
       console.error("[getProjectManagers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
+  async getInvoiceManagers(req: Request, res: Response) {
+    try {
+      const { company_id, search } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      // Verificar se multiCompany está ativo
+      const config = await prisma.config.findFirst();
+      const isMultiCompany = config?.multiCompanyEnabled || false;
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são Worker nem Master usando office
+      const filteredUsers = users.filter((user) => {
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
+      });
+
+      // Buscar contagem de invoices para cada usuário
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar invoices Pending
+          const pendingCount = await prisma.invoice.count({
+            where: {
+              project_manager_id: user.id,
+              status: "open",
+              project: {
+                company_id: company_id as string,
+              },
+            },
+          });
+
+          // Contar invoices Paid
+          const paidCount = await prisma.invoice.count({
+            where: {
+              project_manager_id: user.id,
+              status: "paid",
+              project: {
+                company_id: company_id as string,
+              },
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            invoiceCounts: {
+              pending: pendingCount,
+              paid: paidCount,
+              total: pendingCount + paidCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getInvoiceManagers] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error",
       });

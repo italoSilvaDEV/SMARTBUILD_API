@@ -296,7 +296,8 @@ export class StripeController {
             type_invoicebase,
             estimateId,
             multi_emails,
-            isStandaloneInvoice
+            isStandaloneInvoice,
+            project_manager_id
         } = req.body;
 
         try {
@@ -468,7 +469,8 @@ export class StripeController {
                     estimateId: estimate?.id || null,
                     type_invoicebase: type_invoicebase,
                     multi_emails: multi_emails,
-                    isStandaloneInvoice: isStandaloneInvoice || false
+                    isStandaloneInvoice: isStandaloneInvoice || false,
+                    project_manager_id: project_manager_id || null
                 },
             });
 
@@ -1446,6 +1448,13 @@ export class StripeController {
                             amount: true
                         }
                     },
+                    project_manager: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        }
+                    },
                     PaymentIntents: {
                         select: {
                             id: true,
@@ -1580,7 +1589,8 @@ export class StripeController {
             services,
             totalAmount,
             multi_emails,
-            showPaymentMethods
+            showPaymentMethods,
+            project_manager_id
         } = req.body;
 
         try {
@@ -1758,6 +1768,7 @@ export class StripeController {
                     user_id: userId,
                     updatedAt: new Date(),
                     multi_emails: multi_emails,
+                    project_manager_id: project_manager_id !== undefined ? project_manager_id : undefined,
                     // Clear QB references when converting from QBO to Stripe
                     ...(isConvertingFromQuickbooks && {
                         idQuickbookContabio: null,
