@@ -103,6 +103,9 @@ model User {
   taskNotifications      TaskNotification[] @relation("TaskNotifications")
   taskNotificationActors TaskNotification[] @relation("TaskNotificationActors")
 
+  // Push Notifications
+  expoPushToken String?
+
   // Chat Relationships
   sentMessages    ChatMessage[] @relation("SentMessages")
   chatMemberships ChatMember[]

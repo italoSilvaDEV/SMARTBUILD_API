@@ -2110,4 +2110,53 @@ export class UserController {
       });
     }
   }
+
+  // Salvar/atualizar Expo Push Token do usuário
+  async updatePushToken(request: Request, response: Response) {
+    try {
+      const { userId, expoPushToken } = request.body;
+
+      if (!userId || !expoPushToken) {
+        return response.status(400).json({ error: "userId and expoPushToken are required" });
+      }
+
+      // Validar formato do token
+      if (!expoPushToken.startsWith("ExponentPushToken[")) {
+        return response.status(400).json({ error: "Invalid Expo Push Token format" });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { expoPushToken },
+      });
+
+      console.log(`[UserController] Push token updated for user ${userId}`);
+      return response.json({ success: true });
+    } catch (error: any) {
+      console.error("[UserController.updatePushToken] Error:", error);
+      return response.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Remover Push Token (logout)
+  async removePushToken(request: Request, response: Response) {
+    try {
+      const { userId } = request.body;
+
+      if (!userId) {
+        return response.status(400).json({ error: "userId is required" });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { expoPushToken: null },
+      });
+
+      console.log(`[UserController] Push token removed for user ${userId}`);
+      return response.json({ success: true });
+    } catch (error: any) {
+      console.error("[UserController.removePushToken] Error:", error);
+      return response.status(500).json({ error: "Internal server error" });
+    }
+  }
 }

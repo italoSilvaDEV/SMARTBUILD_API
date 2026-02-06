@@ -94,4 +94,8 @@ userRoutes.post("/user/check-email", checkToken, User.checkEmailAvailability);
 // Check user companies
 userRoutes.post("/user/check-companies", checkToken, User.checkUserCompanies);
 
+// Push Notifications
+userRoutes.put("/user/push-token", checkToken, User.updatePushToken);
+userRoutes.delete("/user/push-token", checkToken, User.removePushToken);
+
 export { userRoutes }

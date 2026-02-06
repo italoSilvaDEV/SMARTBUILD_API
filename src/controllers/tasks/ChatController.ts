@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
+import { PushNotificationService } from "../../services/PushNotificationService";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 
@@ -321,9 +322,12 @@ export class ChatController {
         data: { lastMessageAt: new Date() }
       });
 
-      // Buscar membros do chat para emitir via socket
+      // Buscar membros do chat (com push token) para emitir via socket e push
       const members = await prisma.chatMember.findMany({
-        where: { chatId }
+        where: { chatId },
+        include: {
+          user: { select: { expoPushToken: true } }
+        }
       });
 
       // Gerar URL assinada se houver arquivo
@@ -335,9 +339,26 @@ export class ChatController {
         messageToSend.sender.avatar = await getPresignedUrl(messageToSend.sender.avatar);
       }
 
+      // Emitir via socket para todos os membros
       members.forEach(member => {
         SocketService.emitToUser(member.userId, 'new_chat_message', messageToSend);
       });
+
+      // Enviar push notification para membros (exceto o remetente)
+      const pushTokens = members
+        .filter(m => m.userId !== senderId && m.user?.expoPushToken)
+        .map(m => m.user!.expoPushToken!);
+
+      if (pushTokens.length > 0) {
+        const senderName = message.sender.name || "New message";
+        const messageBody = text || (fileUrl ? `📎 ${fileName || "File"}` : "Sent you a message");
+        PushNotificationService.sendChatMessagePush(
+          pushTokens,
+          senderName,
+          messageBody,
+          chatId
+        ).catch(() => {}); // Fire-and-forget, não bloqueia a resposta
+      }
 
       return res.status(201).json(messageToSend);
     } catch (error: any) {
