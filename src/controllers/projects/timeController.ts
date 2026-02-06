@@ -155,10 +155,23 @@ export class TimeController {
             const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
             const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
 
+            // Buscar:
+            // 1) Attendances com check_in hoje (normais)
+            // 2) Attendances ATIVAS (check_out_time IS NULL) mesmo se check_in foi antes de hoje
+            //    Isso garante que trabalhadores "overnight" ou que esqueceram de dar clock-out apareçam
             const attendances = await prisma.userAttendance.findMany({
                 where: {
-                    check_in_time: { gte: startDate },
-                    OR: [{ check_out_time: { lte: endDeadline } }, { check_out_time: null }],
+                    OR: [
+                        // Caso 1: check-in hoje (com ou sem check-out)
+                        {
+                            check_in_time: { gte: startDate },
+                            OR: [{ check_out_time: { lte: endDeadline } }, { check_out_time: null }],
+                        },
+                        // Caso 2: ainda ativo (sem check-out), independente da data de check-in
+                        {
+                            check_out_time: null,
+                        },
+                    ],
                     UserServiceProject: {
                         service_project: {
                             Project: {
