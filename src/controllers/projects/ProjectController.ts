@@ -132,6 +132,10 @@ export class ProjectController {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
+  private static clearCache() {
+    this.cache.clear();
+  }
+
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
     const query: any = {};
@@ -1330,6 +1334,9 @@ export class ProjectController {
         }
       }
 
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
+
       return res.json({
         success: true,
         project,
@@ -1495,7 +1502,7 @@ export class ProjectController {
         await Promise.all(serviceProjectPromises);
       }
 
-      return res.status(201).json(project);
+        return res.status(201).json(project);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1617,7 +1624,7 @@ export class ProjectController {
         data: { start_date },
       });
 
-      return res.json(project);
+        return res.json(project);
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
@@ -1697,6 +1704,9 @@ export class ProjectController {
           radius: radiusFloat,
         },
       });
+
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
 
       return res.json(project);
     } catch (error) {
