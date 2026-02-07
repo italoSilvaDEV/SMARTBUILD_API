@@ -1094,13 +1094,13 @@ export class StripeController {
         }
     }
 
-    // com stripe e custom
+    // project details
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
         const userId = (req as any).userId as string | undefined;
-        let invoiceFilterByUser: { user_id?: string } = {};
+        let invoiceFilterByUser: any = {};
         if (userId) {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
@@ -1115,11 +1115,17 @@ export class StripeController {
 
             const isProjectManager = project?.project_manager_id === userId;
 
-            // Se não tem invoiceEditAll E não é project manager, filtrar por user_id
+            // Se não tem invoiceEditAll E não é project manager do projeto, filtrar por permissões
             if (user?.invoiceEditAll !== true && !isProjectManager) {
-                invoiceFilterByUser = { user_id: userId };
+                // Ver apenas invoices criadas pelo usuário OU onde ele é project manager do invoice
+                invoiceFilterByUser = {
+                    OR: [
+                        { user_id: userId },
+                        { project_manager_id: userId },
+                    ],
+                };
             }
-            // Se tem invoiceEditAll OU é project manager, não filtra (vê todos os invoices do projeto)
+            // Se tem invoiceEditAll OU é project manager do projeto, não filtra (vê todos os invoices do projeto)
         }
 
         try {
@@ -1132,33 +1138,35 @@ export class StripeController {
             // Filtro para incluir faturas com cancel_invoice_edit = false OU null
             const filtro: any = {
                 projectId,
-                ...invoiceFilterByUser,
                 OR: [
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }
                 ],
-                AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
+                AND: [
+                    ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
+                    {
+                        OR: [
+                            {
+                                project: {
+                                    is: {
+                                        client: {
+                                            is: {
+                                                name: {
+                                                    contains: search,
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            {
+                                stripeInvoiceId: {
+                                    contains: search,
+                                }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
-                        }
-                    ]
-                }
+                        ]
+                    }
+                ]
             };
 
             // Buscar invoices relacionadas ao projeto
@@ -1290,6 +1298,7 @@ export class StripeController {
         }
     }
 
+    // invoices da compoanhia invoiceall
     async getInvoicesByCompany(req: Request, res: Response) {
         const {
             companyId
@@ -1311,11 +1320,12 @@ export class StripeController {
                 select: { invoiceEditAll: true },
             });
             if (user?.invoiceEditAll !== true) {
-                // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto
+                // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto OU do invoice
                 invoiceFilterByUser = {
                     OR: [
                         { user_id: userId },
                         { project: { project_manager_id: userId } },
+                        { project_manager_id: userId },
                     ],
                 };
             }

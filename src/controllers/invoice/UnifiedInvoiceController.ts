@@ -84,6 +84,35 @@ export class UnifiedInvoiceController {
     const { projectId } = req.params;
     const { invoiceType, searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
+    const userId = (req as any).userId as string | undefined;
+    let invoiceFilterByUser: any = {};
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { invoiceEditAll: true },
+      });
+
+      // Verificar se o usuário é project manager deste projeto
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { project_manager_id: true },
+      });
+
+      const isProjectManager = project?.project_manager_id === userId;
+
+      // Se não tem invoiceEditAll E não é project manager do projeto, filtrar por permissões
+      if (user?.invoiceEditAll !== true && !isProjectManager) {
+        // Ver apenas invoices criadas pelo usuário OU onde ele é project manager do invoice
+        invoiceFilterByUser = {
+          OR: [
+            { user_id: userId },
+            { project_manager_id: userId },
+          ],
+        };
+      }
+      // Se tem invoiceEditAll OU é project manager do projeto, não filtra (vê todos os invoices do projeto)
+    }
+
     try {
       const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
       const itemsLimit = Number(itemsPerPage);
@@ -92,24 +121,29 @@ export class UnifiedInvoiceController {
       // Construir o filtro base
       let filtro: any = {
         projectId,
-        OR: [
+        AND: [
+          ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
           {
-            project: {
-              is: {
-                client: {
+            OR: [
+              {
+                project: {
                   is: {
-                    name: {
-                      contains: search,
+                    client: {
+                      is: {
+                        name: {
+                          contains: search,
+                        }
+                      }
                     }
                   }
                 }
+              },
+              {
+                description: {
+                  contains: search,
+                }
               }
-            }
-          },
-          {
-            description: {
-              contains: search,
-            }
+            ]
           }
         ]
       };
@@ -218,6 +252,25 @@ export class UnifiedInvoiceController {
     const { companyId } = req.params;
     const { invoiceType, searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
 
+    const userId = (req as any).userId as string | undefined;
+    let invoiceFilterByUser: any = {};
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { invoiceEditAll: true },
+      });
+      if (user?.invoiceEditAll !== true) {
+        // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto OU do invoice
+        invoiceFilterByUser = {
+          OR: [
+            { user_id: userId },
+            { project: { project_manager_id: userId } },
+            { project_manager_id: userId },
+          ],
+        };
+      }
+    }
+
     try {
       const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
       const itemsLimit = Number(itemsPerPage);
@@ -226,29 +279,34 @@ export class UnifiedInvoiceController {
       // Construir o filtro base
       let filtro: any = {
         companyId,
-        OR: [
+        AND: [
+          ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
           {
-            project: {
-              is: {
-                client: {
+            OR: [
+              {
+                project: {
                   is: {
-                    name: {
-                      contains: search,
+                    client: {
+                      is: {
+                        name: {
+                          contains: search,
+                        }
+                      }
                     }
                   }
                 }
+              },
+              {
+                description: {
+                  contains: search,
+                }
+              },
+              {
+                externalInvoiceId: {
+                  contains: search,
+                }
               }
-            }
-          },
-          {
-            description: {
-              contains: search,
-            }
-          },
-          {
-            externalInvoiceId: {
-              contains: search,
-            }
+            ]
           }
         ]
       };
