@@ -2378,4 +2378,110 @@ export class UserController {
       });
     }
   }
+
+  async getSellers(req: Request, res: Response) {
+    try {
+      const { company_id, search = "" } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      const isMultiCompany = await isMultiCompanyEnabled();
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são Worker nem Master usando office
+      const filteredUsers = users.filter((user) => {
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
+      });
+
+      // Buscar contagem de projetos para cada usuário (como seller)
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar projetos Pre-Start onde usuário é seller
+          const preStartCount = await prisma.project.count({
+            where: {
+              seller_user_id: user.id,
+              company_id: company_id as string,
+              status_project: "Pre-Start",
+            },
+          });
+
+          // Contar projetos In Progress onde usuário é seller
+          const inProgressCount = await prisma.project.count({
+            where: {
+              seller_user_id: user.id,
+              company_id: company_id as string,
+              status_project: "In Progress",
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            projectCounts: {
+              preStart: preStartCount,
+              inProgress: inProgressCount,
+              total: preStartCount + inProgressCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getSellers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
 }

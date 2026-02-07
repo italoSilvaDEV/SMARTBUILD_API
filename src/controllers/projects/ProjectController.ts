@@ -1264,7 +1264,25 @@ export class ProjectController {
 
   async updateUserSellerProject(req: Request, res: Response) {
     const { id, seller_user_id } = req.body;
+    
     try {
+      if (!id) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+      
+      if (!seller_user_id) {
+        return res.status(400).json({ error: "Seller user ID is required" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
       const project = await prisma.project.update({
         where: { id },
         data: {
@@ -1273,10 +1291,11 @@ export class ProjectController {
       });
       return res.json(project);
     } catch (error) {
+      console.error("[updateUserSellerProject] Error:", error);
       if (error instanceof Error) {
-        return res.json({ error: error.message });
+        return res.status(500).json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 
