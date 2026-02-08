@@ -35,8 +35,10 @@ const uploadServiceProject = multer(
 const uploadAttachments = multer(uploadConfig2.uploadUtf8("./public/tmp/estimate-attachments"));
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
-// Rotas específicas ANTES da genérica /project/:id para não capturar "project-manager" como id
+// Rotas específicas ANTES da genérica /project/:id para não capturar "project-manager" ou "user-seller" como id
 projectRoutes.patch("/project/project-manager", checkToken, projectController.updateProjectManager.bind(projectController));
+projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject.bind(projectController));
+projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller.bind(projectController));
 projectRoutes.patch("/project/:id", checkToken, projectController.updateProject.bind(projectController));
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
 projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
@@ -49,10 +51,6 @@ projectRoutes.get(
   projectController.getAllProjects.bind(projectController)
 );//ok novo modelo
 projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById.bind(projectController));//ok novo modelo
-
-projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller.bind(projectController));
-
-projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject.bind(projectController));
 
 projectRoutes.get("/project/dashboard/:companyId", checkToken, dashboardProjectController.handle.bind(dashboardProjectController));
 

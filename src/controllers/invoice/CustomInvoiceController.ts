@@ -121,7 +121,8 @@ export class CustomInvoiceController {
       multi_emails,
       date_creation,
       showPaymentMethods,
-      isStandaloneInvoice
+      isStandaloneInvoice,
+      project_manager_id
     } = req.body
 
     try {
@@ -214,7 +215,8 @@ export class CustomInvoiceController {
             estimateId: estimateId,
             multi_emails: multi_emails,
             isStandaloneInvoice: isStandaloneInvoice || false,
-            createdAt: date_creation ? new Date(date_creation) : new Date()
+            createdAt: date_creation ? new Date(date_creation) : new Date(),
+            project_manager_id: project_manager_id || null
           }
         });
 
@@ -1341,7 +1343,8 @@ export class CustomInvoiceController {
       multi_emails,
       date_creation,
       showPaymentMethods,
-      userId
+      userId,
+      project_manager_id
     } = req.body;
 
     try {
@@ -1458,6 +1461,7 @@ export class CustomInvoiceController {
             multi_emails: multi_emails || existingInvoice.multi_emails,
             updatedAt: new Date(),
             createdAt: date_creation ? new Date(date_creation) : existingInvoice.createdAt,
+            project_manager_id: project_manager_id !== undefined ? project_manager_id : undefined,
             // Clear QB references when converting from QBO to Custom
             ...(isConvertingFromQuickbooks && {
               idQuickbookContabio: null,

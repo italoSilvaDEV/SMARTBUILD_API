@@ -132,6 +132,10 @@ export class ProjectController {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
+  private static clearCache() {
+    this.cache.clear();
+  }
+
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
     const query: any = {};
@@ -1260,7 +1264,25 @@ export class ProjectController {
 
   async updateUserSellerProject(req: Request, res: Response) {
     const { id, seller_user_id } = req.body;
+    
     try {
+      if (!id) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+      
+      if (!seller_user_id) {
+        return res.status(400).json({ error: "Seller user ID is required" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
       const project = await prisma.project.update({
         where: { id },
         data: {
@@ -1269,10 +1291,11 @@ export class ProjectController {
       });
       return res.json(project);
     } catch (error) {
+      console.error("[updateUserSellerProject] Error:", error);
       if (error instanceof Error) {
-        return res.json({ error: error.message });
+        return res.status(500).json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 
@@ -1329,6 +1352,9 @@ export class ProjectController {
           console.error("Error getting presigned URL for project manager avatar:", error);
         }
       }
+
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
 
       return res.json({
         success: true,
@@ -1495,7 +1521,7 @@ export class ProjectController {
         await Promise.all(serviceProjectPromises);
       }
 
-      return res.status(201).json(project);
+        return res.status(201).json(project);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1617,7 +1643,7 @@ export class ProjectController {
         data: { start_date },
       });
 
-      return res.json(project);
+        return res.json(project);
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
@@ -1697,6 +1723,9 @@ export class ProjectController {
           radius: radiusFloat,
         },
       });
+
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
 
       return res.json(project);
     } catch (error) {
