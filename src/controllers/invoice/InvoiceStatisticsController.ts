@@ -70,7 +70,31 @@ export class InvoiceStatisticsController {
     }
 
     try {
-      const { period = "thisYear", startDate: queryStartDate, endDate: queryEndDate } = req.query;
+      const { 
+        period = "thisYear", 
+        startDate: queryStartDate, 
+        endDate: queryEndDate,
+        statusFilters,
+        typeFilters
+      } = req.query;
+
+      // Tratar filtros como arrays
+      const parseFilter = (filter: any) => {
+        if (!filter) return undefined;
+        if (Array.isArray(filter)) return filter as string[];
+        return [filter as string];
+      };
+
+      const statusArr = parseFilter(statusFilters);
+      const typeArr = parseFilter(typeFilters);
+
+      const extraFilters: any = {};
+      if (statusArr && statusArr.length > 0) {
+        extraFilters.status = { in: statusArr };
+      }
+      if (typeArr && typeArr.length > 0) {
+        extraFilters.invoiceType = { in: typeArr };
+      }
 
       const validPeriods = [
         "thisYear",
@@ -147,7 +171,8 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           ...userFilterClause,
-          status: { notIn: ['void'] },
+          ...extraFilters,
+          status: statusArr ? { in: statusArr } : { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
             { cancel_invoice_edit: null }
@@ -163,7 +188,8 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           ...userFilterClause,
-          status: { notIn: ['void'] },
+          ...extraFilters,
+          status: statusArr ? { in: statusArr } : { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
             { cancel_invoice_edit: null }
@@ -180,7 +206,8 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           ...userFilterClause,
-          status: { notIn: ['void'] },
+          ...extraFilters,
+          status: statusArr ? { in: statusArr } : { notIn: ['void'] },
           OR: [
             { cancel_invoice_edit: false },
             { cancel_invoice_edit: null }
@@ -260,6 +287,7 @@ export class InvoiceStatisticsController {
           where: {
             companyId,
             ...invoiceFilterByUser,
+            ...extraFilters,
             status: 'paid',
             OR: [
               { cancel_invoice_edit: false },
@@ -274,6 +302,7 @@ export class InvoiceStatisticsController {
           where: {
             companyId,
             ...invoiceFilterByUser,
+            ...extraFilters,
             status: { in: ['open', 'draft'] },
             OR: [
               { cancel_invoice_edit: false },
@@ -288,6 +317,7 @@ export class InvoiceStatisticsController {
           where: {
             companyId,
             ...invoiceFilterByUser,
+            ...extraFilters,
             status: 'void',
             OR: [
               { cancel_invoice_edit: false },
@@ -305,6 +335,7 @@ export class InvoiceStatisticsController {
         where: {
           companyId,
           ...invoiceFilterByUser,
+          ...extraFilters,
           status: 'paid',
           OR: [
             { cancel_invoice_edit: false },
