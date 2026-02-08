@@ -49,11 +49,18 @@ function getDateRange(periodType: string) {
 
 export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
-        const {
-            companyId
-        } = req.params
+        const { companyId } = req.params
 
-        const { period = "allPeriod" } = req.query;
+        const { period = "allPeriod", statusFilters } = req.query;
+
+        // Tratar statusFilters como array
+        const parseFilter = (filter: any) => {
+            if (!filter) return undefined;
+            if (Array.isArray(filter)) return filter as string[];
+            return [filter as string];
+        };
+
+        const statusArr = parseFilter(statusFilters);
 
         if (!companyId) {
             return res.status(400).json({
@@ -118,6 +125,9 @@ export class GetAllEstimatesByCompanyController {
                         company_id: companyId,
                         ...projectFilterBySeller,
                     },
+                    ...(statusArr && statusArr.length > 0 && {
+                        status: { in: statusArr }
+                    }),
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     })
