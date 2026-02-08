@@ -53,7 +53,6 @@ export class GetAllEstimatesByCompanyController {
 
         const { period = "allPeriod", statusFilters } = req.query;
 
-        // Tratar statusFilters como array
         const parseFilter = (filter: any) => {
             if (!filter) return undefined;
             if (Array.isArray(filter)) return filter as string[];
