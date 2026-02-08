@@ -4,7 +4,16 @@ import { Request, Response } from "express";
 export class DashboardEstimatesController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params;
-        const { period = "thisYear" } = req.query;
+        const { period = "thisYear", statusFilters } = req.query;
+
+        const parseFilter = (filter: any) => {
+            if (!filter) return undefined;
+            if (Array.isArray(filter)) return filter as string[];
+            return [filter as string];
+        };
+
+        const statusArr = parseFilter(statusFilters);
+        const statusFilterClause = statusArr && statusArr.length > 0 ? { in: statusArr } : { in: ["approved", "pending"] };
 
         if (!companyId) {
             return res.status(400).json({
@@ -125,9 +134,7 @@ export class DashboardEstimatesController {
                             in: ["Pending", "Accepted"]
                         }
                     },
-                    status: {
-                        in: ["approved", "pending"]
-                    },
+                    status: statusFilterClause,
                     date_creation: dateFilter
                 },
                 _sum: {
@@ -147,9 +154,7 @@ export class DashboardEstimatesController {
                         }
                     },
                     date_creation: dateFilter,
-                    status: {
-                        in: ["approved", "pending"]
-                    },
+                    status: statusFilterClause,
                 },
                 _avg: {
                     totalAmount: true
@@ -167,9 +172,7 @@ export class DashboardEstimatesController {
                             in: ["Pending", "Accepted"]
                         }
                     },
-                    status: {
-                        in: ["approved", "pending"]
-                    },
+                    status: statusFilterClause,
                     date_creation: dateFilter,
                 },
                 select: {

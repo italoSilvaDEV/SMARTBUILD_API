@@ -9,24 +9,24 @@ const chatController = new ChatController();
 const upload = multer(uploadConfig.upload("./public/tmp/chat-files"));
 
 // Listar conversas do usuário
-chatRoutes.get("/user/:userId", checkToken, chatController.listChats);
+chatRoutes.get("/user/:userId", checkToken, (req, res) => chatController.listChats(req, res));
 
 // Criar ou buscar chat 1:1
-chatRoutes.post("/private", checkToken, chatController.getOrCreatePrivateChat);
+chatRoutes.post("/private", checkToken, (req, res) => chatController.getOrCreatePrivateChat(req, res));
 
 // Criar grupo (com suporte a foto)
-chatRoutes.post("/group", checkToken, upload.single("file"), chatController.createGroup);
+chatRoutes.post("/group", checkToken, upload.single("file"), (req, res) => chatController.createGroup(req, res));
 
 // Atualizar grupo
-chatRoutes.put("/group/:chatId", checkToken, upload.single("file"), chatController.updateGroup);
+chatRoutes.put("/group/:chatId", checkToken, upload.single("file"), (req, res) => chatController.updateGroup(req, res));
 
 // Listar usuários da empresa para o chat
-chatRoutes.get("/company/:companyId/users", checkToken, chatController.listCompanyUsers);
+chatRoutes.get("/company/:companyId/users", checkToken, (req, res) => chatController.listCompanyUsers(req, res));
 
 // Enviar mensagem (com suporte a arquivo)
-chatRoutes.post("/:chatId/messages", checkToken, upload.single("file"), chatController.sendMessage);
+chatRoutes.post("/:chatId/messages", checkToken, upload.single("file"), (req, res) => chatController.sendMessage(req, res));
 
 // Listar mensagens de um chat
-chatRoutes.get("/:chatId/messages", checkToken, chatController.listMessages);
+chatRoutes.get("/:chatId/messages", checkToken, (req, res) => chatController.listMessages(req, res));
 
 export { chatRoutes };
