@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import dayjs from "dayjs";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -51,7 +52,7 @@ export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params
 
-        const { period = "allPeriod", statusFilters } = req.query;
+        const { period = "allPeriod", statusFilters, startDate: queryStartDate, endDate: queryEndDate } = req.query;
 
         const parseFilter = (filter: any) => {
             if (!filter) return undefined;
@@ -107,10 +108,22 @@ export class GetAllEstimatesByCompanyController {
             }
         }
 
-        const { startDate, endDate } = getDateRange(period as string);
+        let startDate: Date;
+        let endDate: Date | undefined;
+        let isCustomRange = false;
+
+        if (queryStartDate && queryEndDate) {
+            startDate = dayjs(queryStartDate as string).startOf('day').toDate();
+            endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+            isCustomRange = true;
+        } else {
+            const range = getDateRange(period as string);
+            startDate = range.startDate;
+            endDate = range.endDate;
+        }
 
         const dateFilter: any = {};
-        if (period !== "allPeriod") {
+        if (isCustomRange || period !== "allPeriod") {
             dateFilter.gte = startDate;
             if (endDate) {
                 dateFilter.lte = endDate;

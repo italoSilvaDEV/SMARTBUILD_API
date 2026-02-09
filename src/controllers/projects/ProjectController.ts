@@ -137,7 +137,7 @@ export class ProjectController {
   }
 
   async getAllProjects(req: Request, res: Response) {
-    const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
+    const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate } = req.query;
     const query: any = {};
     const userId = (req as any).userId as string | undefined;
     // console.log("valor do userId", userId);
@@ -160,9 +160,21 @@ export class ProjectController {
       });
     }
 
-    const { startDate, endDate } = getDateRange(period as string);
+    let startDate: Date;
+    let endDate: Date | undefined;
+    let isCustomRange = false;
 
-    if (period !== "allPeriod") {
+    if (queryStartDate && queryEndDate) {
+      startDate = dayjs(queryStartDate as string).startOf('day').toDate();
+      endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+      isCustomRange = true;
+    } else {
+      const range = getDateRange(period as string);
+      startDate = range.startDate;
+      endDate = range.endDate;
+    }
+
+    if (isCustomRange || period !== "allPeriod") {
       query.date_creation = {
         gte: startDate,
         ...(endDate && { lte: endDate })
