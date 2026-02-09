@@ -113,8 +113,8 @@ export class GetAllEstimatesByCompanyController {
         let isCustomRange = false;
 
         if (queryStartDate && queryEndDate) {
-            startDate = dayjs(queryStartDate as string).startOf('day').toDate();
-            endDate = dayjs(queryEndDate as string).endOf('day').toDate();
+            startDate = dayjs(queryStartDate as string).toDate();
+            endDate = dayjs(queryEndDate as string).toDate();
             isCustomRange = true;
         } else {
             const range = getDateRange(period as string);
