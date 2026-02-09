@@ -198,6 +198,7 @@ export class DashboardProjectController {
             const projectsForAverage = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
@@ -260,6 +261,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: {
                         in: ["approved"]
