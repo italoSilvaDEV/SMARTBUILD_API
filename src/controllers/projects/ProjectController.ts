@@ -342,7 +342,7 @@ export class ProjectController {
         skip,
         take,
         orderBy: {
-          date_update: "desc",
+          date_creation: "desc",
         },
       });
 
