@@ -44,6 +44,79 @@ function getPlanPermissionIds(company: {
   return [...new Set(ids)];
 }
 
+/** Candidato a owner: userId + data mais antiga (User.date_creation ou UserCompany.createdAt). */
+type OwnerCandidate = { userId: string; date: Date };
+
+/**
+ * Define o userId que deve ser owner da empresa: o que tem a data de vínculo mais antiga.
+ * Considera User (company_id + date_creation) e UserCompany (companyId + createdAt).
+ * Se o mesmo usuário aparecer nas duas fontes, usa a data mais antiga entre elas.
+ */
+async function getOwnerUserIdByOldestDate(companyId: string): Promise<OwnerCandidate | null> {
+  const [usersInCompany, userCompanyRows] = await Promise.all([
+    prisma.user.findMany({
+      where: { company_id: companyId },
+      select: { id: true, date_creation: true },
+    }),
+    prisma.userCompany.findMany({
+      where: { companyId },
+      select: { userId: true, createdAt: true },
+    }),
+  ]);
+
+  const byUser = new Map<string, Date>();
+
+  for (const u of usersInCompany) {
+    const d = u.date_creation ?? new Date(0);
+    const existing = byUser.get(u.id);
+    if (!existing || d.getTime() < existing.getTime()) byUser.set(u.id, d);
+  }
+  for (const uc of userCompanyRows) {
+    const d = uc.createdAt ?? new Date(0);
+    const existing = byUser.get(uc.userId);
+    if (!existing || d.getTime() < existing.getTime()) byUser.set(uc.userId, d);
+  }
+
+  if (byUser.size === 0) return null;
+
+  let oldest: OwnerCandidate | null = null;
+  for (const [userId, date] of byUser) {
+    if (!oldest || date.getTime() < oldest.date.getTime()) {
+      oldest = { userId, date };
+    }
+  }
+  return oldest;
+}
+
+/**
+ * Atribui o usuário ao office Owner da empresa: cria ou atualiza UserCompany e sincroniza User.office_id.
+ */
+async function assignUserToOwnerOffice(params: {
+  userId: string;
+  companyId: string;
+  ownerOfficeId: string;
+}): Promise<void> {
+  const { userId, companyId, ownerOfficeId } = params;
+
+  const existing = await prisma.userCompany.findUnique({
+    where: { userId_companyId: { userId, companyId } },
+  });
+
+  if (existing) {
+    await prisma.userCompany.update({
+      where: { userId_companyId: { userId, companyId } },
+      data: { office_id: ownerOfficeId },
+    });
+  } else {
+    await prisma.userCompany.create({
+      data: { userId, companyId, office_id: ownerOfficeId },
+    });
+  }
+
+  // Atualiza só office_id via raw para não depender de colunas novas do schema (ex.: attendanceMode)
+  await prisma.$executeRaw`UPDATE \`User\` SET office_id = ${ownerOfficeId} WHERE id = ${userId}`;
+}
+
 async function main() {
   console.log(" Iniciando backfill Office por Companhia...\n");
 
@@ -112,10 +185,8 @@ async function main() {
         select: { office_id: true },
       });
       const targetOfficeId = uc?.office_id ?? fallbackOfficeId;
-      await prisma.user.update({
-        where: { id: u.id },
-        data: { office_id: targetOfficeId },
-      });
+      // Atualiza só office_id via raw para não depender de colunas novas do schema (ex.: attendanceMode)
+      await prisma.$executeRaw`UPDATE \`User\` SET office_id = ${targetOfficeId} WHERE id = ${u.id}`;
     }
     await prisma.userPermission.deleteMany({ where: { office_id: office.id } });
     await prisma.office.delete({ where: { id: office.id } });
@@ -143,6 +214,14 @@ async function main() {
   const adminByCompany = new Map<string, string>();
   const workerByCompany = new Map<string, string>();
   const ownerByCompany = new Map<string, string>();
+  /** Relatório: owner definido por empresa (apenas quando office Owner foi criada e havia usuário para atribuir). */
+  const ownerCreatedByCompany: Array<{
+    companyId: string;
+    companyName: string;
+    ownerUserId: string;
+    ownerName: string;
+    ownerEmail: string;
+  }> = [];
 
   for (const company of companies) {
     const existingOffices = await prisma.office.findMany({
@@ -231,6 +310,27 @@ async function main() {
       });
       ownerByCompany.set(company.id, newOwner.id);
       createdOwner++;
+
+      const ownerCandidate = await getOwnerUserIdByOldestDate(company.id);
+      if (ownerCandidate) {
+        await assignUserToOwnerOffice({
+          userId: ownerCandidate.userId,
+          companyId: company.id,
+          ownerOfficeId: newOwner.id,
+        });
+        const ownerUser = await prisma.user.findUnique({
+          where: { id: ownerCandidate.userId },
+          select: { name: true, email: true },
+        });
+        ownerCreatedByCompany.push({
+          companyId: company.id,
+          companyName: company.name,
+          ownerUserId: ownerCandidate.userId,
+          ownerName: ownerUser?.name ?? "(sem nome)",
+          ownerEmail: ownerUser?.email ?? "(sem email)",
+        });
+      }
+
       console.log(`  Company "${company.name}" — office Owner criada (${newOwner.id}) com ${planPermissionIds.length} permissões do plano`);
     } else {
       const existingOwner = existingOffices.find((o) => o.name.toLowerCase() === "owner");
@@ -281,13 +381,23 @@ async function main() {
 
   console.log("\n" + "=".repeat(60));
   console.log(" RESUMO:");
+  console.log(`  Total de empresas: ${companies.length}`);
   console.log(`  Administrator criados: ${createdAdmin}`);
   console.log(`  Worker criados: ${createdWorker}`);
   console.log(`  Owner criados: ${createdOwner}`);
+  console.log(`  Owners atribuídos (usuário com data mais antiga): ${ownerCreatedByCompany.length}`);
   console.log(`  Seller -> Administrator: ${sellerToAdmin}`);
   console.log(`  Worker reassignados: ${workerReassigned}`);
   console.log("=".repeat(60));
-  console.log("\n✅ Backfill concluído com sucesso!");
+
+  if (ownerCreatedByCompany.length > 0) {
+    console.log("\n OWNER CRIADO POR EMPRESA:");
+    for (const row of ownerCreatedByCompany) {
+      console.log(`  • ${row.companyName} (${row.companyId}) → ${row.ownerName} (${row.ownerEmail}) [userId: ${row.ownerUserId}]`);
+    }
+  }
+
+  console.log("\nBackfill concluído com sucesso!");
 }
 
 main()
