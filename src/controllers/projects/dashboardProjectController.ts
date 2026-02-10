@@ -1,10 +1,11 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import dayjs from "dayjs";
 
 export class DashboardProjectController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params;
-        const { period = "thisYear", status_project } = req.query;
+        const { period = "thisYear", status_project, startDate: queryStartDate, endDate: queryEndDate } = req.query;
 
         if (!companyId) {
             return res.status(400).json({
@@ -61,11 +62,40 @@ export class DashboardProjectController {
             });
         }
 
+        const userId = (req as any).userId as string | undefined;
+        let projectFilterBySeller: any = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { projectEditAll: true },
+            });
+            if (user?.projectEditAll !== true) {
+                // Ver projetos onde o usuário é seller OU project manager
+                projectFilterBySeller = {
+                    OR: [
+                        { seller_user_id: userId },
+                        { project_manager_id: userId },
+                    ],
+                };
+            }
+        }
+
         try {
             const getDateRange = (periodType: string) => {
                 const now = new Date();
                 let startDate: Date;
+                let endDate: Date | undefined;
                 let monthsToShow = 12;
+
+                if (queryStartDate && queryEndDate) {
+                    startDate = dayjs(queryStartDate as string).toDate();
+                    endDate = dayjs(queryEndDate as string).toDate();
+                    
+                    const diffMonths = dayjs(endDate).diff(dayjs(startDate), 'month') + 1;
+                    monthsToShow = Math.min(diffMonths, 24);
+                    
+                    return { startDate, endDate, monthsToShow, isCustom: true };
+                }
 
                 switch (periodType) {
                     case "thisYear":
@@ -87,9 +117,9 @@ export class DashboardProjectController {
 
                     case "lastMonth":
                         startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                        const endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+                        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
                         monthsToShow = 1;
-                        return { startDate, endDate, monthsToShow };
+                        return { startDate, endDate, monthsToShow, isCustom: false };
 
                     case "thisMonth":
                         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -112,13 +142,13 @@ export class DashboardProjectController {
                         monthsToShow = 12;
                 }
 
-                return { startDate, endDate: undefined, monthsToShow };
+                return { startDate, endDate: undefined, monthsToShow, isCustom: false };
             };
 
-            const { startDate, endDate, monthsToShow } = getDateRange(period as string);
+            const { startDate, endDate, monthsToShow, isCustom } = getDateRange(period as string);
 
             const dateFilter: any = {};
-            if (period !== "allPeriod") {
+            if (isCustom || period !== "allPeriod") {
                 dateFilter.gte = startDate;
                 if (endDate) {
                     dateFilter.lte = endDate;
@@ -131,6 +161,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: "approved",
                     type_estimate: "estimate",
@@ -146,6 +177,7 @@ export class DashboardProjectController {
             const totalSalesProjectsResult = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
@@ -178,6 +210,7 @@ export class DashboardProjectController {
             const projectsForAverage = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
@@ -211,6 +244,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter,
@@ -222,6 +256,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: "approved",
                     ...(Object.keys(dateFilter).length > 0 && {
@@ -238,6 +273,7 @@ export class DashboardProjectController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
                     status: {
                         in: ["approved"]
@@ -255,6 +291,7 @@ export class DashboardProjectController {
             const projectsForChart = await prisma.project.findMany({
                 where: {
                     company_id: companyId,
+                    ...projectFilterBySeller,
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     }),
@@ -299,7 +336,19 @@ export class DashboardProjectController {
             const monthlySales = [];
             const currentDate = new Date();
 
-            if (period === "last30Days") {
+            if (isCustom) {
+                let current = dayjs(startDate).startOf('month');
+                const last = dayjs(endDate || new Date()).startOf('month');
+                
+                while (current.isBefore(last) || current.isSame(last)) {
+                    const monthKey = `${monthNames[current.month()]}/${current.year()}`;
+                    monthlySales.push({
+                        month: monthKey,
+                        value: monthlyData[monthKey] || 0
+                    });
+                    current = current.add(1, 'month');
+                }
+            } else if (period === "last30Days") {
                 for (let i = 1; i >= 0; i--) {
                     const date = new Date();
                     date.setMonth(currentDate.getMonth() - i);

@@ -94,4 +94,13 @@ userRoutes.post("/user/check-email", checkToken, User.checkEmailAvailability);
 // Check user companies
 userRoutes.post("/user/check-companies", checkToken, User.checkUserCompanies);
 
+// Push Notifications
+userRoutes.put("/user/push-token", checkToken, User.updatePushToken);
+userRoutes.delete("/user/push-token", checkToken, User.removePushToken);
+
+// Get project managers (users that are not work or master)
+userRoutes.get("/user/project-managers", checkToken, User.getProjectManagers);
+userRoutes.get("/user/invoice-managers", checkToken, User.getInvoiceManagers);
+userRoutes.get("/user/sellers", checkToken, User.getSellers);
+
 export { userRoutes }

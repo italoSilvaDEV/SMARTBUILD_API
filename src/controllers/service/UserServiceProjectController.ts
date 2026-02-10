@@ -121,6 +121,35 @@ export class UserServiceProjectController {
     }
   }
 
+  /** Remove the user-service link (UserServiceProject) by id. Does NOT delete existing attendance records. */
+  async deleteLink(req: Request, res: Response) {
+    try {
+      const { id } = req.params; // UserServiceProject id
+      const existing = await prisma.userServiceProject.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!existing) {
+        return res.status(404).json({ error: "Link not found." });
+      }
+      const attendanceCount = await prisma.userAttendance.count({
+        where: { user_service_project_id: id },
+      });
+      if (attendanceCount > 0) {
+        return res.status(409).json({
+          error: "Cannot remove link.",
+          code: "HAS_ATTENDANCE_RECORDS",
+          message: "This user has attendance records for this service. Removing the link would affect historical data. Attendance records are preserved.",
+        });
+      }
+      await prisma.userServiceProject.delete({ where: { id } });
+      return res.status(200).json({ message: "Link removed successfully." });
+    } catch (error: any) {
+      console.error(error);
+      return res.status(500).json({ error: "Error while removing link.", details: error.message });
+    }
+  }
+
   async getById(req: Request, res: Response) {
     try {
       const { id, id_company } = req.params; // ID do ServiceProject
@@ -354,7 +383,7 @@ export class UserServiceProjectController {
           id: usp.id,
           service_project_id: usp.service_project_id,
           name: usp.service_project?.name,
-          address: usp.service_project?.Project?.client?.location || null,
+          address: usp.service_project?.Project?.location || usp.service_project?.Project?.client?.location || null,
           startDate: startDate ? startDate.toLocaleDateString("pt-BR") : null,
           daysLeft: daysLeft !== null ? `${daysLeft} dias` : null,
           workedHours: workedHours?.toFixed(1), // Horas trabalhadas formatadas
@@ -509,11 +538,17 @@ export class UserServiceProjectController {
         return res.status(400).json({ error: 'User ID is required.' });
       }
 
-      // Verifica se o usuário existe
+      // Verifica se o usuário existe e modo de visibilidade da company
       const user = await prisma.user.findUnique({
         where: { id: userId as string },
         select: {
           company_id: true,
+          projectVisibilityMode: true, // Novo campo individual
+          company: {
+            select: {
+              projectVisibilityMode: true // Fallback global
+            }
+          },
           companies: {
             select: {
               companyId: true
@@ -525,6 +560,9 @@ export class UserServiceProjectController {
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
       }
+
+      // Prioriza configuração individual do usuário, fallback para a empresa
+      const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
 
       // Conjunto de empresas do usuário
       const userCompanyIds = new Set<string>();
@@ -555,7 +593,7 @@ export class UserServiceProjectController {
         });
       }
 
-      // Busca todos os projetos em andamento
+      // Busca todos os projetos em andamento (respeitando projectVisibilityMode)
       const projects = await prisma.project.findMany({
         where: {
           // Status do projeto: apenas "In Progress" e "Final walkthrough"
@@ -566,6 +604,20 @@ export class UserServiceProjectController {
           company_id: {
             in: Array.from(userCompanyIds)
           },
+          // assignedOnly: só projetos onde o usuário tem pelo menos um serviço vinculado
+          ...(visibilityMode === 'assignedOnly'
+            ? {
+                serviceProject: {
+                  some: {
+                    UserServiceProject: {
+                      some: {
+                        user_id: userId as string
+                      }
+                    }
+                  }
+                }
+              }
+            : {}),
           // Busca por endereço ou nome do cliente (opcional)
           ...(search && {
             OR: [

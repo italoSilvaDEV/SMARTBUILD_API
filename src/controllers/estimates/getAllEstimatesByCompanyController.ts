@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import dayjs from "dayjs";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -49,11 +50,17 @@ function getDateRange(periodType: string) {
 
 export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
-        const {
-            companyId
-        } = req.params
+        const { companyId } = req.params
 
-        const { period = "allPeriod" } = req.query;
+        const { period = "allPeriod", statusFilters, startDate: queryStartDate, endDate: queryEndDate } = req.query;
+
+        const parseFilter = (filter: any) => {
+            if (!filter) return undefined;
+            if (Array.isArray(filter)) return filter as string[];
+            return [filter as string];
+        };
+
+        const statusArr = parseFilter(statusFilters);
 
         if (!companyId) {
             return res.status(400).json({
@@ -89,10 +96,34 @@ export class GetAllEstimatesByCompanyController {
             })
         }
 
-        const { startDate, endDate } = getDateRange(period as string);
+        const userId = (req as any).userId as string | undefined;
+        let projectFilterBySeller: { seller_user_id?: string } = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { estimateEditAll: true },
+            });
+            if (user?.estimateEditAll !== true) {
+                projectFilterBySeller = { seller_user_id: userId };
+            }
+        }
+
+        let startDate: Date;
+        let endDate: Date | undefined;
+        let isCustomRange = false;
+
+        if (queryStartDate && queryEndDate) {
+            startDate = dayjs(queryStartDate as string).toDate();
+            endDate = dayjs(queryEndDate as string).toDate();
+            isCustomRange = true;
+        } else {
+            const range = getDateRange(period as string);
+            startDate = range.startDate;
+            endDate = range.endDate;
+        }
 
         const dateFilter: any = {};
-        if (period !== "allPeriod") {
+        if (isCustomRange || period !== "allPeriod") {
             dateFilter.gte = startDate;
             if (endDate) {
                 dateFilter.lte = endDate;
@@ -104,7 +135,11 @@ export class GetAllEstimatesByCompanyController {
                 where: {
                     project: {
                         company_id: companyId,
+                        ...projectFilterBySeller,
                     },
+                    ...(statusArr && statusArr.length > 0 && {
+                        status: { in: statusArr }
+                    }),
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     })

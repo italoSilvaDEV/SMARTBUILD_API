@@ -35,55 +35,55 @@ const uploadServiceProject = multer(
 const uploadAttachments = multer(uploadConfig2.uploadUtf8("./public/tmp/estimate-attachments"));
 
 projectRoutes.post("/project", checkToken, projectController.createProject);
+// Rotas específicas ANTES da genérica /project/:id para não capturar "project-manager" ou "user-seller" como id
+projectRoutes.patch("/project/project-manager", checkToken, projectController.updateProjectManager.bind(projectController));
+projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject.bind(projectController));
+projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller.bind(projectController));
 projectRoutes.patch("/project/:id", checkToken, projectController.updateProject.bind(projectController));
 projectRoutes.patch("/project/update/status", checkToken, projectController.updateStatusProject);
 projectRoutes.delete("/project/delete/:id", checkToken, projectController.deleteProject);
 projectRoutes.patch("/project/update/start_date", checkToken, projectController.startDateProject);
 projectRoutes.patch("/project/update/deadline", checkToken, projectController.deadlineProject);
-projectRoutes.patch("/project/update/location", checkToken, projectController.updateLocationProject);
+projectRoutes.patch("/project/update/location", checkToken, projectController.updateLocationProject); 
 projectRoutes.get(
   "/project/find",
   checkToken,
-  projectController.getAllProjects
+  projectController.getAllProjects.bind(projectController)
 );//ok novo modelo
-projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById);//ok novo modelo
+projectRoutes.get("/project/find/:id", checkToken, projectController.getProjectById.bind(projectController));//ok novo modelo
 
-projectRoutes.get("/project/user-seller", checkToken, projectController.getUserSeller);
-
-projectRoutes.patch("/project/user-seller", checkToken, projectController.updateUserSellerProject);
-
-projectRoutes.get("/project/dashboard/:companyId", checkToken, dashboardProjectController.handle);
+projectRoutes.get("/project/dashboard/:companyId", checkToken, dashboardProjectController.handle.bind(dashboardProjectController));
 
 projectRoutes.post(
   "/service-project",
   checkToken,
-  projectController.createServiceProject
+  projectController.createServiceProject.bind(projectController)
 );
 
-projectRoutes.put("/service-project", checkToken, projectController.updateServiceProject);
-projectRoutes.delete("/service-img-project/:id", checkToken, projectController.DeleteAllImgServiceProjectController);
+projectRoutes.put("/service-project", checkToken, projectController.updateServiceProject.bind(projectController));
+projectRoutes.delete("/service-img-project/:id", checkToken, projectController.DeleteAllImgServiceProjectController.bind(projectController));
 
 projectRoutes.post(
   "/img-service-project",
   checkToken,
   uploadServiceProject.single("file"),
   compressImage("service-project"),
-  projectController.upLoadPhotoServiceProject
+  projectController.upLoadPhotoServiceProject.bind(projectController)
 );
 
-projectRoutes.patch("/service-project/update-fields", checkToken, projectController.updateFieldsServiceProject);
+projectRoutes.patch("/service-project/update-fields", checkToken, projectController.updateFieldsServiceProject.bind(projectController));
 
 projectRoutes.post(
   "/img-url-service-project",
   checkToken,
-  projectController.imageUrlServiceProject
+  projectController.imageUrlServiceProject.bind(projectController)
 );
 
 
 projectRoutes.delete(
   "/service-project/:id",
   checkToken,
-  projectController.deleteServiceProject
+  projectController.deleteServiceProject.bind(projectController)
 );
 
 //costProject
@@ -117,34 +117,32 @@ projectRoutes.post("/project/upload-contract",
   createContractProjectController.handle.bind(createContractProjectController)
 );
 
-export { projectRoutes };
-
 const createCostProjectController = new CreateCostProjectController();
 projectRoutes.post(
   "/costproject",
   checkToken,
-  createCostProjectController.handle
+  createCostProjectController.handle.bind(createCostProjectController)
 );
 
 const findCostProjectController = new FindCostProjectController();
 projectRoutes.post(
   "/costproject/find",
   checkToken,
-  findCostProjectController.handle
+  findCostProjectController.handle.bind(findCostProjectController)
 );
 
 const findPdfProjectAllController = new FindPdfProjectAllController();
 projectRoutes.post(
   "/pdfproject/find",
   checkToken,
-  findPdfProjectAllController.handle
+  findPdfProjectAllController.handle.bind(findPdfProjectAllController)
 );
 
 const findPdfContractProjectAllController = new FindPdfContractProjectAllController();
 projectRoutes.post(
   "/pdfcontractproject/find",
   checkToken,
-  findPdfContractProjectAllController.handle
+  findPdfContractProjectAllController.handle.bind(findPdfContractProjectAllController)
 );
 
 const updateInvoiceCostProjectController =
@@ -152,14 +150,14 @@ const updateInvoiceCostProjectController =
 projectRoutes.put(
   "/invoicecostproject/:id",
   checkToken,
-  updateInvoiceCostProjectController.handle
+  updateInvoiceCostProjectController.handle.bind(updateInvoiceCostProjectController)
 );
 
 const deleteCostProjectController = new DeleteCostProjectController()
-projectRoutes.delete("/costProject/:cost_project_id", checkToken, deleteCostProjectController.handle)
+projectRoutes.delete("/costProject/:cost_project_id", checkToken, deleteCostProjectController.handle.bind(deleteCostProjectController))
 
 const updateCostProjectController = new UpdateCostProjectController();
-projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle);
+projectRoutes.put("/costproject", checkToken, updateCostProjectController.handle.bind(updateCostProjectController));
 
 // projectRoutes.post("/add_project_responsibles", checkToken, projectController.addProjectResponsibles)
 // projectRoutes.delete("/remove_project_responsibles", checkToken, projectController.removeProjectResponsibles)
@@ -170,9 +168,9 @@ projectRoutes.delete('/project/gallery', checkToken, galleryProject.delete.bind(
 projectRoutes.get('/project/gallery/:id', galleryProject.find.bind(galleryProject))
 projectRoutes.post('/project/gallery/send-email', checkToken, uploadAttachments.array("attachments", 10), galleryProject.sendEmail.bind(galleryProject))
 
-projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId)
+projectRoutes.get('/project/services-project/:id', checkToken, projectController.findServicesProjectByProjectId.bind(projectController))
 
-projectRoutes.get('/project/services-project/history/:id', checkToken, projectController.findHistoryServicesProjectById)
+projectRoutes.get('/project/services-project/history/:id', checkToken, projectController.findHistoryServicesProjectById.bind(projectController))
 
 // Rota para listar atividades
 projectRoutes.get("/project/services-project/activities/:serviceProjectId", checkToken, listActivities);
@@ -181,28 +179,28 @@ projectRoutes.post("/project/services-project/activities", checkToken, createAct
 // Rota para excluir uma atividade
 projectRoutes.delete("/project/services-project/activities/:id", checkToken, deleteActivity);
 
-projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule);
+projectRoutes.post("/project/schedule", checkToken, projectController.getSellerSchedule.bind(projectController));
 
-projectRoutes.patch("/service-project/update/dates", checkToken, projectController.updateDatesServiceProject);
+projectRoutes.patch("/service-project/update/dates", checkToken, projectController.updateDatesServiceProject.bind(projectController));
 
-projectRoutes.patch("/service-project/update/status", checkToken, projectController.updateStatusServiceProject);
+projectRoutes.patch("/service-project/update/status", checkToken, projectController.updateStatusServiceProject.bind(projectController));
 
-projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule);
+projectRoutes.post("/service-project/schedule", checkToken, projectController.getServiceProjectSchedule.bind(projectController));
 
 // Rota para buscar os ServiceProjects relacionados ao usuário
-projectRoutes.post("/service-project/scheduleById", projectController.getServiceProjectScheduleByIdUser);
+projectRoutes.post("/service-project/scheduleById", projectController.getServiceProjectScheduleByIdUser.bind(projectController));
 
-projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectController.getWorkerSchedule);
+projectRoutes.get("/service-project/schedule/worker/:id", checkToken, projectController.getWorkerSchedule.bind(projectController));
 
 const timeController = new TimeController()
-projectRoutes.get('/time-cards/all', checkToken, timeController.findMany)
-projectRoutes.get('/time-cards/worker_id', checkToken, timeController.findManyByIdWorker)
-projectRoutes.get('/time-cards/worker_id_web', checkToken, timeController.findManyByIdWorkerWeb)
-projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies)
+projectRoutes.get('/time-cards/all', checkToken, timeController.findMany.bind(timeController))
+projectRoutes.get('/time-cards/worker_id', checkToken, timeController.findManyByIdWorker.bind(timeController))
+projectRoutes.get('/time-cards/worker_id_web', checkToken, timeController.findManyByIdWorkerWeb.bind(timeController))
+projectRoutes.get('/time-activies', checkToken, timeController.findManyActivies.bind(timeController))
 
-projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.generateAndSendPdf);
+projectRoutes.get("/project/generate-pdf/:id", checkToken, projectController.generateAndSendPdf.bind(projectController));
 
-projectRoutes.get("/project/generate-pdf-estimate/:id", projectController.generatePdfEstimate);
+projectRoutes.get("/project/generate-pdf-estimate/:id", projectController.generatePdfEstimate.bind(projectController));
 
 
 // Nova rota para PDF com relacionamento estimate/invoice
@@ -230,13 +228,13 @@ const findPdfProjectEstimateInvoiceController = new FindPdfProjectEstimateInvoic
 projectRoutes.post(
   "/pdfproject/estimate-invoice/find",
   checkToken,
-  findPdfProjectEstimateInvoiceController.handle
+  findPdfProjectEstimateInvoiceController.handle.bind(findPdfProjectEstimateInvoiceController)
 );
 
 const balanceController = new BalanceController();
 
-projectRoutes.patch("/project/update/balance-due", checkToken, balanceController.updateBalanceDue);
-projectRoutes.get("/project/amount-paid/:projectId", checkToken, balanceController.getAmountPaid);
+projectRoutes.patch("/project/update/balance-due", checkToken, balanceController.updateBalanceDue.bind(balanceController));
+projectRoutes.get("/project/amount-paid/:projectId", checkToken, balanceController.getAmountPaid.bind(balanceController));
 
 // Upload e gerenciamento de foto de capa do projeto
 const uploadProjectCover = multer(
@@ -254,3 +252,5 @@ projectRoutes.delete(
   checkToken,
   projectController.deleteCoverPhoto.bind(projectController)
 );
+
+export { projectRoutes };

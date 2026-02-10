@@ -57,7 +57,7 @@ export class CompanyController {
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
-                        equals: 'administrator'
+                        equals: 'Owner'
                     }
                 }
             });
@@ -217,7 +217,7 @@ export class CompanyController {
             const office = await prisma.office.findFirst({
                 where: {
                     name: {
-                        equals: 'administrator'
+                        equals: 'Owner'
                     }
                 }
             });
@@ -319,7 +319,8 @@ export class CompanyController {
             name,
             workStartTime,
             workEndTime,
-            attendanceMode
+            attendanceMode,
+            projectVisibilityMode
         } = req.body;
         const file = req.file;
 
@@ -377,7 +378,8 @@ export class CompanyController {
                     avatar: avatarUrl,
                     workStartTime,
                     workEndTime,
-                    ...(attendanceMode ? { attendanceMode } : {})
+                    ...(attendanceMode ? { attendanceMode } : {}),
+                    ...(projectVisibilityMode ? { projectVisibilityMode } : {})
                 },
             });
 
@@ -409,7 +411,8 @@ export class CompanyController {
                     name: true,
                     workStartTime: true,
                     workEndTime: true,
-                    attendanceMode: true
+                    attendanceMode: true,
+                    projectVisibilityMode: true
                 }
             });
 
@@ -517,7 +520,7 @@ export class CompanyController {
                                 is: {
                                     office: {
                                         is: {
-                                            name: "Administrator"
+                                            name: "Owner"
                                         }
                                     }
                                 }

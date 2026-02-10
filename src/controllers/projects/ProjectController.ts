@@ -132,10 +132,15 @@ export class ProjectController {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  async getAllProjects(req: Request, res: Response) {
-    const { company_id, id_seller, status_project, page, search, period = "allPeriod" } = req.query;
-    const query: any = {};
+  private static clearCache() {
+    this.cache.clear();
+  }
 
+  async getAllProjects(req: Request, res: Response) {
+    const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate } = req.query;
+    const query: any = {};
+    const userId = (req as any).userId as string | undefined;
+    // console.log("valor do userId", userId);
     if (!company_id)
       return res.status(404).json({ error: "Company_id is required!" });
 
@@ -155,17 +160,53 @@ export class ProjectController {
       });
     }
 
-    const { startDate, endDate } = getDateRange(period as string);
+    let startDate: Date;
+    let endDate: Date | undefined;
+    let isCustomRange = false;
 
-    if (period !== "allPeriod") {
+    if (queryStartDate && queryEndDate) {
+      startDate = dayjs(queryStartDate as string).toDate();
+      endDate = dayjs(queryEndDate as string).toDate();
+      isCustomRange = true;
+    } else {
+      const range = getDateRange(period as string);
+      startDate = range.startDate;
+      endDate = range.endDate;
+    }
+
+    if (isCustomRange || period !== "allPeriod") {
       query.date_creation = {
         gte: startDate,
         ...(endDate && { lte: endDate })
       };
     }
 
-    if (company_id) query.company_id = { equals: String(company_id) };
-    if (id_seller) query.seller_user_id = { equals: id_seller };
+    if (company_id) query.company_id = { equals: String(company_id) }
+
+    // Filtro por permissão: projectEditAll = ver/editar todos; senão só os que é seller OU project manager
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { projectEditAll: true },
+      });
+      const canEditAll = user?.projectEditAll === true;
+      if (canEditAll) {
+        if (id_seller) query.seller_user_id = { equals: id_seller };
+      } else {
+        // Ver projetos onde o usuário é seller OU project manager (usar AND para não sobrescrever query.OR de busca)
+        query.AND = [
+          ...(Array.isArray(query.AND) ? query.AND : []),
+          {
+            OR: [
+              { seller_user_id: { equals: userId } },
+              { project_manager_id: { equals: userId } },
+            ],
+          },
+        ];
+      }
+    } else if (id_seller) {
+      query.seller_user_id = { equals: id_seller };
+    }
 
     if (status_project) {
       const statusArray =
@@ -252,6 +293,14 @@ export class ProjectController {
               name: true,
             },
           },
+          project_manager: {
+            select: {
+              id: true,
+              avatar: true,
+              email: true,
+              name: true,
+            },
+          },
           serviceProject: {
             select: {
               id: true,
@@ -293,7 +342,7 @@ export class ProjectController {
         skip,
         take,
         orderBy: {
-          date_update: "desc",
+          date_creation: "desc",
         },
       });
 
@@ -514,9 +563,19 @@ export class ProjectController {
           ? await getPresignedUrl(project.cover_photo)
           : null;
 
+        const projectManagerWithAvatar = project.project_manager
+          ? {
+              ...project.project_manager,
+              avatar: project.project_manager.avatar
+                ? await getPresignedUrl(String(project.project_manager.avatar))
+                : null,
+            }
+          : null;
+
         return {
           ...project,
           cover_photo: coverPhotoUrl,
+          project_manager: projectManagerWithAvatar,
           balanceDue: 1200,
           amountPaid: 3250,
           // balanceDue: balanceDue,
@@ -632,6 +691,14 @@ export class ProjectController {
               name: true,
             },
           },
+          project_manager: {
+            select: {
+              id: true,
+              avatar: true,
+              email: true,
+              name: true,
+            },
+          },
           InvoicePaymentTimeLine: true
         },
       });
@@ -674,7 +741,7 @@ export class ProjectController {
                 service_project_name: cost.ServiceProject?.name,
                 invoice_cost_project_id: cost.invoiceCostProject?.id,
                 project_cost_invoice_exists: cost.invoiceCostProject?.project_cost_invoice_exists,
-                invoice_cost_project: cost.invoiceCostProject?.uri 
+                invoice_cost_project: cost.invoiceCostProject?.uri
                   ? await getPresignedUrl(String(cost.invoiceCostProject.uri))
                   : null,
               }))
@@ -835,6 +902,12 @@ export class ProjectController {
               ? await getPresignedUrl(String(project.user?.avatar))
               : null,
           },
+          project_manager: project.project_manager ? {
+            ...project.project_manager,
+            avatar: project.project_manager?.avatar
+              ? await getPresignedUrl(String(project.project_manager.avatar))
+              : null,
+          } : null,
           costProjects: flatCostProjects,
           cost_of_materials: costofwork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
@@ -1197,13 +1270,31 @@ export class ProjectController {
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
       }
-      return response.status(500).json({ error: "Internal server error" });
+      return response.status(500).json({ error: "Internal server error" }); 
     }
   }
 
   async updateUserSellerProject(req: Request, res: Response) {
     const { id, seller_user_id } = req.body;
+    
     try {
+      if (!id) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+      
+      if (!seller_user_id) {
+        return res.status(400).json({ error: "Seller user ID is required" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
       const project = await prisma.project.update({
         where: { id },
         data: {
@@ -1212,10 +1303,81 @@ export class ProjectController {
       });
       return res.json(project);
     } catch (error) {
+      console.error("[updateUserSellerProject] Error:", error);
       if (error instanceof Error) {
-        return res.json({ error: error.message });
+        return res.status(500).json({ error: error.message });
       }
-      return res.json({ error: "Erro interno do servidor" });
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async updateProjectManager(req: Request, res: Response) {
+    const { id, project_manager_id } = req.body;
+    try {
+      if (!id) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+
+      // Verificar se o projeto existe
+      const existingProject = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Se project_manager_id for fornecido, verificar se o usuário existe
+      if (project_manager_id) {
+        const user = await prisma.user.findUnique({
+          where: { id: project_manager_id },
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+      }
+
+      const project = await prisma.project.update({
+        where: { id },
+        data: {
+          project_manager_id: project_manager_id || null,
+        },
+        include: {
+          project_manager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+
+      // Se houver avatar, gerar URL presignada
+      if (project.project_manager?.avatar) {
+        try {
+          const avatarUrl = await getPresignedUrl(project.project_manager.avatar);
+          project.project_manager.avatar = avatarUrl;
+        } catch (error) {
+          console.error("Error getting presigned URL for project manager avatar:", error);
+        }
+      }
+
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
+
+      return res.json({
+        success: true,
+        project,
+      });
+    } catch (error) {
+      console.error("[updateProjectManager] Error:", error);
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 
@@ -1236,7 +1398,7 @@ export class ProjectController {
       if (!data.client.name || !data.client.email) {
         return res.status(400).json({ error: "client name and email are required" });
       }
-      
+
       // Validações de localização apenas se não for fluxo standalone
       if (!skipLocationValidation) {
         if (!data.location) {
@@ -1272,11 +1434,11 @@ export class ProjectController {
           name: data.client.name,
           phone: data.client.phone,
         };
-        
+
         if (data.client.birth_date !== undefined) {
           updateData.birth_date = data.client.birth_date;
         }
-        
+
         client = await prisma.client.update({
           where: { id: client.id },
           data: updateData,
@@ -1355,7 +1517,7 @@ export class ProjectController {
 
       // Criar serviceProjects se fornecidos (fluxo standalone invoice)
       if (data.serviceProject && data.serviceProject.length > 0) {
-        const serviceProjectPromises = data.serviceProject.map(service => 
+        const serviceProjectPromises = data.serviceProject.map(service =>
           prisma.serviceProject.create({
             data: {
               projectId: project.id,
@@ -1367,11 +1529,11 @@ export class ProjectController {
             },
           })
         );
-        
+
         await Promise.all(serviceProjectPromises);
       }
 
-      return res.status(201).json(project);
+        return res.status(201).json(project);
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1434,11 +1596,11 @@ export class ProjectController {
         client_id,
         autorId,
       };
-      
+
       if (work_context_id !== undefined) {
         updateData.workContextId = work_context_id || null;
       }
-      
+
       const project = await prisma.project.update({
         where: { id },
         data: updateData,
@@ -1493,7 +1655,7 @@ export class ProjectController {
         data: { start_date },
       });
 
-      return res.json(project);
+        return res.json(project);
     } catch (error) {
       console.error(error);
       if (error instanceof Error) {
@@ -1573,6 +1735,9 @@ export class ProjectController {
           radius: radiusFloat,
         },
       });
+
+      // Limpar cache para que getAllProjects retorne dados atualizados
+      ProjectController.clearCache();
 
       return res.json(project);
     } catch (error) {

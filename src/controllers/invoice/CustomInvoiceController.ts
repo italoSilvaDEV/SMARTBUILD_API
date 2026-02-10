@@ -120,7 +120,9 @@ export class CustomInvoiceController {
       services,
       multi_emails,
       date_creation,
-      isStandaloneInvoice
+      showPaymentMethods,
+      isStandaloneInvoice,
+      project_manager_id
     } = req.body
 
     try {
@@ -201,6 +203,7 @@ export class CustomInvoiceController {
             invoiceType: "custom",
             status: "open",
             totalAmount: totalAmount,
+            showPaymentMethods: showPaymentMethods ?? true,
             dueDate: dueDateObj,
             description: description,
             projectId: project.id,
@@ -212,7 +215,8 @@ export class CustomInvoiceController {
             estimateId: estimateId,
             multi_emails: multi_emails,
             isStandaloneInvoice: isStandaloneInvoice || false,
-            createdAt: date_creation ? new Date(date_creation) : new Date()
+            createdAt: date_creation ? new Date(date_creation) : new Date(),
+            project_manager_id: project_manager_id || null
           }
         });
 
@@ -880,7 +884,7 @@ export class CustomInvoiceController {
       if (invoice.invoiceType === 'stripe') {
         paymentUrl = `${process.env.URL_FRONT}/pay/${invoice.id}`;
       } else if (invoice.invoiceUrl && invoice.invoiceType === 'custom') {
-        paymentUrl = invoice.invoiceUrl ||  '';
+        paymentUrl = invoice.invoiceUrl || '';
       }
 
       const emailSubject = String(invoice.invoiceType) === 'stripe' ? `Invoice from ${companyName}` : `Invoice #${invoiceCode} - ${companyName}`;
@@ -1338,7 +1342,9 @@ export class CustomInvoiceController {
       totalAmount,
       multi_emails,
       date_creation,
-      userId
+      showPaymentMethods,
+      userId,
+      project_manager_id
     } = req.body;
 
     try {
@@ -1449,11 +1455,13 @@ export class CustomInvoiceController {
             description: description || existingInvoice.description,
             type_value: type_value || existingInvoice.type_value,
             percentageCoefficient: coefficientPerfentage,
+            showPaymentMethods: showPaymentMethods ?? true,
             invoiceType: newInvoiceType,
             invoiceTypeStripe: null,
             multi_emails: multi_emails || existingInvoice.multi_emails,
             updatedAt: new Date(),
             createdAt: date_creation ? new Date(date_creation) : existingInvoice.createdAt,
+            project_manager_id: project_manager_id !== undefined ? project_manager_id : undefined,
             // Clear QB references when converting from QBO to Custom
             ...(isConvertingFromQuickbooks && {
               idQuickbookContabio: null,
@@ -1574,6 +1582,7 @@ export class CustomInvoiceController {
               dueDate: dueDate,
               userId: userId,
               coefficientPerfentage: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods ?? true,
               services: qbServicesForCreate,
               type_value: type_value,
               totalAmountTarget: totalAmount ?? 0,
@@ -1630,6 +1639,7 @@ export class CustomInvoiceController {
               dueDate: dueDate,
               userId: userId,
               coefficientPerfentage: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods ?? true,
               services: qbServices,
               totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
               calledFromStripe: true // Indicar que foi chamado pelo Custom

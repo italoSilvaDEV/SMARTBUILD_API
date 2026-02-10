@@ -13,26 +13,37 @@ model Config {
 }
 
 model User {
-  id                  String   @id @default(uuid())
-  avatar              String?
-  name                String
-  email               String   @unique
-  document            String?
-  phone               String?
-  phone_emergency     String?
-  zip_code            String?
-  city_and_state      String?
-  state               String?
-  number_road         String?
-  number_home         String?
-  neighborhood        String?
-  password            String
-  rules               Json
-  hourly_price        Float?
-  profession          String?
-  isDisabled          Boolean? @default(false)
-  isOverTime          Boolean? @default(false)
-  onBoardingCompleted Boolean? @default(true)
+  id                    String   @id @default(uuid())
+  avatar                String?
+  name                  String
+  email                 String   @unique
+  document              String?
+  phone                 String?
+  phone_emergency       String?
+  zip_code              String?
+  city_and_state        String?
+  state                 String?
+  number_road           String?
+  number_home           String?
+  neighborhood          String?
+  password              String
+  rules                 Json
+  hourly_price          Float?
+  profession            String?
+  isDisabled            Boolean? @default(false)
+  isOverTime            Boolean? @default(false)
+  onBoardingCompleted   Boolean? @default(true)
+  // Configurações de Ponto (Time Card)
+  attendanceMode        String?  @default("manual") // manual, auto
+  clockOutMode          String?  @default("manual") // manual, auto
+  canEditTimeCard       Boolean? @default(false)
+  dailyRate             Decimal? @db.Decimal(10, 2)
+  defaultBreakMinutes   Int?     @default(0)
+  projectVisibilityMode String?  @default("allActive") // assignedOnly, allActive
+
+  invoiceEditAll  Boolean? @default(false)
+  projectEditAll  Boolean? @default(false)
+  estimateEditAll Boolean? @default(false)
 
   token_recover_password String?              @unique
   autorId                String?
@@ -48,6 +59,8 @@ model User {
   UserServiceProject     UserServiceProject[]
   UserAttendance         UserAttendance[]
   Activities             Activities[]
+  project_manager_project Project[]            @relation("project_manager")
+  project_manager_invoice Invoice[]            @relation("project_manager_invoice")
 
   InvoiceSendHistory InvoiceSendHistory[]
 
@@ -86,7 +99,81 @@ model User {
   salesDeals      SalesDeal[]     @relation("AssignedDeals")
   salesActivities SalesActivity[] // Atividades realizadas pelo usuário
 
+  createdTasks           Task[]             @relation("CreatedTasks")
+  assignedTasks          Task[]             @relation("AssignedTasks")
+  taskComments           TaskComment[]      @relation("TaskComments")
+  taskNotifications      TaskNotification[] @relation("TaskNotifications")
+  taskNotificationActors TaskNotification[] @relation("TaskNotificationActors")
+
+  // Push Notifications
+  expoPushToken String?
+
+  // Chat Relationships
+  sentMessages    ChatMessage[] @relation("SentMessages")
+  chatMemberships ChatMember[]
+  createdChats    Chat[]        @relation("CreatedChats")
+
   @@index([office_id], map: "User_office_id_fkey")
+}
+
+model Chat {
+  id      String  @id @default(uuid())
+  name    String? // Nulo para conversas 1:1, preenchido para grupos
+  avatar  String? // Foto do grupo
+  isGroup Boolean @default(false)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  creatorId String?
+  creator   User?   @relation("CreatedChats", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("chats")
+}
+
+model ChatMember {
+  id     String @id @default(uuid())
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isAdmin    Boolean  @default(false)
+  joinedAt   DateTime @default(now())
+  lastReadAt DateTime @default(now())
+
+  @@unique([chatId, userId])
+  @@index([userId])
+  @@map("chat_members")
+}
+
+model ChatMessage {
+  id     String @id @default(uuid())
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  text     String? @db.Text
+  fileUrl  String? @db.Text
+  fileName String?
+  fileType String?
+
+  createdAt DateTime @default(now())
+
+  @@index([chatId])
+  @@index([senderId])
+  @@map("chat_messages")
 }
 
 model Audit {
@@ -99,21 +186,22 @@ model Audit {
 }
 
 model Company {
-  id             String         @id @default(uuid())
-  avatar         String?
-  name           String
-  date_creation  DateTime       @default(now())
-  date_update    DateTime       @updatedAt
-  address        String?
-  district       String?
-  numberHouse    String?
-  complement     String?
-  email          String?
-  phone          String?
-  webSiteUrl     String?
-  workStartTime  String? // Format: "HH:mm" (24-hour)
-  workEndTime    String? // Format: "HH:mm" (24-hour)
-  attendanceMode AttendanceMode @default(manual)
+  id                    String         @id @default(uuid())
+  avatar                String?
+  name                  String
+  date_creation         DateTime       @default(now())
+  date_update           DateTime       @updatedAt
+  address               String?
+  district              String?
+  numberHouse           String?
+  complement            String?
+  email                 String?
+  phone                 String?
+  webSiteUrl            String?
+  workStartTime         String? // Format: "HH:mm" (24-hour)
+  workEndTime           String? // Format: "HH:mm" (24-hour)
+  attendanceMode        AttendanceMode @default(manual)
+  projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -165,6 +253,9 @@ model Company {
 
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
+
+  offices Office[]
+  chats   Chat[]
 }
 
 model ContractNotes {
@@ -195,12 +286,17 @@ model Webhooks {
 }
 
 model Office {
-  id            String        @id @default(uuid())
-  name          String
-  date_creation DateTime      @default(now())
-  date_update   DateTime      @updatedAt
-  User          User[]
-  UserCompany   UserCompany[]
+  id              String           @id @default(uuid())
+  name            String
+  date_creation   DateTime         @default(now())
+  date_update     DateTime         @updatedAt
+  company_id      String?
+  company         Company?         @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  User            User[]
+  UserCompany     UserCompany[]
+  userPermissions UserPermission[]
+
+  @@index([company_id])
 }
 
 model Rules {
@@ -300,6 +396,7 @@ model ServiceProject {
   estimateService              EstimateServiceProject?       @relation(fields: [estimateServiceId], references: [id])
   subServicesProjects          SubServicesProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  tasks                        Task[]
 }
 
 model SubServicesProject {
@@ -547,6 +644,10 @@ model Project {
 
   user           User?    @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
+
+  project_manager    User?    @relation("project_manager", fields: [project_manager_id], references: [id])
+  project_manager_id String?
+
   company        Company? @relation(fields: [company_id], references: [id])
   company_id     String?
 
@@ -565,6 +666,7 @@ model Project {
   PublicFeedLinkProjects PublicFeedLinkProject[]
   imagesAttachments      ImagesAttachments[]
   customServiceSchedules CustomServiceSchedule[]
+  tasks                  Task[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -807,7 +909,7 @@ model CostProject {
   @@map("cost_project")
 }
 
-model Subcontractor { 
+model Subcontractor {
   id            String   @id @default(uuid())
   name          String
   email         String
@@ -968,12 +1070,14 @@ enum AttendanceMode {
 
 model Invoice {
   id                    String  @id @default(uuid())
-  stripeInvoiceId       String? @unique 
+  stripeInvoiceId       String? @unique
   stripePaymentIntentId String? @unique // NOVO: para Payment Element
   externalInvoiceId     String?
 
   checked       Boolean? @default(false)
   ignoreChecked Boolean? @default(false)
+
+  showPaymentMethods Boolean? @default(true)
 
   invoiceType       String? // "stripe", "quickbooks", "custom"
   invoiceTypeStripe String? // "invoice", "payment_element" (apenas para invoiceType = "stripe")
@@ -996,7 +1100,7 @@ model Invoice {
 
   type_value          String? // "percentage" ou "value"
   cancel_invoice_edit Boolean? //se o invoice do tipo stripe for editado essa coluna deve ser true para que o stripe possa gerar um novo invoice
-  
+
   // NOVO: Identifica se o invoice foi criado via fluxo standalone (Custom Invoice sem projeto/estimate prévio)
   isStandaloneInvoice Boolean? @default(false)
 
@@ -1029,6 +1133,9 @@ model Invoice {
 
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
+
+  project_manager    User?    @relation("project_manager_invoice", fields: [project_manager_id], references: [id])
+  project_manager_id String?
 
   estimate           Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId         String?
@@ -1198,7 +1305,7 @@ model Estimate {
 
   type_estimate TypeEstimate? @default(estimateProject)
   multi_emails  String?       @db.Text
-  
+
   isStandaloneEstimate Boolean? @default(false)
 
   canceledAt         DateTime?
@@ -1268,6 +1375,7 @@ model Permissions {
 
   description          String
   GroupPermissionsList GroupPermissionsList[]
+  UserPermissions      UserPermission[]
   date_creation        DateTime               @default(now())
   date_update          DateTime               @updatedAt
 }
@@ -1293,6 +1401,22 @@ model GroupPermissionsList {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+}
+
+model UserPermission {
+  id            String   @id @default(uuid())
+  editAll       Boolean  @default(false)
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  office_id String
+  office    Office @relation(fields: [office_id], references: [id], onDelete: Cascade)
+
+  permission_id String
+  permission    Permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@index([office_id])
+  @@index([permission_id])
 }
 
 model Subscription {
@@ -1992,4 +2116,108 @@ model MasterActionsHistory {
   date_creation DateTime @default(now())
 
   @@map("master_actions_history")
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(OPEN)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  serviceProjectId String?
+  serviceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: SetNull)
+
+  creatorId String
+  creator   User   @relation("CreatedTasks", fields: [creatorId], references: [id])
+
+  assignedUserId String?
+  assignedUser   User?   @relation("AssignedTasks", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  files         TaskFile[]
+  comments      TaskComment[]
+  notifications TaskNotification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([assignedUserId])
+  @@index([creatorId])
+  @@map("tasks")
+}
+
+model TaskFile {
+  id   String  @id @default(uuid())
+  name String
+  url  String  @db.Text
+  key  String? // S3 Key
+  size Int?
+  type String? // mime type
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@map("task_files")
+}
+
+model TaskComment {
+  id   String @id @default(uuid())
+  text String @db.Text
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("TaskComments", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+  @@index([authorId])
+  @@map("task_comments")
+}
+
+model TaskNotification {
+  id      String  @id @default(uuid())
+  type    String // "comment", "assigned", "status_change", "priority_change"
+  message String  @db.Text
+  isRead  Boolean @default(false)
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId String // Destinatário
+  user   User   @relation("TaskNotifications", fields: [userId], references: [id])
+
+  actorId String? // Quem gerou a notificação
+  actor   User?   @relation("TaskNotificationActors", fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([taskId])
+  @@map("task_notifications")
 }

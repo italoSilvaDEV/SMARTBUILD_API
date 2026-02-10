@@ -34,6 +34,14 @@ export interface INewUser {
   hourly_price?: number
   profession?: string
   company_id: string
+  attendanceMode?: string
+  clockOutMode?: string
+  canEditTimeCard?: boolean | string
+  dailyRate?: number | string
+  defaultBreakMinutes?: number | string
+  invoiceEditAll?: boolean | string
+  projectEditAll?: boolean | string
+  estimateEditAll?: boolean | string
 }
 
 

@@ -292,10 +292,12 @@ export class StripeController {
             services,
             type_value,
             totalAmount,
+            showPaymentMethods,
             type_invoicebase,
             estimateId,
             multi_emails,
-            isStandaloneInvoice
+            isStandaloneInvoice,
+            project_manager_id
         } = req.body;
 
         try {
@@ -455,6 +457,7 @@ export class StripeController {
                     invoiceTypeStripe: "payment_element", // Subtipo específico do Stripe
                     projectId: project.id,
                     companyId: project.company_id,
+                    showPaymentMethods: showPaymentMethods ?? true,
                     totalAmount: totalAmount,
                     status: "open", // Sempre começa como open
                     invoiceUrl: null, // Não tem URL do Stripe
@@ -466,7 +469,8 @@ export class StripeController {
                     estimateId: estimate?.id || null,
                     type_invoicebase: type_invoicebase,
                     multi_emails: multi_emails,
-                    isStandaloneInvoice: isStandaloneInvoice || false
+                    isStandaloneInvoice: isStandaloneInvoice || false,
+                    project_manager_id: project_manager_id || null
                 },
             });
 
@@ -1090,10 +1094,39 @@ export class StripeController {
         }
     }
 
-    // com stripe e custom
+    // project details
     async getInvoicesByProject(req: Request, res: Response) {
         const { projectId } = req.params;
         const { searchTerm = "", page = 1, itemsPerPage = 10 } = req.query;
+
+        const userId = (req as any).userId as string | undefined;
+        let invoiceFilterByUser: any = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { invoiceEditAll: true },
+            });
+
+            // Verificar se o usuário é project manager deste projeto
+            const project = await prisma.project.findUnique({
+                where: { id: projectId },
+                select: { project_manager_id: true },
+            });
+
+            const isProjectManager = project?.project_manager_id === userId;
+
+            // Se não tem invoiceEditAll E não é project manager do projeto, filtrar por permissões
+            if (user?.invoiceEditAll !== true && !isProjectManager) {
+                // Ver apenas invoices criadas pelo usuário OU onde ele é project manager do invoice
+                invoiceFilterByUser = {
+                    OR: [
+                        { user_id: userId },
+                        { project_manager_id: userId },
+                    ],
+                };
+            }
+            // Se tem invoiceEditAll OU é project manager do projeto, não filtra (vê todos os invoices do projeto)
+        }
 
         try {
             console.log("Buscando invoices do projeto:", projectId);
@@ -1103,34 +1136,37 @@ export class StripeController {
             const search = typeof searchTerm === 'string' ? searchTerm : "";
 
             // Filtro para incluir faturas com cancel_invoice_edit = false OU null
-            const filtro = {
+            const filtro: any = {
                 projectId,
                 OR: [
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }
                 ],
-                AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
+                AND: [
+                    ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
+                    {
+                        OR: [
+                            {
+                                project: {
+                                    is: {
+                                        client: {
+                                            is: {
+                                                name: {
+                                                    contains: search,
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            {
+                                stripeInvoiceId: {
+                                    contains: search,
+                                }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
-                        }
-                    ]
-                }
+                        ]
+                    }
+                ]
             };
 
             // Buscar invoices relacionadas ao projeto
@@ -1262,6 +1298,7 @@ export class StripeController {
         }
     }
 
+    // invoices da compoanhia invoiceall
     async getInvoicesByCompany(req: Request, res: Response) {
         const {
             companyId
@@ -1274,6 +1311,25 @@ export class StripeController {
             startDate: queryStartDate,
             endDate: queryEndDate
         } = req.query;
+
+        const userId = (req as any).userId as string | undefined;
+        let invoiceFilterByUser: any = {};
+        if (userId) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { invoiceEditAll: true },
+            });
+            if (user?.invoiceEditAll !== true) {
+                // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto OU do invoice
+                invoiceFilterByUser = {
+                    OR: [
+                        { user_id: userId },
+                        { project: { project_manager_id: userId } },
+                        { project_manager_id: userId },
+                    ],
+                };
+            }
+        }
 
         try {
             const validPeriods = [
@@ -1326,28 +1382,31 @@ export class StripeController {
                     { cancel_invoice_edit: false },
                     { cancel_invoice_edit: null }
                 ],
-                AND: {
-                    OR: [
-                        {
-                            project: {
-                                is: {
-                                    client: {
-                                        is: {
-                                            name: {
-                                                contains: search,
+                AND: [
+                    ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
+                    {
+                        OR: [
+                            {
+                                project: {
+                                    is: {
+                                        client: {
+                                            is: {
+                                                name: {
+                                                    contains: search,
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            {
+                                stripeInvoiceId: {
+                                    contains: search,
+                                }
                             }
-                        },
-                        {
-                            stripeInvoiceId: {
-                                contains: search,
-                            }
-                        }
-                    ]
-                }
+                        ]
+                    }
+                ]
             };
 
             if (Object.keys(dateFilter).length > 0) {
@@ -1397,6 +1456,13 @@ export class StripeController {
                             notes: true,
                             createdAt: true,
                             amount: true
+                        }
+                    },
+                    project_manager: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
                         }
                     },
                     PaymentIntents: {
@@ -1532,7 +1598,9 @@ export class StripeController {
             type_value,
             services,
             totalAmount,
-            multi_emails
+            multi_emails,
+            showPaymentMethods,
+            project_manager_id
         } = req.body;
 
         try {
@@ -1705,10 +1773,12 @@ export class StripeController {
                     percentageCoefficient: coefficientPerfentage,
                     invoiceType: newInvoiceType,
                     invoiceTypeStripe: "payment_element",
+                    showPaymentMethods: showPaymentMethods ?? true,
                     type_value: type_value,
                     user_id: userId,
                     updatedAt: new Date(),
                     multi_emails: multi_emails,
+                    project_manager_id: project_manager_id !== undefined ? project_manager_id : undefined,
                     // Clear QB references when converting from QBO to Stripe
                     ...(isConvertingFromQuickbooks && {
                         idQuickbookContabio: null,

@@ -214,6 +214,15 @@ export class UserController {
           password: hashedPassword,
           hourly_price: Number(data.hourly_price) || 0,
           profession: data.profession,
+          attendanceMode: (data as any).attendanceMode || "manual",
+          clockOutMode: (data as any).clockOutMode || "manual",
+          canEditTimeCard: (data as any).canEditTimeCard === 'true' || (data as any).canEditTimeCard === true,
+          dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
+          defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
+          projectVisibilityMode: (data as any).projectVisibilityMode || "allActive",
+          invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
+          projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
+          estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
@@ -510,10 +519,10 @@ export class UserController {
         }
 
         // Se o plano expirou e o usuário não é administrador, bloquear acesso
-        const isAdmin = user.office.name.toLowerCase() === 'administrator';
+        const isAdmin = user.office.name.toLowerCase() === 'administrator' || user.office.name.toLowerCase() === 'owner';
         if (isExpired && !isAdmin) {
           return res.status(403).json({
-            error: "Sua assinatura expirou. Por favor, renove seu plano para continuar usando o sistema."
+            error: "Your subscription has expired. Please renew your plan to continue using the system."
           });
         }
       }
@@ -546,6 +555,9 @@ export class UserController {
           phone: user.phone,
           hourly_price: user.hourly_price,
           profession: user.profession,
+          attendanceMode: user.attendanceMode,
+          clockOutMode: user.clockOutMode,
+          projectVisibilityMode: user.projectVisibilityMode,
           company: {
             id: user.company?.id,
             name: user.company?.name,
@@ -586,6 +598,15 @@ export class UserController {
       confirm_password,
       isDisabled,
       isOverTime,
+      attendanceMode,
+      clockOutMode,
+      canEditTimeCard,
+      dailyRate,
+      defaultBreakMinutes,
+      projectVisibilityMode,
+      invoiceEditAll,
+      projectEditAll,
+      estimateEditAll,
     } = request.body;
 
     // Função de validação
@@ -655,7 +676,44 @@ export class UserController {
         }
       }
 
+      // Buscar permissões do office para validar os campos editAll
+      let finalInvoiceEditAll = invoiceEditAll || false;
+      let finalProjectEditAll = projectEditAll || false;
+      let finalEstimateEditAll = estimateEditAll || false;
+
       if (office && company_id) {
+        // Buscar o office com suas permissões
+        const officeWithPermissions = await prisma.office.findUnique({
+          where: { id: office.id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (officeWithPermissions) {
+          // Verificar se o office tem permissões de Invoice, Project ou Estimate
+          const hasInvoicePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = officeWithPermissions.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office
+          // Se o office não tem a permissão, forçar false
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
+
+        // Atualizar office_id na tabela UserCompany
         await prisma.userCompany.update({
           where: {
             userId_companyId: {
@@ -666,7 +724,44 @@ export class UserController {
           data: {
             office_id: office.id,
           }
-        })
+        });
+
+        // Atualizar office_id na tabela User
+        await prisma.user.update({
+          where: { id },
+          data: {
+            office_id: office.id,
+          },
+        });
+      } else if (user.office_id) {
+        // Se não mudou o office, buscar o office atual para validar
+        const currentOffice = await prisma.office.findUnique({
+          where: { id: user.office_id },
+          include: {
+            userPermissions: {
+              include: {
+                permission: true
+              }
+            }
+          }
+        });
+
+        if (currentOffice) {
+          const hasInvoicePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("invoice")
+          );
+          const hasProjectPermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("project")
+          );
+          const hasEstimatePermission = currentOffice.userPermissions?.some(up => 
+            up.permission.description.toLowerCase().includes("estimate")
+          );
+
+          // Ajustar os valores baseado nas permissões do office atual
+          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
+          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
+          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+        }
       }
 
       if (current_password && password) {
@@ -695,6 +790,15 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            attendanceMode,
+            clockOutMode,
+            canEditTimeCard,
+            dailyRate,
+            defaultBreakMinutes,
+            projectVisibilityMode,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       } else {
@@ -709,6 +813,15 @@ export class UserController {
             profession,
             isDisabled,
             isOverTime,
+            attendanceMode,
+            clockOutMode,
+            canEditTimeCard,
+            dailyRate,
+            defaultBreakMinutes,
+            projectVisibilityMode,
+            invoiceEditAll: finalInvoiceEditAll,
+            projectEditAll: finalProjectEditAll,
+            estimateEditAll: finalEstimateEditAll,
           },
         });
       }
@@ -833,6 +946,15 @@ export class UserController {
           profession: true,
           isDisabled: true,
           isOverTime: true,
+          attendanceMode: true,
+          clockOutMode: true,
+          canEditTimeCard: true,
+          dailyRate: true,
+          defaultBreakMinutes: true,
+          projectVisibilityMode: true,
+          invoiceEditAll: true,
+          projectEditAll: true,
+          estimateEditAll: true,
           seller_project: {
             select: {
               status_project: true,
@@ -901,6 +1023,7 @@ export class UserController {
   async getUserDetails(request: Request, response: Response) {
     try {
       const { id } = request.params;
+      console.log(`[getUserDetails] Buscando detalhes para o usuário: ${id}`);
 
       // Consulta o usuário no banco de dados
       const result = await prisma.user.findUnique({
@@ -917,13 +1040,27 @@ export class UserController {
           number_home: true,
           neighborhood: true,
           avatar: true,
+          attendanceMode: true,
+          clockOutMode: true,
+          projectVisibilityMode: true,
+          id: true, // Adicionado ID explicitamente
+          company: {
+            select: {
+              attendanceMode: true,
+              id: true, // Adicionado ID da empresa
+              name: true
+            }
+          }
         },
       });
 
       // Verifica se o usuário foi encontrado
       if (!result) {
+        console.log(`[getUserDetails] Usuário ${id} não encontrado`);
         throw new Error("User not found!");
       }
+
+      console.log(`[getUserDetails] Resultado: attendanceMode=${result.attendanceMode}, companyAttendanceMode=${result.company?.attendanceMode}`);
 
       // Formata o resultado e obtém o link do avatar (se houver)
       const formattedResult = {
@@ -1148,16 +1285,21 @@ export class UserController {
 
   async serchOfficeUser(request: Request, response: Response) {
     try {
+      const companyId = (request.query.companyId as string) || (request.body?.companyId as string);
+      if (!companyId) {
+        return response.status(400).json({ error: "Company ID is required (query: companyId)" });
+      }
+
       const result = await prisma.office.findMany({
         where: {
-          name: {
-            not: "Master" // Excluir office com nome "Master"
-          }
+          company_id: companyId,
+          name: { notIn: ["Master", "Owner"] },
         },
         select: {
           id: true,
           name: true,
         },
+        orderBy: { name: "asc" },
       });
       return response.json(result);
     } catch (error) {
@@ -1512,6 +1654,7 @@ export class UserController {
       }
 
       let office = null;
+      let officePermissions: string[] = [];
 
       if (company_id) {
         const userCompany = await prisma.userCompany.findUnique({
@@ -1521,13 +1664,29 @@ export class UserController {
               companyId: company_id
             }
           },
-          select: {
-            office: true
+          include: {
+            office: {
+              include: {
+                userPermissions: {
+                  include: {
+                    permission: true
+                  }
+                }
+              }
+            }
           }
         })
 
         office = userCompany?.office;
+
+        // Buscar permissões do office do usuário
+        if (office?.userPermissions) {
+          officePermissions = office.userPermissions.map(up => up.permission.description);
+        }
       }
+
+      // Usar permissões do Office se disponíveis, senão usar permissões do plano
+      const finalPermissions = officePermissions.length > 0 ? officePermissions : permissions;
 
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({
@@ -1535,7 +1694,7 @@ export class UserController {
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
-        permissions,
+        permissions: finalPermissions, // Permissões do Office do usuário
         plan: planInfo,
         office: office
       });
@@ -1611,7 +1770,7 @@ export class UserController {
       })
     }
 
-    if (userCompany.office.name === "administrator" || userCompany.office.name === "Administrator") {
+    if (userCompany.office.name.toLowerCase() === "administrator" || userCompany.office.name === "Owner") {
       return res.status(400).json({
         error: "Não é possível remover o usuário administrador da empresa"
       })
@@ -1925,7 +2084,7 @@ export class UserController {
         });
       }
 
-      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
+      const urlLogo = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : ''; 
       const templateEmail = NewUser(user.name.toUpperCase(), urlLogo, passwordToUse);
 
       try {
@@ -1948,6 +2107,380 @@ export class UserController {
       console.error("[resendPassword] Error:", error);
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Internal server error"
+      });
+    }
+  }
+
+  // Salvar/atualizar Expo Push Token do usuário
+  async updatePushToken(request: Request, response: Response) {
+    try {
+      const { userId, expoPushToken } = request.body;
+
+      if (!userId || !expoPushToken) {
+        return response.status(400).json({ error: "userId and expoPushToken are required" });
+      }
+
+      // Validar formato do token
+      if (!expoPushToken.startsWith("ExponentPushToken[")) {
+        return response.status(400).json({ error: "Invalid Expo Push Token format" });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { expoPushToken },
+      });
+
+      console.log(`[UserController] Push token updated for user ${userId}`);
+      return response.json({ success: true });
+    } catch (error: any) {
+      console.error("[UserController.updatePushToken] Error:", error);
+      return response.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Remover Push Token (logout)
+  async removePushToken(request: Request, response: Response) {
+    try {
+      const { userId } = request.body;
+
+      if (!userId) {
+        return response.status(400).json({ error: "userId is required" });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { expoPushToken: null },
+      });
+
+      console.log(`[UserController] Push token removed for user ${userId}`);
+      return response.json({ success: true });
+    } catch (error: any) {
+      console.error("[UserController.removePushToken] Error:", error);
+      return response.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Buscar usuários que podem ser project managers (filtrados: sem work e master)
+  async getProjectManagers(req: Request, res: Response) {
+    try {
+      const { company_id, search = "" } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      const isMultiCompany = await isMultiCompanyEnabled();
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são Worker nem Master usando office
+      const filteredUsers = users.filter((user) => {
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
+      });
+
+      // Buscar contagem de projetos para cada usuário
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar projetos Pre-Start
+          const preStartCount = await prisma.project.count({
+            where: {
+              project_manager_id: user.id,
+              company_id: company_id as string,
+              status_project: "Pre-Start",
+            },
+          });
+
+          // Contar projetos In Progress
+          const inProgressCount = await prisma.project.count({
+            where: {
+              project_manager_id: user.id,
+              company_id: company_id as string,
+              status_project: "In Progress",
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            projectCounts: {
+              preStart: preStartCount,
+              inProgress: inProgressCount,
+              total: preStartCount + inProgressCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getProjectManagers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
+  async getInvoiceManagers(req: Request, res: Response) {
+    try {
+      const { company_id, search } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      // Verificar se multiCompany está ativo
+      const config = await prisma.config.findFirst();
+      const isMultiCompany = config?.multiCompanyEnabled || false;
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são Worker nem Master usando office
+      const filteredUsers = users.filter((user) => {
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
+      });
+
+      // Buscar contagem de invoices para cada usuário
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar invoices Pending
+          const pendingCount = await prisma.invoice.count({
+            where: {
+              project_manager_id: user.id,
+              status: "open",
+              project: {
+                company_id: company_id as string,
+              },
+            },
+          });
+
+          // Contar invoices Paid
+          const paidCount = await prisma.invoice.count({
+            where: {
+              project_manager_id: user.id,
+              status: "paid",
+              project: {
+                company_id: company_id as string,
+              },
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            invoiceCounts: {
+              pending: pendingCount,
+              paid: paidCount,
+              total: pendingCount + paidCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getInvoiceManagers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
+  async getSellers(req: Request, res: Response) {
+    try {
+      const { company_id, search = "" } = req.query;
+
+      if (!company_id) {
+        return res.status(400).json({ error: "company_id is required" });
+      }
+
+      const isMultiCompany = await isMultiCompanyEnabled();
+
+      const whereCondition: any = {
+        ...(isMultiCompany
+          ? { companies: { some: { companyId: company_id as string } } }
+          : { company_id: company_id as string }),
+        isDisabled: false,
+      };
+
+      // Filtrar por busca se fornecido
+      if (search && search.toString().trim() !== "") {
+        whereCondition.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          office: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      // Filtrar usuários que não são Worker nem Master usando office
+      const filteredUsers = users.filter((user) => {
+        const officeName = user.office?.name?.toLowerCase() || "";
+        return officeName !== "worker" && officeName !== "master";
+      });
+
+      // Buscar contagem de projetos para cada usuário (como seller)
+      const usersWithCounts = await Promise.all(
+        filteredUsers.map(async (user) => {
+          // Contar projetos Pre-Start onde usuário é seller
+          const preStartCount = await prisma.project.count({
+            where: {
+              seller_user_id: user.id,
+              company_id: company_id as string,
+              status_project: "Pre-Start",
+            },
+          });
+
+          // Contar projetos In Progress onde usuário é seller
+          const inProgressCount = await prisma.project.count({
+            where: {
+              seller_user_id: user.id,
+              company_id: company_id as string,
+              status_project: "In Progress",
+            },
+          });
+
+          // Gerar URL presignada para avatar
+          let avatarUrl = null;
+          if (user.avatar) {
+            try {
+              avatarUrl = await getPresignedUrl(user.avatar);
+            } catch (error) {
+              console.error(`Error getting presigned URL for user ${user.id}:`, error);
+            }
+          }
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar: avatarUrl,
+            projectCounts: {
+              preStart: preStartCount,
+              inProgress: inProgressCount,
+              total: preStartCount + inProgressCount,
+            },
+          };
+        })
+      );
+
+      return res.status(200).json({
+        users: usersWithCounts,
+        total: usersWithCounts.length,
+      });
+    } catch (error) {
+      console.error("[getSellers] Error:", error);
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Internal server error",
       });
     }
   }

@@ -17,6 +17,7 @@ export function calcularHorasTrabalhadas(
     fimUtc: string,
     inicioExp: string | null,
     fimExp: string | null,
+    breakMinutes: number = 0,
 ): ResultadoHoras {
     try {
         // Conversor de ms para "HH:MM"
@@ -36,7 +37,9 @@ export function calcularHorasTrabalhadas(
             fimLocal = fimLocal.plus({ days: 1 });
         }
 
-        const msTotal = fimLocal.toMillis() - inicioLocal.toMillis();
+        const msBreak = breakMinutes * 60000;
+        const msTotalSemDesconto = fimLocal.toMillis() - inicioLocal.toMillis();
+        const msTotal = Math.max(0, msTotalSemDesconto - msBreak);
 
         // Se não tiver horário de expediente definido, retorna tudo como horas normais
         if (!inicioExp || !fimExp) {
@@ -53,13 +56,18 @@ export function calcularHorasTrabalhadas(
         const expInDate = inicioLocal.set({ hour: hIn, minute: mIn });
         const expOutDate = inicioLocal.set({ hour: hOut, minute: mOut });
 
-        // Calcular milissegundos dentro do expediente
+        // Calcular milissegundos dentro do expediente (sem desconto ainda)
         const msInicioNorm = Math.max(inicioLocal.toMillis(), expInDate.toMillis());
         const msFimNorm = Math.min(fimLocal.toMillis(), expOutDate.toMillis());
-        const msNormais = Math.max(0, msFimNorm - msInicioNorm);
+        const msNormaisBruto = Math.max(0, msFimNorm - msInicioNorm);
 
-        // Calcular extras
-        const msExtras = Math.max(0, msTotal - msNormais);
+        // O desconto do break prioriza as horas normais
+        const msNormais = Math.max(0, msNormaisBruto - msBreak);
+        
+        // Se o break for maior que as horas normais, o restante desconta das extras
+        const msBreakRestante = Math.max(0, msBreak - msNormaisBruto);
+        const msExtrasBruto = Math.max(0, msTotalSemDesconto - msNormaisBruto);
+        const msExtras = Math.max(0, msExtrasBruto - msBreakRestante);
 
         return {
             normais: formatHM(msNormais),

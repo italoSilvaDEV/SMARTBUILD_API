@@ -12,11 +12,8 @@ export class FindClientById {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            },
+                            user: true,
+                            office: true // Office do usuário nesta empresa (UserCompany.office_id)
                         }
                     },
                     Project: {
@@ -49,13 +46,13 @@ export class FindClientById {
                 });
             }
 
-            const adminUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Administrator"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
-            if (!adminUser) {
+            if (!ownerUser) {
                 return response.status(404).json({
-                    error: "Admin user not found for this company"
+                    error: "Owner user not found for this company"
                 });
             }
 
@@ -70,9 +67,9 @@ export class FindClientById {
             }
 
             const usersByRole = {
-                admin: company.userCompanies.filter(user => user.user.office?.name === "Administrator").length,
-                worker: company.userCompanies.filter(user => user.user.office?.name === "Worker").length,
-                seller: company.userCompanies.filter(user => user.user.office?.name === "Seller").length,
+                admin: company.userCompanies.filter(uc => uc.office?.name === "Administrator").length,
+                worker: company.userCompanies.filter(uc => uc.office?.name === "Worker").length,
+                seller: company.userCompanies.filter(uc => uc.office?.name === "Seller").length,
                 total: company.userCompanies.length
             };
 
@@ -99,10 +96,10 @@ export class FindClientById {
                     date_creation: company.date_creation
                 },
                 clientDetails: {
-                    name: adminUser.user.name,
-                    email: adminUser.user.email,
-                    phone: adminUser.user.phone,
-                    cityAndState: adminUser.user.city_and_state
+                    name: ownerUser.user.name,
+                    email: ownerUser.user.email,
+                    phone: ownerUser.user.phone,
+                    cityAndState: ownerUser.user.city_and_state
                 },
                 usersData: usersByRole,
                 overview: {
@@ -131,11 +128,8 @@ export class GetClientEditData {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            }
+                            user: true,
+                            office: true
                         }
                     }
                 }
@@ -148,13 +142,13 @@ export class GetClientEditData {
             }
 
             // Buscar o usuário admin
-            const adminUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Administrator"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
-            if (!adminUser) {
+            if (!ownerUser) {
                 return response.status(404).json({
-                    error: "Admin user not found for this company"
+                    error: "Owner user not found for this company"
                 });
             }
 
@@ -184,11 +178,11 @@ export class GetClientEditData {
 
             return response.json({
                 user: {
-                    id: adminUser.user.id,
-                    name: adminUser.user.name,
-                    email: adminUser.user.email,
-                    phone: adminUser.user.phone || '',
-                    document: adminUser.user.document || ''
+                    id: ownerUser.user.id,
+                    name: ownerUser.user.name,
+                    email: ownerUser.user.email,
+                    phone: ownerUser.user.phone || '',
+                    document: ownerUser.user.document || ''
                 },
                 company: {
                     id: company.id,
@@ -227,11 +221,8 @@ export class UpdateClientData {
                 include: {
                     userCompanies: {
                         include: {
-                            user: {
-                                include: {
-                                    office: true
-                                }
-                            }
+                            user: true,
+                            office: true
                         }
                     }
                 }
@@ -243,19 +234,19 @@ export class UpdateClientData {
                 });
             }
 
-            const adminUser = company.userCompanies.find(user =>
-                user.user.office?.name === "Administrator"
+            const ownerUser = company.userCompanies.find(uc =>
+                uc.office?.name === "Owner"
             );
 
-            if (!adminUser) {
+            if (!ownerUser) {
                 return response.status(404).json({
-                    error: "Admin user not found for this company"
+                    error: "Owner user not found for this company"
                 });
             }
 
             // Atualizar informações do usuário
             await prisma.user.update({
-                where: { id: adminUser.user.id },
+                where: { id: ownerUser.user.id },
                 data: {
                     name: userName,
                     email: userEmail,

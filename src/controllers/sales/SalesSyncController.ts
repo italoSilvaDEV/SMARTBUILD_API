@@ -33,7 +33,7 @@ export class SalesSyncController {
           User: {
             where: {
               office: {
-                name: "Administrator"
+                name: "Owner"
               }
             },
             take: 1

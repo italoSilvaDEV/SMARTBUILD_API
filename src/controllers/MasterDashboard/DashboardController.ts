@@ -38,7 +38,7 @@ export class DashboardController {
                 prisma.userCompany.findMany({
                     where: {
                         office: {
-                            name: "Administrator"
+                            name: "Owner"
                         }
                     },
                     select: {
@@ -115,7 +115,7 @@ export class DashboardController {
                     },
                     office: {
                         name: {
-                            equals: "Administrator"
+                            equals: "Owner"
                         }
                     }
                 },
