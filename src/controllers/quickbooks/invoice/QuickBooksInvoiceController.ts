@@ -44,6 +44,162 @@ interface InvoiceLineItem {
 
 export class QuickBooksInvoiceController {
 
+  /**
+   * Verifica se já existe um customer no QBO com o DisplayName informado.
+   */
+  private async qboCustomerDisplayNameExists(qb: any, displayName: string): Promise<boolean> {
+    const data = await new Promise<any>((resolve, reject) => {
+      qb.findCustomers({ DisplayName: displayName, limit: 1 }, (err: any, data: any) => {
+        if (err) {
+          console.warn(" Erro ao checar DisplayName no QBO:", err?.message || err);
+          resolve({ QueryResponse: {} });
+          return;
+        }
+        resolve(data || { QueryResponse: {} });
+      });
+    });
+    const list = data?.QueryResponse?.Customer;
+    return Array.isArray(list) && list.length > 0;
+  }
+
+  /**
+   * Obtém um DisplayName único no QBO para criar um novo customer.
+   * Não usa nome como chave: se o nome já existir, acrescenta sufixo único (id do cliente na plataforma).
+   */
+  private async getUniqueDisplayNameForQbo(
+    qb: any,
+    baseName: string,
+    clientId: string
+  ): Promise<string> {
+    const trimmed = baseName.trim();
+    if (!trimmed) return `Cliente ${clientId.substring(0, 8)}`;
+
+    const exists = await this.qboCustomerDisplayNameExists(qb, trimmed);
+    if (!exists) {
+      return trimmed;
+    }
+
+    // Nome já existe no QBO → sufixo único (não assumimos que é o mesmo cliente)
+    const suffix = ` - ${clientId.substring(0, 8)}`;
+    let candidate = trimmed + suffix;
+    if (candidate.length > 500) {
+      candidate = trimmed.substring(0, 500 - suffix.length) + suffix;
+    }
+
+    const candidateExists = await this.qboCustomerDisplayNameExists(qb, candidate);
+    if (!candidateExists) return candidate;
+
+    // Colisão improvável: adicionar timestamp
+    const withTime = `${trimmed} - ${clientId.substring(0, 8)} (${Date.now()})`;
+    return withTime.length > 500 ? withTime.substring(0, 500) : withTime;
+  }
+
+  /**
+   * Obtém ou resolve o ID do cliente no QuickBooks de forma conservadora:
+   * - Nome NUNCA é usado como chave: um "José Mario" no QBO pode não ser o mesmo da plataforma.
+   *  Se o cliente local tem idQuickbooks, valida no QBO; se existir, usa. Se não existir, NÃO busca por nome.
+   *  Cria novo customer no QBO com DisplayName único: verifica se o nome já existe e, se sim, usa sufixo (ex.: " - <clientId>") para evitar 6240.
+   *  Em caso de 6240 na criação, retenta com DisplayName ainda mais único (ex.: + timestamp).
+   *  O cliente sempre vem do banco (project.client), nunca do frontend.
+   */
+  private async getOrResolveQboCustomerId(
+    qb: any,
+    client: { id: string; name: string | null; email: string | null; idQuickbooks: string | null }
+  ): Promise<string> {
+    const clientName = client.name?.trim();
+    if (!clientName || clientName.length === 0) {
+      throw new Error("Client name is required to create QuickBooks customer");
+    }
+
+    // 1) Validar idQuickbooks existente no QBO (única forma de “reutilizar” cliente no QBO)
+    if (client.idQuickbooks) {
+      try {
+        const existing = await new Promise((resolve, reject) => {
+          qb.getCustomer(client.idQuickbooks, (err: any, data: any) => {
+            if (err) {
+              console.warn(" Cliente com idQuickbooks não encontrado no QBO; será criado novo customer (nome único).");
+              resolve(null);
+            } else {
+              resolve(data);
+            }
+          });
+        });
+        if (existing) {
+          const customer = (existing as any)?.Customer ?? (existing as any);
+          const id = customer?.Id;
+          if (id) {
+            console.log(` Cliente existente confirmado no QBO com ID: ${id}`);
+            return id;
+          }
+        }
+      } catch (e: any) {
+        console.warn(" Erro ao verificar cliente por idQuickbooks:", e?.message || e);
+      }
+    }
+
+    // 2) Criar novo customer no QBO com DisplayName garantido único (não reutilizar por nome)
+    const displayNameToUse = await this.getUniqueDisplayNameForQbo(qb, clientName, client.id);
+    const clientEmail = client.email?.trim() || "noemail@example.com";
+
+    const tryCreate = async (displayName: string) => {
+      const createPayload = {
+        DisplayName: displayName,
+        CompanyName: displayName,
+        PrimaryEmailAddr: { Address: clientEmail }
+      };
+      return await new Promise<any>((resolve, reject) => {
+        qb.createCustomer(createPayload, (err: any, data: any) => {
+          if (err) reject(err);
+          else resolve(data);
+        });
+      });
+    };
+
+    try {
+      const createResult = await tryCreate(displayNameToUse);
+      const created = (createResult as any)?.Customer ?? (createResult as any);
+      if (created?.Id) {
+        try {
+          await prisma.client.update({
+            where: { id: client.id },
+            data: { idQuickbooks: created.Id }
+          });
+          console.log(` Novo cliente criado no QBO com ID: ${created.Id} (DisplayName: ${displayNameToUse}); cliente local atualizado.`);
+        } catch (updateErr: any) {
+          console.warn(" Aviso: não foi possível atualizar idQuickbooks no cliente local:", updateErr?.message || updateErr);
+        }
+        return created.Id;
+      }
+      throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
+    } catch (createErr: any) {
+      const code = createErr?.Fault?.Error?.[0]?.code;
+      const isDuplicateName = code === "6240" || code === 6240 || (createErr?.Fault?.Error?.[0]?.Message || "").includes("Duplicate Name");
+
+      if (isDuplicateName) {
+        // Retenta com nome ainda mais único (ex.: timestamp)
+        const fallbackName = `${clientName} - ${client.id.substring(0, 8)} (${Date.now()})`.substring(0, 500);
+        console.warn(" Duplicate Name ao criar cliente; retentando com DisplayName único:", fallbackName);
+        try {
+          const retryResult = await tryCreate(fallbackName);
+          const retryCreated = (retryResult as any)?.Customer ?? (retryResult as any);
+          if (retryCreated?.Id) {
+            try {
+              await prisma.client.update({
+                where: { id: client.id },
+                data: { idQuickbooks: retryCreated.Id }
+              });
+              console.log(` Cliente criado no QBO após retry (ID: ${retryCreated.Id}).`);
+            } catch (_) {}
+            return retryCreated.Id;
+          }
+        } catch (retryErr: any) {
+          console.error(" Erro ao criar cliente no QuickBooks (retry):", retryErr);
+        }
+      }
+      console.error(" Erro ao criar cliente no QuickBooks:", createErr);
+      throw new Error(`Failed to create customer in QuickBooks: ${createErr?.Fault?.Error?.[0]?.Message || createErr?.message || "Unknown error"}`);
+    }
+  }
 
   // Método interno para criação de invoice sem req/res
   async createInvoiceInternal(params: {
@@ -321,107 +477,18 @@ export class QuickBooksInvoiceController {
       const dueDateObj = dueDate ? new Date(`${dueDate}T00:00:00`) : new Date();
       // dueDateObj.setDate(dueDateObj.getDate() + 30);
 
-      // Verificar cliente no QuickBooks - abordagem conservadora
-      let clientId;
 
-      try {
+        // Resolver cliente no QuickBooks (ID existente → buscar por nome → criar; trata Duplicate Name)
         console.log(" Verificando cliente no QuickBooks...");
         console.log(`Cliente local: ${project.client!.name} (ID: ${project.client!.id})`);
-        console.log(`Cliente tem idQuickbooks? ${project.client!.idQuickbooks || 'NÃO'}`);
+        const clientId = await this.getOrResolveQboCustomerId(qb, {
+          id: project.client!.id,
+          name: project.client!.name,
+          email: project.client!.email,
+          idQuickbooks: project.client!.idQuickbooks
+        });
+        console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
 
-        // 1) Primeiro verificar se o cliente local já tem idQuickbooks
-        if (project.client!.idQuickbooks) {
-          console.log(` Cliente local já possui idQuickbooks: ${project.client!.idQuickbooks}`);
-
-          // Verificar se o cliente ainda existe no QuickBooks
-          try {
-            const existingCustomer = await new Promise((resolve, reject) => {
-              qb.getCustomer(project.client!.idQuickbooks, (err: any, data: any) => {
-                if (err) {
-                  console.warn(" Cliente com idQuickbooks não encontrado no QBO, será criado novo");
-                  resolve(null);
-                } else {
-                  resolve(data);
-                }
-              });
-            });
-
-            if (existingCustomer) {
-              const customer = (existingCustomer as any)?.Customer || (existingCustomer as any);
-              clientId = customer.Id;
-              console.log(` Cliente existente confirmado no QBO com ID: ${clientId}`);
-            }
-          } catch (getError: any) {
-            console.warn(" Erro ao verificar cliente existente:", getError?.message || getError);
-            console.log("Continuando para criação de novo cliente...");
-          }
-        }
-
-        // 2) Se não tem idQuickbooks válido, criar novo cliente
-        if (!clientId) {
-          console.log(` Criando novo cliente no QuickBooks para: ${project.client!.name}`);
-
-          // Validar dados do cliente antes de criar
-          const clientName = project.client!.name?.trim();
-          if (!clientName || clientName.length === 0) {
-            throw new Error("Client name is required to create QuickBooks customer");
-          }
-
-          const clientEmail = project.client!.email?.trim() || "noemail@example.com";
-          console.log(`Email do cliente: ${clientEmail}`);
-
-          const createCustomerData = {
-            DisplayName: clientName,
-            CompanyName: clientName,
-            PrimaryEmailAddr: {
-              Address: clientEmail
-            }
-          };
-
-          console.log("Dados do cliente para criação:", JSON.stringify(createCustomerData, null, 2));
-
-          try {
-            const createCustomerResult = await new Promise((resolve, reject) => {
-              qb.createCustomer(createCustomerData, (err: any, data: any) => {
-                if (err) {
-                  console.error(" Erro ao criar cliente no QuickBooks:", err);
-                  console.error("Detalhes do erro:", JSON.stringify(err, null, 2));
-                  reject(err);
-                } else {
-                  console.log(" Cliente criado com sucesso no QuickBooks");
-                  resolve(data);
-                }
-              });
-            });
-
-            const createdCustomer = (createCustomerResult as any)?.Customer || (createCustomerResult as any);
-
-            console.log("Resposta da criação do cliente:", JSON.stringify(createdCustomer, null, 2));
-
-            if (!createdCustomer || !createdCustomer.Id) {
-              console.error(" Resposta inválida do QuickBooks ao criar cliente");
-              throw new Error("QuickBooks returned invalid response when creating customer (no ID)");
-            }
-
-            clientId = createdCustomer.Id;
-            console.log(` Novo cliente criado no QBO com ID: ${clientId}`);
-
-            // Atualizar cliente local com o novo idQuickbooks
-            try {
-              await prisma.client.update({
-                where: { id: project.client!.id },
-                data: { idQuickbooks: clientId }
-              });
-              console.log(` Cliente local atualizado com idQuickbooks: ${clientId}`);
-            } catch (updateError: any) {
-              console.error(" Erro ao atualizar cliente local com idQuickbooks:", updateError?.message || updateError);
-              // Não falhar a criação do invoice por causa disso
-            }
-          } catch (createError: any) {
-            console.error(" Erro crítico ao criar cliente no QuickBooks:", createError);
-            throw new Error(`Failed to create customer in QuickBooks: ${createError?.message || createError?.toString() || 'Unknown error'}`);
-          }
-        }
 
         // 3) Validação final: garantir que temos um clientId válido
         if (!clientId) {
@@ -1000,19 +1067,31 @@ export class QuickBooksInvoiceController {
         return cleanItem;
       });
 
+      // Resolver cliente do projeto no QBO (mesma tratativa conservadora da criação)
+      console.log(" Resolvendo cliente do projeto para atualização da fatura no QuickBooks...");
+      const clientIdUpdate = await this.getOrResolveQboCustomerId(qb, {
+        id: project.client.id,
+        name: project.client.name,
+        email: project.client.email,
+        idQuickbooks: project.client.idQuickbooks
+      });
+      console.log(` Cliente QuickBooks para update - ID: ${clientIdUpdate}`);
+
       // Obter email do destinatário para garantir que o BillEmail esteja configurado
       const workContext = project.workContext;
       const recipientEmail = workContext?.Email || project.client?.email || currentInvoice.BillEmail?.Address || "noemail@example.com";
 
       console.log(` Email de cobrança para update: ${recipientEmail}`);
 
-      // Preparar dados da fatura para atualização
+      // Preparar dados da fatura para atualização (CustomerRef = cliente do projeto atual, resolvido acima)
       const updateInvoiceData = {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken,
         Line: cleanLineItemsUpdate, // Usar itens limpos sem campos internos
-        CustomerRef: currentInvoice.CustomerRef, // Manter o cliente atual
-        BillEmail: {
+
+        CustomerRef: { value: clientIdUpdate },
+        BillEmail: { 
+
           Address: recipientEmail //  necessário para gerar InvoiceLink
         },
         DueDate: dueDateObj.toISOString().split('T')[0],
