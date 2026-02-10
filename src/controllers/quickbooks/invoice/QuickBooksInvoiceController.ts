@@ -204,6 +204,7 @@ export class QuickBooksInvoiceController {
   // Método interno para criação de invoice sem req/res
   async createInvoiceInternal(params: {  
     projectId: string;
+    showPaymentMethods?: boolean;
     description?: string;
     type_invoicebase?: string;
     dueDate?: string;
@@ -218,7 +219,7 @@ export class QuickBooksInvoiceController {
     isStandaloneInvoice?: boolean; // Se é um invoice criado sem projeto pré-existente
     project_manager_id?: string | null; // Project manager do invoice
   }) {
-    const { projectId, description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = params;
+    const { projectId, description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmountTarget, calledFromStripe = false, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = params;
 
     try {
       // Buscar o projeto
@@ -633,6 +634,7 @@ export class QuickBooksInvoiceController {
               companyId: project.company_id,
               user_id: userId,
               percentageCoefficient: coefficientPerfentage || 1,
+              showPaymentMethods: showPaymentMethods ?? true,
               type_value: type_value,
               type_invoicebase: type_invoicebase as "project" | "estimate" | null,
               multi_emails: multi_emails || project.client?.email,
@@ -723,6 +725,7 @@ export class QuickBooksInvoiceController {
     description?: string;
     dueDate?: string;
     userId: string;
+    showPaymentMethods?: boolean;
     coefficientPerfentage?: number;
     type_value?: string;
     services: any[];
@@ -735,6 +738,7 @@ export class QuickBooksInvoiceController {
       description, 
       dueDate, 
       userId, 
+      showPaymentMethods,
       coefficientPerfentage, 
       type_value, 
       services, 
@@ -1155,6 +1159,7 @@ export class QuickBooksInvoiceController {
               totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
               status: deriveQboInvoicePaymentStatus(updatedInv),
               percentageCoefficient: coefficientPerfentage,
+              showPaymentMethods: showPaymentMethods ?? true,
               type_value: type_value,
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
@@ -1238,7 +1243,7 @@ export class QuickBooksInvoiceController {
 
   async createInvoice(req: Request, res: Response) {
     const { projectId } = req.params;
-    const { description, type_invoicebase, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = req.body;
+    const { description, type_invoicebase, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, multi_emails, date_creation, isStandaloneInvoice, project_manager_id } = req.body;
 
     try {
       console.log(" Iniciando criação de invoice QuickBooks via rota pública...");
@@ -1306,6 +1311,7 @@ export class QuickBooksInvoiceController {
         projectId,
         description,
         type_invoicebase,
+        showPaymentMethods: showPaymentMethods ?? true,
         dueDate,
         userId,
         coefficientPerfentage,
@@ -2058,7 +2064,7 @@ export class QuickBooksInvoiceController {
 
   async updateInvoice(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { description, dueDate, userId, coefficientPerfentage, services, type_value, totalAmount, project_manager_id } = req.body;
+    const { description, dueDate, userId, showPaymentMethods, coefficientPerfentage, services, type_value, totalAmount, project_manager_id } = req.body;
 
     try {
       console.log(" Iniciando atualização de invoice QuickBooks via rota pública...");
@@ -2225,6 +2231,7 @@ export class QuickBooksInvoiceController {
             invoiceUrl: qboResult.invoiceUrl || null,
             status: qboResult.status || invoice.status,
             totalAmount: calculatedTotalAmount || invoice.totalAmount,
+            showPaymentMethods: showPaymentMethods ?? true,
             dueDate: dueDate ? new Date(dueDate) : invoice.dueDate,
             description: description || invoice.description,
             type_value: type_value || invoice.type_value,
@@ -2297,6 +2304,7 @@ export class QuickBooksInvoiceController {
           description,
           dueDate,
           userId,
+          showPaymentMethods: showPaymentMethods ?? true,
           coefficientPerfentage,
           type_value,
           services,
