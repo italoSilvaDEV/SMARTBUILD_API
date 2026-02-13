@@ -338,6 +338,8 @@ export class ChatController {
       if (messageToSend.sender.avatar) {
         messageToSend.sender.avatar = await getPresignedUrl(messageToSend.sender.avatar);
       }
+      (messageToSend as any).seenByOthers = false;
+      (messageToSend as any).seenByCount = 0;
 
       // Emitir via socket para todos os membros
       members.forEach(member => {
@@ -372,6 +374,7 @@ export class ChatController {
     try {
       const { chatId } = req.params;
       const { limit = "50", offset = "0", companyId } = req.query;
+      const userId = (req as any).userId as string | undefined;
 
       // Validar se o chat pertence à empresa
       if (companyId) {
@@ -395,10 +398,53 @@ export class ChatController {
         skip: parseInt(offset as string)
       });
 
+      // Marca o chat como lido para o usuário autenticado e notifica os demais.
+      let readAt: Date | null = null;
+      if (userId) {
+        readAt = new Date();
+        const updateResult = await prisma.chatMember.updateMany({
+          where: { chatId, userId },
+          data: { lastReadAt: readAt },
+        });
+
+        if (updateResult.count > 0) {
+          const members = await prisma.chatMember.findMany({
+            where: { chatId },
+            select: { userId: true },
+          });
+
+          members
+            .filter((member) => member.userId !== userId)
+            .forEach((member) => {
+              SocketService.emitToUser(member.userId, "chat_messages_seen", {
+                chatId,
+                readerId: userId,
+                lastReadAt: readAt!.toISOString(),
+              });
+            });
+        }
+      }
+
+      const chatMembers = await prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true, lastReadAt: true },
+      });
+
       const messagesWithUrls = await Promise.all(messages.map(async (msg) => {
         if (msg.fileUrl) msg.fileUrl = await getPresignedUrl(msg.fileUrl);
         if (msg.sender.avatar) msg.sender.avatar = await getPresignedUrl(msg.sender.avatar);
-        return msg;
+        const seenByCount = chatMembers.filter(
+          (member) =>
+            member.userId !== msg.senderId &&
+            member.lastReadAt &&
+            member.lastReadAt >= msg.createdAt
+        ).length;
+
+        return {
+          ...msg,
+          seenByCount,
+          seenByOthers: seenByCount > 0,
+        };
       }));
 
       return res.json(messagesWithUrls.reverse());
