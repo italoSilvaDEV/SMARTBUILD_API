@@ -3,6 +3,7 @@ import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../../utils/sendEmail";
 import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
+import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
 
 interface UserInput {
     id: string;
@@ -227,6 +228,35 @@ export class UpdateCustomServiceController {
                     });
                 }
             }
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: newWorkerIds } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: newSubIds } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "Schedule updated",
+                body: `${body.name || customService.name || "Custom service"} schedule was updated.`,
+                data: {
+                    type: "schedule_updated",
+                    projectId: project.id,
+                    serviceProjectId: null,
+                    subServiceId: null,
+                    customServiceId: body.customServiceId
+                }
+            });
 
             return res.status(200).json({ message: "Custom service updated successfully" });
         } catch (error) {

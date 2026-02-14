@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { workerAssignmentEmail } from "../../../templateEmail/workerAssignment";
 import { sendEmail } from "../../../utils/sendEmail";
+import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
 
 interface User {
     id: string
@@ -87,6 +88,35 @@ export class CreateSubserviceController {
                 }
 
                 return created;
+            });
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: workerIds } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: subcontractorIds } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "New service assigned",
+                body: `You were assigned to ${body.name || "a subservice"}.`,
+                data: {
+                    type: "service_assignment",
+                    projectId: projectId || null,
+                    serviceProjectId: body.serviceId || null,
+                    subServiceId: subservice.id,
+                    customServiceId: body.customServiceId || null
+                }
             });
 
             return res.status(201).json({ message: "Subservice created successfully", data: subservice });

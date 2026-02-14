@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { jobScheduleGlobalTemplate, ScheduleChange } from "../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../utils/sendEmail";
+import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
 
 interface UserInput {
     id: string;
@@ -236,6 +237,35 @@ export class UpdateJobProjectController {
                     });
                 }
             }
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: newWorkerIds } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: newSubIds } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "Schedule updated",
+                body: `${serviceProject.name || "Service"} schedule was updated.`,
+                data: {
+                    type: "schedule_updated",
+                    projectId: body.projectId,
+                    serviceProjectId: body.serviceProjectId,
+                    subServiceId: null,
+                    customServiceId: null
+                }
+            });
 
             return res.status(200).json({ message: "Service project updated successfully" });
         } catch (error) {

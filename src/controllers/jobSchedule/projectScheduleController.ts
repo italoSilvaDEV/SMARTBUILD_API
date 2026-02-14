@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
 import { PushNotificationService } from "../../services/PushNotificationService";
+import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
 
 export class ProjectScheduleController {
     async update(req: Request, res: Response) {
@@ -418,6 +419,19 @@ export class ProjectScheduleController {
                     attachments: attachments && attachments.length > 0 ? attachments : undefined
                 });
             }
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails,
+                title: "Schedule updated",
+                body: `${name || "Service"} schedule was updated.`,
+                data: {
+                    type: "schedule_updated",
+                    projectId: project.id,
+                    serviceProjectId: serviceProjectId || null,
+                    subServiceId: subServiceId || null,
+                    customServiceId: customServiceId || null
+                }
+            });
 
             if (!skipEmail && clientEmail) {
                 await sendEmail({

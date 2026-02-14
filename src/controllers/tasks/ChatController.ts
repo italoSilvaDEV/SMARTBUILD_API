@@ -6,6 +6,36 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 
 export class ChatController {
+  private getPushMessageBody(
+    text?: string | null,
+    fileUrl?: string | null,
+    fileType?: string | null,
+    fileName?: string | null
+  ): string {
+    const trimmedText = text?.trim();
+    if (trimmedText) return trimmedText;
+    if (!fileUrl) return "Sent you a message";
+
+    const mime = (fileType || "").toLowerCase();
+    const fileNameLower = (fileName || "").toLowerCase();
+
+    const isImage =
+      mime.startsWith("image/") ||
+      /\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|svg)$/.test(fileNameLower);
+    const isVideo =
+      mime.startsWith("video/") ||
+      /\.(mp4|mov|avi|mkv|webm|m4v)$/.test(fileNameLower);
+    const isAudio =
+      mime.startsWith("audio/") ||
+      /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/.test(fileNameLower);
+
+    if (isImage) return "Sent a photo";
+    if (isVideo) return "Sent a video";
+    if (isAudio) return "Sent an audio message";
+
+    return "Sent an attachment";
+  }
+
   // Listar conversas do usuário
   async listChats(req: Request, res: Response) {
     try {
@@ -353,7 +383,7 @@ export class ChatController {
 
       if (pushTokens.length > 0) {
         const senderName = message.sender.name || "New message";
-        const messageBody = text || (fileUrl ? `📎 ${fileName || "File"}` : "Sent you a message");
+        const messageBody = this.getPushMessageBody(text, fileUrl, fileType, fileName);
         PushNotificationService.sendChatMessagePush(
           pushTokens,
           senderName,
