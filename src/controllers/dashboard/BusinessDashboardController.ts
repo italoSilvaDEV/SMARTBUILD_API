@@ -821,7 +821,7 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { period = "thisYear" } = req.query;
+            const { period = "thisYear", subcontractorId } = req.query;
 
             const validPeriods = [
                 "thisYear",
@@ -849,6 +849,26 @@ export class BusinessDashboardController {
                 }
             }
 
+            // Se houver subcontractorId, filtrar apenas projetos desse subcontractor
+            let projectIds: string[] | undefined;
+            if (subcontractorId) {
+                const workedHours = await prisma.workedhours.findMany({
+                    where: {
+                        subcontractor_id: subcontractorId as string,
+                        amount_of_hours: null,
+                    },
+                    select: {
+                        project_id: true,
+                    },
+                    distinct: ['project_id'],
+                });
+                projectIds = workedHours.map((wh: any) => wh.project_id).filter(Boolean);
+
+                if (projectIds.length === 0) {
+                    return res.json([]);
+                }
+            }
+
             const projects = await prisma.project.groupBy({
                 by: ['status_project'],
                 where: {
@@ -856,6 +876,7 @@ export class BusinessDashboardController {
                     status_project: {
                         in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
                     },
+                    ...(projectIds && { id: { in: projectIds } }),
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     })
