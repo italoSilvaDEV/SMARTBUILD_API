@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
+import { PushNotificationService } from "../../services/PushNotificationService";
 
 export class ProjectScheduleController {
     async update(req: Request, res: Response) {
@@ -625,6 +626,31 @@ export class ProjectScheduleController {
                         },
                         attachments: attachments && attachments.length > 0 ? attachments : undefined
                     });
+
+                    // Push para funcionário marcado no serviço (quando tiver token salvo)
+                    const tokenRows = await prisma.$queryRaw<Array<{ expoPushToken: string | null }>>`
+                        SELECT expoPushToken
+                        FROM User
+                        WHERE email = ${email}
+                        LIMIT 1
+                    `;
+                    const expoPushToken = tokenRows?.[0]?.expoPushToken;
+                    if (expoPushToken) {
+                        await PushNotificationService.sendPushNotifications([{
+                            to: expoPushToken,
+                            title: "New service assigned",
+                            body: `You were assigned to ${name || "a service"}.`,
+                            data: {
+                                type: "service_assignment",
+                                serviceProjectId: serviceProjectId || null,
+                                subServiceId: subServiceId || null,
+                                customServiceId: customServiceId || null,
+                                projectId: project.id,
+                            },
+                            sound: "default",
+                            channelId: "default",
+                        }]);
+                    }
 
                     console.log("Assignment email sent to worker", email);
                 }
