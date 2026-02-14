@@ -2326,6 +2326,55 @@ export class ProjectController {
               },
             },
           },
+          sub_service_project: {
+            include: {
+              serviceProject: {
+                include: {
+                  Project: {
+                    select: {
+                      id: true,
+                      location: true,
+                      client: {
+                        select: {
+                          location: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              custom_service_schedule: {
+                include: {
+                  project: {
+                    select: {
+                      id: true,
+                      location: true,
+                      client: {
+                        select: {
+                          location: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          custom_service_schedule: {
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  location: true,
+                  client: {
+                    select: {
+                      location: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
@@ -2338,26 +2387,46 @@ export class ProjectController {
 
       // Filtrar e transformar os dados no formato necessário
       const events = userServiceProjects
-        .filter((userServiceProject) => {
-          const service = userServiceProject.service_project;
-          return service?.start_date && service?.deadline; // Filtra serviços com ambas as datas presentes
-        })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
+          const subservice = userServiceProject.sub_service_project;
+          const customService = userServiceProject.custom_service_schedule;
 
-          const initial = service?.start_date; // Formato 'YYYY-MM-DD'
-          const end = service?.deadline; // Formato 'YYYY-MM-DD'
-          const description = service?.Project?.location
-            ? service?.Project.location
-            : "No address available";
+          if (service) {
+            return {
+              id: service.id,
+              service: service.name,
+              initial: service.start_date,
+              end: service.deadline,
+              description: service.Project?.location || "No address available",
+            };
+          }
 
-          return {
-            id: service?.Project?.id || service?.id, // Garantir que há um ID válido
-            service: service?.name,
-            initial,
-            end,
-            description,
-          };
+          if (subservice) {
+            const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
+            return {
+              id: subservice.id,
+              service: subservice.name,
+              initial: subservice.start_date,
+              end: subservice.deadline,
+              description: project?.location || "No address available",
+            };
+          }
+
+          if (customService) {
+            return {
+              id: customService.id,
+              service: customService.name,
+              initial: customService.start_date,
+              end: customService.deadline,
+              description: customService.project?.location || "No address available",
+            };
+          }
+
+          return null;
+        })
+        .filter((event): event is { id: string; service: string; initial: string | null; end: string | null; description: string } => {
+          return Boolean(event && event.initial && event.end);
         });
 
       return res.json(events);
