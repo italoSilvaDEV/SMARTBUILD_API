@@ -110,6 +110,7 @@ model User {
 
   // Chat Relationships
   sentMessages    ChatMessage[] @relation("SentMessages")
+  deletedChatMessages ChatMessage[] @relation("DeletedChatMessages")
   chatMemberships ChatMember[]
   createdChats    Chat[]        @relation("CreatedChats")
 
@@ -150,6 +151,7 @@ model ChatMember {
   isAdmin    Boolean  @default(false)
   joinedAt   DateTime @default(now())
   lastReadAt DateTime @default(now())
+  archivedAt DateTime?
 
   @@unique([chatId, userId])
   @@index([userId])
@@ -168,11 +170,15 @@ model ChatMessage {
   fileUrl  String? @db.Text
   fileName String?
   fileType String?
+  deletedAt DateTime?
+  deletedById String?
+  deletedBy User? @relation("DeletedChatMessages", fields: [deletedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@index([chatId])
   @@index([senderId])
+  @@index([deletedById])
   @@map("chat_messages")
 }
 
