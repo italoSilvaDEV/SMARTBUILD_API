@@ -53,12 +53,13 @@ export class ChatController {
   async listChats(req: Request, res: Response) {
     try {
       const { userId } = req.params;
-      const { companyId } = req.query;
+      const { companyId, archived } = req.query;
+      const archivedOnly = archived === "true";
 
       const chatMemberships = await prisma.chatMember.findMany({
         where: { 
           userId,
-          archivedAt: null,
+          archivedAt: archivedOnly ? { not: null } : null,
           chat: {
             ...(companyId ? { companyId: companyId as string } : {})
           }
