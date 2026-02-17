@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { parseDateRange, getDefaultWeekRange } from "../../utils/dateUtils";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -68,15 +69,21 @@ export class getAllController {
             companyId
         } = req.params
 
-        const {
+        let {
             start_date,
             deadline,
         } = req.query
 
-        if (!companyId || !start_date || !deadline) {
+        if (!companyId) {
             return res.status(400).json({
                 error: "companyId is required"
             })
+        }
+
+        if (!start_date || !deadline) {
+            const defaultRange = getDefaultWeekRange();
+            start_date = defaultRange.start_date;
+            deadline = defaultRange.deadline;
         }
 
         const company = await prisma.company.findUnique({
@@ -91,8 +98,9 @@ export class getAllController {
             })
         }
 
-        const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-        const deadlineDate = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+        const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
+        const startDate = startOfDay;
+        const deadlineDate = endOfDay;
 
         try {
             const projects = await prisma.project.findMany({

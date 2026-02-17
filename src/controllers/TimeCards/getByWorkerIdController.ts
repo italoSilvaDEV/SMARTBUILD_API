@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { parseDateRange, getDefaultWeekRange } from "../../utils/dateUtils";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -73,15 +74,21 @@ export class getByWorkerIdController {
             workerId
         } = req.params
 
-        const {
+        let {
             start_date,
             deadline,
         } = req.query
 
-        if (!companyId || !start_date || !deadline || !workerId) {
+        if (!companyId || !workerId) {
             return res.status(400).json({
-                error: "Company Id, start date, deadline and worker id are required"
+                error: "Company Id and worker id are required"
             });
+        }
+
+        if (!start_date || !deadline) {
+            const defaultRange = getDefaultWeekRange();
+            start_date = defaultRange.start_date;
+            deadline = defaultRange.deadline;
         }
 
         const company = await prisma.company.findUnique({
@@ -96,8 +103,9 @@ export class getByWorkerIdController {
             });
         }
 
-        const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-        const deadlineDate = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+        const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
+        const startDate = startOfDay;
+        const deadlineDate = endOfDay;
 
         try {
             const user = await prisma.user.findUnique({
