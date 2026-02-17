@@ -54,6 +54,7 @@ import { permissionsKeyRoutes } from './permissionsKeyRoutes'
 import { taskRoutes } from './taskRoutes'
 import { officeRoutes } from './officeRoutes'
 import { chatRoutes } from './chatRoutes'
+import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -123,7 +124,7 @@ router.use(jobScheduleRoutes)
 router.use("/tasks", taskRoutes)
 router.use("/chats", chatRoutes)
 router.use(officeRoutes)
+router.use(timeCardEditRequestRoutes)
 
 export { router }
-
 

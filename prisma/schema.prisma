@@ -58,6 +58,8 @@ model User {
   projectId              String?
   UserServiceProject     UserServiceProject[]
   UserAttendance         UserAttendance[]
+  timeCardEditRequests   TimeCardEditRequest[] @relation("TimeCardEditRequestEmployee")
+  reviewedTimeCardEditRequests TimeCardEditRequest[] @relation("TimeCardEditRequestReviewer")
   Activities             Activities[]
   project_manager_project Project[]            @relation("project_manager")
   project_manager_invoice Invoice[]            @relation("project_manager_invoice")
@@ -223,6 +225,7 @@ model Company {
   Project          Project[]
   Client           Client[]
   UserAttendance   UserAttendance[]
+  timeCardEditRequests TimeCardEditRequest[]
   allowedEmployees Int? // Quantidade de funcionários permitida pelo plano
   extraEmployees   Int? // Quantidade de funcionários extras adicionados
 
@@ -1041,10 +1044,60 @@ model UserAttendance {
   workEndTime   String?
 
   isOvertime Boolean? @default(false)
+  editRequests TimeCardEditRequest[]
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")
+}
+
+enum TimeCardEditRequestStatus {
+  pending
+  approved
+  denied
+}
+
+model TimeCardEditRequest {
+  id String @id @default(uuid())
+
+  attendanceId String
+  attendance UserAttendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee User @relation("TimeCardEditRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  reviewerId String?
+  reviewer User? @relation("TimeCardEditRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  companyId String
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  originalCheckInTime DateTime
+  originalCheckOutTime DateTime?
+
+  requestedCheckInTime DateTime
+  requestedCheckOutTime DateTime?
+
+  approvedCheckInTime DateTime?
+  approvedCheckOutTime DateTime?
+
+  reason String @db.Text
+  employeeNote String? @db.Text
+  managerNote String? @db.Text
+
+  employeeSignature String @db.Text
+  managerSignature String? @db.Text
+
+  status TimeCardEditRequestStatus @default(pending)
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([employeeId, createdAt])
+  @@index([attendanceId])
+  @@map("timecard_edit_requests")
 }
 
 model TimeLine {
