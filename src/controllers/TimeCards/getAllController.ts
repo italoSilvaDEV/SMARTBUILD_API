@@ -28,6 +28,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.check_out_time.toISOString(),
                     attendance.workStartTime,
                     attendance.workEndTime,
+                    attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
             }
@@ -172,7 +173,9 @@ export class getAllController {
                                                     id: true,
                                                     name: true,
                                                     hourly_price: true,
-                                                    avatar: true
+                                                    avatar: true,
+                                                    defaultBreakMinutes: true,
+                                                    dailyRate: true
                                                 }
                                             }
                                         },
@@ -227,7 +230,9 @@ export class getAllController {
                             name: true,
                             hourly_price: true,
                             isOverTime: true,
-                            avatar: true
+                            avatar: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
                         }
                     }
                 }
@@ -314,6 +319,7 @@ export class getAllController {
                                 attendance.check_out_time.toISOString(),
                                 attendance.workStartTime,
                                 attendance.workEndTime,
+                                attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                         } else {
@@ -467,6 +473,7 @@ export class getAllController {
                                 attendance.check_out_time.toISOString(),
                                 attendance.workStartTime,
                                 attendance.workEndTime,
+                                attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                         } else {
