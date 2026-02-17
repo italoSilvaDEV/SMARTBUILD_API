@@ -22,7 +22,7 @@ type payloadCreateEstimate = {
 
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
-        const payloadCreateEstimate = req.body as payloadCreateEstimate 
+        const payloadCreateEstimate = req.body as payloadCreateEstimate
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
@@ -68,9 +68,12 @@ export class CreateNewEstimateController {
                             })
 
                             if (serviceProject) {
-                                await smartbuild.serviceProject.delete({
+                                await smartbuild.serviceProject.update({
                                     where: {
                                         id: serviceProject.id
+                                    },
+                                    data: {
+                                        projectId: null,
                                     }
                                 })
                             }
@@ -124,8 +127,6 @@ export class CreateNewEstimateController {
                     })
 
                     if (payloadCreateEstimate.isProjectFlow) {
-                        // Essa condição indentifica que esse estimate foi criado no fluxo de new project
-                        // Nesse caso, precisamos criar os serviços do projeto no estimate e criando o relacionamento dos serviços.
                         const projectServices = await smartbuild.serviceProject.findMany({
                             where: {
                                 projectId: payloadCreateEstimate.projectId
