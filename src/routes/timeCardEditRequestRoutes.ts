@@ -29,4 +29,10 @@ timeCardEditRequestRoutes.put(
   timeCardEditRequestController.review.bind(timeCardEditRequestController)
 );
 
+timeCardEditRequestRoutes.get(
+  "/timecard-edit-requests/:id/pdf",
+  checkToken,
+  timeCardEditRequestController.downloadPdf.bind(timeCardEditRequestController)
+);
+
 export { timeCardEditRequestRoutes };

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
 import { PushNotificationService } from "../../services/PushNotificationService";
+import axios from "axios";
 
 type ReviewStatus = "approved" | "denied";
 
@@ -12,6 +13,7 @@ interface AuthRequest extends Request {
 const MANAGEMENT_OFFICES_BLOCKED = new Set(["worker", "master"]);
 
 const TIMECARD_REQUEST_LINK = "/time-cards?tab=requests";
+const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
 function parseOptionalDate(value: unknown): Date | null {
   if (value === undefined || value === null || value === "") return null;
@@ -22,6 +24,26 @@ function parseOptionalDate(value: unknown): Date | null {
 function toIso(value: Date | null | undefined): string | null {
   if (!value) return null;
   return value.toISOString();
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDateTimeForPdf(value: Date | null | undefined): string {
+  if (!value) return "-";
+  return value.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function mapTimeCardEditRequest(record: any) {
@@ -230,6 +252,155 @@ export class TimeCardEditRequestController {
         },
       ]);
     }
+  }
+
+  private buildReviewPdfHtml(record: any): { html: string; css: string } {
+    const reviewStatus = record.status || "pending";
+    const employeeSignature = record.employeeSignature || "";
+    const managerSignature = record.managerSignature || "";
+    const employeeName = record.employee?.name || "Unknown";
+    const managerName = record.reviewer?.name || "-";
+    const workDate = formatDateTimeForPdf(record.attendance?.date || record.originalCheckInTime);
+
+    const employeeSignatureBlock = String(employeeSignature).startsWith("data:image/")
+      ? `<img src="${employeeSignature}" alt="Employee signature" class="signature-image" />`
+      : `<div class="signature-text">${escapeHtml(employeeSignature || "-")}</div>`;
+
+    const managerSignatureBlock = String(managerSignature).startsWith("data:image/")
+      ? `<img src="${managerSignature}" alt="Manager signature" class="signature-image" />`
+      : `<div class="signature-text">${escapeHtml(managerSignature || "-")}</div>`;
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Time Card Edit Review</title>
+        </head>
+        <body>
+          <div class="document">
+            <h1>Time Card Edit Request Review</h1>
+            <p class="meta">Generated at: ${escapeHtml(formatDateTimeForPdf(new Date()))}</p>
+
+            <section class="block">
+              <h2>Employee</h2>
+              <p><strong>Name:</strong> ${escapeHtml(employeeName)}</p>
+              <p><strong>Work Date:</strong> ${escapeHtml(workDate)}</p>
+              <p><strong>Status:</strong> <span class="badge ${escapeHtml(reviewStatus)}">${escapeHtml(reviewStatus)}</span></p>
+            </section>
+
+            <section class="block">
+              <h2>Original vs Requested</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Field</th>
+                    <th>Original</th>
+                    <th>Requested</th>
+                    <th>Approved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Clock In</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.originalCheckInTime))}</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.requestedCheckInTime))}</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.approvedCheckInTime))}</td>
+                  </tr>
+                  <tr>
+                    <td>Clock Out</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.originalCheckOutTime))}</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.requestedCheckOutTime))}</td>
+                    <td>${escapeHtml(formatDateTimeForPdf(record.approvedCheckOutTime))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="block">
+              <h2>Notes</h2>
+              <p><strong>Reason:</strong> ${escapeHtml(record.reason || "-")}</p>
+              <p><strong>Employee Note:</strong> ${escapeHtml(record.employeeNote || "-")}</p>
+              <p><strong>Employee Signed By:</strong> ${escapeHtml(employeeName)}</p>
+              <p><strong>Employee Signed At:</strong> ${escapeHtml(formatDateTimeForPdf(record.createdAt))}</p>
+              <p><strong>Manager Note:</strong> ${escapeHtml(record.managerNote || "-")}</p>
+              <p><strong>Manager Signed By:</strong> ${escapeHtml(managerName)}</p>
+              <p><strong>Reviewed At:</strong> ${escapeHtml(formatDateTimeForPdf(record.reviewedAt))}</p>
+            </section>
+
+            <section class="signatures">
+              <div class="signature-box">
+                <h3>Employee Signature</h3>
+                <p><strong>Employee:</strong> ${escapeHtml(employeeName)}</p>
+                ${employeeSignatureBlock}
+              </div>
+              <div class="signature-box">
+                <h3>Manager Signature</h3>
+                <p><strong>Manager:</strong> ${escapeHtml(managerName)}</p>
+                ${managerSignatureBlock}
+              </div>
+            </section>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const css = `
+      body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
+      .document { padding: 16px; }
+      h1 { margin: 0 0 8px; font-size: 22px; }
+      h2 { margin: 0 0 8px; font-size: 16px; }
+      h3 { margin: 0 0 8px; font-size: 14px; }
+      .meta { color: #6B7280; margin-bottom: 14px; }
+      .block { border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+      p { margin: 4px 0; line-height: 1.4; }
+      table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+      th, td { border: 1px solid #E5E7EB; padding: 8px; font-size: 12px; text-align: left; }
+      th { background: #F9FAFB; font-weight: 700; }
+      .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; text-transform: capitalize; }
+      .badge.pending { background: #FEF3C7; color: #92400E; }
+      .badge.approved { background: #D1FAE5; color: #065F46; }
+      .badge.denied { background: #FEE2E2; color: #991B1B; }
+      .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .signature-box { border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; min-height: 170px; }
+      .signature-image { width: 100%; height: 130px; object-fit: contain; background: #fff; border: 1px solid #E5E7EB; border-radius: 6px; }
+      .signature-text { font-size: 11px; color: #374151; word-break: break-all; min-height: 130px; border: 1px solid #E5E7EB; border-radius: 6px; padding: 8px; }
+    `;
+
+    return { html, css };
+  }
+
+  private async generateReviewPdfBuffer(record: any): Promise<Buffer> {
+    const apiKey = process.env.PDFSHIFT_API_KEY;
+    if (!apiKey) {
+      throw new Error("PDFSHIFT_API_KEY is not configured.");
+    }
+
+    const { html, css } = this.buildReviewPdfHtml(record);
+
+    const response = await axios.post(
+      PDFSHIFT_API_URL,
+      {
+        source: html,
+        sandbox: false,
+        landscape: false,
+        format: "A4",
+        margin: "20px",
+        use_print: true,
+        disable_javascript: true,
+        css,
+      },
+      {
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/pdf",
+        },
+        responseType: "arraybuffer",
+      }
+    );
+
+    return Buffer.from(response.data);
   }
 
   async create(req: AuthRequest, res: Response) {
@@ -736,6 +907,83 @@ export class TimeCardEditRequestController {
       console.error("[TimeCardEditRequestController.review] Error:", error);
       return res.status(500).json({
         error: error?.message || "Failed to review time card edit request.",
+      });
+    }
+  }
+
+  async downloadPdf(req: AuthRequest, res: Response) {
+    try {
+      const requesterId = this.getRequesterId(req);
+      if (!requesterId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { id } = req.params;
+      const asBase64 = String(req.query.as || "").toLowerCase() === "base64";
+
+      if (!id) {
+        return res.status(400).json({ error: "Request id is required." });
+      }
+
+      const requestRecord = await prisma.timeCardEditRequest.findUnique({
+        where: { id },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          reviewer: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          attendance: {
+            select: {
+              date: true,
+            },
+          },
+        },
+      });
+
+      if (!requestRecord) {
+        return res.status(404).json({ error: "Time card edit request not found." });
+      }
+
+      const canReview = await this.canReviewCompany(requesterId, requestRecord.companyId);
+      const isOwner = requestRecord.employeeId === requesterId;
+      if (!canReview && !isOwner) {
+        return res.status(403).json({
+          error: "You do not have permission to access this PDF.",
+        });
+      }
+
+      if (requestRecord.status === "pending") {
+        return res.status(409).json({
+          error: "PDF is available only after the request is reviewed.",
+        });
+      }
+
+      const pdfBuffer = await this.generateReviewPdfBuffer(requestRecord);
+
+      const fileName = `timecard-edit-review-${requestRecord.id}.pdf`;
+      if (asBase64) {
+        return res.json({
+          fileName,
+          base64: pdfBuffer.toString("base64"),
+          mimeType: "application/pdf",
+        });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      return res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("[TimeCardEditRequestController.downloadPdf] Error:", error);
+      return res.status(500).json({
+        error: error?.message || "Failed to generate time card review PDF.",
       });
     }
   }
