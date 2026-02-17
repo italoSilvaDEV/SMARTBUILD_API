@@ -28,6 +28,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.check_out_time.toISOString(),
                     attendance.workStartTime,
                     attendance.workEndTime,
+                    attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
             }
@@ -108,7 +109,9 @@ export class getByWorkerIdController {
                     name: true,
                     avatar: true,
                     office: true,
-                    isOverTime: true
+                    isOverTime: true,
+                    defaultBreakMinutes: true,
+                    dailyRate: true
                 }
             });
 
@@ -161,7 +164,9 @@ export class getByWorkerIdController {
                             id: true,
                             name: true,
                             hourly_price: true,
-                            isOverTime: true
+                            isOverTime: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
                         }
                     },
                     UserServiceProject: {
@@ -247,15 +252,32 @@ export class getByWorkerIdController {
                     let dailyHours = 0;
 
                     if (attendance.check_out_time) {
+                        const rawHours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                            0
+                        );
                         const hours = calcularHorasTrabalhadas(
                             attendance.check_in_time.toISOString(),
                             attendance.check_out_time.toISOString(),
                             attendance.workStartTime,
                             attendance.workEndTime,
+                            attendance.user.defaultBreakMinutes || 0
                         );
+                        const rawDailyHours = convertHHMMToDecimal(rawHours.normais) + convertHHMMToDecimal(rawHours.extras);
                         dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        const breakMinutesApplied = Math.min(
+                            attendance.user.defaultBreakMinutes || 0,
+                            Math.round(rawDailyHours * 60)
+                        );
+                        attendance.__rawDailyHours = rawDailyHours;
+                        attendance.__breakMinutesApplied = breakMinutesApplied;
                     } else {
                         dailyHours = 0;
+                        attendance.__rawDailyHours = 0;
+                        attendance.__breakMinutesApplied = 0;
                     }
                     const hadOvertimePermission = attendance.isOvertime === true;
                     const hourlyRate = attendance.user.hourly_price || 0;
@@ -301,8 +323,12 @@ export class getByWorkerIdController {
                         user: {
                             name: attendance.user.name,
                             hourly_price: attendance.user.hourly_price,
+                            dailyRate: attendance.user.dailyRate,
                             isOverTime: finalOvertimeHours > 0
                         },
+                        raw_hours_worked: parseFloat(((attendance.__rawDailyHours as number) || 0).toFixed(2)),
+                        break_minutes: (attendance.__breakMinutesApplied as number) || 0,
+                        break_hours: parseFloat((((attendance.__breakMinutesApplied as number) || 0) / 60).toFixed(2)),
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(dailyHours.toFixed(2)),
                         overtime_hours: 0,
