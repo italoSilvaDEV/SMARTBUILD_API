@@ -428,6 +428,7 @@ export class ProjectController {
             fixed_price: true,
             type_price: true,
             name_user: true,
+            subcontractor_id: true,
           }
         })
       ]);
@@ -463,22 +464,33 @@ export class ProjectController {
           workedHoursMap.set(projectId, {
             totalCostOfServiceHours: 0,
             totalNumberOfHoursWorked: 0,
+            totalSubcontractorCost: 0,
             uniqueUsers: new Set(),
           });
         }
 
         const projectData = workedHoursMap.get(projectId);
 
+        const isSubcontractor = !!wh.subcontractor_id;
+        let cost = 0;
+
         if (wh.type_price === "fixed") {
-          projectData.totalCostOfServiceHours += Number(wh.fixed_price || 0);
+          cost = Number(wh.fixed_price || 0);
         } else {
           if (wh.amount_of_hours !== null) {
-            projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
+            cost = Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
             projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
           } else {
-            projectData.totalCostOfServiceHours += Number(wh.hourly_price || 0);
+            cost = Number(wh.hourly_price || 0);
           }
         }
+
+        if (isSubcontractor) {
+          projectData.totalSubcontractorCost += cost;
+        } else {
+          projectData.totalCostOfServiceHours += cost;
+        }
+        
         projectData.uniqueUsers.add(wh.name_user);
       });
 
@@ -489,6 +501,7 @@ export class ProjectController {
         const workedHoursData = workedHoursMap.get(project.id);
 
         const totalCostOfServiceHours = workedHoursData?.totalCostOfServiceHours || 0;
+        const totalSubcontractorCost = workedHoursData?.totalSubcontractorCost || 0;
         const totalNumberOfHoursWorked = workedHoursData?.totalNumberOfHoursWorked || 0;
         const workersOnThisProject = workedHoursData?.uniqueUsers?.size || 0;
 
@@ -592,6 +605,7 @@ export class ProjectController {
           },
           costofwork: costOfWork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          cost_of_subcontractor: totalSubcontractorCost,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject,
@@ -812,22 +826,31 @@ export class ProjectController {
         }, 0)
 
         let totalCostOfServiceHours = 0;
+        let totalSubcontractorCost = 0;
         let totalNumberOfHoursWorked = 0;
         const uniqueUsers = new Set();
 
         project.workedHours.forEach((workedHour) => {
+          const isSubcontractor = !!workedHour.subcontractor_id;
+          let cost = 0;
+
           if (workedHour.type_price === "fixed") {
-            totalCostOfServiceHours += Number(workedHour.fixed_price || 0);
+            cost = Number(workedHour.fixed_price || 0);
           } else {
             if (workedHour.amount_of_hours !== null) {
-              totalCostOfServiceHours +=
-                Number(workedHour.amount_of_hours) *
-                Number(workedHour.hourly_price || 0);
+              cost = Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price || 0);
               totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
             } else {
-              totalCostOfServiceHours += Number(workedHour.hourly_price || 0);
+              cost = Number(workedHour.hourly_price || 0);
             }
           }
+
+          if (isSubcontractor) {
+            totalSubcontractorCost += cost;
+          } else {
+            totalCostOfServiceHours += cost;
+          }
+
           uniqueUsers.add(workedHour.name_user);
         });
 
@@ -921,6 +944,7 @@ export class ProjectController {
           costProjects: flatCostProjects,
           cost_of_materials: costofwork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          cost_of_subcontractor: totalSubcontractorCost,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject, // Adiciona o novo campo price_project
