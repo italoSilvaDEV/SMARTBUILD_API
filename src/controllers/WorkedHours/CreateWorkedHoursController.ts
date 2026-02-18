@@ -7,7 +7,9 @@ interface CreateWorkedHoursRequest {
   project_id: string;
   name_user: string;
   amount_of_hours?: string; // Opcional
-  hourly_price: number; // Recebido como número do front-end
+  hourly_price?: number;
+  fixed_price?: number;
+  type_price?: "hourly" | "fixed";
   start_date?: string; // Opcional
   end_date?: string; // Opcional
   subcontractor_id?: string; // Opcional
@@ -23,6 +25,8 @@ export class CreateWorkedHoursController {
         name_user,
         amount_of_hours,
         hourly_price,
+        fixed_price,
+        type_price,
         start_date,
         end_date,
         subcontractor_id,
@@ -37,12 +41,17 @@ export class CreateWorkedHoursController {
         error.push("Name user is required and must not be empty!");
       }
 
-      if (amount_of_hours !== undefined && parseFloat(amount_of_hours) <= 0) {
-        error.push("If provided, amount of hours must be greater than zero!");
-      }
-
-      if (hourly_price === undefined || hourly_price <= 0) {
-        error.push("Hourly price is mandatory and must be greater than zero!");
+      if (type_price === "hourly") {
+        if (amount_of_hours !== undefined && parseFloat(amount_of_hours) <= 0) {
+          error.push("For hourly price, amount of hours must be greater than zero!");
+        }
+        if (hourly_price === undefined || hourly_price <= 0) {
+          error.push("Hourly price is mandatory for hourly type and must be greater than zero!");
+        }
+      } else if (type_price === "fixed") {
+        if (fixed_price === undefined || fixed_price <= 0) {
+          error.push("Fixed price is mandatory for fixed type and must be greater than zero!");
+        }
       }
 
       if (start_date && end_date) {
@@ -60,7 +69,9 @@ export class CreateWorkedHoursController {
 
       const data: any = {
         name_user,
-        hourly_price,
+        type_price,
+        hourly_price: type_price === "hourly" ? hourly_price : null,
+        fixed_price: type_price === "fixed" ? fixed_price : null,
         amount_of_hours: amount_of_hours ? parseFloat(amount_of_hours) : null,
         start_date: start_date ? new Date(start_date).toISOString() : null,
         end_date: end_date ? new Date(end_date).toISOString() : null,

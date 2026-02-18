@@ -425,6 +425,8 @@ export class ProjectController {
             project_id: true,
             amount_of_hours: true,
             hourly_price: true,
+            fixed_price: true,
+            type_price: true,
             name_user: true,
           }
         })
@@ -467,11 +469,15 @@ export class ProjectController {
 
         const projectData = workedHoursMap.get(projectId);
 
-        if (wh.amount_of_hours !== null) {
-          projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price);
-          projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
+        if (wh.type_price === "fixed") {
+          projectData.totalCostOfServiceHours += Number(wh.fixed_price || 0);
         } else {
-          projectData.totalCostOfServiceHours += Number(wh.hourly_price);
+          if (wh.amount_of_hours !== null) {
+            projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
+            projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
+          } else {
+            projectData.totalCostOfServiceHours += Number(wh.hourly_price || 0);
+          }
         }
         projectData.uniqueUsers.add(wh.name_user);
       });
@@ -810,13 +816,17 @@ export class ProjectController {
         const uniqueUsers = new Set();
 
         project.workedHours.forEach((workedHour) => {
-          if (workedHour.amount_of_hours !== null) {
-            totalCostOfServiceHours +=
-              Number(workedHour.amount_of_hours) *
-              Number(workedHour.hourly_price);
-            totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+          if (workedHour.type_price === "fixed") {
+            totalCostOfServiceHours += Number(workedHour.fixed_price || 0);
           } else {
-            totalCostOfServiceHours += Number(workedHour.hourly_price);
+            if (workedHour.amount_of_hours !== null) {
+              totalCostOfServiceHours +=
+                Number(workedHour.amount_of_hours) *
+                Number(workedHour.hourly_price || 0);
+              totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+            } else {
+              totalCostOfServiceHours += Number(workedHour.hourly_price || 0);
+            }
           }
           uniqueUsers.add(workedHour.name_user);
         });

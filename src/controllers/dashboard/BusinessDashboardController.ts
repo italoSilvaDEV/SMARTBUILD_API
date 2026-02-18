@@ -483,7 +483,9 @@ export class BusinessDashboardController {
                             hourly_price: true,
                             date_creation: true,
                             start_date: true,
-                            end_date: true
+                            end_date: true,
+                            type_price: true,
+                            fixed_price: true,
                         }
                     },
                     serviceProject: {
@@ -552,18 +554,18 @@ export class BusinessDashboardController {
             );
 
             const employeeCost = projects.flatMap(i => i.workedHours
-                .filter(item => item.amount_of_hours !== null)
+                .filter(item => item.type_price === "hourly" || (!item.type_price && item.amount_of_hours !== null))
                 .map(item => ({
                     id: item.id,
-                    price: Number(item.amount_of_hours) * Number(item.hourly_price)
+                    price: Number(item.amount_of_hours || 0) * Number(item.hourly_price || 0)
                 }))
             );
 
             const subcontractorCost = projects.flatMap(i => i.workedHours
-                .filter(item => item.amount_of_hours === null)
+                .filter(item => item.type_price === "fixed" || (!item.type_price && item.amount_of_hours === null))
                 .map(item => ({
                     id: item.id,
-                    price: Number(item.hourly_price)
+                    price: item.type_price === "fixed" ? Number(item.fixed_price || 0) : Number(item.hourly_price || 0)
                 }))
             );
 

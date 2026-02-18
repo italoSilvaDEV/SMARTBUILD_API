@@ -47,6 +47,8 @@ export class FindWorkedHoursProjectController {
                     name_user: true,
                     amount_of_hours: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
                     date_creation: true,
                     start_date: true,
                     end_date: true,
@@ -196,6 +198,8 @@ export class FindWorkedHoursProjectController {
                     name_user: true,
                     amount_of_hours: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
                     date_creation: true,
                     start_date: true,
                     end_date: true,
@@ -271,10 +275,16 @@ export class FindWorkedHoursProjectController {
                 }
             });
             const formattedResult = result.map((workedHours) => {
+                let price = null;
+                if (workedHours.type_price === "fixed") {
+                    price = workedHours.fixed_price ? Number(workedHours.fixed_price) : null;
+                } else {
+                    price = workedHours.amount_of_hours && workedHours.hourly_price ? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price) : null;
+                }
                 return {
                     ...workedHours,
                     overtime_hours: null,
-                    price: workedHours.amount_of_hours&&workedHours.hourly_price? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price): null
+                    price
                 }
             })
             // Calcular as horas trabalhadas

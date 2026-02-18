@@ -131,7 +131,10 @@ export class DashboardSubcontractorController {
             const allWorkedHours = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractorId,
-                    amount_of_hours: null,
+                    OR: [
+                        { type_price: "fixed" },
+                        { AND: [{ type_price: null }, { amount_of_hours: null }] }
+                    ]
                 },
                 select: {
                     project_id: true,
@@ -191,7 +194,10 @@ export class DashboardSubcontractorController {
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractorId,
-                    amount_of_hours: null,
+                    OR: [
+                        { type_price: "fixed" },
+                        { AND: [{ type_price: null }, { amount_of_hours: null }] }
+                    ],
                     project_id: { in: projectIds },
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
@@ -200,6 +206,8 @@ export class DashboardSubcontractorController {
                 select: {
                     project_id: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
                     date_creation: true,
                 },
             });
@@ -212,7 +220,9 @@ export class DashboardSubcontractorController {
             for (const record of workedHoursRecords) {
                 const date = new Date(record.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
-                const cost = parseFloat((record.hourly_price as any)?.toString() || '0');
+                const cost = record.type_price === "fixed" 
+                    ? parseFloat((record.fixed_price as any)?.toString() || '0')
+                    : parseFloat((record.hourly_price as any)?.toString() || '0');
 
                 totalSubcontractorCosts += cost;
 

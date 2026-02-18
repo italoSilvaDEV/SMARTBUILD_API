@@ -8,6 +8,8 @@ export class UpdateWorkedHoursController {
       name_user,
       amount_of_hours,
       hourly_price,
+      fixed_price,
+      type_price,
       start_date,
       end_date,
       description,
@@ -19,8 +21,15 @@ export class UpdateWorkedHoursController {
     function validateWorkedHoursData(data: any): string | null {
       if (!data.id) return "You cannot change the data coming from the worker's APP!";
       if (!data.name_user) return "Name user is required";
-      if (!data.amount_of_hours && data.amount_of_hours !== null) return "Amount of hours is required";
-      if (!data.hourly_price) return "Hourly price is required";
+      
+      const type = data.type_price || "hourly";
+      if (type === "hourly") {
+        if (!data.hourly_price) return "Hourly price is required for hourly type";
+        if (!data.amount_of_hours && data.amount_of_hours !== null) return "Amount of hours is required";
+      } else if (type === "fixed") {
+        if (!data.fixed_price) return "Fixed price is required for fixed type";
+      }
+
       if (data.start_date && data.end_date) {
         const startDate = new Date(data.start_date);
         const endDate = new Date(data.end_date);
@@ -46,8 +55,10 @@ export class UpdateWorkedHoursController {
       // Preparar dados base para atualização
       const updateData: any = {
         name_user,
-        amount_of_hours: parseFloat(amount_of_hours) || null,
-        hourly_price,
+        type_price,
+        amount_of_hours: amount_of_hours ? parseFloat(amount_of_hours) : null,
+        hourly_price: type_price === "hourly" ? hourly_price : null,
+        fixed_price: type_price === "fixed" ? fixed_price : null,
         start_date,
         end_date,
         description: description?.trim() || null,

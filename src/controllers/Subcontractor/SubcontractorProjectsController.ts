@@ -23,7 +23,10 @@ export class SubcontractorProjectsController {
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractor_id as string,
-                    amount_of_hours: null, // Subcontractors não têm horas, apenas preço
+                    OR: [
+                        { type_price: "fixed" },
+                        { AND: [{ type_price: null }, { amount_of_hours: null }] }
+                    ]
                 },
                 select: {
                     project_id: true,
@@ -107,7 +110,10 @@ export class SubcontractorProjectsController {
                         where: {
                             project_id: project.id,
                             subcontractor_id: subcontractor_id as string,
-                            amount_of_hours: null,
+                            OR: [
+                                { type_price: "fixed" },
+                                { AND: [{ type_price: null }, { amount_of_hours: null }] }
+                            ]
                         },
                         include: {
                             subcontractor: {
@@ -123,7 +129,10 @@ export class SubcontractorProjectsController {
                     });
 
                     const totalSubcontractorCost = costEntries.reduce((acc: number, record: any) => {
-                        return acc + parseFloat(record.hourly_price?.toString() || '0');
+                        const cost = record.type_price === "fixed"
+                            ? parseFloat(record.fixed_price?.toString() || '0')
+                            : parseFloat(record.hourly_price?.toString() || '0');
+                        return acc + cost;
                     }, 0);
 
                     const projectValue = project.serviceProject.reduce((acc: number, service: any) => {
@@ -141,6 +150,8 @@ export class SubcontractorProjectsController {
                             description: wh.description,
                             payment_date: wh.payment_date,
                             hourly_price: wh.hourly_price?.toString() ?? '0',
+                            fixed_price: wh.fixed_price?.toString() ?? '0',
+                            type_price: wh.type_price,
                             date_creation: wh.date_creation,
                             name_user: wh.name_user,
                             subcontractor: wh.subcontractor,
@@ -198,11 +209,16 @@ export class SubcontractorProjectsController {
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: id,
-                    amount_of_hours: null,
+                    OR: [
+                        { type_price: "fixed" },
+                        { AND: [{ type_price: null }, { amount_of_hours: null }] }
+                    ]
                 },
                 select: {
                     project_id: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
                 },
             });
 
@@ -212,7 +228,10 @@ export class SubcontractorProjectsController {
 
             // Calcula o valor total pago
             const totalPaid = workedHoursRecords.reduce((acc: number, record: any) => {
-                return acc + parseFloat(record.hourly_price?.toString() || '0');
+                const cost = record.type_price === "fixed"
+                    ? parseFloat(record.fixed_price?.toString() || '0')
+                    : parseFloat(record.hourly_price?.toString() || '0');
+                return acc + cost;
             }, 0);
 
             return res.status(200).json({
