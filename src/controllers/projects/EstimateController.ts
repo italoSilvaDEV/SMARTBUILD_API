@@ -847,10 +847,14 @@ export class EstimateController {
               }
             })
 
+            // Remover o relacionamento do serviço com o projeto, mas ainda continua relacionado ao estimate de origem.
             if (serviceProject) {
-              await smartbuild.serviceProject.delete({
+              await smartbuild.serviceProject.update({
                 where: {
                   id: serviceProject.id
+                },
+                data: {
+                  projectId: null
                 }
               })
             }
