@@ -49,47 +49,6 @@ export class CreateNewEstimateController {
 
         try {
             await prisma.$transaction(async (smartbuild) => {
-                if (payloadCreateEstimate.cancelEstimates) {
-                    const estimates = await smartbuild.estimate.findMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        },
-                        include: {
-                            serviceProjects: true
-                        }
-                    })
-
-                    for (const estimate of estimates) {
-                        for (const estimateServiceProject of estimate.serviceProjects) {
-                            const serviceProject = await smartbuild.serviceProject.findFirst({
-                                where: {
-                                    estimateServiceId: estimateServiceProject.id
-                                }
-                            })
-
-                            if (serviceProject) {
-                                await smartbuild.serviceProject.update({
-                                    where: {
-                                        id: serviceProject.id
-                                    },
-                                    data: {
-                                        projectId: null,
-                                    }
-                                })
-                            }
-                        }
-                    }
-
-                    await smartbuild.estimate.updateMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        },
-                        data: {
-                            status: "canceled"
-                        }
-                    })
-                }
-
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
                         number: payloadCreateEstimate.preGeneratedNumber,
