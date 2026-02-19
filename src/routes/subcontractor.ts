@@ -6,6 +6,7 @@ import { UpdateSubcontractorController } from "../controllers/Subcontractor/Upda
 import { DeleteSubcontractorController } from "../controllers/Subcontractor/DeleteSubcontractorController";
 import { SubcontractorProjectsController } from "../controllers/Subcontractor/SubcontractorProjectsController";
 import { DashboardSubcontractorController } from "../controllers/Subcontractor/dashboardSubcontractorController";
+import { DashboardSubcontractorCompanyController } from "../controllers/Subcontractor/dashboardSubcontractorCompanyController";
 
 const subcontractorRoutes = Router();
 
@@ -27,6 +28,9 @@ subcontractorRoutes.get("/subcontractor/:id/details", checkToken, subcontractorP
 subcontractorRoutes.get("/subcontractor/projects", checkToken, subcontractorProjectsController.getSubcontractorProjects.bind(subcontractorProjectsController));
 
 const dashboardSubcontractorController = new DashboardSubcontractorController();
+const dashboardSubcontractorCompanyController = new DashboardSubcontractorCompanyController();
+// Rota "company" antes da rota :subcontractorId para não interpretar "company" como id
+subcontractorRoutes.get("/subcontractor/dashboard/company/:companyId", checkToken, dashboardSubcontractorCompanyController.handle.bind(dashboardSubcontractorCompanyController));
 subcontractorRoutes.get("/subcontractor/dashboard/:subcontractorId", checkToken, dashboardSubcontractorController.handle.bind(dashboardSubcontractorController));
 
 export { subcontractorRoutes };
