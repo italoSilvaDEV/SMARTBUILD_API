@@ -15,16 +15,17 @@ export class SubcontractorProjectsController {
                 });
             }
 
-            const pageNumber = parseInt(page as string);
+            const pageNumber = parseInt(page as string); 
             const itemsPerPage = 20;
             const skip = pageNumber * itemsPerPage;
 
-            // Busca registros de horas trabalhadas para identificar projetos
+            // Busca registros de horas trabalhadas para identificar projetos (fixed, hourly ou legado null)
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractor_id as string,
                     OR: [
                         { type_price: "fixed" },
+                        { type_price: "hourly" },
                         { AND: [{ type_price: null }, { amount_of_hours: null }] }
                     ]
                 },
@@ -112,6 +113,7 @@ export class SubcontractorProjectsController {
                             subcontractor_id: subcontractor_id as string,
                             OR: [
                                 { type_price: "fixed" },
+                                { type_price: "hourly" },
                                 { AND: [{ type_price: null }, { amount_of_hours: null }] }
                             ]
                         },
@@ -205,12 +207,13 @@ export class SubcontractorProjectsController {
                 });
             }
 
-            // Busca registros de horas trabalhadas para calcular estatísticas
+            // Busca registros de horas trabalhadas para calcular estatísticas (fixed, hourly ou legado null)
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: id,
                     OR: [
                         { type_price: "fixed" },
+                        { type_price: "hourly" },
                         { AND: [{ type_price: null }, { amount_of_hours: null }] }
                     ]
                 },

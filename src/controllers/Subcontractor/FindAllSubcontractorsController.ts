@@ -53,11 +53,13 @@ export class FindAllSubcontractorsController {
         }
       });
 
-      // Calculate totals for each subcontractor
+      // Calculate totals for each subcontractor (type_price fixed → fixed_price; else hourly → hourly_price)
       const subcontractorsWithTotals = subcontractors.map(subcontractor => {
-        // Calculate total spent with this subcontractor
         const totalSpent = subcontractor.workedHours.reduce((acc, wh) => {
-          return acc + Number(wh.hourly_price || 0);
+          const cost = (wh as any).type_price === "fixed"
+            ? Number((wh as any).fixed_price ?? 0)
+            : Number((wh as any).hourly_price ?? 0);
+          return acc + cost;
         }, 0);
 
         // Get unique projects this subcontractor worked on

@@ -190,12 +190,13 @@ export class DashboardSubcontractorController {
                 });
             }
 
-            // Agora busca os workedHours APENAS dos projetos filtrados
+            // Agora busca os workedHours APENAS dos projetos filtrados (fixed, hourly ou legado null)
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractorId,
                     OR: [
                         { type_price: "fixed" },
+                        { type_price: "hourly" },
                         { AND: [{ type_price: null }, { amount_of_hours: null }] }
                     ],
                     project_id: { in: projectIds },
