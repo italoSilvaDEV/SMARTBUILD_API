@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { DateTime } from "luxon";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { TimeService } from "../../services/TimeService";
 
@@ -16,8 +15,8 @@ export class TimeController {
                 return res.status(400).json({ error: "Params invalid" });
             }
 
-            const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-            const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+            const startDate = new Date(String(start_date));
+            const endDeadline = new Date(String(deadline));
 
             const allAttendances = await prisma.userAttendance.findMany({
                 where: {
@@ -90,8 +89,8 @@ export class TimeController {
                 return res.status(400).json({ error: "Params invalid" });
             }
 
-            const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-            const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+            const startDate = new Date(String(start_date));
+            const endDeadline = new Date(String(deadline));
 
             const attendances = await prisma.userAttendance.findMany({
                 where: {
@@ -152,8 +151,8 @@ export class TimeController {
         try {
             if (!id || !start_date || !deadline) return res.status(400).json({ error: "Params invalid" });
 
-            const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-            const endDeadline = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+            const startDate = new Date(String(start_date));
+            const endDeadline = new Date(String(deadline));
 
             // Buscar:
             // 1) Attendances com check_in hoje (normais)

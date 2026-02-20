@@ -90,8 +90,8 @@ export class getAllController {
             })
         }
 
-        const startDate = DateTime.fromISO(String(start_date)).startOf('day').toJSDate();
-        const deadlineDate = DateTime.fromISO(String(deadline)).endOf('day').toJSDate();
+        const startDate = new Date(String(start_date));
+        const deadlineDate = new Date(String(deadline));
 
         try {
             const projects = await prisma.project.findMany({
