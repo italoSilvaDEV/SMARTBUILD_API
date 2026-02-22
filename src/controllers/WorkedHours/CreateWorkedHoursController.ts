@@ -6,15 +6,18 @@ const prisma = new PrismaClient();
 interface CreateWorkedHoursRequest {
   project_id: string;
   name_user: string;
-  amount_of_hours?: string; // Opcional
+  amount_of_hours?: string;
   hourly_price?: number;
   fixed_price?: number;
   type_price?: "hourly" | "fixed";
-  start_date?: string; // Opcional
-  end_date?: string; // Opcional
-  subcontractor_id?: string; // Opcional
-  description?: string; // Opcional
-  payment_date?: string; // Opcional
+  start_date?: string;
+  end_date?: string;
+  subcontractor_id?: string;
+  description?: string;
+  payment_date?: string;
+  subcontractor_service_project_id?: string;
+  sub_services_project_id?: string;
+  custom_service_schedule_id?: string;
 }
 
 export class CreateWorkedHoursController {
@@ -31,8 +34,10 @@ export class CreateWorkedHoursController {
         end_date,
         subcontractor_id,
         description,
-        payment_date
-
+        payment_date,
+        subcontractor_service_project_id,
+        sub_services_project_id,
+        custom_service_schedule_id,
       } = req.body as CreateWorkedHoursRequest;
 
       const error: string[] = [];
@@ -86,9 +91,25 @@ export class CreateWorkedHoursController {
 
       if (subcontractor_id) {
         data.subcontractor = {
-          connect: {
-            id: subcontractor_id,
-          },
+          connect: { id: subcontractor_id },
+        };
+      }
+
+      if (subcontractor_service_project_id) {
+        data.subcontractor_service_project = {
+          connect: { id: subcontractor_service_project_id },
+        };
+      }
+
+      if (sub_services_project_id) {
+        data.sub_services_project = {
+          connect: { id: sub_services_project_id },
+        };
+      }
+
+      if (custom_service_schedule_id) {
+        data.custom_service_schedule = {
+          connect: { id: custom_service_schedule_id },
         };
       }
 
