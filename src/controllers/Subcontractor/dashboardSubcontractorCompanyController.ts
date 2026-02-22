@@ -190,6 +190,8 @@ export class DashboardSubcontractorCompanyController {
                 select: {
                     project_id: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
                     date_creation: true,
                 },
             });
@@ -201,7 +203,9 @@ export class DashboardSubcontractorCompanyController {
             for (const record of workedHoursRecords) {
                 const date = new Date(record.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
-                const cost = parseFloat(String(record.hourly_price ?? '0'));
+                const cost = record.type_price === "fixed"
+                    ? parseFloat(String(record.fixed_price ?? "0"))
+                    : parseFloat(String(record.hourly_price ?? "0"));
                 totalSubcontractorCosts += cost;
                 monthlyData[monthKey] = (monthlyData[monthKey] || 0) + cost;
             }

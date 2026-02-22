@@ -127,12 +127,13 @@ export class DashboardSubcontractorController {
 
             const shouldFilterByStatus = statusFilters.length > 0;
 
-            // Primeiro, busca todos os projetos do subcontractor COM filtro de status
+            // Primeiro, busca todos os projetos do subcontractor COM filtro de status (fixed, hourly ou legado null)
             const allWorkedHours = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractorId,
                     OR: [
                         { type_price: "fixed" },
+                        { type_price: "hourly" },
                         { AND: [{ type_price: null }, { amount_of_hours: null }] }
                     ]
                 },
@@ -190,12 +191,13 @@ export class DashboardSubcontractorController {
                 });
             }
 
-            // Agora busca os workedHours APENAS dos projetos filtrados
+            // Agora busca os workedHours APENAS dos projetos filtrados (fixed, hourly ou legado null)
             const workedHoursRecords = await prisma.workedhours.findMany({
                 where: {
                     subcontractor_id: subcontractorId,
                     OR: [
                         { type_price: "fixed" },
+                        { type_price: "hourly" },
                         { AND: [{ type_price: null }, { amount_of_hours: null }] }
                     ],
                     project_id: { in: projectIds },
@@ -207,12 +209,13 @@ export class DashboardSubcontractorController {
                     project_id: true,
                     hourly_price: true,
                     fixed_price: true,
+                    amount_of_hours: true,
                     type_price: true,
                     date_creation: true,
                 },
             });
 
-            // Calcula custos do subcontractor por mês
+            // Calcula custos do subcontractor por mês: fixed → fixed_price; hourly → amount_of_hours * hourly_price
             let totalSubcontractorCosts = 0;
             const monthlyData: { [key: string]: number } = {};
             const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -220,9 +223,17 @@ export class DashboardSubcontractorController {
             for (const record of workedHoursRecords) {
                 const date = new Date(record.date_creation);
                 const monthKey = `${monthNames[date.getMonth()]}/${date.getFullYear()}`;
-                const cost = record.type_price === "fixed" 
-                    ? parseFloat((record.fixed_price as any)?.toString() || '0')
-                    : parseFloat((record.hourly_price as any)?.toString() || '0');
+                let cost = 0;
+                if (record.type_price === "fixed") {
+                    cost = parseFloat((record.fixed_price as any)?.toString() || '0');
+                } else if (record.type_price === "hourly") {
+                    const hours = parseFloat((record.amount_of_hours as any)?.toString() || '0');
+                    const hourlyRate = parseFloat((record.hourly_price as any)?.toString() || '0');
+                    cost = hours > 0 ? hours * hourlyRate : hourlyRate;
+                } else {
+                    // legado: type_price null e amount_of_hours null → tratar como valor único em hourly_price
+                    cost = parseFloat((record.hourly_price as any)?.toString() || '0');
+                }
 
                 totalSubcontractorCosts += cost;
 
