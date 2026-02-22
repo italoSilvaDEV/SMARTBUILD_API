@@ -630,6 +630,7 @@ export class EstimateController {
         data: {
           clientSignature: JSON.stringify({ signature }),
           status: "approved",
+          assignatureRequired: false,
           date_update: new Date()
         }
       });
