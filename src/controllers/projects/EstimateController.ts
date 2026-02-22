@@ -513,6 +513,7 @@ export class EstimateController {
         where: { id },
         data: {
           status,
+          assignatureRequired: false,
           date_update: new Date()
         }
       });
