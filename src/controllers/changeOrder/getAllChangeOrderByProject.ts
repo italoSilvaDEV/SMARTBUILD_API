@@ -44,6 +44,8 @@ export class GetAllChangeOrderByProjectController {
                         pdfProjects: true,
                         estimate: {
                             select: {
+                                id: true,
+                                number: true,
                                 project: {
                                     select: {
                                         id: true,
