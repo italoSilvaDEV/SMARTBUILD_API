@@ -2,36 +2,42 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
-export class GetAllChangeOrderByEstimateController {
+export class GetAllChangeOrderByProjectController {
     async handle(req: Request, res: Response) {
-        const { estimateId } = req.params
+        const { projectId } = req.params
 
-        if (!estimateId) {
+        if (!projectId) {
             return res.status(400).json({
-                error: "Estimate ID is required"
+                error: "Project ID is required"
             })
         }
 
         try {
             await prisma.$transaction(async (smartbuild) => {
-                const estimate = await smartbuild.estimate.findUnique({
+                const project = await smartbuild.project.findUnique({
                     where: {
-                        id: estimateId
+                        id: projectId
                     },
                     select: {
                         id: true,
                     }
                 })
 
-                if (!estimate) {
+                if (!project) {
                     return res.status(404).json({
-                        error: "Estimate not found"
+                        error: "Project not found"
                     })
                 }
 
                 const changeOrders = await smartbuild.changeOrder.findMany({
                     where: {
-                        estimateId: estimateId
+                        OR: [
+                            { projectId: projectId },
+                            {
+                                projectId: null,
+                                estimate: { projectId: projectId }
+                            }
+                        ]
                     },
                     include: {
                         changeOrderServices: true,

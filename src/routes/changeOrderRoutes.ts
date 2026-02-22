@@ -4,7 +4,7 @@ import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
 import { CreateChangeOrderController } from "../controllers/changeOrder/createChangeOrderController";
 import { SignChangeOrderController } from "../controllers/changeOrder/signChangeOrderController";
-import { GetAllChangeOrderByEstimateController } from "../controllers/changeOrder/getAllChangeOrderByEstimate";
+import { GetAllChangeOrderByProjectController } from "../controllers/changeOrder/getAllChangeOrderByProject";
 import { GetChangeOrderController } from "../controllers/changeOrder/getChangeOrderController";
 import { UpdateChangeOrderController } from "../controllers/changeOrder/updateChangeOrderController";
 import { CreateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/createChangeOrderServiceController";
@@ -20,7 +20,7 @@ const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/change-or
 
 const createChangeOrderController = new CreateChangeOrderController();
 const signChangeOrderController = new SignChangeOrderController();
-const getAllChangeOrderByEstimateController = new GetAllChangeOrderByEstimateController();
+const getAllChangeOrderByProjectController = new GetAllChangeOrderByProjectController();
 const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
 const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
@@ -43,9 +43,9 @@ changeOrderRoutes.post(
 );
 
 changeOrderRoutes.get(
-    "/by-estimate/:estimateId",
+    "/by-project/:projectId",
     checkToken,
-    getAllChangeOrderByEstimateController.handle
+    getAllChangeOrderByProjectController.handle
 );
 
 changeOrderRoutes.get(

@@ -678,6 +678,7 @@ model Project {
   imagesAttachments      ImagesAttachments[]
   customServiceSchedules CustomServiceSchedule[]
   tasks                  Task[]
+  changeOrders           ChangeOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -2016,6 +2017,8 @@ model ChangeOrder {
 
   estimateId          String
   estimate            Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   changeOrderServices ChangeOrderService[]
   pdfProjects         PdfProject[]
 

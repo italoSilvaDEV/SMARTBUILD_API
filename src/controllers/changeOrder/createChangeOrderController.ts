@@ -6,6 +6,7 @@ interface CreateChangeOrderPayload {
     supervisorId: string
     scopeOfWork?: string
     totalAmount: number
+    projectId: string
     pdfId: string
     services: {
         name: string
@@ -21,9 +22,9 @@ export class CreateChangeOrderController {
     async handle(req: Request, res: Response) {
         const payload = req.body as CreateChangeOrderPayload
 
-        if (!payload.estimateId || !payload.totalAmount || !payload.services || !payload.supervisorId || !payload.pdfId) {
+        if (!payload.estimateId || !payload.projectId || !payload.totalAmount || !payload.services || !payload.supervisorId || !payload.pdfId) {
             return res.status(400).json({
-                error: "Estimate ID, total amount, services, supervisor ID and pdf ID are required"
+                error: "Estimate ID, project ID, total amount, services, supervisor ID and pdf ID are required"
             })
         }
 
@@ -59,24 +60,30 @@ export class CreateChangeOrderController {
                     })
                 }
 
-                const last = await smartbuild.changeOrder.findFirst({
-                    where: {
-                        estimateId: payload.estimateId
-                    },
-                    orderBy: {
-                        number: "desc"
-                    },
-                    select: {
-                        number: true
-                    }
-                });
+                const [lastByEstimate, lastByProject] = await Promise.all([
+                    smartbuild.changeOrder.findFirst({
+                        where: { estimateId: payload.estimateId },
+                        orderBy: { number: "desc" },
+                        select: { number: true }
+                    }),
+                    smartbuild.changeOrder.findFirst({
+                        where: { projectId: payload.projectId },
+                        orderBy: { number: "desc" },
+                        select: { number: true }
+                    })
+                ]);
 
-                const nextNumber = last ? last.number + 1 : 1;
+                const maxNumber = Math.max(
+                    lastByEstimate?.number ?? 0,
+                    lastByProject?.number ?? 0
+                );
+                const nextNumber = maxNumber + 1;
 
                 const changeOrder = await smartbuild.changeOrder.create({
                     data: {
                         estimateId: payload.estimateId,
                         total_amount: payload.totalAmount,
+                        projectId: payload.projectId,
                         scope_of_work: payload.scopeOfWork || "",
                         number: nextNumber,
                         supervisorId: supervisor.id,
