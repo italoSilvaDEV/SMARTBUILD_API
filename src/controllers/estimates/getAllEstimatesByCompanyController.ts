@@ -158,6 +158,7 @@ export class GetAllEstimatesByCompanyController {
                     type_estimate: true,
                     multi_emails: true,
                     isStandaloneEstimate: true,
+                    assignatureRequired: true,
                     project: {
                         select: {
                             id: true,

@@ -73,6 +73,11 @@ export class UpdateEstimateFieldsController {
                 campos.multi_emails = null
             }
 
+            const contentFieldsChanged = description !== undefined || terms !== undefined
+            if (estimate.status === "approved" && estimate.type_estimate === "estimateProject" && contentFieldsChanged) {
+                (campos as Record<string, unknown>).assignatureRequired = true
+            }
+
             const updatedEstimate = await prisma.estimate.update({
                 where: {
                     id: estimateId

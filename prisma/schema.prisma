@@ -1378,6 +1378,8 @@ model Estimate {
   terms           String?  @db.Text
   status          String   @default("pending")
 
+  assignatureRequired Boolean? @default(false)
+
   amountPaid Decimal? @default(0)
   balanceDue Decimal?
 

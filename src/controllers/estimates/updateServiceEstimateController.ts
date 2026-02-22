@@ -121,6 +121,17 @@ export class UpdateServiceEstimateController {
                     return updated
                 })
 
+                const estimate = await prisma.estimate.findUnique({
+                    where: { id: serviceEstimate.estimateId },
+                    select: { status: true, type_estimate: true }
+                })
+                if (estimate?.status === "approved" && estimate?.type_estimate === "estimateProject") {
+                    await prisma.estimate.update({
+                        where: { id: serviceEstimate.estimateId },
+                        data: { assignatureRequired: true }
+                    })
+                }
+
                 return res.status(200).json({
                     message: "Service estimate updated successfully",
                     data: updatedServiceEstimate
