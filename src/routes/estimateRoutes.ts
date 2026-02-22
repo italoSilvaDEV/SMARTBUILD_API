@@ -70,6 +70,7 @@ estimateRoutes.put("/:id", checkToken, estimateController.update);
 estimateRoutes.patch("/:id/status", estimateController.updateStatus);
 estimateRoutes.patch("/:id/sign", estimateController.addSignature);
 estimateRoutes.put("/:id/cancel", checkToken, estimateController.cancel);
+estimateRoutes.patch("/:id/restore-pending", checkToken, estimateController.restoreToPending);
 estimateRoutes.post("/:id/service", checkToken, estimateController.addService);
 estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, estimateController.removeService);
 estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateController.updateService);
