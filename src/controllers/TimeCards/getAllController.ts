@@ -204,26 +204,38 @@ export class getAllController {
                         gte: startDate,
                         lte: deadlineDate,
                     },
-                    OR: [
+                    AND: [
                         {
-                            check_out_time: {
-                                lte: deadlineDate,
-                            }
+                            OR: [
+                                { check_out_time: { lte: deadlineDate } },
+                                { check_out_time: null }
+                            ]
                         },
                         {
-                            check_out_time: null
-                        }
-                    ],
-                    UserServiceProject: {
-                        service_project: {
-                            Project: {
-                                company_id: companyId,
-                                status_project: {
-                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                            OR: [
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            Project: {
+                                                company_id: companyId,
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            projectId: null,
+                                            company_id: companyId
+                                        }
+                                    }
                                 }
-                            }
+                            ]
                         }
-                    }
+                    ]
                 },
                 select: {
                     date: true,
@@ -472,7 +484,8 @@ export class getAllController {
                         });
                     });
 
-                    if (projectLocation) {
+                    const displayProject = projectLocation || "Serviço sem projeto";
+                    {
                         let dailyHours = 0;
 
                         if (attendance.check_out_time) {
@@ -518,7 +531,7 @@ export class getAllController {
                         if (serviceId) payrollUser.servicesCount.add(serviceId);
                         payrollUser.total += attendancePrice;
                         payrollUser.workers.push({
-                            project: projectLocation,
+                            project: displayProject,
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,
