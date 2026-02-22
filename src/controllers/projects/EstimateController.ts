@@ -888,6 +888,7 @@ export class EstimateController {
               canceledAt: new Date(),
               canceledById: userId,
               cancellationReason,
+              assignatureRequired: false,
               date_update: new Date()
             }
           });

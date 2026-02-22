@@ -60,7 +60,7 @@ export class CreateNewEstimateController {
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
-                        assignatureRequired: payloadCreateEstimate.type_estimate === "estimateProject" ? true : false,
+                        assignatureRequired: payloadCreateEstimate.type_estimate === "estimateProject" && payloadCreateEstimate.isProjectFlow ? true : false,
                         multi_emails: payloadCreateEstimate.multi_emails,
                         isStandaloneEstimate: payloadCreateEstimate.isStandaloneEstimate || false,
                         date_creation: payloadCreateEstimate.date_creation ? new Date(payloadCreateEstimate.date_creation) : new Date(),
