@@ -258,6 +258,46 @@ export class getAllController {
                 }
             });
 
+            const canceledProjectAttendances = await prisma.userAttendance.findMany({
+                where: {
+                    check_in_time: { gte: startDate, lte: deadlineDate },
+                    AND: [
+                        {
+                            OR: [
+                                { check_out_time: { lte: deadlineDate } },
+                                { check_out_time: null }
+                            ]
+                        },
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    projectId: null,
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    ]
+                },
+                select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    isOvertime: true,
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            hourly_price: true,
+                            isOverTime: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
+                        }
+                    }
+                }
+            });
+
             const weeklyAttendances = new Map();
 
             allAttendances.forEach(attendance => {
@@ -289,7 +329,77 @@ export class getAllController {
                 totalProjects
             };
 
-            const formattedProjects = projects.map(project => {
+            const canceledProjectWeeklyMap = new Map();
+            canceledProjectAttendances.forEach(attendance => {
+                if (attendance.check_in_time && attendance.user) {
+                    const userId = attendance.user.id;
+                    const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
+                    const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
+                    const weekKey = `${userId}-${weekStart.toISODate()}`;
+                    if (!canceledProjectWeeklyMap.has(weekKey)) {
+                        canceledProjectWeeklyMap.set(weekKey, { user: attendance.user, attendances: [] });
+                    }
+                    canceledProjectWeeklyMap.get(weekKey).attendances.push(attendance);
+                }
+            });
+            const canceledWorkerData: any[] = [];
+            canceledProjectWeeklyMap.forEach(weekData => {
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
+                const attendancesWithHours: Array<{ attendance: any; dailyHours: number; hadOvertimePermission: boolean }> = [];
+                weekData.attendances.forEach((attendance: any) => {
+                    let dailyHours = 0;
+                    if (attendance.check_out_time) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                            attendance.user.defaultBreakMinutes || 0
+                        );
+                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    }
+                    attendancesWithHours.push({
+                        attendance,
+                        dailyHours,
+                        hadOvertimePermission: attendance.isOvertime === true
+                    });
+                });
+                attendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
+                    const hourlyRate = attendance.user?.hourly_price || 0;
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const finalRegularHours = Math.min(dailyHours, remainingRegularHours);
+                    const potentialOvertimeHours = Math.max(0, dailyHours - finalRegularHours);
+                    weeklyRegularHoursUsed += finalRegularHours;
+                    let price = 0;
+                    if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                        price = (finalRegularHours * hourlyRate) + (potentialOvertimeHours * hourlyRate * 1.5);
+                    } else {
+                        price = dailyHours * hourlyRate;
+                    }
+                    canceledWorkerData.push({
+                        nameWorker: attendance.user?.name || "",
+                        date: attendance.date,
+                        in: attendance.check_in_time,
+                        out: attendance.check_out_time,
+                        regular_hours: parseFloat(dailyHours.toFixed(2)),
+                        overtime_hours: 0,
+                        total_hours: parseFloat(dailyHours.toFixed(2)),
+                        price: parseFloat((dailyHours * hourlyRate).toFixed(2))
+                    });
+                });
+            });
+            const canceledProjectEntry = {
+                clientData: "Canceled projects",
+                clientName: "Canceled projects",
+                clientAddress: "",
+                clientCityAndState: "",
+                serviceCount: 0,
+                workerData: canceledWorkerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
+            };
+
+            const formattedProjects = [
+                ...projects.map(project => {
                 const clientName = project.client?.name || "";
                 const clientAddress = project.location || project.client?.location || "";
                 const clientData = `${clientName} - ${clientAddress}`;
@@ -400,7 +510,9 @@ export class getAllController {
                     serviceCount,
                     workerData: workerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
                 };
-            }).sort((a, b) => a.clientName.localeCompare(b.clientName));
+            }),
+                canceledProjectEntry
+            ].sort((a, b) => a.clientName.localeCompare(b.clientName));
 
             const workersMap = new Map();
 
