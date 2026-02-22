@@ -484,7 +484,7 @@ export class getAllController {
                         });
                     });
 
-                    const displayProject = projectLocation || "Serviço sem projeto";
+                    const displayProject = projectLocation || "The project was cancelled";
                     {
                         let dailyHours = 0;
 
