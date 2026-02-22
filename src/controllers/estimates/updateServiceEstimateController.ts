@@ -95,11 +95,30 @@ export class UpdateServiceEstimateController {
             }
 
             if (serviceEstimate) {
-                const updatedServiceEstimate = await prisma.estimateServiceProject.update({
-                    where: {
-                        id: serviceId
-                    },
-                    data: campos,
+                const siblingProject = await prisma.serviceProject.findFirst({
+                    where: { estimateServiceId: serviceId }
+                })
+
+                const dataSync: Partial<{ name: string; description: string; hours: number; price: number; start_date: string; deadline: string }> = {}
+                if (campos.name !== undefined) dataSync.name = campos.name
+                if (campos.description !== undefined && campos.description !== null) dataSync.description = campos.description
+                if (campos.hours !== undefined) dataSync.hours = campos.hours
+                if (campos.price !== undefined) dataSync.price = campos.price
+                if (campos.start_date !== undefined) dataSync.start_date = campos.start_date
+                if (campos.deadline !== undefined) dataSync.deadline = campos.deadline
+
+                const updatedServiceEstimate = await prisma.$transaction(async (tx) => {
+                    const updated = await tx.estimateServiceProject.update({
+                        where: { id: serviceId },
+                        data: campos,
+                    })
+                    if (siblingProject && Object.keys(dataSync).length > 0) {
+                        await tx.serviceProject.update({
+                            where: { id: siblingProject.id },
+                            data: dataSync,
+                        })
+                    }
+                    return updated
                 })
 
                 return res.status(200).json({
