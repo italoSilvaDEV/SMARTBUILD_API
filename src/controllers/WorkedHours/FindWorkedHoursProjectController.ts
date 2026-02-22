@@ -53,14 +53,22 @@ export class FindWorkedHoursProjectController {
                     date_creation: true,
                     start_date: true,
                     end_date: true,
+                    subcontractor_service_project_id: true,
+                    sub_services_project_id: true,
+                    custom_service_schedule_id: true,
                     subcontractor: {
+                        select: { id: true, name: true, email: true, phone: true }
+                    },
+                    subcontractor_service_project: {
                         select: {
                             id: true,
-                            name: true,
-                            email: true,
-                            phone: true,
+                            service_project: { select: { id: true, name: true } },
+                            sub_service_project: { select: { id: true, name: true } },
+                            custom_service_schedule: { select: { id: true, name: true } },
                         }
-                    }
+                    },
+                    sub_services_project: { select: { id: true, name: true } },
+                    custom_service_schedule: { select: { id: true, name: true } },
                 },
                 skip: pageNumber * 20,
                 take: 20,
@@ -207,14 +215,22 @@ export class FindWorkedHoursProjectController {
                     end_date: true,
                     description: true,
                     payment_date: true,
+                    subcontractor_service_project_id: true,
+                    sub_services_project_id: true,
+                    custom_service_schedule_id: true,
                     subcontractor: {
+                        select: { id: true, name: true, email: true, phone: true }
+                    },
+                    subcontractor_service_project: {
                         select: {
                             id: true,
-                            name: true,
-                            email: true,
-                            phone: true,
+                            service_project: { select: { id: true, name: true } },
+                            sub_service_project: { select: { id: true, name: true } },
+                            custom_service_schedule: { select: { id: true, name: true } },
                         }
-                    }
+                    },
+                    sub_services_project: { select: { id: true, name: true } },
+                    custom_service_schedule: { select: { id: true, name: true } },
                 },
                 orderBy: {
                     date_creation: "desc"

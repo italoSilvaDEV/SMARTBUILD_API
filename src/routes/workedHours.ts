@@ -2,6 +2,7 @@ import { Router } from "express"
 import { checkToken } from "../middlewares/checkToken";
 import { CreateWorkedHoursController } from "../controllers/WorkedHours/CreateWorkedHoursController";
 import { FindWorkedHoursProjectController } from "../controllers/WorkedHours/FindWorkedHoursProjectController";
+import { FindWorkedHoursBySubcontractorsController } from "../controllers/WorkedHours/FindWorkedHoursBySubcontractorsController";
 import { UpdateWorkedHoursController } from "../controllers/WorkedHours/UpdateWorkedHoursController";
 import { DeleteWorkedHoursController } from "../controllers/WorkedHours/DeleteWorkedHoursController";
 
@@ -17,6 +18,8 @@ workedRours.post("/workedhours", checkToken, createWorkedHoursController.handle)
 const findWorkedHoursProjectController = new FindWorkedHoursProjectController();
 workedRours.post("/workedhours/find",checkToken,  findWorkedHoursProjectController.handle);
 workedRours.post("/workedhours/find/overtime", checkToken, findWorkedHoursProjectController.handleGet);
+const findWorkedHoursBySubcontractorsController = new FindWorkedHoursBySubcontractorsController();
+workedRours.post("/workedhours/find-by-subcontractors", checkToken, findWorkedHoursBySubcontractorsController.handle);
 
 const deleteWorkedHoursController = new DeleteWorkedHoursController()
 workedRours.delete("/workedhours/:id",checkToken,  deleteWorkedHoursController.handle)

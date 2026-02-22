@@ -432,6 +432,7 @@ model SubServicesProject {
 
   userServiceProject           UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   @@map("sub_services_project")
 }
@@ -452,6 +453,7 @@ model CustomServiceSchedule {
   subServicesProjects          SubServicesProject[]
   userServiceProjects          UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String?
@@ -969,6 +971,15 @@ model Workedhours {
   subcontractor    Subcontractor? @relation(fields: [subcontractor_id], references: [id])
   subcontractor_id String?
 
+  subcontractor_service_project    SubContractorServiceProject? @relation(fields: [subcontractor_service_project_id], references: [id])
+  subcontractor_service_project_id String?
+
+  sub_services_project    SubServicesProject? @relation(fields: [sub_services_project_id], references: [id])
+  sub_services_project_id String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id])
+  custom_service_schedule_id String?
+
   @@map("worked_hours")
 }
 
@@ -1019,6 +1030,8 @@ model SubContractorServiceProject {
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
+
+  workedHours Workedhours[]
 
   @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
   @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")

@@ -145,18 +145,20 @@ export class OfficeController {
         });
       }
 
-      // Verificar se há usuários nesta empresa usando este office (UserCompany, não User)
-      const usersCount = companyId
-        ? await prisma.userCompany.count({
-            where: { office_id: id, companyId },
-          })
-        : await prisma.user.count({
-            where: { office_id: id },
-          });
+      // Fonte de verdade: UserCompany (vínculo usuário–empresa–office). Também checar User.office_id (FK impede o delete).
+      const [userCompanyCount, userByOfficeCount] = await Promise.all([
+        prisma.userCompany.count({ where: { office_id: id } }),
+        prisma.user.count({ where: { office_id: id } }),
+      ]);
 
-      if (usersCount > 0) {
-        return res.status(400).json({ 
-          error: `Cannot delete office. There are ${usersCount} user(s) using this office.` 
+      if (userCompanyCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete office. There are ${userCompanyCount} user(s) linked to this office (via company).`,
+        });
+      }
+      if (userByOfficeCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete office. There are ${userByOfficeCount} user(s) with this office set.`,
         });
       }
 

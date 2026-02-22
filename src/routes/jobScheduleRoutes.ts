@@ -20,6 +20,7 @@ import { DeleteSubserviceController } from "../controllers/jobSchedule/SubServic
 import { UpdateCustomServiceController } from "../controllers/jobSchedule/CustomServices/updateCustomServiceController";
 import { DeleteCustomServiceController } from "../controllers/jobSchedule/CustomServices/deleteCustomServiceController";
 import { ProjectScheduleController } from "../controllers/jobSchedule/projectScheduleController";
+import { GetAllProjectServicesController } from "../controllers/jobSchedule/GetAllProjectServicesController";
 
 const jobScheduleRoutes = Router();
 
@@ -43,10 +44,12 @@ const updateSubserviceController = new UpdateSubserviceController();
 const deleteSubserviceController = new DeleteSubserviceController();
 const updateCustomServiceController = new UpdateCustomServiceController();
 const deleteCustomServiceController = new DeleteCustomServiceController();
+const getAllProjectServicesController = new GetAllProjectServicesController();
 
 jobScheduleRoutes.get("/jobs/details/:projectId", checkToken, getJobsByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/users/:projectId/:companyId", checkToken, getUsersByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/services/:projectId/:companyId", checkToken, getServicesByProjectController.handle)
+jobScheduleRoutes.get("/jobs/details/projectservices/:projectId", checkToken, getAllProjectServicesController.handle)
 jobScheduleRoutes.post("/jobs/details/create", checkToken, createJobProjectController.handle)
 
 // Edit and Delete Routes
