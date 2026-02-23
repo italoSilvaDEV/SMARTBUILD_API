@@ -114,6 +114,15 @@ export class updatePdfEstimateController {
                     }
                 });
 
+                const newTemplateNumber = templateNumber != null && templateNumber !== "" ? Number(templateNumber) : null;
+                const currentTemplateNumber = existingPdf.templateNumber ?? null;
+                if (newTemplateNumber != null && newTemplateNumber !== currentTemplateNumber) {
+                    await prisma.estimate.update({
+                        where: { id: estimateId },
+                        data: { assignatureRequired: true }
+                    });
+                }
+
                 setImmediate(() => {
                     this.deleteFiles(file.filename);
                 });
