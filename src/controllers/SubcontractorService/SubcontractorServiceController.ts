@@ -28,6 +28,15 @@ export class SubcontractorServiceController {
       if (!company_id) {
         return res.status(400).json({ error: "company_id is required" });
       }
+      const existing = await prisma.subcontractorService.findFirst({
+        where: {
+          company_id,
+          name: name.trim(),
+        },
+      });
+      if (existing) {
+        return res.status(409).json({ error: "A service with this name already exists." });
+      }
       const created = await prisma.subcontractorService.create({
         data: {
           name: name.trim(),
@@ -49,6 +58,24 @@ export class SubcontractorServiceController {
       if (!id) return res.status(400).json({ error: "id is required" });
       if (name !== undefined && (typeof name !== "string" || !name.trim())) {
         return res.status(400).json({ error: "name must be a non-empty string" });
+      }
+      if (name !== undefined) {
+        const current = await prisma.subcontractorService.findUnique({
+          where: { id },
+          select: { company_id: true },
+        });
+        if (current?.company_id) {
+          const existing = await prisma.subcontractorService.findFirst({
+            where: {
+              company_id: current.company_id,
+              id: { not: id },
+              name: name.trim(),
+            },
+          });
+          if (existing) {
+            return res.status(409).json({ error: "A service with this name already exists." });
+          }
+        }
       }
       const updated = await prisma.subcontractorService.update({
         where: { id },
