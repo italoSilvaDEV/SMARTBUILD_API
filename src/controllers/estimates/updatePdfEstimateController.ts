@@ -119,18 +119,6 @@ export class updatePdfEstimateController {
                     }
                 });
 
-                const isApproved = estimate.status === "approved";
-                if (isApproved) {
-                    await prisma.estimate.update({
-                        where: {
-                            id: estimateId
-                        },
-                        data: {
-                            assignatureRequired: true
-                        }
-                    });
-                }
-
                 setImmediate(() => {
                     this.deleteFiles(file.filename);
                 });
@@ -190,6 +178,18 @@ export class updatePdfEstimateController {
                         date_update: true
                     }
                 });
+
+                const isApproved = estimate.status === "approved";
+                if (isApproved) {
+                    await prisma.estimate.update({
+                        where: {
+                            id: estimate.id
+                        },
+                        data: {
+                            assignatureRequired: true
+                        }
+                    });
+                }
 
                 return res.status(200).json({
                     message: "PDF updated successfully",
