@@ -20,6 +20,13 @@ export interface WorkedHourBySubcontractorRow {
   } | null;
   sub_services_project: { id: string; name: string } | null;
   custom_service_schedule: { id: string; name: string } | null;
+  subcontractor_service_id: string | null;
+  subcontractor_service: { id: string; name: string } | null;
+  start_date: string | null;
+  end_date: string | null;
+  payment_date: string | null;
+  project_id: string | null;
+  project: { location: string | null } | null;
 }
 
 /**
@@ -54,12 +61,16 @@ export class FindWorkedHoursBySubcontractorsController {
           fixed_price: true,
           hourly_price: true,
           amount_of_hours: true,
+          start_date: true,
+          end_date: true,
+          payment_date: true,
           subcontractor: {
             select: { id: true, name: true, email: true, phone: true },
           },
           subcontractor_service_project_id: true,
           sub_services_project_id: true,
           custom_service_schedule_id: true,
+          subcontractor_service_id: true,
           subcontractor_service_project: {
             select: {
               id: true,
@@ -70,6 +81,9 @@ export class FindWorkedHoursBySubcontractorsController {
           },
           sub_services_project: { select: { id: true, name: true } },
           custom_service_schedule: { select: { id: true, name: true } },
+          subcontractor_service: { select: { id: true, name: true } },
+          project_id: true,
+          project: { select: { location: true } },
         },
         orderBy: [{ subcontractor_id: "asc" }, { date_creation: "desc" }],
       });

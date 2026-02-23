@@ -7,8 +7,16 @@ import { DeleteSubcontractorController } from "../controllers/Subcontractor/Dele
 import { SubcontractorProjectsController } from "../controllers/Subcontractor/SubcontractorProjectsController";
 import { DashboardSubcontractorController } from "../controllers/Subcontractor/dashboardSubcontractorController";
 import { DashboardSubcontractorCompanyController } from "../controllers/Subcontractor/dashboardSubcontractorCompanyController";
+import { SubcontractorServiceController } from "../controllers/SubcontractorService/SubcontractorServiceController";
 
 const subcontractorRoutes = Router();
+const subcontractorServiceController = new SubcontractorServiceController();
+
+// Subcontractor Services (must be before /:id routes)
+subcontractorRoutes.get("/subcontractor/services", checkToken, subcontractorServiceController.list.bind(subcontractorServiceController));
+subcontractorRoutes.post("/subcontractor/services", checkToken, subcontractorServiceController.create.bind(subcontractorServiceController));
+subcontractorRoutes.put("/subcontractor/services/:id", checkToken, subcontractorServiceController.update.bind(subcontractorServiceController));
+subcontractorRoutes.delete("/subcontractor/services/:id", checkToken, subcontractorServiceController.delete.bind(subcontractorServiceController));
 
 const createSubcontractorController = new CreateSubcontractorController();
 subcontractorRoutes.post("/subcontractor", checkToken, createSubcontractorController.handle);
