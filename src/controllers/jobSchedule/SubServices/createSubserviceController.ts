@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import { workerAssignmentEmail } from "../../../templateEmail/workerAssignment";
-import { sendEmail } from "../../../utils/sendEmail";
 import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly } from "../../../utils/dateUtils";
 
 interface User {
     id: string
@@ -60,6 +59,9 @@ export class CreateSubserviceController {
             const workerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
             const subcontractorIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
 
+            const startDateOnly = normalizeToDateOnly(body.start_date!);
+            const deadlineOnly = normalizeToDateOnly(body.deadline!);
+
             const subservice = await prisma.$transaction(async (tx) => {
                 const created = await tx.subServicesProject.create({
                     data: {
@@ -67,8 +69,8 @@ export class CreateSubserviceController {
                         description: body.description || null,
                         serviceProjectId: body.serviceId || null,
                         custom_service_schedule_id: body.customServiceId || null,
-                        start_date: body.start_date || null,
-                        deadline: body.deadline || null,
+                        start_date: startDateOnly,
+                        deadline: deadlineOnly,
                         quantity: 1,
                         price: body.price || 0,
                         status: "pending"

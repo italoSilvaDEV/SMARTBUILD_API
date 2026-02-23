@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
+import { normalizeToDateOnly, formatDateForEmail } from "../../utils/dateUtils";
 
 interface CreateSchedule {
     companyId: string
@@ -86,12 +86,12 @@ export class CreateJobCompanyController {
                 })
             }
 
-            const startDate = new Date(body.startDate)
-            const deadline = new Date(body.deadline)
+            const startDateOnly = normalizeToDateOnly(body.startDate);
+            const deadlineOnly = normalizeToDateOnly(body.deadline);
 
-            const hadPreviousSchedule = !!(project.start_date && project.deadline)
-            const oldStartDate = project.start_date
-            const oldDeadline = project.deadline
+            const hadPreviousSchedule = !!(project.start_date && project.deadline);
+            const oldStartDate = project.start_date;
+            const oldDeadline = project.deadline;
 
             const updatedProject = await prisma.project.update({
                 where: {
@@ -99,8 +99,8 @@ export class CreateJobCompanyController {
                     company_id: company.id
                 },
                 data: {
-                    start_date: startDate.toISOString(),
-                    deadline: deadline.toISOString()
+                    start_date: startDateOnly,
+                    deadline: deadlineOnly
                 }
             })
 
@@ -120,27 +120,14 @@ export class CreateJobCompanyController {
                             ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                             : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-                        const formatSGDate = (date?: string | Date) => {
-                            if (!date) return 'Not set';
-                            return new Date(date).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric'
-                            }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true
-                            }) + ')';
-                        };
-
                         const commonDynamicData = {
                             projectName: "Contract #" + (project.contract_number || "N/A"),
                             contractNumber: project.contract_number || "N/A",
                             location: projectLocation,
-                            googleMapsLink: googleMapsLink, // Adicionado
+                            googleMapsLink: googleMapsLink,
                             companyName: company.name || "",
-                            startDateFormatted: formatSGDate(startDate),
-                            deadlineFormatted: formatSGDate(deadline),
+                            startDateFormatted: formatDateForEmail(startDateOnly),
+                            deadlineFormatted: formatDateForEmail(deadlineOnly),
                             notes: body.notes || "",
                             currentYear: new Date().getFullYear().toString(),
                         };
@@ -160,8 +147,8 @@ export class CreateJobCompanyController {
                                     ...commonDynamicData,
                                     recipientName: user?.name || clientName,
                                     changes: hadPreviousSchedule ? [
-                                        { label: "Start Date", oldValue: formatSGDate(oldStartDate || undefined), newValue: formatSGDate(startDate) },
-                                        { label: "Deadline", oldValue: formatSGDate(oldDeadline || undefined), newValue: formatSGDate(deadline) }
+                                        { label: "Start Date", oldValue: formatDateForEmail(oldStartDate || undefined), newValue: formatDateForEmail(startDateOnly) },
+                                        { label: "Deadline", oldValue: formatDateForEmail(oldDeadline || undefined), newValue: formatDateForEmail(deadlineOnly) }
                                     ] : []
                                 },
                                 attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined

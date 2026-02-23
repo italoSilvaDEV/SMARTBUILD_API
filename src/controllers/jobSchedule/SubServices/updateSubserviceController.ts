@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../../utils/sendEmail";
 import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly, formatDateForEmail } from "../../../utils/dateUtils";
 
 interface UserInput {
     id: string;
@@ -63,18 +63,21 @@ export class UpdateSubserviceController {
             const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
             if (!project) return res.status(404).json({ error: "Project context not found" });
 
+            const startDateOnly = body.startDate != null ? normalizeToDateOnly(body.startDate) : undefined;
+            const deadlineOnly = body.deadline != null ? normalizeToDateOnly(body.deadline) : undefined;
+
             const changes: ScheduleChange[] = [];
 
             if (body.name && body.name !== subservice.name) {
                 changes.push({ label: "Name", oldValue: subservice.name, newValue: body.name });
             }
 
-            if (body.startDate && body.startDate !== subservice.start_date) {
-                changes.push({ label: "Start Date", oldValue: subservice.start_date || 'Not set', newValue: body.startDate });
+            if (startDateOnly != null && startDateOnly !== subservice.start_date) {
+                changes.push({ label: "Start Date", oldValue: formatDateForEmail(subservice.start_date || undefined), newValue: formatDateForEmail(startDateOnly) });
             }
 
-            if (body.deadline && body.deadline !== subservice.deadline) {
-                changes.push({ label: "Deadline", oldValue: subservice.deadline || 'Not set', newValue: body.deadline });
+            if (deadlineOnly != null && deadlineOnly !== subservice.deadline) {
+                changes.push({ label: "Deadline", oldValue: formatDateForEmail(subservice.deadline || undefined), newValue: formatDateForEmail(deadlineOnly) });
             }
 
             if (body.description && body.description !== subservice.description) {
@@ -99,8 +102,8 @@ export class UpdateSubserviceController {
                     data: {
                         name: body.name,
                         description: body.description,
-                        start_date: body.startDate,
-                        deadline: body.deadline
+                        ...(startDateOnly != null && { start_date: startDateOnly }),
+                        ...(deadlineOnly != null && { deadline: deadlineOnly })
                     }
                 });
 
@@ -142,27 +145,14 @@ export class UpdateSubserviceController {
                 return text.replace(/<[^>]*>/g, '').trim();
             };
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: body.name || subservice.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(body.startDate || subservice.start_date || undefined),
-                deadlineFormatted: formatSGDate(body.deadline || subservice.deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDateOnly ?? subservice.start_date ?? undefined),
+                deadlineFormatted: formatDateForEmail(deadlineOnly ?? subservice.deadline ?? undefined),
                 description: body.description ? removeHtml(body.description) : subservice.description ? removeHtml(subservice.description) : "",
                 currentYear: new Date().getFullYear().toString(),
             };

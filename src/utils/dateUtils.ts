@@ -29,3 +29,33 @@ export function getDefaultWeekRange() {
     deadline: formatDate(sunday)
   };
 }
+
+export function normalizeToDateOnly(s: string): string {
+  if (!s || typeof s !== 'string') return s;
+  const trimmed = s.trim();
+  return trimmed.includes('T') ? trimmed.split('T')[0]! : trimmed.slice(0, 10);
+}
+
+export function toLocalDateForDisplay(dateStr?: string | Date): Date | undefined {
+  if (dateStr == null) return undefined;
+  if (dateStr instanceof Date) return dateStr;
+  const str = String(dateStr).trim();
+  if (str.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return new Date(`${str}T12:00:00`);
+  }
+  return new Date(str);
+}
+
+export function formatDateForEmail(date?: string | Date): string {
+  const d = toLocalDateForDisplay(date);
+  if (!d || isNaN(d.getTime())) return 'Not set';
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }) + ' (' + d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }) + ')';
+}

@@ -4,6 +4,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
 import { PushNotificationService } from "../../services/PushNotificationService";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly, formatDateForEmail } from "../../utils/dateUtils";
 
 export class ProjectScheduleController {
     async update(req: Request, res: Response) {
@@ -24,14 +25,17 @@ export class ProjectScheduleController {
                 return res.status(404).json({ error: "Project not found" });
             }
 
+            const startDateOnly = startDate != null ? normalizeToDateOnly(String(startDate)) : undefined;
+            const deadlineOnly = deadline != null ? normalizeToDateOnly(String(deadline)) : undefined;
+
             const oldStartDate = project.start_date;
             const oldDeadline = project.deadline;
 
             const updatedProject = await prisma.project.update({
                 where: { id: projectId },
                 data: {
-                    start_date: startDate,
-                    deadline: deadline
+                    ...(startDateOnly != null && { start_date: startDateOnly }),
+                    ...(deadlineOnly != null && { deadline: deadlineOnly })
                 }
             });
 
@@ -52,32 +56,19 @@ export class ProjectScheduleController {
                         ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-                    const formatSGDate = (date?: string | null) => {
-                        if (!date) return 'Not set';
-                        return new Date(date).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                        }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                        }) + ')';
-                    };
-
                     const changes = [];
-                    if (startDate !== oldStartDate) {
+                    if (startDateOnly != null && startDateOnly !== oldStartDate) {
                         changes.push({
                             label: "Start Date",
-                            oldValue: formatSGDate(oldStartDate),
-                            newValue: formatSGDate(startDate)
+                            oldValue: formatDateForEmail(oldStartDate || undefined),
+                            newValue: formatDateForEmail(startDateOnly)
                         });
                     }
-                    if (deadline !== oldDeadline) {
+                    if (deadlineOnly != null && deadlineOnly !== oldDeadline) {
                         changes.push({
                             label: "Deadline",
-                            oldValue: formatSGDate(oldDeadline),
-                            newValue: formatSGDate(deadline)
+                            oldValue: formatDateForEmail(oldDeadline || undefined),
+                            newValue: formatDateForEmail(deadlineOnly)
                         });
                     }
 
@@ -92,8 +83,8 @@ export class ProjectScheduleController {
                                 location: projectLocation,
                                 googleMapsLink: googleMapsLink,
                                 companyName: company?.name || "",
-                                startDateFormatted: formatSGDate(startDate),
-                                deadlineFormatted: formatSGDate(deadline),
+                                startDateFormatted: formatDateForEmail(startDateOnly ?? startDate ?? oldStartDate ?? undefined),
+                                deadlineFormatted: formatDateForEmail(deadlineOnly ?? deadline ?? oldDeadline ?? undefined),
                                 changes: changes,
                                 notes: notes || "",
                                 currentYear: new Date().getFullYear().toString(),
@@ -147,19 +138,6 @@ export class ProjectScheduleController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string | null) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             for (const email of emails) {
                 const userCompany = await prisma.userCompany.findUnique({
                     where: {
@@ -185,8 +163,8 @@ export class ProjectScheduleController {
                         location: projectLocation,
                         googleMapsLink: googleMapsLink,
                         companyName: project.company?.name || "",
-                        startDateFormatted: formatSGDate(project.start_date),
-                        deadlineFormatted: formatSGDate(project.deadline),
+                        startDateFormatted: formatDateForEmail(project.start_date ?? undefined),
+                        deadlineFormatted: formatDateForEmail(project.deadline ?? undefined),
                         notes: notes || "",
                         currentYear: new Date().getFullYear().toString(),
                         isReminder: true
@@ -350,27 +328,14 @@ export class ProjectScheduleController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string | null) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: name || "Project Update",
                 contractNumber: contractNumber,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company?.name || "SmartBuild",
-                startDateFormatted: formatSGDate(startDate),
-                deadlineFormatted: formatSGDate(deadline),
+                startDateFormatted: formatDateForEmail(startDate || undefined),
+                deadlineFormatted: formatDateForEmail(deadline || undefined),
                 changes: changes || [],
                 notes: notes || "",
                 description: description ? removeHtml(description) : (data?.description ? removeHtml(data.description) : ""),
@@ -574,27 +539,14 @@ export class ProjectScheduleController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string | null) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: name || "Project Assignment",
                 contractNumber: contractNumber,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company?.name || "SmartBuild",
-                startDateFormatted: formatSGDate(startDate),
-                deadlineFormatted: formatSGDate(deadline),
+                startDateFormatted: formatDateForEmail(startDate || undefined),
+                deadlineFormatted: formatDateForEmail(deadline || undefined),
                 notes: notes || "",
                 description: description ? removeHtml(description) : (data?.description ? removeHtml(data.description) : ""),
                 currentYear: new Date().getFullYear().toString(),

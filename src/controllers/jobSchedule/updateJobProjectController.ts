@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { jobScheduleGlobalTemplate, ScheduleChange } from "../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../utils/sendEmail";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly, formatDateForEmail } from "../../utils/dateUtils";
 
 interface UserInput {
     id: string;
@@ -82,21 +82,24 @@ export class UpdateJobProjectController {
                 error: "Service project not found"
             });
 
+            const startDateOnly = body.startDate != null ? normalizeToDateOnly(body.startDate) : undefined;
+            const deadlineOnly = body.deadline != null ? normalizeToDateOnly(body.deadline) : undefined;
+
             const changes: ScheduleChange[] = [];
 
-            if (body.startDate && body.startDate !== serviceProject.start_date) {
+            if (startDateOnly != null && startDateOnly !== serviceProject.start_date) {
                 changes.push({
                     label: "Start Date",
-                    oldValue: serviceProject.start_date || 'Not set',
-                    newValue: body.startDate
+                    oldValue: formatDateForEmail(serviceProject.start_date || undefined),
+                    newValue: formatDateForEmail(startDateOnly)
                 });
             }
 
-            if (body.deadline && body.deadline !== serviceProject.deadline) {
+            if (deadlineOnly != null && deadlineOnly !== serviceProject.deadline) {
                 changes.push({
                     label: "Deadline",
-                    oldValue: serviceProject.deadline || 'Not set',
-                    newValue: body.deadline
+                    oldValue: formatDateForEmail(serviceProject.deadline || undefined),
+                    newValue: formatDateForEmail(deadlineOnly)
                 });
             }
 
@@ -123,8 +126,8 @@ export class UpdateJobProjectController {
                 prisma.serviceProject.update({
                     where: { id: body.serviceProjectId },
                     data: {
-                        start_date: body.startDate,
-                        deadline: body.deadline,
+                        ...(startDateOnly != null && { start_date: startDateOnly }),
+                        ...(deadlineOnly != null && { deadline: deadlineOnly }),
                         description: body.description
                     }
                 }),
@@ -157,27 +160,14 @@ export class UpdateJobProjectController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: serviceProject.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(body.startDate || serviceProject.start_date || undefined),
-                deadlineFormatted: formatSGDate(body.deadline || serviceProject.deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDateOnly ?? serviceProject.start_date ?? undefined),
+                deadlineFormatted: formatDateForEmail(deadlineOnly ?? serviceProject.deadline ?? undefined),
                 description: body.description || serviceProject.description || "",
                 currentYear: new Date().getFullYear().toString(),
             };
