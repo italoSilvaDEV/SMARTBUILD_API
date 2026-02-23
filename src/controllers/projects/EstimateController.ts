@@ -678,7 +678,8 @@ export class EstimateController {
             const page = pages[i];
             const { width, height } = page.getSize();
 
-            const x = (width - signatureWidth) / 2;
+            const margin = 50;
+            const x = width - signatureWidth - margin;
             const y = 20;
 
             page.drawImage(signatureImage, {

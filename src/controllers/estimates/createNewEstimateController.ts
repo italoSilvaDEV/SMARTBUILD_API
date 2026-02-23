@@ -1,6 +1,10 @@
 import { TypeEstimate } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import crypto from "crypto";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
@@ -48,7 +52,7 @@ export class CreateNewEstimateController {
         }
 
         try {
-            await prisma.$transaction(async (smartbuild) => {
+            const result = await prisma.$transaction(async (smartbuild) => {
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
                         number: payloadCreateEstimate.preGeneratedNumber,
@@ -151,14 +155,65 @@ export class CreateNewEstimateController {
                     }
                 })
 
-                return res.status(201).json({
-                    message: "Estimate created successfully",
-                    data: {
-                        ...createEstimate,
-                        totalAmount: Number(payloadCreateEstimate.totalAmount)
+                return { createEstimate, idPdfProject: payloadCreateEstimate.idPdfProject };
+            });
+
+            const { createEstimate, idPdfProject } = result;
+
+            const pdfProject = await prisma.pdfProject.findUnique({
+                where: { id: idPdfProject },
+                select: { id: true, uri: true, original_file_name: true }
+            });
+            const projectWithCompany = await prisma.project.findUnique({
+                where: { id: payloadCreateEstimate.projectId },
+                select: { company: { select: { name: true } } }
+            });
+            const companyName = projectWithCompany?.company?.name || "Company";
+
+            if (pdfProject?.uri) {
+                try {
+                    const pdfUrl = await getPresignedUrl(pdfProject.uri);
+                    const pdfResponse = await fetch(pdfUrl);
+                    if (pdfResponse.ok) {
+                        const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                        const signedPdfBuffer = await addCompanySignatureToPdfBuffer(
+                            originalPdfBuffer,
+                            companyName,
+                            new Date()
+                        );
+                        const s3 = new S3Client({
+                            region: process.env.AMAZON_S3_REGION,
+                            credentials: {
+                                accessKeyId: process.env.AMAZON_S3_KEY!,
+                                secretAccessKey: process.env.AMAZON_S3_SECRET!
+                            }
+                        });
+                        const fileHash = crypto.randomBytes(4).toString("hex");
+                        const baseName = pdfProject.original_file_name || `estimate_${createEstimate.number}.pdf`;
+                        const newFileName = `${fileHash}-${baseName.replace(/\s/g, "")}`;
+                        await s3.send(new PutObjectCommand({
+                            Bucket: process.env.AMAZON_S3_BUCKET!,
+                            Key: newFileName,
+                            Body: signedPdfBuffer,
+                            ContentType: "application/pdf"
+                        }));
+                        await prisma.pdfProject.update({
+                            where: { id: pdfProject.id },
+                            data: { uri: newFileName }
+                        });
                     }
-                })
-            })
+                } catch (pdfErr) {
+                    console.error("[createNewEstimate] Error adding company signature to PDF:", pdfErr);
+                }
+            }
+
+            return res.status(201).json({
+                message: "Estimate created successfully",
+                data: {
+                    ...createEstimate,
+                    totalAmount: Number(payloadCreateEstimate.totalAmount)
+                }
+            });
         } catch (error) {
             return res.status(500).json({
                 error: "Internal server error while creating new estimate"

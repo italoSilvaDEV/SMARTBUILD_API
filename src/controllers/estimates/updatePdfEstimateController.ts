@@ -4,6 +4,10 @@ import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import S3Storage from "../../utils/S3/s3Storage";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import crypto from "crypto";
 
 const upload = multer({ dest: './public/tmp/pdfestimate' }).single('file');
 
@@ -114,9 +118,65 @@ export class updatePdfEstimateController {
                     this.deleteFiles(file.filename);
                 });
 
+                try {
+                    if (updatedPdf.uri) {
+                        const estimateWithCompany = await prisma.estimate.findUnique({
+                            where: { id: estimateId },
+                            select: { number: true, project: { select: { company: { select: { name: true } } } } }
+                        });
+                        const companyName = estimateWithCompany?.project?.company?.name || "Company";
+
+                        const pdfUrl = await getPresignedUrl(updatedPdf.uri);
+                        const pdfResponse = await fetch(pdfUrl);
+                        if (pdfResponse.ok) {
+                            const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                            const signedPdfBuffer = await addCompanySignatureToPdfBuffer(
+                                originalPdfBuffer,
+                                companyName,
+                                new Date()
+                            );
+                            const s3 = new S3Client({
+                                region: process.env.AMAZON_S3_REGION,
+                                credentials: {
+                                    accessKeyId: process.env.AMAZON_S3_KEY!,
+                                    secretAccessKey: process.env.AMAZON_S3_SECRET!
+                                }
+                            });
+                            const fileHash = crypto.randomBytes(4).toString("hex");
+                            const baseName = updatedPdf.original_file_name || `estimate_${estimateWithCompany?.number ?? estimateId}.pdf`;
+                            const finalFileName = `${fileHash}-${baseName.replace(/\s/g, "")}`;
+                            await s3.send(new PutObjectCommand({
+                                Bucket: process.env.AMAZON_S3_BUCKET!,
+                                Key: finalFileName,
+                                Body: signedPdfBuffer,
+                                ContentType: "application/pdf"
+                            }));
+                            await prisma.pdfProject.update({
+                                where: { id: updatedPdf.id },
+                                data: { uri: finalFileName }
+                            });
+                        }
+                    }
+                } catch (pdfErr) {
+                    console.error("[updatePdfEstimate] Error adding company signature to PDF:", pdfErr);
+                }
+
+                const dataToReturn = await prisma.pdfProject.findUnique({
+                    where: { id: updatedPdf.id },
+                    select: {
+                        id: true,
+                        original_file_name: true,
+                        uri: true,
+                        type_pdf: true,
+                        estimate_id: true,
+                        date_creation: true,
+                        date_update: true
+                    }
+                });
+
                 return res.status(200).json({
                     message: "PDF updated successfully",
-                    data: updatedPdf
+                    data: dataToReturn ?? updatedPdf
                 });
 
             } catch (error) {

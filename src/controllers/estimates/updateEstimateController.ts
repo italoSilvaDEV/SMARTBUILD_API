@@ -73,8 +73,7 @@ export class UpdateEstimateFieldsController {
                 campos.multi_emails = null
             }
 
-            const contentFieldsChanged = description !== undefined || terms !== undefined
-            if (estimate.status === "approved" && estimate.type_estimate === "estimateProject" && contentFieldsChanged) {
+            if (estimate.status === "approved" && estimate.type_estimate === "estimateProject") {
                 (campos as Record<string, unknown>).assignatureRequired = true
             }
 
