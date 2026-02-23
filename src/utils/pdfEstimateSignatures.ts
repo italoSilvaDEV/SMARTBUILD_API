@@ -24,9 +24,11 @@ export async function addCompanySignatureToPdfBuffer(
     timeZone: "America/New_York",
   });
 
+  const SIGNATURE_BOTTOM_MARGIN = 45;
+
   for (let i = 1; i < pages.length; i++) {
     const page = pages[i];
-    const y = 20;
+    const y = SIGNATURE_BOTTOM_MARGIN;
 
     page.drawText(companyName, {
       x: MARGIN,
