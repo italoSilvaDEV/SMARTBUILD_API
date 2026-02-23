@@ -130,30 +130,6 @@ export class SendEmailChangeOrderController {
             const clientEmail = project?.workContext?.Email || project?.client?.email || '';
             const projectLocation = project?.workContext?.addressOffice || project?.client?.addressOffice || project?.location || '';
 
-            const formatScopeOfWork = (htmlContent: string | null): string => {
-                if (!htmlContent) return '';
-
-                return htmlContent
-                    .replace(/<br\s*\/?>/gi, '\n')
-                    .replace(/<\/p>/gi, '\n\n')
-                    .replace(/<p[^>]*>/gi, '')
-                    .replace(/<\/li>/gi, '\n')
-                    .replace(/<li[^>]*>/gi, '• ')
-                    .replace(/<\/ul>/gi, '\n')
-                    .replace(/<ul[^>]*>/gi, '\n')
-                    .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '$1')
-                    .replace(/<b[^>]*>(.*?)<\/b>/gi, '$1')
-                    .replace(/<[^>]+>/g, '')
-                    .replace(/&nbsp;/g, ' ')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&quot;/g, '"')
-                    .trim();
-            };
-
-            const formattedScopeOfWork = formatScopeOfWork(changeOrder.scope_of_work);
-
             const pdfProject = await prisma.pdfProject.findFirst({
                 where: {
                     changeOrderId: changeOrder.id
@@ -230,8 +206,7 @@ export class SendEmailChangeOrderController {
                         Number(changeOrder.total_amount),
                         changeOrder.id,
                         clientEmail,
-                        projectLocation,
-                        formattedScopeOfWork
+                        projectLocation
                     ),
                     attachments: attachments as any,
                 });

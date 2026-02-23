@@ -4,7 +4,6 @@ import { ChangeOrderStatus } from "@prisma/client";
 
 interface UpdateChangeOrderPayload {
     changeOrderId: string
-    scopeOfWork?: string
     totalAmount?: number
     status?: ChangeOrderStatus
 }
@@ -34,12 +33,6 @@ export class UpdateChangeOrderController {
                 }
 
                 let newData = {} as any
-
-                if (payload.scopeOfWork
-                    && payload.scopeOfWork !== (changeOrder.scope_of_work || "")) {
-                    newData.scope_of_work = payload.scopeOfWork
-
-                }
 
                 if (payload.totalAmount) {
                     newData.total_amount = payload.totalAmount

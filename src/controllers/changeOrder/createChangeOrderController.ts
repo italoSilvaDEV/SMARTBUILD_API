@@ -4,7 +4,6 @@ import { prisma } from "../../utils/prisma";
 interface CreateChangeOrderPayload {
     estimateId: string
     supervisorId: string
-    scopeOfWork?: string
     totalAmount: number
     projectId: string
     pdfId: string
@@ -84,7 +83,6 @@ export class CreateChangeOrderController {
                         estimateId: payload.estimateId,
                         total_amount: payload.totalAmount,
                         projectId: payload.projectId,
-                        scope_of_work: payload.scopeOfWork || "",
                         number: nextNumber,
                         supervisorId: supervisor.id,
                     }

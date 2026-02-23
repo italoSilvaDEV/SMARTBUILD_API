@@ -7,8 +7,7 @@ export const changeOrderEmail = (
     value: number,
     changeOrderId: string,
     email: string,
-    projectLocation: string,
-    scopeOfWork: string
+    projectLocation: string
 ) => {
     const formattedValue = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -69,7 +68,7 @@ export const changeOrderEmail = (
                         </td>
                     </tr>
                     
-                    <!-- Mensagem Principal e Scope of Work -->
+                    <!-- Mensagem Principal -->
                     <tr>
                         <td class="content-padding" style="padding:0 24px 32px;">
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0 0 16px 0;font-weight:600;">
@@ -78,12 +77,6 @@ export const changeOrderEmail = (
                             <p style="font-family:'Inter',-apple-system,sans-serif;font-size:16px;color:#121212;margin:0 0 32px 0;line-height:1.5;font-weight:400;">
                                 We have identified the need for changes to the original scope of the project.
                             </p>
-                            
-                            ${scopeOfWork ? `
-                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:14px;color:#6B6B6B;margin:0;line-height:1.7;font-style:italic;font-weight:500;white-space:pre-line;">
-${scopeOfWork}
-                            </p>
-                            ` : ''}
                         </td>
                     </tr>
                     
