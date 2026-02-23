@@ -125,7 +125,7 @@ export class UpdateServiceEstimateController {
                     where: { id: serviceEstimate.estimateId },
                     select: { status: true, type_estimate: true }
                 })
-                if (estimate?.status === "approved" && estimate?.type_estimate === "estimateProject") {
+                if (estimate?.status === "approved") {
                     await prisma.estimate.update({
                         where: { id: serviceEstimate.estimateId },
                         data: { assignatureRequired: true }
