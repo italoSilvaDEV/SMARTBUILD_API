@@ -18,6 +18,7 @@ interface CreateWorkedHoursRequest {
   subcontractor_service_project_id?: string;
   sub_services_project_id?: string;
   custom_service_schedule_id?: string;
+  subcontractor_service_id?: string;
 }
 
 export class CreateWorkedHoursController {
@@ -38,6 +39,7 @@ export class CreateWorkedHoursController {
         subcontractor_service_project_id,
         sub_services_project_id,
         custom_service_schedule_id,
+        subcontractor_service_id,
       } = req.body as CreateWorkedHoursRequest;
 
       const error: string[] = [];
@@ -110,6 +112,12 @@ export class CreateWorkedHoursController {
       if (custom_service_schedule_id) {
         data.custom_service_schedule = {
           connect: { id: custom_service_schedule_id },
+        };
+      }
+
+      if (subcontractor_service_id) {
+        data.subcontractor_service = {
+          connect: { id: subcontractor_service_id },
         };
       }
 

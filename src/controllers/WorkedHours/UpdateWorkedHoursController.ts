@@ -18,6 +18,7 @@ export class UpdateWorkedHoursController {
       subcontractor_service_project_id,
       sub_services_project_id,
       custom_service_schedule_id,
+      subcontractor_service_id,
     } = request.body; 
 
     // Função de validação
@@ -90,6 +91,12 @@ export class UpdateWorkedHoursController {
         updateData.custom_service_schedule = { connect: { id: custom_service_schedule_id } };
       } else if (custom_service_schedule_id === null || custom_service_schedule_id === "") {
         updateData.custom_service_schedule = { disconnect: true };
+      }
+
+      if (subcontractor_service_id) {
+        updateData.subcontractor_service = { connect: { id: subcontractor_service_id } };
+      } else if (subcontractor_service_id === null || subcontractor_service_id === "") {
+        updateData.subcontractor_service = { disconnect: true };
       }
 
       await prisma.workedhours.update({

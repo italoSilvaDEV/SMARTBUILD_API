@@ -255,7 +255,8 @@ model Company {
 
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
-  Subcontractors Subcontractor[]
+  Subcontractors         Subcontractor[]
+  SubcontractorServices  SubcontractorService[]
 
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
@@ -981,7 +982,26 @@ model Workedhours {
   custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id])
   custom_service_schedule_id String?
 
+  subcontractor_service    SubcontractorService? @relation(fields: [subcontractor_service_id], references: [id])
+  subcontractor_service_id String?
+
   @@map("worked_hours")
+}
+
+model SubcontractorService {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?  @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  company    Company? @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  company_id String?
+
+  workedHours Workedhours[]
+
+  @@index([company_id])
+  @@map("subcontractor_services")
 }
 
 // Relacionamento entre User e ServiceProject

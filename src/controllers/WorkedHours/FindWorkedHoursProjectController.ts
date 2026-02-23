@@ -56,6 +56,7 @@ export class FindWorkedHoursProjectController {
                     subcontractor_service_project_id: true,
                     sub_services_project_id: true,
                     custom_service_schedule_id: true,
+                    subcontractor_service_id: true,
                     subcontractor: {
                         select: { id: true, name: true, email: true, phone: true }
                     },
@@ -69,6 +70,7 @@ export class FindWorkedHoursProjectController {
                     },
                     sub_services_project: { select: { id: true, name: true } },
                     custom_service_schedule: { select: { id: true, name: true } },
+                    subcontractor_service: { select: { id: true, name: true, description: true } },
                 },
                 skip: pageNumber * 20,
                 take: 20,
@@ -218,6 +220,7 @@ export class FindWorkedHoursProjectController {
                     subcontractor_service_project_id: true,
                     sub_services_project_id: true,
                     custom_service_schedule_id: true,
+                    subcontractor_service_id: true,
                     subcontractor: {
                         select: { id: true, name: true, email: true, phone: true }
                     },
@@ -231,6 +234,7 @@ export class FindWorkedHoursProjectController {
                     },
                     sub_services_project: { select: { id: true, name: true } },
                     custom_service_schedule: { select: { id: true, name: true } },
+                    subcontractor_service: { select: { id: true, name: true, description: true } },
                 },
                 orderBy: {
                     date_creation: "desc"
