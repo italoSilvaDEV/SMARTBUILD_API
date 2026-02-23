@@ -73,10 +73,6 @@ export class UpdateEstimateFieldsController {
                 campos.multi_emails = null
             }
 
-            if (estimate.status === "approved") {
-                (campos as Record<string, unknown>).assignatureRequired = true
-            }
-
             const updatedEstimate = await prisma.estimate.update({
                 where: {
                     id: estimateId

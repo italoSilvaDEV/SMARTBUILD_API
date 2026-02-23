@@ -121,7 +121,8 @@ export class ConvertToProjectController {
                             id: estimateId
                         },
                         data: {
-                            status: "approved"
+                            status: "approved",
+                            assignatureRequired: true
                         }
                     })
                 }

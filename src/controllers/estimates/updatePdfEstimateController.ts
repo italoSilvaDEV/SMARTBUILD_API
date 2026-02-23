@@ -59,8 +59,13 @@ export class updatePdfEstimateController {
                 }
 
                 const estimate = await prisma.estimate.findUnique({
-                    where: { id: estimateId },
-                    select: { id: true }
+                    where: {
+                        id: estimateId
+                    },
+                    select: {
+                        id: true,
+                        status: true
+                    }
                 });
 
                 if (!estimate) {
@@ -114,19 +119,15 @@ export class updatePdfEstimateController {
                     }
                 });
 
-                const newTemplateNumber = templateNumber != null && templateNumber !== "" ? Number(templateNumber) : null;
-                const currentTemplateNumber = existingPdf.templateNumber ?? null;
-
-                const isApprovedEstimate = await prisma.estimate.findUnique({
-                    where: { id: estimateId },
-                    select: { status: true }
-                });
-
-                const isApproved = isApprovedEstimate?.status === "approved";
-                if (isApproved && newTemplateNumber != null && newTemplateNumber !== currentTemplateNumber) {
+                const isApproved = estimate.status === "approved";
+                if (isApproved) {
                     await prisma.estimate.update({
-                        where: { id: estimateId },
-                        data: { assignatureRequired: true }
+                        where: {
+                            id: estimateId
+                        },
+                        data: {
+                            assignatureRequired: true
+                        }
                     });
                 }
 
