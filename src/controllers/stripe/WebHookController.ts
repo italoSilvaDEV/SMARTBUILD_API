@@ -5,6 +5,66 @@ import { prisma } from "../../utils/prisma";
 
 const stripe = stripeConfig.getClient();
 
+/** Syncs Owner office permissions from the plan's permission group (for paid plans after checkout). */
+async function syncOwnerOfficePermissionsFromPlan(companyId: string, planId: string): Promise<void> {
+    const plan = await prisma.plan.findUnique({
+        where: { id: planId },
+        include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } }
+    });
+    if (!plan?.permissionGroup?.GroupPermissionsList?.length) return;
+    const ownerOffice = await prisma.office.findFirst({
+        where: { company_id: companyId, name: "Owner" }
+    });
+    if (!ownerOffice) return;
+    const permissionIds = plan.permissionGroup.GroupPermissionsList.map((r) => r.permission_id);
+    await prisma.userPermission.deleteMany({ where: { office_id: ownerOffice.id } });
+    await prisma.userPermission.createMany({
+        data: permissionIds.map((permission_id) => ({
+            office_id: ownerOffice.id,
+            permission_id,
+            editAll: false
+        }))
+    });
+    console.log("     Owner office permissions synced from plan:", plan.name);
+}
+
+/** Creates Worker (no permissions) and Administrator (same as plan) offices only when they don't exist — for new company sign-up flow. */
+async function ensureWorkerAndAdministratorOfficesForNewCompany(companyId: string, planId: string): Promise<void> {
+    const existing = await prisma.office.findMany({
+        where: { company_id: companyId, name: { in: ["Worker", "Administrator"] } },
+        select: { name: true }
+    });
+    const hasWorker = existing.some((o) => o.name === "Worker");
+    const hasAdmin = existing.some((o) => o.name === "Administrator");
+    if (hasWorker && hasAdmin) return;
+
+    const plan = await prisma.plan.findUnique({
+        where: { id: planId },
+        include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } }
+    });
+    const permissionIds = plan?.permissionGroup?.GroupPermissionsList?.map((r) => r.permission_id) ?? [];
+
+    if (!hasWorker) {
+        await prisma.office.create({ data: { name: "Worker", company_id: companyId } });
+        console.log("     Worker office created (new company flow).");
+    }
+    if (!hasAdmin) {
+        const adminOffice = await prisma.office.create({
+            data: { name: "Administrator", company_id: companyId }
+        });
+        if (permissionIds.length > 0) {
+            await prisma.userPermission.createMany({
+                data: permissionIds.map((permission_id) => ({
+                    office_id: adminOffice.id,
+                    permission_id,
+                    editAll: false
+                }))
+            });
+        }
+        console.log("     Administrator office created with plan permissions (new company flow).");
+    }
+}
+
 export class StripeWebHooksController {
     constructor() {
         this.handleWebhook = this.handleWebhook.bind(this);
@@ -228,6 +288,7 @@ export class StripeWebHooksController {
                     });
                     console.log("     Assinatura local atualizada.");
                     console.log("     company.planId atualizado para", plan.id);
+                    await syncOwnerOfficePermissionsFromPlan(localSub.companyId, plan.id);
                 } else {
                     console.log("    Nenhum plano correspondente ao price.id", price.id);
                 }
@@ -338,6 +399,8 @@ export class StripeWebHooksController {
                             });
 
                             console.log("     Assinatura criada com sucesso:", newSubscription.id);
+                            await syncOwnerOfficePermissionsFromPlan(companyIdFromSession, plan.id);
+                            await ensureWorkerAndAdministratorOfficesForNewCompany(companyIdFromSession, plan.id);
                             return res.json({ received: true });
                         } else {
                             console.log("     Não foi possível encontrar a sessão relacionada à assinatura");
@@ -429,6 +492,8 @@ export class StripeWebHooksController {
                     });
                     
                     console.log("    Nova assinatura criada com sucesso:", newSubscription.id);
+                    await syncOwnerOfficePermissionsFromPlan(companyId, plan.id);
+                    await ensureWorkerAndAdministratorOfficesForNewCompany(companyId, plan.id);
                 }
             }
 
@@ -475,109 +540,6 @@ export class StripeWebHooksController {
                 // Isso permitirá que o front-end mostre a página "subscription expired/canceled"
             }
 
-            /* ---------- PAYMENT INTENT SUCCEEDED (PAYMENT ELEMENT) ---------- */
-            // else if (event.type === "payment_intent.succeeded") {
-            //     console.log("Processando payment_intent.succeeded (Payment Element - Conta Principal)");
-            //     const paymentIntent = event.data.object as Stripe.PaymentIntent;
-                
-            //     console.log("Payment Intent succeeded recebido (Conta Principal):");
-            //     console.log("   • PaymentIntent ID:", paymentIntent.id);
-            //     console.log("   • Amount:", paymentIntent.amount_received);
-            //     console.log("   • Currency:", paymentIntent.currency);
-            //     console.log("   • Receipt URL:", (paymentIntent as any).receipt_url);
-            //     console.log("   • PaymentIntent:", JSON.stringify(paymentIntent, null, 2));
-                
-            //     // Buscar PaymentIntentRecord no banco
-            //     const paymentRecord = await prisma.paymentIntentRecord.findUnique({
-            //         where: { stripePaymentIntentId: paymentIntent.id },
-            //         include: {
-            //             invoice: {
-            //                 include: {
-            //                     project: {
-            //                         include: {
-            //                             client: {
-            //                                 select: {
-            //                                     id: true,
-            //                                     name: true,
-            //                                     email: true,
-            //                                     phone: true
-            //                                 }
-            //                             }
-            //                         }
-            //                     },
-            //                     company: {
-            //                         select: {
-            //                             id: true,
-            //                             name: true,
-            //                             avatar: true,
-            //                             email: true,
-            //                             phone: true
-            //                         }
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //     });
-                
-            //     if (paymentRecord && paymentRecord.invoice) {
-            //         console.log("PaymentRecord encontrado para invoice:", paymentRecord.invoice.id);
-                    
-            //         // Buscar receipt_url do Charge associado ao PaymentIntent
-            //         let receiptUrl = null;
-            //         try {
-            //             if (paymentIntent.latest_charge) {
-            //                 const chargeId = typeof paymentIntent.latest_charge === 'string' 
-            //                     ? paymentIntent.latest_charge 
-            //                     : paymentIntent.latest_charge.id;
-                            
-            //                 const charge = await stripe.charges.retrieve(chargeId);
-            //                 receiptUrl = charge.receipt_url;
-            //                 console.log("Receipt URL encontrado:", receiptUrl);
-            //             }
-            //         } catch (chargeError) {
-            //             console.error("Erro ao buscar charge para receipt URL:", chargeError);
-            //         }
-                    
-            //         // Atualizar status do PaymentIntentRecord e salvar receipt URL
-            //         await prisma.paymentIntentRecord.update({
-            //             where: { stripePaymentIntentId: paymentIntent.id },
-            //             data: { 
-            //                 status: "succeeded",
-            //                 receiptUrl: receiptUrl,
-            //                 updatedAt: new Date()
-            //             }
-            //         });
-                    
-            //         // Atualizar status da Invoice para "paid"
-            //         await prisma.invoice.update({
-            //             where: { id: paymentRecord.invoice.id },
-            //             data: { 
-            //                 status: "paid",
-            //                 stripePaymentIntentId: paymentIntent.id
-            //             }
-            //         });
-                    
-            //         console.log("Invoice atualizada como paga via Payment Element (Conta Principal)");
-                    
-            //         // Registrar timeline
-            //         await prisma.invoiceTimeline.create({
-            //             data: {
-            //                 description: `Payment completed via Payment Element - Amount: $${(paymentIntent.amount_received / 100).toFixed(2)}`,
-            //                 invoiceId: paymentRecord.invoice.id
-            //             }
-            //         });
-                    
-            //         // Enviar emails de confirmação (usando mesma lógica do WebHookControllerConnect)
-            //         try {
-            //             await this.sendPaymentConfirmationEmails(paymentRecord.invoice, paymentIntent);
-            //         } catch (emailError: any) {
-            //             console.error("Erro ao enviar emails de confirmação (Payment Element):", emailError.message);
-            //         }
-                    
-            //     } else {
-            //         console.log("PaymentIntentRecord não encontrado no banco de dados local");
-            //     }
-            // }
 
             /* ---------- INVOICE PAYMENT FAILED ---------- */
             else if (event.type === "invoice.payment_failed") {

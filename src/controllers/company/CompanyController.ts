@@ -54,14 +54,6 @@ export class CompanyController {
                     .json({ error: "Email has already been registered in the system" });
             }
 
-            const office = await prisma.office.findFirst({
-                where: {
-                    name: {
-                        equals: 'Owner'
-                    }
-                }
-            });
-
             const passwordToHash = Array.isArray(data.password) ? data.password[0] : data.password;
             const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
 
@@ -71,47 +63,36 @@ export class CompanyController {
                 }
             });
 
-            const isMultiCompany = await isMultiCompanyEnabled()
-            if (isMultiCompany) {
-                const user = await prisma.user.create({
-                    data: {
-                        name: data.name,
-                        email: data.email,
-                        document: null,
-                        phone: data.phone || null,
-                        city_and_state: null,
-                        rules: JSON.stringify(data.rules) || {},
-                        office_id: String(office?.id),
-                        password: hashedPassword,
-                        profession: data.profession,
-                        company_id: company.id,
-                        onBoardingCompleted: false
-                    },
-                });
-                await prisma.userCompany.create({
-                    data: {
-                        userId: user.id,
-                        companyId: company.id,
-                        office_id: String(office?.id),
-                    }
-                });
-            } else {
-                await prisma.user.create({
-                    data: {
-                        name: data.name,
-                        email: data.email,
-                        document: null,
-                        phone: data.phone || null,
-                        city_and_state: null,
-                        rules: JSON.stringify(data.rules) || {},
-                        office_id: String(office?.id),
-                        password: hashedPassword,
-                        profession: data.profession,
-                        company_id: company.id,
-                        onBoardingCompleted: false
-                    },
-                });
-            }
+            const ownerOffice = await prisma.office.create({
+                data: {
+                    name: 'Owner',
+                    company_id: company.id,
+                }
+            });
+
+            const user = await prisma.user.create({
+                data: {
+                    name: data.name,
+                    email: data.email,
+                    document: null,
+                    phone: data.phone || null,
+                    city_and_state: null,
+                    rules: JSON.stringify(data.rules) || {},
+                    office_id: ownerOffice.id,
+                    password: hashedPassword,
+                    profession: data.profession,
+                    company_id: company.id,
+                    onBoardingCompleted: false
+                },
+            });
+
+            await prisma.userCompany.create({
+                data: {
+                    userId: user.id,
+                    companyId: company.id,
+                    office_id: ownerOffice.id,
+                }
+            });
 
             return res.status(201).json(company);
         } catch (error: any) {
