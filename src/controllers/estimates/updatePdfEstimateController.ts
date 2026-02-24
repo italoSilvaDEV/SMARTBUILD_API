@@ -5,7 +5,7 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import S3Storage from "../../utils/S3/s3Storage";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { addCompanySignatureToPdfBuffer, addClientSignatureImageToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 
@@ -36,8 +36,11 @@ export class updatePdfEstimateController {
             try {
                 const {
                     estimateId,
-                    templateNumber
+                    templateNumber,
+                    clearSignature
                 } = req.body;
+
+                const isClearSignature = clearSignature === true || clearSignature === "true";
 
                 const file = req.file;
 
@@ -64,7 +67,8 @@ export class updatePdfEstimateController {
                     },
                     select: {
                         id: true,
-                        status: true
+                        status: true,
+                        clientSignature: true
                     }
                 });
 
@@ -134,12 +138,28 @@ export class updatePdfEstimateController {
                         const pdfUrl = await getPresignedUrl(updatedPdf.uri);
                         const pdfResponse = await fetch(pdfUrl);
                         if (pdfResponse.ok) {
-                            const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-                            const signedPdfBuffer = await addCompanySignatureToPdfBuffer(
-                                originalPdfBuffer,
+                            let pdfToUpload = await addCompanySignatureToPdfBuffer(
+                                Buffer.from(await pdfResponse.arrayBuffer()),
                                 companyName,
                                 new Date()
                             );
+
+                            const shouldReapplyClientSignature =
+                                !isClearSignature &&
+                                estimate.status === "approved" &&
+                                estimate.clientSignature;
+
+                            if (shouldReapplyClientSignature && estimate.clientSignature) {
+                                try {
+                                    const parsed = JSON.parse(estimate.clientSignature) as { signature?: string; manualApproval?: boolean };
+                                    if (parsed.signature && !parsed.manualApproval) {
+                                        pdfToUpload = await addClientSignatureImageToPdfBuffer(pdfToUpload, parsed.signature);
+                                    }
+                                } catch (e) {
+                                    console.error("[updatePdfEstimate] Could not reapply client signature:", e);
+                                }
+                            }
+
                             const s3 = new S3Client({
                                 region: process.env.AMAZON_S3_REGION,
                                 credentials: {
@@ -153,7 +173,7 @@ export class updatePdfEstimateController {
                             await s3.send(new PutObjectCommand({
                                 Bucket: process.env.AMAZON_S3_BUCKET!,
                                 Key: finalFileName,
-                                Body: signedPdfBuffer,
+                                Body: pdfToUpload,
                                 ContentType: "application/pdf"
                             }));
                             await prisma.pdfProject.update({
@@ -179,15 +199,10 @@ export class updatePdfEstimateController {
                     }
                 });
 
-                const isApproved = estimate.status === "approved";
-                if (isApproved) {
+                if (isClearSignature && estimate.status === "approved") {
                     await prisma.estimate.update({
-                        where: {
-                            id: estimate.id
-                        },
-                        data: {
-                            assignatureRequired: true
-                        }
+                        where: { id: estimate.id },
+                        data: { assignatureRequired: true }
                     });
                 }
 
