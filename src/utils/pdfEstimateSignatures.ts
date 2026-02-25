@@ -51,6 +51,62 @@ export async function addCompanySignatureToPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
+const COMPANY_SIGNATURE_WIDTH = 100;
+const COMPANY_SIGNATURE_HEIGHT = 50;
+const COMPANY_SIGNATURE_LEFT = MARGIN;
+const COMPANY_SIGNATURE_BOTTOM = 45;
+
+export async function addCompanySignatureImageToPdfBuffer(
+  pdfBuffer: Buffer,
+  signatureBase64: string
+): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pages = pdfDoc.getPages();
+  const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
+  const signatureBuffer = Buffer.from(base64Data, "base64");
+
+  let signatureImage;
+  try {
+    signatureImage = await pdfDoc.embedPng(signatureBuffer);
+  } catch {
+    signatureImage = await pdfDoc.embedJpg(signatureBuffer);
+  }
+
+  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const formattedDate = new Date().toLocaleString("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "America/New_York",
+  });
+
+  for (let i = 1; i < pages.length; i++) {
+    const page = pages[i];
+    const x = COMPANY_SIGNATURE_LEFT;
+    const y = COMPANY_SIGNATURE_BOTTOM;
+
+    page.drawImage(signatureImage, {
+      x,
+      y,
+      width: COMPANY_SIGNATURE_WIDTH,
+      height: COMPANY_SIGNATURE_HEIGHT,
+    });
+    page.drawText(`Signed on: ${formattedDate}`, {
+      x,
+      y: y - 15,
+      size: DATE_FONT_SIZE,
+      font: helveticaFont,
+      color: DATE_COLOR,
+    });
+  }
+
+  const modifiedPdfBytes = await pdfDoc.save();
+  return Buffer.from(modifiedPdfBytes);
+}
+
 const CLIENT_SIGNATURE_MARGIN = 50;
 const CLIENT_SIGNATURE_BOTTOM = 45;
 const CLIENT_SIGNATURE_WIDTH = 100;

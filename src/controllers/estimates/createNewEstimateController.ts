@@ -2,7 +2,7 @@ import { TypeEstimate } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { addCompanySignatureToPdfBuffer, addCompanySignatureImageToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 
@@ -166,9 +166,10 @@ export class CreateNewEstimateController {
             });
             const projectWithCompany = await prisma.project.findUnique({
                 where: { id: payloadCreateEstimate.projectId },
-                select: { company: { select: { name: true } } }
+                select: { company: { select: { name: true, signature: true } } }
             });
             const companyName = projectWithCompany?.company?.name || "Company";
+            const companySignature = projectWithCompany?.company?.signature;
 
             if (pdfProject?.uri) {
                 try {
@@ -176,11 +177,9 @@ export class CreateNewEstimateController {
                     const pdfResponse = await fetch(pdfUrl);
                     if (pdfResponse.ok) {
                         const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-                        const signedPdfBuffer = await addCompanySignatureToPdfBuffer(
-                            originalPdfBuffer,
-                            companyName,
-                            new Date()
-                        );
+                        const signedPdfBuffer = companySignature
+                            ? await addCompanySignatureImageToPdfBuffer(originalPdfBuffer, companySignature)
+                            : await addCompanySignatureToPdfBuffer(originalPdfBuffer, companyName, new Date());
                         const s3 = new S3Client({
                             region: process.env.AMAZON_S3_REGION,
                             credentials: {
