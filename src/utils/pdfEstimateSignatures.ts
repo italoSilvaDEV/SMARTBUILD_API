@@ -133,7 +133,7 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   });
 
   const approvedText = `Approved on: ${formattedDate}`;
-  const disclaimerText = "Manual approval by company — not a client signature.";
+  const disclaimerText = "Authorized Internally for Estimate Purposes.";
 
   const nameSize = 10;
   const dateSize = DATE_FONT_SIZE;

@@ -5,7 +5,7 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import S3Storage from "../../utils/S3/s3Storage";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { addCompanySignatureToPdfBuffer, addClientSignatureImageToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { addCompanySignatureToPdfBuffer, addClientSignatureImageToPdfBuffer, addManualApprovalClientSignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 
@@ -131,9 +131,21 @@ export class updatePdfEstimateController {
                     if (updatedPdf.uri) {
                         const estimateWithCompany = await prisma.estimate.findUnique({
                             where: { id: estimateId },
-                            select: { number: true, project: { select: { company: { select: { name: true } } } } }
+                            select: {
+                                number: true,
+                                project: {
+                                    select: {
+                                        company: { select: { name: true } },
+                                        workContext: { select: { Name: true } },
+                                        client: { select: { name: true } }
+                                    }
+                                }
+                            }
                         });
                         const companyName = estimateWithCompany?.project?.company?.name || "Company";
+                        const clientName = estimateWithCompany?.project?.workContext?.Name
+                            || estimateWithCompany?.project?.client?.name
+                            || "Client";
 
                         const pdfUrl = await getPresignedUrl(updatedPdf.uri);
                         const pdfResponse = await fetch(pdfUrl);
@@ -149,14 +161,21 @@ export class updatePdfEstimateController {
                                 estimate.status === "approved" &&
                                 estimate.clientSignature;
 
-                            if (shouldReapplyClientSignature && estimate.clientSignature) {
-                                try {
-                                    const parsed = JSON.parse(estimate.clientSignature) as { signature?: string; manualApproval?: boolean };
-                                    if (parsed.signature && !parsed.manualApproval) {
-                                        pdfToUpload = await addClientSignatureImageToPdfBuffer(pdfToUpload, parsed.signature);
+                            if (shouldReapplyClientSignature) {
+                                let clientSignatureApplied = false;
+                                if (estimate.clientSignature) {
+                                    try {
+                                        const parsed = JSON.parse(estimate.clientSignature) as { signature?: string; manualApproval?: boolean };
+                                        if (parsed.signature && !parsed.manualApproval) {
+                                            pdfToUpload = await addClientSignatureImageToPdfBuffer(pdfToUpload, parsed.signature);
+                                            clientSignatureApplied = true;
+                                        }
+                                    } catch (e) {
+                                        console.error("[updatePdfEstimate] Could not reapply client signature:", e);
                                     }
-                                } catch (e) {
-                                    console.error("[updatePdfEstimate] Could not reapply client signature:", e);
+                                }
+                                if (!clientSignatureApplied) {
+                                    pdfToUpload = await addManualApprovalClientSignatureToPdfBuffer(pdfToUpload, clientName, new Date());
                                 }
                             }
 
