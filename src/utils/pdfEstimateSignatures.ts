@@ -177,3 +177,31 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   const modifiedPdfBytes = await pdfDoc.save();
   return Buffer.from(modifiedPdfBytes);
 }
+
+const MANUAL_SIGNATURE_RECT_WIDTH = 320;
+const MANUAL_SIGNATURE_RECT_HEIGHT = 52;
+const MANUAL_SIGNATURE_RECT_BOTTOM = 8;
+
+export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pages = pdfDoc.getPages();
+  const white = rgb(1, 1, 1);
+
+  for (let i = 1; i < pages.length; i++) {
+    const page = pages[i];
+    const { width } = page.getSize();
+    const x = width - MANUAL_SIGNATURE_RECT_WIDTH - MARGIN_RIGHT;
+    const y = MANUAL_SIGNATURE_RECT_BOTTOM;
+
+    page.drawRectangle({
+      x,
+      y,
+      width: MANUAL_SIGNATURE_RECT_WIDTH,
+      height: MANUAL_SIGNATURE_RECT_HEIGHT,
+      color: white,
+    });
+  }
+
+  const modifiedPdfBytes = await pdfDoc.save();
+  return Buffer.from(modifiedPdfBytes);
+}

@@ -20,6 +20,7 @@ import { BalanceController } from "../controllers/estimates/balanceController";
 import { LastEstimateController } from "../controllers/estimates/lastEstimateController";
 import { ClearUpdateController } from "../controllers/estimates/clearUpdateController";
 import { ManualApprovalEstimateController } from "../controllers/estimates/manualApprovalEstimateController";
+import { RemoveManualSignatureEstimateController } from "../controllers/estimates/removeManualSignatureEstimateController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -40,6 +41,7 @@ const balanceController = new BalanceController();
 const lastEstimateController = new LastEstimateController();
 const clearUpdateController = new ClearUpdateController();
 const manualApprovalEstimateController = new ManualApprovalEstimateController();
+const removeManualSignatureEstimateController = new RemoveManualSignatureEstimateController();
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
@@ -72,6 +74,7 @@ estimateRoutes.put("/:id", checkToken, estimateController.update);
 estimateRoutes.patch("/:id/status", estimateController.updateStatus);
 estimateRoutes.patch("/:id/sign", estimateController.addSignature);
 estimateRoutes.patch("/:id/manual-approval", checkToken, manualApprovalEstimateController.handle);
+estimateRoutes.patch("/:id/remove-manual-signature", checkToken, removeManualSignatureEstimateController.handle);
 estimateRoutes.put("/:id/cancel", checkToken, estimateController.cancel);
 estimateRoutes.patch("/:id/restore-pending", checkToken, estimateController.restoreToPending);
 estimateRoutes.post("/:id/service", checkToken, estimateController.addService);

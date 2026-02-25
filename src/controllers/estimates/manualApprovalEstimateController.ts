@@ -96,6 +96,7 @@ export class ManualApprovalEstimateController {
           status: "approved",
           assignatureRequired: false,
           date_update: approvedAt,
+          clientSignature: JSON.stringify({ manualApproval: true }),
         },
       });
     } else {
@@ -104,6 +105,7 @@ export class ManualApprovalEstimateController {
         data: {
           assignatureRequired: false,
           date_update: approvedAt,
+          clientSignature: JSON.stringify({ manualApproval: true }),
         },
       });
     }
