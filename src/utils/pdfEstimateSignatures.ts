@@ -132,7 +132,7 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
     timeZone: "America/New_York",
   });
 
-  const approvedText = `Approved on: ${formattedDate}`;
+  const approvedText = `Signed on: ${formattedDate}`;
   const disclaimerText = "Authorized Internally for Estimate Purposes.";
 
   const nameSize = 10;
