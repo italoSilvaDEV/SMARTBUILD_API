@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../../utils/sendEmail";
 import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
+import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly, formatDateForEmail } from "../../../utils/dateUtils";
 
 interface UserInput {
     id: string;
@@ -66,20 +67,23 @@ export class UpdateCustomServiceController {
             const project = customService.project;
             if (!project) return res.status(404).json({ error: "Project not found" });
 
+            const startDateOnly = body.startDate != null ? normalizeToDateOnly(body.startDate) : undefined;
+            const deadlineOnly = body.deadline != null ? normalizeToDateOnly(body.deadline) : undefined;
+
             const changes: ScheduleChange[] = [];
-            const dateChanged = (body.startDate && body.startDate !== customService.start_date) ||
-                (body.deadline && body.deadline !== customService.deadline);
+            const dateChanged = (startDateOnly != null && startDateOnly !== customService.start_date) ||
+                (deadlineOnly != null && deadlineOnly !== customService.deadline);
 
             if (body.name && body.name !== customService.name) {
                 changes.push({ label: "Name", oldValue: customService.name, newValue: body.name });
             }
 
-            if (body.startDate && body.startDate !== customService.start_date) {
-                changes.push({ label: "Start Date", oldValue: customService.start_date || 'Not set', newValue: body.startDate });
+            if (startDateOnly != null && startDateOnly !== customService.start_date) {
+                changes.push({ label: "Start Date", oldValue: formatDateForEmail(customService.start_date || undefined), newValue: formatDateForEmail(startDateOnly) });
             }
 
-            if (body.deadline && body.deadline !== customService.deadline) {
-                changes.push({ label: "Deadline", oldValue: customService.deadline || 'Not set', newValue: body.deadline });
+            if (deadlineOnly != null && deadlineOnly !== customService.deadline) {
+                changes.push({ label: "Deadline", oldValue: formatDateForEmail(customService.deadline || undefined), newValue: formatDateForEmail(deadlineOnly) });
             }
 
             if (body.description && body.description !== customService.description) {
@@ -104,8 +108,8 @@ export class UpdateCustomServiceController {
                     data: {
                         name: body.name,
                         description: body.description,
-                        start_date: body.startDate,
-                        deadline: body.deadline
+                        ...(startDateOnly != null && { start_date: startDateOnly }),
+                        ...(deadlineOnly != null && { deadline: deadlineOnly })
                     }
                 });
 
@@ -147,27 +151,14 @@ export class UpdateCustomServiceController {
                 return text.replace(/<[^>]*>/g, '').trim();
             };
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: body.name || customService.name,
                 contractNumber: contractNumber,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(body.startDate || customService.start_date || undefined),
-                deadlineFormatted: formatSGDate(body.deadline || customService.deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDateOnly ?? customService.start_date ?? undefined),
+                deadlineFormatted: formatDateForEmail(deadlineOnly ?? customService.deadline ?? undefined),
                 description: body.description ? removeHtml(body.description) : customService.description ? removeHtml(customService.description) : "",
                 currentYear: new Date().getFullYear().toString(),
             };
@@ -227,6 +218,35 @@ export class UpdateCustomServiceController {
                     });
                 }
             }
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: newWorkerIds } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: newSubIds } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "Schedule updated",
+                body: `${body.name || customService.name || "Custom service"} schedule was updated.`,
+                data: {
+                    type: "schedule_updated",
+                    projectId: project.id,
+                    serviceProjectId: null,
+                    subServiceId: null,
+                    customServiceId: body.customServiceId
+                }
+            });
 
             return res.status(200).json({ message: "Custom service updated successfully" });
         } catch (error) {

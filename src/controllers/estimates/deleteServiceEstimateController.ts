@@ -39,9 +39,48 @@ export class DeleteServiceEstimateController {
 
         try {
             if (serviceEstimate) {
-                await prisma.estimateServiceProject.delete({
-                    where: {
-                        id: serviceId
+                await prisma.$transaction(async (smartbuild) => {
+                    const siblingProject = await smartbuild.serviceProject.findFirst({
+                        where: {
+                            estimateServiceId: serviceId
+                        }
+                    })
+
+                    if (siblingProject) {
+                        await smartbuild.serviceProject.update({
+                            where: { id: siblingProject.id },
+                            data: {
+                                projectId: null,
+                                estimateServiceId: null
+                            }
+                        })
+                    }
+
+                    await smartbuild.estimateServiceProject.delete({
+                        where: {
+                            id: serviceId
+                        }
+                    })
+
+                    const estimate = await smartbuild.estimate.findUnique({
+                        where: {
+                            id: serviceEstimate.estimateId
+                        },
+                        select: {
+                            status: true,
+                            type_estimate: true
+                        }
+                    })
+
+                    if (estimate?.status === "approved" && estimate?.type_estimate === "estimateProject") {
+                        await smartbuild.estimate.update({
+                            where: {
+                                id: serviceEstimate.estimateId
+                            },
+                            data: {
+                                assignatureRequired: true
+                            }
+                        })
                     }
                 })
 

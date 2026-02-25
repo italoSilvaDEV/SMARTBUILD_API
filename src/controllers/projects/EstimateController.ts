@@ -513,6 +513,7 @@ export class EstimateController {
         where: { id },
         data: {
           status,
+          assignatureRequired: false,
           date_update: new Date()
         }
       });
@@ -591,18 +592,37 @@ export class EstimateController {
       }
 
       if (estimate.serviceProjects.length > 0) {
-        await prisma.serviceProject.createMany({
-          data: estimate.serviceProjects.map((service) => ({
-            name: service.name,
-            description: service.description || "",
-            hours: service.hours || 0,
-            price: service.price || 0,
-            id_service: service.id_service || null,
-            projectId: estimate.projectId,
-            company_id: estimate.project.company_id,
-            estimateServiceId: service.id
-          }))
-        })
+        const projectId = estimate.projectId;
+        const companyId = estimate.project.company_id ?? undefined;
+
+        for (const service of estimate.serviceProjects) {
+          const existingSibling = await prisma.serviceProject.findFirst({
+            where: { estimateServiceId: service.id }
+          });
+
+          if (existingSibling) {
+            await prisma.serviceProject.update({
+              where: { id: existingSibling.id },
+              data: {
+                projectId,
+                ...(companyId && { company_id: companyId })
+              }
+            });
+          } else {
+            await prisma.serviceProject.create({
+              data: {
+                name: service.name,
+                description: service.description ?? "",
+                hours: service.hours ?? 0,
+                price: service.price ?? 0,
+                id_service: service.id_service ?? undefined,
+                projectId,
+                ...(companyId && { company_id: companyId }),
+                estimateServiceId: service.id
+              }
+            });
+          }
+        }
       }
 
       await prisma.estimate.update({
@@ -610,6 +630,7 @@ export class EstimateController {
         data: {
           clientSignature: JSON.stringify({ signature }),
           status: "approved",
+          assignatureRequired: false,
           date_update: new Date()
         }
       });
@@ -657,8 +678,10 @@ export class EstimateController {
             const page = pages[i];
             const { width, height } = page.getSize();
 
-            const x = (width - signatureWidth) / 2;
-            const y = 20;
+            const margin = 50;
+            const bottomMargin = 45;
+            const x = width - signatureWidth - margin;
+            const y = bottomMargin;
 
             page.drawImage(signatureImage, {
               x,
@@ -847,10 +870,14 @@ export class EstimateController {
               }
             })
 
+            // Remover o relacionamento do serviço com o projeto, mas ainda continua relacionado ao estimate de origem.
             if (serviceProject) {
-              await smartbuild.serviceProject.delete({
+              await smartbuild.serviceProject.update({
                 where: {
                   id: serviceProject.id
+                },
+                data: {
+                  projectId: null
                 }
               })
             }
@@ -863,6 +890,7 @@ export class EstimateController {
               canceledAt: new Date(),
               canceledById: userId,
               cancellationReason,
+              assignatureRequired: false,
               date_update: new Date()
             }
           });
@@ -892,6 +920,7 @@ export class EstimateController {
               canceledAt: new Date(),
               canceledById: userId,
               cancellationReason,
+              assignatureRequired: false,
               date_update: new Date()
             }
           });
@@ -917,6 +946,45 @@ export class EstimateController {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Failed to cancel estimate" });
+    }
+  }
+
+  async restoreToPending(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const estimate = await prisma.estimate.findUnique({
+        where: { id },
+        select: { id: true, status: true }
+      });
+
+      if (!estimate) {
+        return res.status(404).json({ error: "Estimate not found" });
+      }
+
+      if (estimate.status !== "canceled") {
+        return res.status(400).json({
+          error: "Only canceled estimates can be restored to pending"
+        });
+      }
+
+      await prisma.estimate.update({
+        where: { id },
+        data: {
+          status: "pending",
+          canceledAt: null,
+          canceledById: null,
+          cancellationReason: null,
+          date_update: new Date()
+        }
+      });
+
+      return res.status(200).json({
+        message: "Estimate status restored to pending successfully"
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to restore estimate status" });
     }
   }
 

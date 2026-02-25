@@ -425,7 +425,10 @@ export class ProjectController {
             project_id: true,
             amount_of_hours: true,
             hourly_price: true,
+            fixed_price: true,
+            type_price: true,
             name_user: true,
+            subcontractor_id: true,
           }
         })
       ]);
@@ -461,18 +464,33 @@ export class ProjectController {
           workedHoursMap.set(projectId, {
             totalCostOfServiceHours: 0,
             totalNumberOfHoursWorked: 0,
+            totalSubcontractorCost: 0,
             uniqueUsers: new Set(),
           });
         }
 
         const projectData = workedHoursMap.get(projectId);
 
-        if (wh.amount_of_hours !== null) {
-          projectData.totalCostOfServiceHours += Number(wh.amount_of_hours) * Number(wh.hourly_price);
-          projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
+        const isSubcontractor = !!wh.subcontractor_id;
+        let cost = 0;
+
+        if (wh.type_price === "fixed") {
+          cost = Number(wh.fixed_price || 0);
         } else {
-          projectData.totalCostOfServiceHours += Number(wh.hourly_price);
+          if (wh.amount_of_hours !== null) {
+            cost = Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
+            projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
+          } else {
+            cost = Number(wh.hourly_price || 0);
+          }
         }
+
+        if (isSubcontractor) {
+          projectData.totalSubcontractorCost += cost;
+        } else {
+          projectData.totalCostOfServiceHours += cost;
+        }
+        
         projectData.uniqueUsers.add(wh.name_user);
       });
 
@@ -483,6 +501,7 @@ export class ProjectController {
         const workedHoursData = workedHoursMap.get(project.id);
 
         const totalCostOfServiceHours = workedHoursData?.totalCostOfServiceHours || 0;
+        const totalSubcontractorCost = workedHoursData?.totalSubcontractorCost || 0;
         const totalNumberOfHoursWorked = workedHoursData?.totalNumberOfHoursWorked || 0;
         const workersOnThisProject = workedHoursData?.uniqueUsers?.size || 0;
 
@@ -586,6 +605,7 @@ export class ProjectController {
           },
           costofwork: costOfWork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          cost_of_subcontractor: totalSubcontractorCost,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject,
@@ -806,18 +826,31 @@ export class ProjectController {
         }, 0)
 
         let totalCostOfServiceHours = 0;
+        let totalSubcontractorCost = 0;
         let totalNumberOfHoursWorked = 0;
         const uniqueUsers = new Set();
 
         project.workedHours.forEach((workedHour) => {
-          if (workedHour.amount_of_hours !== null) {
-            totalCostOfServiceHours +=
-              Number(workedHour.amount_of_hours) *
-              Number(workedHour.hourly_price);
-            totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+          const isSubcontractor = !!workedHour.subcontractor_id;
+          let cost = 0;
+
+          if (workedHour.type_price === "fixed") {
+            cost = Number(workedHour.fixed_price || 0);
           } else {
-            totalCostOfServiceHours += Number(workedHour.hourly_price);
+            if (workedHour.amount_of_hours !== null) {
+              cost = Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price || 0);
+              totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
+            } else {
+              cost = Number(workedHour.hourly_price || 0);
+            }
           }
+
+          if (isSubcontractor) {
+            totalSubcontractorCost += cost;
+          } else {
+            totalCostOfServiceHours += cost;
+          }
+
           uniqueUsers.add(workedHour.name_user);
         });
 
@@ -911,6 +944,7 @@ export class ProjectController {
           costProjects: flatCostProjects,
           cost_of_materials: costofwork,
           cost_of_service_hours: totalCostOfServiceHours + userAttendance,
+          cost_of_subcontractor: totalSubcontractorCost,
           total_number_of_hours_worked: totalNumberOfHoursWorked + userAttendanceHours,
           workers_on_this_project: workersOnThisProject,
           price_project: priceProject, // Adiciona o novo campo price_project
@@ -2326,6 +2360,55 @@ export class ProjectController {
               },
             },
           },
+          sub_service_project: {
+            include: {
+              serviceProject: {
+                include: {
+                  Project: {
+                    select: {
+                      id: true,
+                      location: true,
+                      client: {
+                        select: {
+                          location: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              custom_service_schedule: {
+                include: {
+                  project: {
+                    select: {
+                      id: true,
+                      location: true,
+                      client: {
+                        select: {
+                          location: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          custom_service_schedule: {
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  location: true,
+                  client: {
+                    select: {
+                      location: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
@@ -2338,26 +2421,46 @@ export class ProjectController {
 
       // Filtrar e transformar os dados no formato necessário
       const events = userServiceProjects
-        .filter((userServiceProject) => {
-          const service = userServiceProject.service_project;
-          return service?.start_date && service?.deadline; // Filtra serviços com ambas as datas presentes
-        })
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
+          const subservice = userServiceProject.sub_service_project;
+          const customService = userServiceProject.custom_service_schedule;
 
-          const initial = service?.start_date; // Formato 'YYYY-MM-DD'
-          const end = service?.deadline; // Formato 'YYYY-MM-DD'
-          const description = service?.Project?.location
-            ? service?.Project.location
-            : "No address available";
+          if (service) {
+            return {
+              id: service.id,
+              service: service.name,
+              initial: service.start_date,
+              end: service.deadline,
+              description: service.Project?.location || "No address available",
+            };
+          }
 
-          return {
-            id: service?.Project?.id || service?.id, // Garantir que há um ID válido
-            service: service?.name,
-            initial,
-            end,
-            description,
-          };
+          if (subservice) {
+            const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
+            return {
+              id: subservice.id,
+              service: subservice.name,
+              initial: subservice.start_date,
+              end: subservice.deadline,
+              description: project?.location || "No address available",
+            };
+          }
+
+          if (customService) {
+            return {
+              id: customService.id,
+              service: customService.name,
+              initial: customService.start_date,
+              end: customService.deadline,
+              description: customService.project?.location || "No address available",
+            };
+          }
+
+          return null;
+        })
+        .filter((event): event is { id: string; service: string; initial: string | null; end: string | null; description: string } => {
+          return Boolean(event && event.initial && event.end);
         });
 
       return res.json(events);

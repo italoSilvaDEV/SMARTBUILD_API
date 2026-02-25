@@ -42,6 +42,7 @@ export class GetEstimateByProjectIdController {
                     terms: true,
                     type_estimate: true,
                     multi_emails: true,
+                    assignatureRequired: true,
                     project: {
                         select: {
                             id: true,

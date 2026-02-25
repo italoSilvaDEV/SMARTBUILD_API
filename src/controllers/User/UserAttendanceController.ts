@@ -273,6 +273,8 @@ export class UserAttendanceController {
                 const result = await attendanceService.processCheckIn({
                     user_id: userId,
                     service_project_id: serviceProjectId,
+                    check_in_time: checkInTime,
+                    date: date
                 });
                 
                 if (checkOutTime) {

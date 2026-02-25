@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { parseDateRange, getDefaultWeekRange } from "../../utils/dateUtils";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -28,6 +29,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.check_out_time.toISOString(),
                     attendance.workStartTime,
                     attendance.workEndTime,
+                    attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
             }
@@ -72,15 +74,21 @@ export class getByWorkerIdController {
             workerId
         } = req.params
 
-        const {
+        let {
             start_date,
             deadline,
         } = req.query
 
-        if (!companyId || !start_date || !deadline || !workerId) {
+        if (!companyId || !workerId) {
             return res.status(400).json({
-                error: "Company Id, start date, deadline and worker id are required"
+                error: "Company Id and worker id are required"
             });
+        }
+
+        if (!start_date || !deadline) {
+            const defaultRange = getDefaultWeekRange();
+            start_date = defaultRange.start_date;
+            deadline = defaultRange.deadline;
         }
 
         const company = await prisma.company.findUnique({
@@ -95,8 +103,11 @@ export class getByWorkerIdController {
             });
         }
 
-        const startDate = new Date(String(start_date));
-        const deadlineDate = new Date(String(deadline));
+
+        const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
+        const startDate = startOfDay;
+        const deadlineDate = endOfDay;
+
 
         try {
             const user = await prisma.user.findUnique({
@@ -108,7 +119,9 @@ export class getByWorkerIdController {
                     name: true,
                     avatar: true,
                     office: true,
-                    isOverTime: true
+                    isOverTime: true,
+                    defaultBreakMinutes: true,
+                    dailyRate: true
                 }
             });
 
@@ -134,26 +147,38 @@ export class getByWorkerIdController {
                         gte: startDate,
                         lte: deadlineDate,
                     },
-                    OR: [
+                    AND: [
                         {
-                            check_out_time: {
-                                lte: deadlineDate,
-                            }
+                            OR: [
+                                { check_out_time: { lte: deadlineDate } },
+                                { check_out_time: null }
+                            ]
                         },
                         {
-                            check_out_time: null
-                        }
-                    ],
-                    UserServiceProject: {
-                        service_project: {
-                            Project: {
-                                company_id: companyId,
-                                status_project: {
-                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                            OR: [
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            Project: {
+                                                company_id: companyId,
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            projectId: null,
+                                            company_id: companyId
+                                        }
+                                    }
                                 }
-                            }
+                            ]
                         }
-                    }
+                    ]
                 },
                 include: {
                     user: {
@@ -161,7 +186,9 @@ export class getByWorkerIdController {
                             id: true,
                             name: true,
                             hourly_price: true,
-                            isOverTime: true
+                            isOverTime: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
                         }
                     },
                     UserServiceProject: {
@@ -247,15 +274,32 @@ export class getByWorkerIdController {
                     let dailyHours = 0;
 
                     if (attendance.check_out_time) {
+                        const rawHours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                            0
+                        );
                         const hours = calcularHorasTrabalhadas(
                             attendance.check_in_time.toISOString(),
                             attendance.check_out_time.toISOString(),
                             attendance.workStartTime,
                             attendance.workEndTime,
+                            attendance.user.defaultBreakMinutes || 0
                         );
+                        const rawDailyHours = convertHHMMToDecimal(rawHours.normais) + convertHHMMToDecimal(rawHours.extras);
                         dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        const breakMinutesApplied = Math.min(
+                            attendance.user.defaultBreakMinutes || 0,
+                            Math.round(rawDailyHours * 60)
+                        );
+                        attendance.__rawDailyHours = rawDailyHours;
+                        attendance.__breakMinutesApplied = breakMinutesApplied;
                     } else {
                         dailyHours = 0;
+                        attendance.__rawDailyHours = 0;
+                        attendance.__breakMinutesApplied = 0;
                     }
                     const hadOvertimePermission = attendance.isOvertime === true;
                     const hourlyRate = attendance.user.hourly_price || 0;
@@ -301,8 +345,12 @@ export class getByWorkerIdController {
                         user: {
                             name: attendance.user.name,
                             hourly_price: attendance.user.hourly_price,
+                            dailyRate: attendance.user.dailyRate,
                             isOverTime: finalOvertimeHours > 0
                         },
+                        raw_hours_worked: parseFloat(((attendance.__rawDailyHours as number) || 0).toFixed(2)),
+                        break_minutes: (attendance.__breakMinutesApplied as number) || 0,
+                        break_hours: parseFloat((((attendance.__breakMinutesApplied as number) || 0) / 60).toFixed(2)),
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(dailyHours.toFixed(2)),
                         overtime_hours: 0,

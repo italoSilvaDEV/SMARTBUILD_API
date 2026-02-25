@@ -483,7 +483,10 @@ export class BusinessDashboardController {
                             hourly_price: true,
                             date_creation: true,
                             start_date: true,
-                            end_date: true
+                            end_date: true,
+                            type_price: true,
+                            fixed_price: true,
+                            subcontractor_id: true,
                         }
                     },
                     serviceProject: {
@@ -552,18 +555,30 @@ export class BusinessDashboardController {
             );
 
             const employeeCost = projects.flatMap(i => i.workedHours
-                .filter(item => item.amount_of_hours !== null)
+                .filter(item => {
+                    if (item.subcontractor_id) return false;
+
+                    return true;
+                })
                 .map(item => ({
                     id: item.id,
-                    price: Number(item.amount_of_hours) * Number(item.hourly_price)
+                    price: item.type_price === "fixed"
+                        ? Number(item.fixed_price || 0)
+                        : Number(item.amount_of_hours || 0) * Number(item.hourly_price || 0)
                 }))
             );
 
             const subcontractorCost = projects.flatMap(i => i.workedHours
-                .filter(item => item.amount_of_hours === null)
+                .filter(item => {
+                    return !!item.subcontractor_id;
+                })
                 .map(item => ({
                     id: item.id,
-                    price: Number(item.hourly_price)
+                    price: item.type_price === "fixed"
+                        ? Number(item.fixed_price || 0)
+                        : (item.amount_of_hours
+                            ? Number(item.amount_of_hours) * Number(item.hourly_price || 0)
+                            : Number(item.hourly_price || 0))
                 }))
             );
 
@@ -821,7 +836,7 @@ export class BusinessDashboardController {
                 return res.status(404).json({ error: valid.message });
             }
 
-            const { period = "thisYear" } = req.query;
+            const { period = "thisYear", subcontractorId } = req.query;
 
             const validPeriods = [
                 "thisYear",
@@ -849,6 +864,26 @@ export class BusinessDashboardController {
                 }
             }
 
+            // Se houver subcontractorId, filtrar apenas projetos desse subcontractor
+            let projectIds: string[] | undefined;
+            if (subcontractorId) {
+                const workedHours = await prisma.workedhours.findMany({
+                    where: {
+                        subcontractor_id: subcontractorId as string,
+                        amount_of_hours: null,
+                    },
+                    select: {
+                        project_id: true,
+                    },
+                    distinct: ['project_id'],
+                });
+                projectIds = workedHours.map((wh: any) => wh.project_id).filter(Boolean);
+
+                if (projectIds.length === 0) {
+                    return res.json([]);
+                }
+            }
+
             const projects = await prisma.project.groupBy({
                 by: ['status_project'],
                 where: {
@@ -856,6 +891,7 @@ export class BusinessDashboardController {
                     status_project: {
                         in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
                     },
+                    ...(projectIds && { id: { in: projectIds } }),
                     ...(Object.keys(dateFilter).length > 0 && {
                         date_creation: dateFilter
                     })

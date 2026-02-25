@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import { sendEmail } from "../../../utils/sendEmail";
+import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly } from "../../../utils/dateUtils";
 
 interface User {
     id: string
@@ -56,13 +57,16 @@ export class CreateCustomServiceController {
             const workerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
             const subcontractorIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
 
+            const startDateOnly = normalizeToDateOnly(body.start_date);
+            const deadlineOnly = normalizeToDateOnly(body.deadline);
+
             const customService = await prisma.$transaction(async (tx) => {
                 const service = await tx.customServiceSchedule.create({
                     data: {
                         name: body.name,
                         description: body.description || null,
-                        start_date: body.start_date || null,
-                        deadline: body.deadline || null,
+                        start_date: startDateOnly,
+                        deadline: deadlineOnly,
                         projectId: project.id,
                     }
                 });
@@ -86,6 +90,35 @@ export class CreateCustomServiceController {
                 }
 
                 return service;
+            });
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: workerIds } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: subcontractorIds } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "New service assigned",
+                body: `You were assigned to ${customService.name || "a custom service"}.`,
+                data: {
+                    type: "service_assignment",
+                    projectId: project.id,
+                    serviceProjectId: null,
+                    subServiceId: null,
+                    customServiceId: customService.id
+                }
             });
 
             return res.status(201).json({

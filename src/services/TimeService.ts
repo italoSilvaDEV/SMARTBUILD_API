@@ -72,18 +72,43 @@ export class TimeService {
 
         // 1. Calcular horas diárias
         const withDailyHours = weekAttendances.map(att => {
-            if (!att.check_in_time || !att.check_out_time) return { ...att, dailyHours: 0 };
-            
+            if (!att.check_in_time || !att.check_out_time) {
+                return {
+                    ...att,
+                    dailyHours: 0,
+                    rawDailyHours: 0,
+                    breakMinutesApplied: 0,
+                    breakHoursApplied: 0
+                };
+            }
+
+            const breakMinutes = user.defaultBreakMinutes || 0;
+            const grossHours = calcularHorasTrabalhadas(
+                att.check_in_time.toISOString(),
+                att.check_out_time.toISOString(),
+                att.workStartTime,
+                att.workEndTime,
+                0
+            );
+            const grossDailyHours = convertHHMMToDecimal(grossHours.normais) + convertHHMMToDecimal(grossHours.extras);
+
             const hours = calcularHorasTrabalhadas(
                 att.check_in_time.toISOString(),
                 att.check_out_time.toISOString(),
                 att.workStartTime,
                 att.workEndTime,
-                user.defaultBreakMinutes || 0
+                breakMinutes
             );
             const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+            const breakMinutesApplied = Math.min(breakMinutes, Math.round(grossDailyHours * 60));
             totalWeekHours += dailyHours;
-            return { ...att, dailyHours };
+            return {
+                ...att,
+                dailyHours,
+                rawDailyHours: grossDailyHours,
+                breakMinutesApplied,
+                breakHoursApplied: breakMinutesApplied / 60
+            };
         });
 
         // 2. Calcular Preço Semanal
@@ -120,6 +145,9 @@ export class TimeService {
             return {
                 ...att,
                 hours_worked: parseFloat(att.dailyHours.toFixed(2)),
+                raw_hours_worked: parseFloat((att.rawDailyHours || 0).toFixed(2)),
+                break_minutes: att.breakMinutesApplied || 0,
+                break_hours: parseFloat((att.breakHoursApplied || 0).toFixed(2)),
                 regular_hours: parseFloat(reg.toFixed(2)),
                 overtime_hours: parseFloat(over.toFixed(2)),
                 price: parseFloat(proportionalPrice.toFixed(2))

@@ -47,17 +47,30 @@ export class FindWorkedHoursProjectController {
                     name_user: true,
                     amount_of_hours: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
+                    subcontractor_id: true,
                     date_creation: true,
                     start_date: true,
                     end_date: true,
+                    subcontractor_service_project_id: true,
+                    sub_services_project_id: true,
+                    custom_service_schedule_id: true,
+                    subcontractor_service_id: true,
                     subcontractor: {
+                        select: { id: true, name: true, email: true, phone: true }
+                    },
+                    subcontractor_service_project: {
                         select: {
                             id: true,
-                            name: true,
-                            email: true,
-                            phone: true,
+                            service_project: { select: { id: true, name: true } },
+                            sub_service_project: { select: { id: true, name: true } },
+                            custom_service_schedule: { select: { id: true, name: true } },
                         }
-                    }
+                    },
+                    sub_services_project: { select: { id: true, name: true } },
+                    custom_service_schedule: { select: { id: true, name: true } },
+                    subcontractor_service: { select: { id: true, name: true, description: true } },
                 },
                 skip: pageNumber * 20,
                 take: 20,
@@ -196,19 +209,32 @@ export class FindWorkedHoursProjectController {
                     name_user: true,
                     amount_of_hours: true,
                     hourly_price: true,
+                    fixed_price: true,
+                    type_price: true,
+                    subcontractor_id: true,
                     date_creation: true,
                     start_date: true,
                     end_date: true,
                     description: true,
                     payment_date: true,
+                    subcontractor_service_project_id: true,
+                    sub_services_project_id: true,
+                    custom_service_schedule_id: true,
+                    subcontractor_service_id: true,
                     subcontractor: {
+                        select: { id: true, name: true, email: true, phone: true }
+                    },
+                    subcontractor_service_project: {
                         select: {
                             id: true,
-                            name: true,
-                            email: true,
-                            phone: true,
+                            service_project: { select: { id: true, name: true } },
+                            sub_service_project: { select: { id: true, name: true } },
+                            custom_service_schedule: { select: { id: true, name: true } },
                         }
-                    }
+                    },
+                    sub_services_project: { select: { id: true, name: true } },
+                    custom_service_schedule: { select: { id: true, name: true } },
+                    subcontractor_service: { select: { id: true, name: true, description: true } },
                 },
                 orderBy: {
                     date_creation: "desc"
@@ -271,10 +297,16 @@ export class FindWorkedHoursProjectController {
                 }
             });
             const formattedResult = result.map((workedHours) => {
+                let price = null;
+                if (workedHours.type_price === "fixed") {
+                    price = workedHours.fixed_price ? Number(workedHours.fixed_price) : null;
+                } else {
+                    price = workedHours.amount_of_hours && workedHours.hourly_price ? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price) : null;
+                }
                 return {
                     ...workedHours,
                     overtime_hours: null,
-                    price: workedHours.amount_of_hours&&workedHours.hourly_price? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price): null
+                    price
                 }
             })
             // Calcular as horas trabalhadas

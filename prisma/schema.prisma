@@ -45,22 +45,24 @@ model User {
   projectEditAll  Boolean? @default(false)
   estimateEditAll Boolean? @default(false)
 
-  token_recover_password String?              @unique
-  autorId                String?
-  last_acess             DateTime?
-  date_creation          DateTime             @default(now())
-  date_update            DateTime             @updatedAt
-  office_id              String
-  office                 Office               @relation(fields: [office_id], references: [id])
-  userLikedCostProject   CostProject[]        @relation("userLikedProject")
-  seller_project         Project[]            @relation("seller")
-  ServiceStages          ServiceStages[]
-  projectId              String?
-  UserServiceProject     UserServiceProject[]
-  UserAttendance         UserAttendance[]
-  Activities             Activities[]
-  project_manager_project Project[]            @relation("project_manager")
-  project_manager_invoice Invoice[]            @relation("project_manager_invoice")
+  token_recover_password       String?               @unique
+  autorId                      String?
+  last_acess                   DateTime?
+  date_creation                DateTime              @default(now())
+  date_update                  DateTime              @updatedAt
+  office_id                    String
+  office                       Office                @relation(fields: [office_id], references: [id])
+  userLikedCostProject         CostProject[]         @relation("userLikedProject")
+  seller_project               Project[]             @relation("seller")
+  ServiceStages                ServiceStages[]
+  projectId                    String?
+  UserServiceProject           UserServiceProject[]
+  UserAttendance               UserAttendance[]
+  timeCardEditRequests         TimeCardEditRequest[] @relation("TimeCardEditRequestEmployee")
+  reviewedTimeCardEditRequests TimeCardEditRequest[] @relation("TimeCardEditRequestReviewer")
+  Activities                   Activities[]
+  project_manager_project      Project[]             @relation("project_manager")
+  project_manager_invoice      Invoice[]             @relation("project_manager_invoice")
 
   InvoiceSendHistory InvoiceSendHistory[]
 
@@ -109,9 +111,10 @@ model User {
   expoPushToken String?
 
   // Chat Relationships
-  sentMessages    ChatMessage[] @relation("SentMessages")
-  chatMemberships ChatMember[]
-  createdChats    Chat[]        @relation("CreatedChats")
+  sentMessages        ChatMessage[] @relation("SentMessages")
+  deletedChatMessages ChatMessage[] @relation("DeletedChatMessages")
+  chatMemberships     ChatMember[]
+  createdChats        Chat[]        @relation("CreatedChats")
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -147,9 +150,10 @@ model ChatMember {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  isAdmin    Boolean  @default(false)
-  joinedAt   DateTime @default(now())
-  lastReadAt DateTime @default(now())
+  isAdmin    Boolean   @default(false)
+  joinedAt   DateTime  @default(now())
+  lastReadAt DateTime  @default(now())
+  archivedAt DateTime?
 
   @@unique([chatId, userId])
   @@index([userId])
@@ -164,15 +168,19 @@ model ChatMessage {
   senderId String
   sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
 
-  text     String? @db.Text
-  fileUrl  String? @db.Text
-  fileName String?
-  fileType String?
+  text        String?   @db.Text
+  fileUrl     String?   @db.Text
+  fileName    String?
+  fileType    String?
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?     @relation("DeletedChatMessages", fields: [deletedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@index([chatId])
   @@index([senderId])
+  @@index([deletedById])
   @@map("chat_messages")
 }
 
@@ -209,16 +217,17 @@ model Company {
   // Nova relação N:N através da tabela UserCompany
   userCompanies UserCompany[]
 
-  Category         Category[]
-  SubCategory      SubCategory[]
-  Service          Service[]
-  ServiceProject   ServiceProject[]
-  Catalog          Catalog[]
-  Project          Project[]
-  Client           Client[]
-  UserAttendance   UserAttendance[]
-  allowedEmployees Int? // Quantidade de funcionários permitida pelo plano
-  extraEmployees   Int? // Quantidade de funcionários extras adicionados
+  Category             Category[]
+  SubCategory          SubCategory[]
+  Service              Service[]
+  ServiceProject       ServiceProject[]
+  Catalog              Catalog[]
+  Project              Project[]
+  Client               Client[]
+  UserAttendance       UserAttendance[]
+  timeCardEditRequests TimeCardEditRequest[]
+  allowedEmployees     Int? // Quantidade de funcionários permitida pelo plano
+  extraEmployees       Int? // Quantidade de funcionários extras adicionados
 
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
@@ -246,7 +255,8 @@ model Company {
 
   ProjectFiles   ProjectFiles[]
   ProjectPastes  ProjectPastes[]
-  Subcontractors Subcontractor[]
+  Subcontractors         Subcontractor[]
+  SubcontractorServices  SubcontractorService[]
 
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
@@ -423,6 +433,7 @@ model SubServicesProject {
 
   userServiceProject           UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   @@map("sub_services_project")
 }
@@ -443,6 +454,7 @@ model CustomServiceSchedule {
   subServicesProjects          SubServicesProject[]
   userServiceProjects          UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String?
@@ -642,14 +654,14 @@ model Project {
   client    Client? @relation(fields: [client_id], references: [id])
   client_id String?
 
-  user           User?    @relation("seller", fields: [seller_user_id], references: [id])
+  user           User?   @relation("seller", fields: [seller_user_id], references: [id])
   seller_user_id String?
 
-  project_manager    User?    @relation("project_manager", fields: [project_manager_id], references: [id])
+  project_manager    User?   @relation("project_manager", fields: [project_manager_id], references: [id])
   project_manager_id String?
 
-  company        Company? @relation(fields: [company_id], references: [id])
-  company_id     String?
+  company    Company? @relation(fields: [company_id], references: [id])
+  company_id String?
 
   workContext   WorkContext? @relation(fields: [workContextId], references: [id])
   workContextId String?
@@ -667,6 +679,7 @@ model Project {
   imagesAttachments      ImagesAttachments[]
   customServiceSchedules CustomServiceSchedule[]
   tasks                  Task[]
+  changeOrders           ChangeOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -928,6 +941,11 @@ model Subcontractor {
   @@map("subcontractors")
 }
 
+enum TypePrice {
+  hourly
+  fixed
+}
+
 model Workedhours {
   id String @id @default(uuid())
 
@@ -937,8 +955,11 @@ model Workedhours {
 
   end_date String?
 
+  type_price TypePrice? @default(hourly)
+
   amount_of_hours Decimal?
-  hourly_price    Decimal
+  hourly_price    Decimal?
+  fixed_price     Decimal?
 
   description  String?
   payment_date DateTime?
@@ -952,7 +973,35 @@ model Workedhours {
   subcontractor    Subcontractor? @relation(fields: [subcontractor_id], references: [id])
   subcontractor_id String?
 
+  subcontractor_service_project    SubContractorServiceProject? @relation(fields: [subcontractor_service_project_id], references: [id])
+  subcontractor_service_project_id String?
+
+  sub_services_project    SubServicesProject? @relation(fields: [sub_services_project_id], references: [id])
+  sub_services_project_id String?
+
+  custom_service_schedule    CustomServiceSchedule? @relation(fields: [custom_service_schedule_id], references: [id])
+  custom_service_schedule_id String?
+
+  subcontractor_service    SubcontractorService? @relation(fields: [subcontractor_service_id], references: [id])
+  subcontractor_service_id String?
+
   @@map("worked_hours")
+}
+
+model SubcontractorService {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?  @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  company    Company? @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  company_id String?
+
+  workedHours Workedhours[]
+
+  @@index([company_id])
+  @@map("subcontractor_services")
 }
 
 // Relacionamento entre User e ServiceProject
@@ -1003,6 +1052,8 @@ model SubContractorServiceProject {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
+  workedHours Workedhours[]
+
   @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
   @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
   @@unique([subcontractor_id, custom_service_schedule_id], map: "sub_contractor_service_project_unique_custom_schedule")
@@ -1034,11 +1085,61 @@ model UserAttendance {
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String?
 
-  isOvertime Boolean? @default(false)
+  isOvertime   Boolean?              @default(false)
+  editRequests TimeCardEditRequest[]
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")
+}
+
+enum TimeCardEditRequestStatus {
+  pending
+  approved
+  denied
+}
+
+model TimeCardEditRequest {
+  id String @id @default(uuid())
+
+  attendanceId String
+  attendance   UserAttendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   User   @relation("TimeCardEditRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  reviewerId String?
+  reviewer   User?   @relation("TimeCardEditRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  originalCheckInTime  DateTime
+  originalCheckOutTime DateTime?
+
+  requestedCheckInTime  DateTime
+  requestedCheckOutTime DateTime?
+
+  approvedCheckInTime  DateTime?
+  approvedCheckOutTime DateTime?
+
+  reason       String  @db.Text
+  employeeNote String? @db.Text
+  managerNote  String? @db.Text
+
+  employeeSignature String  @db.Text
+  managerSignature  String? @db.Text
+
+  status     TimeCardEditRequestStatus @default(pending)
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([employeeId, createdAt])
+  @@index([attendanceId])
+  @@map("timecard_edit_requests")
 }
 
 model TimeLine {
@@ -1134,7 +1235,7 @@ model Invoice {
   user_create User?   @relation(fields: [user_id], references: [id])
   user_id     String?
 
-  project_manager    User?    @relation("project_manager_invoice", fields: [project_manager_id], references: [id])
+  project_manager    User?   @relation("project_manager_invoice", fields: [project_manager_id], references: [id])
   project_manager_id String?
 
   estimate           Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
@@ -1297,6 +1398,8 @@ model Estimate {
   description     String?  @db.Text
   terms           String?  @db.Text
   status          String   @default("pending")
+
+  assignatureRequired Boolean? @default(false)
 
   amountPaid Decimal? @default(0)
   balanceDue Decimal?
@@ -1934,6 +2037,8 @@ model ChangeOrder {
 
   estimateId          String
   estimate            Estimate?            @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   changeOrderServices ChangeOrderService[]
   pdfProjects         PdfProject[]
 

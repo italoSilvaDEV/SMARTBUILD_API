@@ -9,6 +9,8 @@ export interface CheckInData {
     address?: string | null;
     latitude?: number | null;
     longitude?: number | null;
+    check_in_time?: Date | string | null;
+    date?: Date | string | null;
 }
 
 export interface CheckOutData {
@@ -24,7 +26,7 @@ export class AttendanceService {
      * Centraliza validações e criação de vínculos automáticos.
      */
     async processCheckIn(data: CheckInData) {
-        const { user_id, service_project_id, address, latitude, longitude } = data;
+        const { user_id, service_project_id, address, latitude, longitude, check_in_time, date } = data;
 
         // Usar transação para garantir atomicidade e evitar duplicatas em chamadas simultâneas
         return await prisma.$transaction(async (tx) => {
@@ -108,7 +110,7 @@ export class AttendanceService {
                     data: {
                         user_id: user_id,
                         service_project_id: service_project_id,
-                        assigned_at: new Date()
+                        assigned_at: date ? new Date(date) : new Date()
                     }
                 });
 
@@ -125,7 +127,8 @@ export class AttendanceService {
                 data: {
                     user_id,
                     user_service_project_id: userServiceProject.id,
-                    check_in_time: new Date(),
+                    check_in_time: check_in_time ? new Date(check_in_time) : new Date(),
+                    date: date ? new Date(date) : new Date(),
                     check_in_address: address || project?.location || '',
                     check_in_latitude: Number.isFinite(latitude) ? latitude! : (project?.lat && !isNaN(parseFloat(project.lat)) ? parseFloat(project.lat) : 0),
                     check_in_longitude: Number.isFinite(longitude) ? longitude! : (project?.log && !isNaN(parseFloat(project.log)) ? parseFloat(project.log) : 0),

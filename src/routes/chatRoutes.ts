@@ -29,4 +29,11 @@ chatRoutes.post("/:chatId/messages", checkToken, upload.single("file"), (req, re
 // Listar mensagens de um chat
 chatRoutes.get("/:chatId/messages", checkToken, (req, res) => chatController.listMessages(req, res));
 
+// Arquivar/desarquivar conversa para o usuário
+chatRoutes.patch("/:chatId/archive", checkToken, (req, res) => chatController.archiveChat(req, res));
+chatRoutes.patch("/:chatId/unarchive", checkToken, (req, res) => chatController.unarchiveChat(req, res));
+
+// Apagar mensagem (soft-delete com placeholder)
+chatRoutes.delete("/:chatId/messages/:messageId", checkToken, (req, res) => chatController.deleteMessage(req, res));
+
 export { chatRoutes };

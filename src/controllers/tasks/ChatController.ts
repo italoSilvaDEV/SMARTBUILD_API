@@ -6,15 +6,60 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 
 export class ChatController {
+  private readonly deletedMessagePlaceholder = "This message was deleted";
+
+  private mapDeletedMessage<T extends { deletedAt?: Date | null; text?: string | null; fileUrl?: string | null; fileName?: string | null; fileType?: string | null }>(message: T): T {
+    if (!message.deletedAt) return message;
+    return {
+      ...message,
+      text: this.deletedMessagePlaceholder,
+      fileUrl: null,
+      fileName: null,
+      fileType: null,
+    };
+  }
+
+  private getPushMessageBody(
+    text?: string | null,
+    fileUrl?: string | null,
+    fileType?: string | null,
+    fileName?: string | null
+  ): string {
+    const trimmedText = text?.trim();
+    if (trimmedText) return trimmedText;
+    if (!fileUrl) return "Sent you a message";
+
+    const mime = (fileType || "").toLowerCase();
+    const fileNameLower = (fileName || "").toLowerCase();
+
+    const isImage =
+      mime.startsWith("image/") ||
+      /\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|svg)$/.test(fileNameLower);
+    const isVideo =
+      mime.startsWith("video/") ||
+      /\.(mp4|mov|avi|mkv|webm|m4v)$/.test(fileNameLower);
+    const isAudio =
+      mime.startsWith("audio/") ||
+      /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/.test(fileNameLower);
+
+    if (isImage) return "Sent a photo";
+    if (isVideo) return "Sent a video";
+    if (isAudio) return "Sent an audio message";
+
+    return "Sent an attachment";
+  }
+
   // Listar conversas do usuário
   async listChats(req: Request, res: Response) {
     try {
       const { userId } = req.params;
-      const { companyId } = req.query;
+      const { companyId, archived } = req.query;
+      const archivedOnly = archived === "true";
 
       const chatMemberships = await prisma.chatMember.findMany({
         where: { 
           userId,
+          archivedAt: archivedOnly ? { not: null } : null,
           chat: {
             ...(companyId ? { companyId: companyId as string } : {})
           }
@@ -60,7 +105,7 @@ export class ChatController {
 
         return {
           ...chat,
-          lastMessage: chat.messages[0] || null,
+          lastMessage: chat.messages[0] ? this.mapDeletedMessage(chat.messages[0] as any) : null,
           unreadCount: 0 // Implementar lógica de unread depois
         };
       }));
@@ -331,13 +376,15 @@ export class ChatController {
       });
 
       // Gerar URL assinada se houver arquivo
-      const messageToSend = { ...message };
+      const messageToSend = this.mapDeletedMessage({ ...message } as any);
       if (messageToSend.fileUrl) {
         messageToSend.fileUrl = await getPresignedUrl(messageToSend.fileUrl);
       }
       if (messageToSend.sender.avatar) {
         messageToSend.sender.avatar = await getPresignedUrl(messageToSend.sender.avatar);
       }
+      (messageToSend as any).seenByOthers = false;
+      (messageToSend as any).seenByCount = 0;
 
       // Emitir via socket para todos os membros
       members.forEach(member => {
@@ -351,7 +398,7 @@ export class ChatController {
 
       if (pushTokens.length > 0) {
         const senderName = message.sender.name || "New message";
-        const messageBody = text || (fileUrl ? `📎 ${fileName || "File"}` : "Sent you a message");
+        const messageBody = this.getPushMessageBody(text, fileUrl, fileType, fileName);
         PushNotificationService.sendChatMessagePush(
           pushTokens,
           senderName,
@@ -372,6 +419,7 @@ export class ChatController {
     try {
       const { chatId } = req.params;
       const { limit = "50", offset = "0", companyId } = req.query;
+      const userId = (req as any).userId as string | undefined;
 
       // Validar se o chat pertence à empresa
       if (companyId) {
@@ -395,15 +443,162 @@ export class ChatController {
         skip: parseInt(offset as string)
       });
 
+      // Marca o chat como lido para o usuário autenticado e notifica os demais.
+      let readAt: Date | null = null;
+      if (userId) {
+        readAt = new Date();
+        const updateResult = await prisma.chatMember.updateMany({
+          where: { chatId, userId },
+          data: { lastReadAt: readAt },
+        });
+
+        if (updateResult.count > 0) {
+          const members = await prisma.chatMember.findMany({
+            where: { chatId },
+            select: { userId: true },
+          });
+
+          members
+            .filter((member) => member.userId !== userId)
+            .forEach((member) => {
+              SocketService.emitToUser(member.userId, "chat_messages_seen", {
+                chatId,
+                readerId: userId,
+                lastReadAt: readAt!.toISOString(),
+              });
+            });
+        }
+      }
+
+      const chatMembers = await prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true, lastReadAt: true },
+      });
+
       const messagesWithUrls = await Promise.all(messages.map(async (msg) => {
-        if (msg.fileUrl) msg.fileUrl = await getPresignedUrl(msg.fileUrl);
+        const hydratedMessage = this.mapDeletedMessage({ ...msg });
+        if (hydratedMessage.fileUrl) hydratedMessage.fileUrl = await getPresignedUrl(hydratedMessage.fileUrl);
         if (msg.sender.avatar) msg.sender.avatar = await getPresignedUrl(msg.sender.avatar);
-        return msg;
+        const seenByCount = chatMembers.filter(
+          (member) =>
+            member.userId !== msg.senderId &&
+            member.lastReadAt &&
+            member.lastReadAt >= msg.createdAt
+        ).length;
+
+        return {
+          ...hydratedMessage,
+          seenByCount,
+          seenByOthers: seenByCount > 0,
+        };
       }));
 
       return res.json(messagesWithUrls.reverse());
     } catch (error: any) {
       console.error("[ChatController.listMessages] Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async archiveChat(req: Request, res: Response) {
+    try {
+      const { chatId } = req.params;
+      const userId = (req as any).userId as string | undefined;
+
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const updated = await prisma.chatMember.updateMany({
+        where: { chatId, userId },
+        data: { archivedAt: new Date() },
+      });
+
+      if (!updated.count) return res.status(404).json({ error: "Chat membership not found" });
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("[ChatController.archiveChat] Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async unarchiveChat(req: Request, res: Response) {
+    try {
+      const { chatId } = req.params;
+      const userId = (req as any).userId as string | undefined;
+
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const updated = await prisma.chatMember.updateMany({
+        where: { chatId, userId },
+        data: { archivedAt: null },
+      });
+
+      if (!updated.count) return res.status(404).json({ error: "Chat membership not found" });
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("[ChatController.unarchiveChat] Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async deleteMessage(req: Request, res: Response) {
+    try {
+      const { chatId, messageId } = req.params;
+      const userId = (req as any).userId as string | undefined;
+
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const message = await prisma.chatMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          sender: { select: { id: true, name: true, avatar: true } },
+        },
+      });
+
+      if (!message || message.chatId !== chatId) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      if (message.senderId !== userId) {
+        return res.status(403).json({ error: "You can only delete your own messages" });
+      }
+
+      const updatedMessage = await prisma.chatMessage.update({
+        where: { id: messageId },
+        data: {
+          deletedAt: new Date(),
+          deletedById: userId,
+          text: this.deletedMessagePlaceholder,
+          fileUrl: null,
+          fileName: null,
+          fileType: null,
+        },
+        include: {
+          sender: { select: { id: true, name: true, avatar: true } },
+        },
+      });
+
+      const chatMembers = await prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+
+      const payload = this.mapDeletedMessage({
+        ...updatedMessage,
+        seenByCount: 0,
+        seenByOthers: false,
+      } as any);
+
+      if (payload.sender.avatar) {
+        payload.sender.avatar = await getPresignedUrl(payload.sender.avatar);
+      }
+
+      chatMembers.forEach((member) => {
+        SocketService.emitToUser(member.userId, "chat_message_deleted", payload);
+      });
+
+      return res.json(payload);
+    } catch (error: any) {
+      console.error("[ChatController.deleteMessage] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

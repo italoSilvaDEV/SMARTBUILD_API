@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { sendEmail } from "../../utils/sendEmail";
+import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
+import { normalizeToDateOnly } from "../../utils/dateUtils";
 
 interface User {
     id: string
@@ -83,6 +84,7 @@ export class CreateJobProjectController {
                 },
                 select: {
                     id: true,
+                    name: true,
                     start_date: true,
                     deadline: true,
                 }
@@ -173,16 +175,48 @@ export class CreateJobProjectController {
                 }
             }
 
+            const startDateOnly = normalizeToDateOnly(body.startDate);
+            const deadlineOnly = normalizeToDateOnly(body.deadline);
+
             await prisma.serviceProject.update({
                 where: {
                     id: serviceProject.id,
                     projectId: project.id
                 },
                 data: {
-                    start_date: new Date(body.startDate).toISOString(),
-                    deadline: new Date(body.deadline).toISOString()
+                    start_date: startDateOnly,
+                    deadline: deadlineOnly
                 }
             })
+
+            const [workerRecipients, subcontractorRecipients] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: body.users?.map((u) => u.id) || [] } },
+                    select: { email: true }
+                }),
+                prisma.subcontractor.findMany({
+                    where: { id: { in: body.subcontractors?.map((s) => s.id) || [] } },
+                    select: { email: true }
+                })
+            ]);
+
+            const recipientEmails = [
+                ...workerRecipients.map((u) => u.email),
+                ...subcontractorRecipients.map((s) => s.email)
+            ].filter(Boolean) as string[];
+
+            await SchedulePushNotificationService.sendToEmails({
+                emails: recipientEmails,
+                title: "New service assigned",
+                body: `You were assigned to ${serviceProject.name || "a service"}.`,
+                data: {
+                    type: "service_assignment",
+                    projectId: project.id,
+                    serviceProjectId: serviceProject.id,
+                    subServiceId: null,
+                    customServiceId: null
+                }
+            });
 
             return res.status(201).json({
                 message: "Job created successfully",

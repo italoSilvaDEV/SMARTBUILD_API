@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { parseDateRange, getDefaultWeekRange } from "../../utils/dateUtils";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -28,6 +29,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.check_out_time.toISOString(),
                     attendance.workStartTime,
                     attendance.workEndTime,
+                    attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
             }
@@ -67,15 +69,21 @@ export class getAllController {
             companyId
         } = req.params
 
-        const {
+        let {
             start_date,
             deadline,
         } = req.query
 
-        if (!companyId || !start_date || !deadline) {
+        if (!companyId) {
             return res.status(400).json({
                 error: "companyId is required"
             })
+        }
+
+        if (!start_date || !deadline) {
+            const defaultRange = getDefaultWeekRange();
+            start_date = defaultRange.start_date;
+            deadline = defaultRange.deadline;
         }
 
         const company = await prisma.company.findUnique({
@@ -90,8 +98,11 @@ export class getAllController {
             })
         }
 
-        const startDate = new Date(String(start_date));
-        const deadlineDate = new Date(String(deadline));
+
+        const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
+        const startDate = startOfDay;
+        const deadlineDate = endOfDay;
+
 
         try {
             const projects = await prisma.project.findMany({
@@ -172,7 +183,9 @@ export class getAllController {
                                                     id: true,
                                                     name: true,
                                                     hourly_price: true,
-                                                    avatar: true
+                                                    avatar: true,
+                                                    defaultBreakMinutes: true,
+                                                    dailyRate: true
                                                 }
                                             }
                                         },
@@ -193,26 +206,38 @@ export class getAllController {
                         gte: startDate,
                         lte: deadlineDate,
                     },
-                    OR: [
+                    AND: [
                         {
-                            check_out_time: {
-                                lte: deadlineDate,
-                            }
+                            OR: [
+                                { check_out_time: { lte: deadlineDate } },
+                                { check_out_time: null }
+                            ]
                         },
                         {
-                            check_out_time: null
-                        }
-                    ],
-                    UserServiceProject: {
-                        service_project: {
-                            Project: {
-                                company_id: companyId,
-                                status_project: {
-                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                            OR: [
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            Project: {
+                                                company_id: companyId,
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"],
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            projectId: null,
+                                            company_id: companyId
+                                        }
+                                    }
                                 }
-                            }
+                            ]
                         }
-                    }
+                    ]
                 },
                 select: {
                     date: true,
@@ -227,7 +252,49 @@ export class getAllController {
                             name: true,
                             hourly_price: true,
                             isOverTime: true,
-                            avatar: true
+                            avatar: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
+                        }
+                    }
+                }
+            });
+
+            const canceledProjectAttendances = await prisma.userAttendance.findMany({
+                where: {
+                    check_in_time: { gte: startDate, lte: deadlineDate },
+                    AND: [
+                        {
+                            OR: [
+                                { check_out_time: { lte: deadlineDate } },
+                                { check_out_time: null }
+                            ]
+                        },
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    projectId: null,
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    ]
+                },
+                select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    isOvertime: true,
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            hourly_price: true,
+                            isOverTime: true,
+                            defaultBreakMinutes: true,
+                            dailyRate: true
                         }
                     }
                 }
@@ -264,7 +331,77 @@ export class getAllController {
                 totalProjects
             };
 
-            const formattedProjects = projects.map(project => {
+            const canceledProjectWeeklyMap = new Map();
+            canceledProjectAttendances.forEach(attendance => {
+                if (attendance.check_in_time && attendance.user) {
+                    const userId = attendance.user.id;
+                    const attendanceDate = DateTime.fromJSDate(attendance.check_in_time);
+                    const weekStart = attendanceDate.startOf('week').plus({ days: 1 });
+                    const weekKey = `${userId}-${weekStart.toISODate()}`;
+                    if (!canceledProjectWeeklyMap.has(weekKey)) {
+                        canceledProjectWeeklyMap.set(weekKey, { user: attendance.user, attendances: [] });
+                    }
+                    canceledProjectWeeklyMap.get(weekKey).attendances.push(attendance);
+                }
+            });
+            const canceledWorkerData: any[] = [];
+            canceledProjectWeeklyMap.forEach(weekData => {
+                let weeklyRegularHoursUsed = 0;
+                const WEEKLY_REGULAR_LIMIT = 40;
+                const attendancesWithHours: Array<{ attendance: any; dailyHours: number; hadOvertimePermission: boolean }> = [];
+                weekData.attendances.forEach((attendance: any) => {
+                    let dailyHours = 0;
+                    if (attendance.check_out_time) {
+                        const hours = calcularHorasTrabalhadas(
+                            attendance.check_in_time.toISOString(),
+                            attendance.check_out_time.toISOString(),
+                            attendance.workStartTime,
+                            attendance.workEndTime,
+                            attendance.user.defaultBreakMinutes || 0
+                        );
+                        dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    }
+                    attendancesWithHours.push({
+                        attendance,
+                        dailyHours,
+                        hadOvertimePermission: attendance.isOvertime === true
+                    });
+                });
+                attendancesWithHours.forEach(({ attendance, dailyHours, hadOvertimePermission }) => {
+                    const hourlyRate = attendance.user?.hourly_price || 0;
+                    const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
+                    const finalRegularHours = Math.min(dailyHours, remainingRegularHours);
+                    const potentialOvertimeHours = Math.max(0, dailyHours - finalRegularHours);
+                    weeklyRegularHoursUsed += finalRegularHours;
+                    let price = 0;
+                    if (hadOvertimePermission && potentialOvertimeHours > 0) {
+                        price = (finalRegularHours * hourlyRate) + (potentialOvertimeHours * hourlyRate * 1.5);
+                    } else {
+                        price = dailyHours * hourlyRate;
+                    }
+                    canceledWorkerData.push({
+                        nameWorker: attendance.user?.name || "",
+                        date: attendance.date,
+                        in: attendance.check_in_time,
+                        out: attendance.check_out_time,
+                        regular_hours: parseFloat(dailyHours.toFixed(2)),
+                        overtime_hours: 0,
+                        total_hours: parseFloat(dailyHours.toFixed(2)),
+                        price: parseFloat((dailyHours * hourlyRate).toFixed(2))
+                    });
+                });
+            });
+            const canceledProjectEntry = {
+                clientData: "Canceled projects",
+                clientName: "Canceled projects",
+                clientAddress: "",
+                clientCityAndState: "",
+                serviceCount: 0,
+                workerData: canceledWorkerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
+            };
+
+            const formattedProjects = [
+                ...projects.map(project => {
                 const clientName = project.client?.name || "";
                 const clientAddress = project.location || project.client?.location || "";
                 const clientData = `${clientName} - ${clientAddress}`;
@@ -314,6 +451,7 @@ export class getAllController {
                                 attendance.check_out_time.toISOString(),
                                 attendance.workStartTime,
                                 attendance.workEndTime,
+                                attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                         } else {
@@ -374,7 +512,9 @@ export class getAllController {
                     serviceCount,
                     workerData: workerData.sort((a, b) => new Date(b.in).getTime() - new Date(a.in).getTime())
                 };
-            }).sort((a, b) => a.clientName.localeCompare(b.clientName));
+            }),
+                canceledProjectEntry
+            ].sort((a, b) => a.clientName.localeCompare(b.clientName));
 
             const workersMap = new Map();
 
@@ -458,7 +598,8 @@ export class getAllController {
                         });
                     });
 
-                    if (projectLocation) {
+                    const displayProject = projectLocation || "The project was cancelled";
+                    {
                         let dailyHours = 0;
 
                         if (attendance.check_out_time) {
@@ -467,6 +608,7 @@ export class getAllController {
                                 attendance.check_out_time.toISOString(),
                                 attendance.workStartTime,
                                 attendance.workEndTime,
+                                attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
                         } else {
@@ -503,7 +645,7 @@ export class getAllController {
                         if (serviceId) payrollUser.servicesCount.add(serviceId);
                         payrollUser.total += attendancePrice;
                         payrollUser.workers.push({
-                            project: projectLocation,
+                            project: displayProject,
                             date: attendance.date,
                             in: attendance.check_in_time,
                             out: attendance.check_out_time,

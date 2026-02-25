@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { jobScheduleGlobalTemplate } from "../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../utils/sendEmail";
+import { formatDateForEmail } from "../../utils/dateUtils";
 
 export class ResendEmailController {
     async forServiceProject(req: Request, res: Response) {
@@ -75,26 +76,13 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: serviceProject.name,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(startDate || undefined),
-                deadlineFormatted: formatSGDate(deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDate || undefined),
+                deadlineFormatted: formatDateForEmail(deadline || undefined),
                 notes: notes || "",
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true
@@ -277,26 +265,13 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: subservice.name,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(startDate || undefined),
-                deadlineFormatted: formatSGDate(deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDate || undefined),
+                deadlineFormatted: formatDateForEmail(deadline || undefined),
                 notes: notes || "",
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true
@@ -447,26 +422,13 @@ export class ResendEmailController {
                 ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projectLocation)}`;
 
-            const formatSGDate = (date?: string) => {
-                if (!date) return 'Not set';
-                return new Date(date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                }) + ' (' + new Date(date).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }) + ')';
-            };
-
             const commonDynamicData = {
                 projectName: customService.name,
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
-                startDateFormatted: formatSGDate(startDate || undefined),
-                deadlineFormatted: formatSGDate(deadline || undefined),
+                startDateFormatted: formatDateForEmail(startDate || undefined),
+                deadlineFormatted: formatDateForEmail(deadline || undefined),
                 notes: notes || "",
                 currentYear: new Date().getFullYear().toString(),
                 isReminder: true

@@ -1,6 +1,10 @@
 import { TypeEstimate } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import crypto from "crypto";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
@@ -22,7 +26,7 @@ type payloadCreateEstimate = {
 
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
-        const payloadCreateEstimate = req.body as payloadCreateEstimate 
+        const payloadCreateEstimate = req.body as payloadCreateEstimate
 
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
@@ -48,45 +52,7 @@ export class CreateNewEstimateController {
         }
 
         try {
-            await prisma.$transaction(async (smartbuild) => {
-                if (payloadCreateEstimate.cancelEstimates) {
-                    const estimates = await smartbuild.estimate.findMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        },
-                        include: {
-                            serviceProjects: true
-                        }
-                    })
-
-                    for (const estimate of estimates) {
-                        for (const estimateServiceProject of estimate.serviceProjects) {
-                            const serviceProject = await smartbuild.serviceProject.findFirst({
-                                where: {
-                                    estimateServiceId: estimateServiceProject.id
-                                }
-                            })
-
-                            if (serviceProject) {
-                                await smartbuild.serviceProject.delete({
-                                    where: {
-                                        id: serviceProject.id
-                                    }
-                                })
-                            }
-                        }
-                    }
-
-                    await smartbuild.estimate.updateMany({
-                        where: {
-                            projectId: payloadCreateEstimate.projectId
-                        },
-                        data: {
-                            status: "canceled"
-                        }
-                    })
-                }
-
+            const result = await prisma.$transaction(async (smartbuild) => {
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
                         number: payloadCreateEstimate.preGeneratedNumber,
@@ -98,6 +64,7 @@ export class CreateNewEstimateController {
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
                         type_estimate: payloadCreateEstimate.type_estimate,
+                        assignatureRequired: payloadCreateEstimate.type_estimate === "estimateProject" && payloadCreateEstimate.isProjectFlow ? true : false,
                         multi_emails: payloadCreateEstimate.multi_emails,
                         isStandaloneEstimate: payloadCreateEstimate.isStandaloneEstimate || false,
                         date_creation: payloadCreateEstimate.date_creation ? new Date(payloadCreateEstimate.date_creation) : new Date(),
@@ -124,8 +91,6 @@ export class CreateNewEstimateController {
                     })
 
                     if (payloadCreateEstimate.isProjectFlow) {
-                        // Essa condição indentifica que esse estimate foi criado no fluxo de new project
-                        // Nesse caso, precisamos criar os serviços do projeto no estimate e criando o relacionamento dos serviços.
                         const projectServices = await smartbuild.serviceProject.findMany({
                             where: {
                                 projectId: payloadCreateEstimate.projectId
@@ -190,14 +155,65 @@ export class CreateNewEstimateController {
                     }
                 })
 
-                return res.status(201).json({
-                    message: "Estimate created successfully",
-                    data: {
-                        ...createEstimate,
-                        totalAmount: Number(payloadCreateEstimate.totalAmount)
+                return { createEstimate, idPdfProject: payloadCreateEstimate.idPdfProject };
+            });
+
+            const { createEstimate, idPdfProject } = result;
+
+            const pdfProject = await prisma.pdfProject.findUnique({
+                where: { id: idPdfProject },
+                select: { id: true, uri: true, original_file_name: true }
+            });
+            const projectWithCompany = await prisma.project.findUnique({
+                where: { id: payloadCreateEstimate.projectId },
+                select: { company: { select: { name: true } } }
+            });
+            const companyName = projectWithCompany?.company?.name || "Company";
+
+            if (pdfProject?.uri) {
+                try {
+                    const pdfUrl = await getPresignedUrl(pdfProject.uri);
+                    const pdfResponse = await fetch(pdfUrl);
+                    if (pdfResponse.ok) {
+                        const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                        const signedPdfBuffer = await addCompanySignatureToPdfBuffer(
+                            originalPdfBuffer,
+                            companyName,
+                            new Date()
+                        );
+                        const s3 = new S3Client({
+                            region: process.env.AMAZON_S3_REGION,
+                            credentials: {
+                                accessKeyId: process.env.AMAZON_S3_KEY!,
+                                secretAccessKey: process.env.AMAZON_S3_SECRET!
+                            }
+                        });
+                        const fileHash = crypto.randomBytes(4).toString("hex");
+                        const baseName = pdfProject.original_file_name || `estimate_${createEstimate.number}.pdf`;
+                        const newFileName = `${fileHash}-${baseName.replace(/\s/g, "")}`;
+                        await s3.send(new PutObjectCommand({
+                            Bucket: process.env.AMAZON_S3_BUCKET!,
+                            Key: newFileName,
+                            Body: signedPdfBuffer,
+                            ContentType: "application/pdf"
+                        }));
+                        await prisma.pdfProject.update({
+                            where: { id: pdfProject.id },
+                            data: { uri: newFileName }
+                        });
                     }
-                })
-            })
+                } catch (pdfErr) {
+                    console.error("[createNewEstimate] Error adding company signature to PDF:", pdfErr);
+                }
+            }
+
+            return res.status(201).json({
+                message: "Estimate created successfully",
+                data: {
+                    ...createEstimate,
+                    totalAmount: Number(payloadCreateEstimate.totalAmount)
+                }
+            });
         } catch (error) {
             return res.status(500).json({
                 error: "Internal server error while creating new estimate"
