@@ -159,7 +159,7 @@ export class updatePdfEstimateController {
                         if (pdfResponse.ok) {
                             const rawPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
                             let pdfToUpload = companySignature
-                                ? await addCompanySignatureImageToPdfBuffer(rawPdfBuffer, companySignature)
+                                ? await addCompanySignatureImageToPdfBuffer(rawPdfBuffer, companySignature, companyName)
                                 : await addCompanySignatureToPdfBuffer(rawPdfBuffer, companyName, new Date());
 
                             const shouldReapplyClientSignature =

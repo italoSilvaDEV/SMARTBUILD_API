@@ -178,7 +178,7 @@ export class CreateNewEstimateController {
                     if (pdfResponse.ok) {
                         const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
                         const signedPdfBuffer = companySignature
-                            ? await addCompanySignatureImageToPdfBuffer(originalPdfBuffer, companySignature)
+                            ? await addCompanySignatureImageToPdfBuffer(originalPdfBuffer, companySignature, companyName)
                             : await addCompanySignatureToPdfBuffer(originalPdfBuffer, companyName, new Date());
                         const s3 = new S3Client({
                             region: process.env.AMAZON_S3_REGION,

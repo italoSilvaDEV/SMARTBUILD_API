@@ -58,7 +58,8 @@ const COMPANY_SIGNATURE_BOTTOM = 45;
 
 export async function addCompanySignatureImageToPdfBuffer(
   pdfBuffer: Buffer,
-  signatureBase64: string
+  signatureBase64: string,
+  companyName: string
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const pages = pdfDoc.getPages();
@@ -73,6 +74,7 @@ export async function addCompanySignatureImageToPdfBuffer(
   }
 
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const timesItalicFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   const formattedDate = new Date().toLocaleString("en-US", {
     year: "numeric",
     month: "2-digit",
@@ -94,9 +96,18 @@ export async function addCompanySignatureImageToPdfBuffer(
       width: COMPANY_SIGNATURE_WIDTH,
       height: COMPANY_SIGNATURE_HEIGHT,
     });
+    const nameY = y - 15;
+    const signedOnY = nameY - 14;
+    page.drawText(companyName, {
+      x,
+      y: nameY,
+      size: COMPANY_NAME_FONT_SIZE,
+      font: timesItalicFont,
+      color: rgb(0, 0, 0),
+    });
     page.drawText(`Signed on: ${formattedDate}`, {
       x,
-      y: y - 15,
+      y: signedOnY,
       size: DATE_FONT_SIZE,
       font: helveticaFont,
       color: DATE_COLOR,
