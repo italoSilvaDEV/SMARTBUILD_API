@@ -196,6 +196,7 @@ model Audit {
 model Company {
   id                    String         @id @default(uuid())
   avatar                String?
+  signature             String?        @db.Text
   name                  String
   date_creation         DateTime       @default(now())
   date_update           DateTime       @updatedAt
@@ -253,10 +254,10 @@ model Company {
 
   workContexts WorkContext[]
 
-  ProjectFiles   ProjectFiles[]
-  ProjectPastes  ProjectPastes[]
-  Subcontractors         Subcontractor[]
-  SubcontractorServices  SubcontractorService[]
+  ProjectFiles          ProjectFiles[]
+  ProjectPastes         ProjectPastes[]
+  Subcontractors        Subcontractor[]
+  SubcontractorServices SubcontractorService[]
 
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
@@ -989,9 +990,9 @@ model Workedhours {
 }
 
 model SubcontractorService {
-  id           String   @id @default(uuid())
-  name         String
-  description  String?  @db.Text
+  id            String   @id @default(uuid())
+  name          String
+  description   String?  @db.Text
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 

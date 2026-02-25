@@ -320,7 +320,8 @@ export class CompanyController {
             workStartTime,
             workEndTime,
             attendanceMode,
-            projectVisibilityMode
+            projectVisibilityMode,
+            signature
         } = req.body;
         const file = req.file;
 
@@ -379,7 +380,8 @@ export class CompanyController {
                     workStartTime,
                     workEndTime,
                     ...(attendanceMode ? { attendanceMode } : {}),
-                    ...(projectVisibilityMode ? { projectVisibilityMode } : {})
+                    ...(projectVisibilityMode ? { projectVisibilityMode } : {}),
+                    ...(signature !== undefined ? { signature: signature || null } : {})
                 },
             });
 
@@ -401,6 +403,7 @@ export class CompanyController {
                 where: { id },
                 select: {
                     avatar: true,
+                    signature: true,
                     address: true,
                     district: true,
                     numberHouse: true,
@@ -496,7 +499,7 @@ export class CompanyController {
     async findMany(req: Request, res: Response) {
         try {
             const { filter, startDate, endDate } = req.query;
-            
+
             // Construir filtro de data se fornecido
             const dateFilter: any = {};
             if (startDate) {
@@ -505,12 +508,12 @@ export class CompanyController {
             if (endDate) {
                 dateFilter.lte = new Date(endDate as string);
             }
-            
+
             const whereClause: any = {};
             if (Object.keys(dateFilter).length > 0) {
                 whereClause.date_creation = dateFilter;
             }
-            
+
             const response = await prisma.company.findMany({
                 where: whereClause,
                 include: {
@@ -555,13 +558,13 @@ export class CompanyController {
                     const adminUser = company.userCompanies[0]?.user;
                     const oneMonthAgo = new Date();
                     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-                    
+
                     const lastAccess = adminUser?.last_acess;
                     const isActive = lastAccess ? new Date(lastAccess) >= oneMonthAgo : false;
-                    
+
                     const activeSubscription = company.Subscription?.find(sub => sub.isActive);
                     const planType = activeSubscription?.plan?.validityType;
-                    
+
                     // Aplicar filtro se fornecido
                     if (filter) {
                         let shouldInclude = true;
@@ -584,7 +587,7 @@ export class CompanyController {
                         }
                         if (!shouldInclude) return null;
                     }
-                    
+
                     return {
                         ...company,
                         avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
