@@ -98,9 +98,11 @@ export class getAllController {
             })
         }
 
+
         const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
         const startDate = startOfDay;
         const deadlineDate = endOfDay;
+
 
         try {
             const projects = await prisma.project.findMany({

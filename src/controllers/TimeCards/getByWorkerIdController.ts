@@ -103,9 +103,11 @@ export class getByWorkerIdController {
             });
         }
 
+
         const { startOfDay, endOfDay } = parseDateRange(String(start_date), String(deadline));
         const startDate = startOfDay;
         const deadlineDate = endOfDay;
+
 
         try {
             const user = await prisma.user.findUnique({
