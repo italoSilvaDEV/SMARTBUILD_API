@@ -182,6 +182,9 @@ const MANUAL_SIGNATURE_RECT_WIDTH = 320;
 const MANUAL_SIGNATURE_RECT_HEIGHT = 52;
 const MANUAL_SIGNATURE_RECT_BOTTOM = 8;
 
+/** Altura extra para cobrir o texto "Signed on:" abaixo da imagem da assinatura real */
+const REAL_SIGNATURE_RECT_HEIGHT = CLIENT_SIGNATURE_HEIGHT + 30;
+
 export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const pages = pdfDoc.getPages();
@@ -190,14 +193,25 @@ export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer
   for (let i = 1; i < pages.length; i++) {
     const page = pages[i];
     const { width } = page.getSize();
-    const x = width - MANUAL_SIGNATURE_RECT_WIDTH - MARGIN_RIGHT;
-    const y = MANUAL_SIGNATURE_RECT_BOTTOM;
 
+    // 1) Área da assinatura manual (texto nome + "Approved on" + disclaimer)
+    const manualX = width - MANUAL_SIGNATURE_RECT_WIDTH - MARGIN_RIGHT;
     page.drawRectangle({
-      x,
-      y,
+      x: manualX,
+      y: MANUAL_SIGNATURE_RECT_BOTTOM,
       width: MANUAL_SIGNATURE_RECT_WIDTH,
       height: MANUAL_SIGNATURE_RECT_HEIGHT,
+      color: white,
+    });
+
+    // 2) Área da assinatura real (imagem + "Signed on:" — mesma região de addClientSignatureImageToPdfBuffer)
+    const realX = width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
+    const realY = CLIENT_SIGNATURE_BOTTOM - 20;
+    page.drawRectangle({
+      x: realX,
+      y: realY,
+      width: CLIENT_SIGNATURE_WIDTH + CLIENT_SIGNATURE_MARGIN,
+      height: REAL_SIGNATURE_RECT_HEIGHT,
       color: white,
     });
   }
