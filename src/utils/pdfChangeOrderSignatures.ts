@@ -86,10 +86,12 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
+/** Largura da área da assinatura (manual ou imagem) */
 const REMOVE_RECT_WIDTH = 210;
-const REMOVE_RECT_HEIGHT = 95;
-const REMOVE_RECT_X_OFFSET = 0;
-const REMOVE_RECT_Y_OFFSET_BELOW = 55;
+/** Altura só do bloco da assinatura (não incluir linha nem rótulo "Customer Signature" abaixo) */
+const REMOVE_RECT_HEIGHT = 52;
+/** Margem mínima abaixo do primeiro texto para não cortar; não descer até a linha */
+const REMOVE_RECT_Y_MARGIN_BOTTOM = 2;
 
 export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   pdfBuffer: Buffer
@@ -103,8 +105,10 @@ export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   const targetPage = pos ? getPageAt(pages, pos.pageIndex) : page;
   if (!targetPage) return pdfBuffer;
 
-  const rectX = pos ? pos.x + REMOVE_RECT_X_OFFSET : MARGIN_LEFT;
-  const rectY = pos ? pos.y - REMOVE_RECT_Y_OFFSET_BELOW : 38;
+  const rectX = pos ? pos.x : MARGIN_LEFT;
+  const rectY = pos
+    ? pos.y - REMOVE_RECT_Y_MARGIN_BOTTOM
+    : SIGNATURE_CONTENT_Y - REMOVE_RECT_Y_MARGIN_BOTTOM;
 
   const white = rgb(1, 1, 1);
   targetPage.drawRectangle({
