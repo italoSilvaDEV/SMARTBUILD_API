@@ -1,13 +1,21 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
-const SIGNATURE_X = 95;
-const SIGNATURE_Y_BOTTOM = 625;
+const MARGIN_LEFT = 48;
+const SIGNATURE_LINE_Y = 50;
+const SIGNATURE_CONTENT_Y = 55;
+const SIGNATURE_WIDTH = 100;
+const SIGNATURE_HEIGHT = 35;
 
 const DATE_FONT_SIZE = 8;
 const NAME_SIZE = 10;
 const DISCLAIMER_FONT_SIZE = 7;
 const DATE_COLOR = rgb(0.5, 0.5, 0.5);
 const LINE_HEIGHT = 14;
+
+function getLastPage(pages: ReturnType<PDFDocument["getPages"]>) {
+  if (pages.length === 0) return null;
+  return pages[pages.length - 1];
+}
 
 export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   pdfBuffer: Buffer,
@@ -16,7 +24,8 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const pages = pdfDoc.getPages();
-  if (pages.length === 0) return pdfBuffer;
+  const page = getLastPage(pages);
+  if (!page) return pdfBuffer;
 
   const italicFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -34,11 +43,10 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   const approvedText = `Signed on: ${formattedDate}`;
   const disclaimerText = "Authorized Internally for Estimate Purposes.";
 
-  const page = pages[0];
-  let y = SIGNATURE_Y_BOTTOM;
+  let y = SIGNATURE_CONTENT_Y;
 
   page.drawText(approvedText, {
-    x: SIGNATURE_X,
+    x: MARGIN_LEFT,
     y,
     size: DATE_FONT_SIZE,
     font: helveticaFont,
@@ -47,7 +55,7 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   y += LINE_HEIGHT;
 
   page.drawText(clientName, {
-    x: SIGNATURE_X,
+    x: MARGIN_LEFT,
     y,
     size: NAME_SIZE,
     font: italicFont,
@@ -56,7 +64,7 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   y += LINE_HEIGHT;
 
   page.drawText(disclaimerText, {
-    x: SIGNATURE_X,
+    x: MARGIN_LEFT,
     y,
     size: DISCLAIMER_FONT_SIZE,
     font: helveticaFont,
@@ -67,20 +75,20 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
-const REMOVE_RECT_X = 90;
-const REMOVE_RECT_Y = 618;
-const REMOVE_RECT_WIDTH = 130;
-const REMOVE_RECT_HEIGHT = 55;
+const REMOVE_RECT_X = MARGIN_LEFT;
+const REMOVE_RECT_Y = 38;
+const REMOVE_RECT_WIDTH = 210;
+const REMOVE_RECT_HEIGHT = 95;
 
 export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   pdfBuffer: Buffer
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const pages = pdfDoc.getPages();
-  if (pages.length === 0) return pdfBuffer;
+  const page = getLastPage(pages);
+  if (!page) return pdfBuffer;
 
   const white = rgb(1, 1, 1);
-  const page = pages[0];
 
   page.drawRectangle({
     x: REMOVE_RECT_X,
@@ -93,3 +101,10 @@ export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   const modifiedPdfBytes = await pdfDoc.save();
   return Buffer.from(modifiedPdfBytes);
 }
+
+export const CHANGE_ORDER_SIGNATURE_LAST_PAGE = {
+  x: MARGIN_LEFT,
+  y: SIGNATURE_CONTENT_Y,
+  width: SIGNATURE_WIDTH,
+  height: SIGNATURE_HEIGHT,
+} as const;

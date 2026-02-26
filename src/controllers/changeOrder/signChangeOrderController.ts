@@ -3,9 +3,10 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument } from "pdf-lib";
 import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
+import { CHANGE_ORDER_SIGNATURE_LAST_PAGE } from "../../utils/pdfChangeOrderSignatures";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -204,21 +205,15 @@ export class SignChangeOrderController {
                         }
                     }
 
-                    const signatureWidth = 100;
-                    const signatureHeight = 35;
-
-                    const page = pages[0];
-                    const { width, height } = page.getSize();
-
-                    const x = 95;
-                    const y = 625;
-
-                    page.drawImage(signatureImage, {
-                        x,
-                        y,
-                        width: signatureWidth,
-                        height: signatureHeight,
-                    });
+                    const lastPage = pages[pages.length - 1];
+                    if (lastPage) {
+                        lastPage.drawImage(signatureImage, {
+                            x: CHANGE_ORDER_SIGNATURE_LAST_PAGE.x,
+                            y: CHANGE_ORDER_SIGNATURE_LAST_PAGE.y,
+                            width: CHANGE_ORDER_SIGNATURE_LAST_PAGE.width,
+                            height: CHANGE_ORDER_SIGNATURE_LAST_PAGE.height,
+                        });
+                    }
                 } catch (signatureError) {
                     console.error('Error processing signature:', signatureError);
                 }
