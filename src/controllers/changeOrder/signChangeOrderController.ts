@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { PDFDocument } from "pdf-lib";
 import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
-import { CHANGE_ORDER_SIGNATURE_LAST_PAGE } from "../../utils/pdfChangeOrderSignatures";
+import { getSignaturePositionForChangeOrder } from "../../utils/pdfChangeOrderSignatures";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -205,13 +205,15 @@ export class SignChangeOrderController {
                         }
                     }
 
-                    const lastPage = pages[pages.length - 1];
-                    if (lastPage) {
-                        lastPage.drawImage(signatureImage, {
-                            x: CHANGE_ORDER_SIGNATURE_LAST_PAGE.x,
-                            y: CHANGE_ORDER_SIGNATURE_LAST_PAGE.y,
-                            width: CHANGE_ORDER_SIGNATURE_LAST_PAGE.width,
-                            height: CHANGE_ORDER_SIGNATURE_LAST_PAGE.height,
+                    const lastPageIndex = pages.length - 1;
+                    const position = await getSignaturePositionForChangeOrder(originalPdfBuffer, lastPageIndex);
+                    const targetPage = pages[position.pageIndex];
+                    if (targetPage) {
+                        targetPage.drawImage(signatureImage, {
+                            x: position.x,
+                            y: position.y,
+                            width: position.width,
+                            height: position.height,
                         });
                     }
                 } catch (signatureError) {
