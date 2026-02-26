@@ -2,9 +2,16 @@ import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
 import { findEstimateSignaturePositions } from "./pdfEstimateFindSignature";
 
 const MARGIN = 48;
+const MARGIN_HORIZ = 96;
+const GAP_BETWEEN_COLUMNS = 24;
 const COMPANY_NAME_FONT_SIZE = 10;
 const DATE_FONT_SIZE = 8;
 const DATE_COLOR = rgb(0.5, 0.5, 0.5);
+
+function getCustomerBlockLeft(pageWidth: number): number {
+  const contentWidth = pageWidth - MARGIN_HORIZ;
+  return MARGIN + contentWidth / 2 + GAP_BETWEEN_COLUMNS;
+}
 
 function getLastPage(pages: ReturnType<PDFDocument["getPages"]>) {
   if (pages.length === 0) return null;
@@ -176,7 +183,7 @@ export async function addClientSignatureImageToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const { width } = targetPage.getSize();
-  const clientBlockLeft = pos ? pos.x : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
+  const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
   const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
 
   const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
@@ -247,7 +254,7 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const { width } = targetPage.getSize();
-  const clientBlockLeft = pos ? pos.x : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
+  const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
 
   const italicFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -309,11 +316,9 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
-const MANUAL_SIGNATURE_RECT_WIDTH = 320;
-const MANUAL_SIGNATURE_RECT_HEIGHT = 52;
+const MANUAL_SIGNATURE_RECT_HEIGHT = 130;
 const MANUAL_SIGNATURE_RECT_BOTTOM = 8;
 
-/** Altura extra para cobrir o texto "Signed on:" abaixo da imagem da assinatura real */
 const REAL_SIGNATURE_RECT_HEIGHT = CLIENT_SIGNATURE_HEIGHT + 30;
 
 export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer): Promise<Buffer> {
@@ -329,24 +334,25 @@ export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer
   const { width } = targetPage.getSize();
   const white = rgb(1, 1, 1);
 
-  const clientBlockRight = pos ? pos.x + CLIENT_BLOCK_WIDTH : width - MARGIN_RIGHT;
-  const clientBlockLeft = clientBlockRight - CLIENT_BLOCK_WIDTH;
+  const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
 
-  const manualX = clientBlockRight - MANUAL_SIGNATURE_RECT_WIDTH;
+  const signatureY = pos ? pos.y : FALLBACK_SIGNATURE_Y;
+  const manualRectY = signatureY - MANUAL_SIGNATURE_RECT_HEIGHT;
+
   targetPage.drawRectangle({
-    x: Math.max(manualX, clientBlockLeft),
-    y: MANUAL_SIGNATURE_RECT_BOTTOM,
-    width: Math.min(MANUAL_SIGNATURE_RECT_WIDTH, clientBlockRight - clientBlockLeft),
+    x: clientBlockLeft,
+    y: Math.max(MANUAL_SIGNATURE_RECT_BOTTOM, manualRectY),
+    width: CLIENT_BLOCK_WIDTH,
     height: MANUAL_SIGNATURE_RECT_HEIGHT,
     color: white,
   });
 
-  const realX = pos ? pos.x : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
-  const realY = (pos ? pos.y : FALLBACK_SIGNATURE_Y) - 20;
+  const realX = clientBlockLeft;
+  const realY = signatureY - 20;
   targetPage.drawRectangle({
     x: realX,
     y: Math.max(0, realY),
-    width: CLIENT_SIGNATURE_WIDTH + CLIENT_SIGNATURE_MARGIN,
+    width: CLIENT_BLOCK_WIDTH,
     height: REAL_SIGNATURE_RECT_HEIGHT,
     color: white,
   });
