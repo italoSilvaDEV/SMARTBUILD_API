@@ -314,7 +314,10 @@ export class OfficeController {
         new Map(permissions.map((p) => [p.id, p])).values()
       );
 
-      return res.json(uniquePermissions);
+      // Retornar apenas permissões visíveis na gestão de offices (menus); ocultar as de botão
+      const visibleForOffice = uniquePermissions.filter((p) => p.visible_office === true);
+
+      return res.json(visibleForOffice);
     } catch (error) {
       console.error("Error getting permissions by company:", error);
       if (error instanceof Error) {

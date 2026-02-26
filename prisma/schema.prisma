@@ -1477,6 +1477,7 @@ model Permissions {
   id String @id @default(uuid())
 
   description          String
+  visible_office       Boolean                @default(false)
   GroupPermissionsList GroupPermissionsList[]
   UserPermissions      UserPermission[]
   date_creation        DateTime               @default(now())
