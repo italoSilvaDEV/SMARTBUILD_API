@@ -9,21 +9,40 @@ export interface CustomerSignaturePosition {
   y: number;
 }
 
+const isPdfFontWarning = (msg: unknown) =>
+  typeof msg === "string" && msg.includes("fetchStandardFontData");
+
+function suppressPdfFontWarnings<T>(fn: () => Promise<T>): Promise<T> {
+  const origWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (args.some(isPdfFontWarning)) return;
+    origWarn.apply(console, args);
+  };
+  return fn().finally(() => {
+    console.warn = origWarn;
+  });
+}
+
 export async function findCustomerSignaturePosition(
   pdfBuffer: Buffer
 ): Promise<CustomerSignaturePosition | null> {
   try {
-    const lib = pdfjsLib as { disableWorker?: boolean; disableFontFace?: boolean };
-    lib.disableWorker = true;
-    lib.disableFontFace = true;
-    const data = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjsLib.getDocument({ data });
-    const pdf = await loadingTask.promise;
-    const numPages = pdf.numPages;
+    return await suppressPdfFontWarnings(async () => {
+      const lib = pdfjsLib as { disableWorker?: boolean };
+      lib.disableWorker = true;
+      const data = new Uint8Array(pdfBuffer);
+      const loadingTask = pdfjsLib.getDocument({
+        data,
+        disableFontFace: true,
+        useSystemFonts: false,
+        verbosity: 0,
+      });
+      const pdf = await loadingTask.promise;
+      const numPages = pdf.numPages;
 
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
       const items = content.items as Array<{
         str?: string;
         transform?: number[];
@@ -59,7 +78,8 @@ export async function findCustomerSignaturePosition(
       }
     }
 
-    return null;
+      return null;
+    });
   } catch (err) {
     console.error("[findCustomerSignaturePosition]", err);
     return null;
