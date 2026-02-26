@@ -12,6 +12,7 @@ const NAME_SIZE = 10;
 const DISCLAIMER_FONT_SIZE = 7;
 const DATE_COLOR = rgb(0.5, 0.5, 0.5);
 const LINE_HEIGHT = 14;
+const LINE_HEIGHT_SECONDARY = 8;
 
 function getLastPage(pages: ReturnType<PDFDocument["getPages"]>) {
   if (pages.length === 0) return null;
@@ -62,7 +63,7 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
     font: helveticaFont,
     color: DATE_COLOR,
   });
-  y += LINE_HEIGHT;
+  y += LINE_HEIGHT_SECONDARY;
 
   targetPage.drawText(approvedText, {
     x,
