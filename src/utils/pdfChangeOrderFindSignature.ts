@@ -43,40 +43,40 @@ export async function findCustomerSignaturePosition(
       for (let pageNum = 1; pageNum <= numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const content = await page.getTextContent();
-      const items = content.items as Array<{
-        str?: string;
-        transform?: number[];
-        width?: number;
-        height?: number;
-      }>;
+        const items = content.items as Array<{
+          str?: string;
+          transform?: number[];
+          width?: number;
+          height?: number;
+        }>;
 
-      let combined = "";
-      for (let i = 0; i < items.length; i++) {
-        const str = items[i].str ?? "";
-        combined += str;
-        if (combined.toLowerCase().includes(TARGET_LABEL)) {
-          const firstItemWithCustomer = items.slice(0, i + 1).find(
-            (it) => (it.str ?? "").toLowerCase().includes("customer")
-          ) ?? items[i];
-          const tr = firstItemWithCustomer.transform;
-          if (tr) {
-            const x = tr[4];
-            const y = tr[5];
-            const height =
-              typeof firstItemWithCustomer.height === "number"
-                ? firstItemWithCustomer.height
-                : 12;
-            const ySignature = y + height + GAP_ABOVE_LABEL;
-            return {
-              pageIndex: pageNum - 1,
-              x,
-              y: ySignature,
-            };
+        let combined = "";
+        for (let i = 0; i < items.length; i++) {
+          const str = items[i].str ?? "";
+          combined += str;
+          if (combined.toLowerCase().includes(TARGET_LABEL)) {
+            const firstItemWithCustomer = items.slice(0, i + 1).find(
+              (it) => (it.str ?? "").toLowerCase().includes("customer")
+            ) ?? items[i];
+            const tr = firstItemWithCustomer.transform;
+            if (tr) {
+              const x = tr[4];
+              const y = tr[5];
+              const height =
+                typeof firstItemWithCustomer.height === "number"
+                  ? firstItemWithCustomer.height
+                  : 12;
+              const ySignature = y + height + GAP_ABOVE_LABEL;
+              return {
+                pageIndex: pageNum - 1,
+                x,
+                y: ySignature,
+              };
+            }
+            break;
           }
-          break;
         }
       }
-    }
 
       return null;
     });

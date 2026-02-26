@@ -6,7 +6,7 @@ import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/es
 import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
-import { PDFDocument, rgb } from 'pdf-lib';
+import { addClientSignatureImageToPdfBuffer } from '../../utils/pdfEstimateSignatures';
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
@@ -651,70 +651,16 @@ export class EstimateController {
       }
       const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-      const pdfDoc = await PDFDocument.load(originalPdfBuffer);
-      const pages = pdfDoc.getPages();
-
+      let modifiedPdfBuffer: Buffer = originalPdfBuffer;
       if (signature) {
         try {
-          const base64Data = signature.replace(/^data:image\/[a-z]+;base64,/, '');
-          const signatureBuffer = Buffer.from(base64Data, 'base64');
-
-          let signatureImage;
-          try {
-            signatureImage = await pdfDoc.embedPng(signatureBuffer);
-          } catch (pngError) {
-            try {
-              signatureImage = await pdfDoc.embedJpg(signatureBuffer);
-            } catch (jpgError) {
-              console.error('Failed to embed signature as PNG or JPG:', pngError, jpgError);
-              throw new Error('Invalid signature image format');
-            }
-          }
-
-          const signatureWidth = 100;
-          const signatureHeight = 50;
-
-          for (let i = 1; i < pages.length; i++) {
-            const page = pages[i];
-            const { width, height } = page.getSize();
-
-            const margin = 50;
-            const bottomMargin = 45;
-            const x = width - signatureWidth - margin;
-            const y = bottomMargin;
-
-            page.drawImage(signatureImage, {
-              x,
-              y,
-              width: signatureWidth,
-              height: signatureHeight,
-            });
-
-            const currentDate = new Date();
-            const formattedDate = currentDate.toLocaleString('en-US', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              timeZone: 'America/New_York'
-            });
-
-            page.drawText(`Signed on: ${formattedDate}`, {
-              x,
-              y: y - 15,
-              size: 8,
-              color: rgb(0.5, 0.5, 0.5)
-            });
-          }
+          modifiedPdfBuffer = Buffer.from(
+            await addClientSignatureImageToPdfBuffer(originalPdfBuffer, signature)
+          );
         } catch (signatureError) {
           console.error('Error processing signature:', signatureError);
         }
       }
-
-      const modifiedPdfBytes = await pdfDoc.save();
-      const modifiedPdfBuffer = Buffer.from(modifiedPdfBytes);
 
       const s3 = new S3Client({
         region: process.env.AMAZON_S3_REGION,
