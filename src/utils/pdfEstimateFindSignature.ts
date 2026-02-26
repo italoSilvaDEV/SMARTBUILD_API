@@ -1,8 +1,11 @@
 const pdfjsLib = require("pdfjs-dist/build/pdf.js");
 
 const COMPANY_LABEL = "company signature";
-const CLIENT_LABEL = "client signature";
-const GAP_ABOVE_LABEL = 10;
+const CLIENT_LABELS: { label: string; firstWord: string }[] = [
+  { label: "customer signature", firstWord: "customer" },
+  { label: "client signature", firstWord: "client" },
+];
+const GAP_ABOVE_LABEL = 40;
 
 export interface SignaturePosition {
   pageIndex: number;
@@ -93,8 +96,13 @@ export async function findEstimateSignaturePositions(
           if (pos) company = { ...pos, pageIndex: pageNum - 1 };
         }
         if (!client) {
-          const pos = findLabelInItems(items, CLIENT_LABEL, "client");
-          if (pos) client = { ...pos, pageIndex: pageNum - 1 };
+          for (const { label, firstWord } of CLIENT_LABELS) {
+            const pos = findLabelInItems(items, label, firstWord);
+            if (pos) {
+              client = { ...pos, pageIndex: pageNum - 1 };
+              break;
+            }
+          }
         }
         if (company && client) break;
       }
