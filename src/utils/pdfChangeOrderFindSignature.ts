@@ -1,9 +1,3 @@
-/**
- * Localiza a posição do texto "Customer signature" no PDF (para alinhar a assinatura à linha).
- * Usa pdfjs-dist para extrair texto com coordenadas. Fallback: null (usa posição fixa no rodapé da última página).
- */
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfjsLib = require("pdfjs-dist/build/pdf.js");
 
 const TARGET_LABEL = "customer signature";
@@ -15,17 +9,13 @@ export interface CustomerSignaturePosition {
   y: number;
 }
 
-/**
- * Busca a primeira ocorrência de "Customer signature" (case-insensitive) no PDF e retorna
- * a página (0-based) e as coordenadas (x, y) para posicionar a assinatura logo acima do texto.
- * Sistema de coordenadas PDF: origem no canto inferior esquerdo da página.
- * Retorna null se o texto não for encontrado (PDF antigo ou template diferente).
- */
 export async function findCustomerSignaturePosition(
   pdfBuffer: Buffer
 ): Promise<CustomerSignaturePosition | null> {
   try {
-    (pdfjsLib as { disableWorker?: boolean }).disableWorker = true;
+    const lib = pdfjsLib as { disableWorker?: boolean; disableFontFace?: boolean };
+    lib.disableWorker = true;
+    lib.disableFontFace = true;
     const data = new Uint8Array(pdfBuffer);
     const loadingTask = pdfjsLib.getDocument({ data });
     const pdf = await loadingTask.promise;
