@@ -316,7 +316,8 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
-const MANUAL_SIGNATURE_RECT_HEIGHT = 130;
+/** Altura do retângulo de assinatura manual quando não temos lineY (fallback). */
+const MANUAL_SIGNATURE_RECT_HEIGHT_FALLBACK = 80;
 const MANUAL_SIGNATURE_RECT_BOTTOM = 8;
 
 const REAL_SIGNATURE_RECT_HEIGHT = CLIENT_SIGNATURE_HEIGHT + 30;
@@ -337,13 +338,19 @@ export async function removeManualClientSignatureFromPdfBuffer(pdfBuffer: Buffer
   const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
 
   const signatureY = pos ? pos.y : FALLBACK_SIGNATURE_Y;
-  const manualRectY = signatureY - MANUAL_SIGNATURE_RECT_HEIGHT;
+
+  const manualRectBottom =
+    pos?.lineY != null
+      ? pos.lineY + 2
+      : signatureY - MANUAL_SIGNATURE_RECT_HEIGHT_FALLBACK;
+  const manualRectHeight =
+    pos?.lineY != null ? signatureY - pos.lineY - 2 : MANUAL_SIGNATURE_RECT_HEIGHT_FALLBACK;
 
   targetPage.drawRectangle({
     x: clientBlockLeft,
-    y: Math.max(MANUAL_SIGNATURE_RECT_BOTTOM, manualRectY),
+    y: Math.max(MANUAL_SIGNATURE_RECT_BOTTOM, manualRectBottom),
     width: CLIENT_BLOCK_WIDTH,
-    height: MANUAL_SIGNATURE_RECT_HEIGHT,
+    height: Math.max(20, manualRectHeight),
     color: white,
   });
 

@@ -7,10 +7,13 @@ const CLIENT_LABELS: { label: string; firstWord: string }[] = [
 ];
 const GAP_ABOVE_LABEL = 40;
 
+const LINE_ABOVE_LABEL = 6;
+
 export interface SignaturePosition {
   pageIndex: number;
   x: number;
   y: number;
+  lineY?: number;
 }
 
 export interface EstimateSignaturePositions {
@@ -50,10 +53,12 @@ function findLabelInItems(
         const x = tr[4];
         const y = tr[5];
         const height = typeof firstItem.height === "number" ? firstItem.height : 12;
+        const labelTop = y + height;
         return {
           pageIndex: 0,
           x,
-          y: y + height + GAP_ABOVE_LABEL,
+          y: labelTop + GAP_ABOVE_LABEL,
+          lineY: labelTop + LINE_ABOVE_LABEL,
         };
       }
       return null;
