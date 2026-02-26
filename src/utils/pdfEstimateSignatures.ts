@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
 import { findEstimateSignaturePositions } from "./pdfEstimateFindSignature";
 
 const MARGIN = 48;
@@ -17,6 +17,29 @@ function getPageAt(pages: ReturnType<PDFDocument["getPages"]>, pageIndex: number
 }
 
 const FALLBACK_SIGNATURE_Y = 45;
+
+function wrapTextToLines(
+  font: PDFFont,
+  text: string,
+  fontSize: number,
+  maxWidth: number
+): string[] {
+  const words = text.trim().split(/\s+/);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let line = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const next = line + " " + words[i];
+    if (font.widthOfTextAtSize(next, fontSize) <= maxWidth) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = words[i];
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 export async function addCompanySignatureToPdfBuffer(
   pdfBuffer: Buffer,
@@ -137,6 +160,7 @@ export async function addCompanySignatureImageToPdfBuffer(
 const CLIENT_SIGNATURE_MARGIN = 50;
 const CLIENT_SIGNATURE_WIDTH = 100;
 const CLIENT_SIGNATURE_HEIGHT = 50;
+const CLIENT_BLOCK_WIDTH = 240;
 
 export async function addClientSignatureImageToPdfBuffer(
   pdfBuffer: Buffer,
@@ -152,7 +176,7 @@ export async function addClientSignatureImageToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const { width } = targetPage.getSize();
-  const x = pos ? pos.x : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
+  const clientBlockLeft = pos ? pos.x : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
   const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
 
   const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
@@ -164,6 +188,18 @@ export async function addClientSignatureImageToPdfBuffer(
     signatureImage = await pdfDoc.embedJpg(signatureBuffer);
   }
 
+  const maxSigWidth = Math.min(CLIENT_SIGNATURE_WIDTH, CLIENT_BLOCK_WIDTH);
+  const scale = maxSigWidth / CLIENT_SIGNATURE_WIDTH;
+  const drawWidth = CLIENT_SIGNATURE_WIDTH * scale;
+  const drawHeight = CLIENT_SIGNATURE_HEIGHT * scale;
+
+  targetPage.drawImage(signatureImage, {
+    x: clientBlockLeft,
+    y,
+    width: drawWidth,
+    height: drawHeight,
+  });
+
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const formattedDate = new Date().toLocaleString("en-US", {
     year: "numeric",
@@ -174,20 +210,19 @@ export async function addClientSignatureImageToPdfBuffer(
     second: "2-digit",
     timeZone: "America/New_York",
   });
-
-  targetPage.drawImage(signatureImage, {
-    x,
-    y,
-    width: CLIENT_SIGNATURE_WIDTH,
-    height: CLIENT_SIGNATURE_HEIGHT,
-  });
-  targetPage.drawText(`Signed on: ${formattedDate}`, {
-    x,
-    y: y - 15,
-    size: DATE_FONT_SIZE,
-    font: helveticaFont,
-    color: DATE_COLOR,
-  });
+  const signedOnText = `Signed on: ${formattedDate}`;
+  const signedOnLines = wrapTextToLines(helveticaFont, signedOnText, DATE_FONT_SIZE, CLIENT_BLOCK_WIDTH);
+  let lineY = y - 15;
+  for (const line of signedOnLines) {
+    targetPage.drawText(line, {
+      x: clientBlockLeft,
+      y: lineY,
+      size: DATE_FONT_SIZE,
+      font: helveticaFont,
+      color: DATE_COLOR,
+    });
+    lineY -= 12;
+  }
 
   const modifiedPdfBytes = await pdfDoc.save();
   return Buffer.from(modifiedPdfBytes);
@@ -195,7 +230,7 @@ export async function addClientSignatureImageToPdfBuffer(
 
 const MARGIN_RIGHT = 50;
 const DISCLAIMER_FONT_SIZE = 7;
-const CLIENT_BLOCK_WIDTH = 240;
+const LINE_HEIGHT = 12;
 
 export async function addManualApprovalClientSignatureToPdfBuffer(
   pdfBuffer: Buffer,
@@ -212,7 +247,7 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const { width } = targetPage.getSize();
-  const baseX = pos ? pos.x : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
+  const clientBlockLeft = pos ? pos.x : width - MARGIN_RIGHT - CLIENT_BLOCK_WIDTH;
 
   const italicFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -233,38 +268,42 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   const nameSize = 10;
   const dateSize = DATE_FONT_SIZE;
 
-  const nameWidth = italicFont.widthOfTextAtSize(clientName, nameSize);
-  const dateWidth = helveticaFont.widthOfTextAtSize(approvedText, dateSize);
-  const disclaimerWidth = helveticaFont.widthOfTextAtSize(disclaimerText, DISCLAIMER_FONT_SIZE);
-  const blockRight = baseX + CLIENT_BLOCK_WIDTH;
+  const nameLines = wrapTextToLines(italicFont, clientName, nameSize, CLIENT_BLOCK_WIDTH);
+  const approvedLines = wrapTextToLines(helveticaFont, approvedText, dateSize, CLIENT_BLOCK_WIDTH);
+  const disclaimerLines = wrapTextToLines(helveticaFont, disclaimerText, DISCLAIMER_FONT_SIZE, CLIENT_BLOCK_WIDTH);
 
   let y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
 
-  targetPage.drawText(clientName, {
-    x: blockRight - nameWidth,
-    y,
-    size: nameSize,
-    font: italicFont,
-    color: rgb(0, 0, 0),
-  });
-  y -= 14;
-
-  targetPage.drawText(approvedText, {
-    x: blockRight - dateWidth,
-    y,
-    size: dateSize,
-    font: helveticaFont,
-    color: DATE_COLOR,
-  });
-  y -= 12;
-
-  targetPage.drawText(disclaimerText, {
-    x: blockRight - disclaimerWidth,
-    y,
-    size: DISCLAIMER_FONT_SIZE,
-    font: helveticaFont,
-    color: DATE_COLOR,
-  });
+  for (const line of nameLines) {
+    targetPage.drawText(line, {
+      x: clientBlockLeft,
+      y,
+      size: nameSize,
+      font: italicFont,
+      color: rgb(0, 0, 0),
+    });
+    y -= 14;
+  }
+  for (const line of approvedLines) {
+    targetPage.drawText(line, {
+      x: clientBlockLeft,
+      y,
+      size: dateSize,
+      font: helveticaFont,
+      color: DATE_COLOR,
+    });
+    y -= LINE_HEIGHT;
+  }
+  for (const line of disclaimerLines) {
+    targetPage.drawText(line, {
+      x: clientBlockLeft,
+      y,
+      size: DISCLAIMER_FONT_SIZE,
+      font: helveticaFont,
+      color: DATE_COLOR,
+    });
+    y -= LINE_HEIGHT;
+  }
 
   const modifiedPdfBytes = await pdfDoc.save();
   return Buffer.from(modifiedPdfBytes);
