@@ -1,7 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { findCustomerSignaturePosition } from "./pdfChangeOrderFindSignature";
 
-/** Fallback: rodapé da última página (quando "Customer signature" não é encontrado no PDF). */
 const MARGIN_LEFT = 48;
 const SIGNATURE_LINE_Y = 50;
 const SIGNATURE_CONTENT_Y = 55;
@@ -35,7 +34,7 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   if (!page) return pdfBuffer;
 
   const pos = await findCustomerSignaturePosition(pdfBuffer);
-  const x = pos ? pos.x : MARGIN_LEFT;
+  const x = MARGIN_LEFT;
   let y = pos ? pos.y : SIGNATURE_CONTENT_Y;
   const targetPage = pos ? getPageAt(pages, pos.pageIndex) : page;
   if (!targetPage) return pdfBuffer;
@@ -56,6 +55,15 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
   const approvedText = `Signed on: ${formattedDate}`;
   const disclaimerText = "Authorized Internally for Estimate Purposes.";
 
+  targetPage.drawText(disclaimerText, {
+    x,
+    y,
+    size: DISCLAIMER_FONT_SIZE,
+    font: helveticaFont,
+    color: DATE_COLOR,
+  });
+  y += LINE_HEIGHT;
+
   targetPage.drawText(approvedText, {
     x,
     y,
@@ -72,25 +80,13 @@ export async function addManualApprovalClientSignatureToChangeOrderPdfBuffer(
     font: italicFont,
     color: rgb(0, 0, 0),
   });
-  y += LINE_HEIGHT;
-
-  targetPage.drawText(disclaimerText, {
-    x,
-    y,
-    size: DISCLAIMER_FONT_SIZE,
-    font: helveticaFont,
-    color: DATE_COLOR,
-  });
 
   const modifiedPdfBytes = await pdfDoc.save();
   return Buffer.from(modifiedPdfBytes);
 }
 
-/** Largura da área da assinatura (manual ou imagem) */
 const REMOVE_RECT_WIDTH = 210;
-/** Altura só do bloco da assinatura (não incluir linha nem rótulo "Customer Signature" abaixo) */
 const REMOVE_RECT_HEIGHT = 52;
-/** Margem mínima abaixo do primeiro texto para não cortar; não descer até a linha */
 const REMOVE_RECT_Y_MARGIN_BOTTOM = 2;
 
 export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
@@ -105,7 +101,7 @@ export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   const targetPage = pos ? getPageAt(pages, pos.pageIndex) : page;
   if (!targetPage) return pdfBuffer;
 
-  const rectX = pos ? pos.x : MARGIN_LEFT;
+  const rectX = MARGIN_LEFT;
   const rectY = pos
     ? pos.y - REMOVE_RECT_Y_MARGIN_BOTTOM
     : SIGNATURE_CONTENT_Y - REMOVE_RECT_Y_MARGIN_BOTTOM;
@@ -123,7 +119,6 @@ export async function removeManualClientSignatureFromChangeOrderPdfBuffer(
   return Buffer.from(modifiedPdfBytes);
 }
 
-/** Fallback quando "Customer signature" não é encontrado (última página, posição fixa). */
 export const CHANGE_ORDER_SIGNATURE_LAST_PAGE = {
   x: MARGIN_LEFT,
   y: SIGNATURE_CONTENT_Y,
@@ -131,10 +126,6 @@ export const CHANGE_ORDER_SIGNATURE_LAST_PAGE = {
   height: SIGNATURE_HEIGHT,
 } as const;
 
-/**
- * Retorna a página (0-based) e (x, y) onde aplicar a assinatura: busca "Customer signature" no PDF
- * ou usa fallback (última página, coordenadas fixas).
- */
 export async function getSignaturePositionForChangeOrder(
   pdfBuffer: Buffer,
   lastPageIndex: number
@@ -143,7 +134,7 @@ export async function getSignaturePositionForChangeOrder(
   if (pos) {
     return {
       pageIndex: pos.pageIndex,
-      x: pos.x,
+      x: MARGIN_LEFT,
       y: pos.y,
       width: SIGNATURE_WIDTH,
       height: SIGNATURE_HEIGHT,
