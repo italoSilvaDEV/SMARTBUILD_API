@@ -2030,6 +2030,8 @@ model ChangeOrder {
   total_amount  Decimal
   number        Int
 
+  assignatureRequired Boolean? @default(false)
+
   supervisorId String
   supervisor   User?  @relation(fields: [supervisorId], references: [id])
 
