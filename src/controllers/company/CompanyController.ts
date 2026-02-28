@@ -495,7 +495,7 @@ export class CompanyController {
 
     async findMany(req: Request, res: Response) {
         try {
-            const { filter, startDate, endDate } = req.query;
+            const { filter, startDate, endDate, archived } = req.query;
             
             // Construir filtro de data se fornecido
             const dateFilter: any = {};
@@ -509,6 +509,12 @@ export class CompanyController {
             const whereClause: any = {};
             if (Object.keys(dateFilter).length > 0) {
                 whereClause.date_creation = dateFilter;
+            }
+            // Filtro arquivados (master): archived=true => só arquivados (isActive false), senão só ativos (isActive true)
+            if (archived === 'true') {
+                whereClause.isActive = false;
+            } else {
+                whereClause.isActive = true;
             }
             
             const response = await prisma.company.findMany({
@@ -609,6 +615,24 @@ export class CompanyController {
             const filteredCompanies = companyWithPresignedAvatar.filter(company => company !== null);
 
             return res.status(200).json(filteredCompanies);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+    async updateArchiveStatus(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const { isActive } = req.body as { isActive?: boolean };
+            if (typeof isActive !== 'boolean') {
+                return res.status(400).json({ error: "isActive (boolean) is required" });
+            }
+            const company = await prisma.company.update({
+                where: { id },
+                data: { isActive },
+            });
+            return res.status(200).json(company);
         } catch (error: any) {
             console.error(error);
             return res.status(500).json({ error: error.message || "Internal error" });
