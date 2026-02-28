@@ -40,6 +40,8 @@ companyRoutes.get("/company",
     checkToken,
     Company.findMany)
 
+companyRoutes.patch("/company/:id/archive", checkToken, Company.updateArchiveStatus);
+
 companyRoutes.post('/company/:companyId/notes', checkToken, Company.createNote);
 companyRoutes.put('/company/:companyId/notes/:noteId', checkToken, Company.updateNote);
 companyRoutes.delete('/company/:companyId/notes/:noteId', checkToken, Company.deleteNote);

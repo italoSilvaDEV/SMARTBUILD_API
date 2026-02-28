@@ -187,7 +187,8 @@ export class GetClientEditData {
                 company: {
                     id: company.id,
                     allowedEmployees: company.allowedEmployees || 0,
-                    extraEmployees: company.extraEmployees || 0
+                    extraEmployees: company.extraEmployees || 0,
+                    isActive: company.isActive ?? true
                 },
                 subscription: subscriptionData
             });
