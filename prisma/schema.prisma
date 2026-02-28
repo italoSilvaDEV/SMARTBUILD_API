@@ -1478,6 +1478,7 @@ model Permissions {
   id String @id @default(uuid())
 
   description          String
+  visible_office       Boolean                @default(false)
   GroupPermissionsList GroupPermissionsList[]
   UserPermissions      UserPermission[]
   date_creation        DateTime               @default(now())
@@ -1569,6 +1570,7 @@ model Plan {
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
   isCampaign       Boolean @default(false) // Indica se o plano pode ser usado em campanhas
+  isActive         Boolean @default(true) // Indica se o plano está ativo (visível/disponível)
 }
 
 model Campaign {
