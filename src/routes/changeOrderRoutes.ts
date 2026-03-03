@@ -13,6 +13,8 @@ import { GetChangeOrderServicesController } from "../controllers/changeOrder/cha
 import { UpdateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/updateChangeOrderServiceController";
 import { UpdatePdfChangeOrderController } from "../controllers/changeOrder/updatePdfChangeOrderController";
 import { SendEmailChangeOrderController } from "../controllers/changeOrder/sendEmailChangeOrderController";
+import { ManualApprovalChangeOrderController } from "../controllers/changeOrder/manualApprovalChangeOrderController";
+import { RemoveManualSignatureChangeOrderController } from "../controllers/changeOrder/removeManualSignatureChangeOrderController";
 
 const changeOrderRoutes = Router();
 
@@ -25,6 +27,8 @@ const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
 const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
 const sendEmailChangeOrderController = new SendEmailChangeOrderController();
+const manualApprovalChangeOrderController = new ManualApprovalChangeOrderController();
+const removeManualSignatureChangeOrderController = new RemoveManualSignatureChangeOrderController();
 
 const createChangeOrderServiceController = new CreateChangeOrderServiceController();
 const deleteChangeOrderServiceController = new DeleteChangeOrderServiceController();
@@ -40,6 +44,18 @@ changeOrderRoutes.post(
 changeOrderRoutes.post(
     "/sign",
     signChangeOrderController.handle
+);
+
+changeOrderRoutes.patch(
+    "/:changeOrderId/manual-approval",
+    checkToken,
+    manualApprovalChangeOrderController.handle
+);
+
+changeOrderRoutes.patch(
+    "/:changeOrderId/remove-manual-signature",
+    checkToken,
+    removeManualSignatureChangeOrderController.handle
 );
 
 changeOrderRoutes.get(

@@ -196,6 +196,7 @@ model Audit {
 model Company {
   id                    String         @id @default(uuid())
   avatar                String?
+  signature             String?        @db.Text
   name                  String
   date_creation         DateTime       @default(now())
   date_update           DateTime       @updatedAt
@@ -254,10 +255,10 @@ model Company {
 
   workContexts WorkContext[]
 
-  ProjectFiles   ProjectFiles[]
-  ProjectPastes  ProjectPastes[]
-  Subcontractors         Subcontractor[]
-  SubcontractorServices  SubcontractorService[]
+  ProjectFiles          ProjectFiles[]
+  ProjectPastes         ProjectPastes[]
+  Subcontractors        Subcontractor[]
+  SubcontractorServices SubcontractorService[]
 
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
@@ -329,6 +330,12 @@ model Category {
   sub_category    SubCategory[]
   company         Company?      @relation(fields: [company_id], references: [id])
   company_id      String?
+
+  subServicesProjects          SubServicesProject[]
+  customServiceSchedules       CustomServiceSchedule[]
+  userServiceProjects          UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   @@map("service")
 }
@@ -436,6 +443,9 @@ model SubServicesProject {
   subContractorServiceProjects SubContractorServiceProject[]
   workedHours                  Workedhours[]
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@map("sub_services_project")
 }
 
@@ -459,6 +469,9 @@ model CustomServiceSchedule {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String?
+
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
 
   @@map("custom_service_schedule")
 }
@@ -986,13 +999,16 @@ model Workedhours {
   subcontractor_service    SubcontractorService? @relation(fields: [subcontractor_service_id], references: [id])
   subcontractor_service_id String?
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@map("worked_hours")
 }
 
 model SubcontractorService {
-  id           String   @id @default(uuid())
-  name         String
-  description  String?  @db.Text
+  id            String   @id @default(uuid())
+  name          String
+  description   String?  @db.Text
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
@@ -1025,6 +1041,9 @@ model UserServiceProject {
   user_attendances UserAttendance[]
   TimeLine         TimeLine[]
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
   @@unique([user_id, sub_service_project_id], map: "user_service_project_unique_sub_service_unique")
   @@unique([user_id, custom_service_schedule_id], map: "user_service_project_unique_custom_schedule")
@@ -1054,6 +1073,9 @@ model SubContractorServiceProject {
   date_update   DateTime @updatedAt
 
   workedHours Workedhours[]
+
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
 
   @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
   @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
@@ -1478,6 +1500,7 @@ model Permissions {
   id String @id @default(uuid())
 
   description          String
+  visible_office       Boolean                @default(false)
   GroupPermissionsList GroupPermissionsList[]
   UserPermissions      UserPermission[]
   date_creation        DateTime               @default(now())
@@ -1569,6 +1592,7 @@ model Plan {
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
   isCampaign       Boolean @default(false) // Indica se o plano pode ser usado em campanhas
+  isActive         Boolean @default(true) // Indica se o plano está ativo (visível/disponível)
 }
 
 model Campaign {
@@ -2029,6 +2053,8 @@ model ChangeOrder {
   status        ChangeOrderStatus @default(pending)
   total_amount  Decimal
   number        Int
+
+  assignatureRequired Boolean? @default(false)
 
   supervisorId String
   supervisor   User?  @relation(fields: [supervisorId], references: [id])

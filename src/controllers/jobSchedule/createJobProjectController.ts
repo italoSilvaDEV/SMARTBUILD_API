@@ -21,6 +21,7 @@ interface CreateJobProject {
     deadline: string
     skipEmail?: boolean
     description?: string
+    categoryId?: string
 }
 
 export class CreateJobProjectController {
@@ -133,7 +134,8 @@ export class CreateJobProjectController {
                             data: {
                                 user_id: user.id,
                                 service_project_id: serviceProject.id,
-                                assigned_at: new Date().toISOString()
+                                assigned_at: new Date().toISOString(),
+                                category_id: body.categoryId || null,
                             }
                         })
                     }
@@ -168,7 +170,8 @@ export class CreateJobProjectController {
                         await prisma.subContractorServiceProject.create({
                             data: {
                                 subcontractor_id: subcontractor.id,
-                                service_project_id: serviceProject.id
+                                service_project_id: serviceProject.id,
+                                category_id: body.categoryId || null,
                             }
                         })
                     }

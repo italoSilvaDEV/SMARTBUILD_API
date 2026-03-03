@@ -12,7 +12,7 @@ export class PlanController {
   // integrado com stripe
   async create(req: Request, res: Response) {
     try {
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isActive } = req.body;
       
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
@@ -78,7 +78,8 @@ export class PlanController {
           stripeProductId,
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
-          isCampaign: isCampaign || false
+          isCampaign: isCampaign || false,
+          isActive: isActive !== undefined ? isActive : true
         },
         include: {
           permissionGroup: true
@@ -109,6 +110,7 @@ export class PlanController {
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
         isCampaign: plan.isCampaign,
+        isActive: plan.isActive,
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt
       };
@@ -125,14 +127,18 @@ export class PlanController {
       const { grouped } = req.query;
       
       const whereClause = grouped === 'true' 
-        ? { isCampaign: false } 
+        ? { isCampaign: false, isActive: true } 
         : {}
       
       const plans = await prisma.plan.findMany({
         where: whereClause,
         include: {
           permissionGroup: true
-        }
+        },
+        orderBy: [
+          { isActive: 'desc' },
+          { name: 'asc' }
+        ]
       });
       
       // Formatar os resultados como o repository fazia
@@ -151,7 +157,8 @@ export class PlanController {
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
-        isCampaign: plan.isCampaign
+        isCampaign: plan.isCampaign,
+        isActive: plan.isActive
       }));
 
       // Se solicitado agrupamento, organizar por grupos de permissão e periodicidade
@@ -217,7 +224,8 @@ export class PlanController {
         permissionGroup: plan.permissionGroup,
         createdAt: plan.createdAt,
         stripeProductId: plan.stripeProductId,
-        updatedAt: plan.updatedAt
+        updatedAt: plan.updatedAt,
+        isActive: plan.isActive
       };
       
       res.status(200).json(formattedPlan);
@@ -230,7 +238,7 @@ export class PlanController {
   async updatePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign,  isActive } = req.body;
       
       // Buscar o plano atual para verificar se há alterações e se existem IDs do Stripe
       const currentPlan = await prisma.plan.findUnique({
@@ -336,7 +344,8 @@ export class PlanController {
           stripeProductId,
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
-          isCampaign: isCampaign !== undefined ? isCampaign : undefined
+          isCampaign: isCampaign !== undefined ? isCampaign : undefined,
+          isActive: isActive !== undefined ? isActive : undefined
         },
         include: { permissionGroup: true }
       });
@@ -422,6 +431,52 @@ export class PlanController {
     }
   }
 
+  async patchPlanStatus(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ message: 'isActive must be a boolean' });
+      }
+
+      const plan = await prisma.plan.findUnique({ where: { id } });
+      if (!plan) {
+        return res.status(404).json({ message: 'Plan not found' });
+      }
+
+      const updatedPlan = await prisma.plan.update({
+        where: { id },
+        data: { isActive },
+        include: { permissionGroup: true }
+      });
+
+      const formattedPlan = {
+        id: updatedPlan.id,
+        name: updatedPlan.name,
+        description: updatedPlan.description,
+        price: updatedPlan.price?.toNumber() || null,
+        features: updatedPlan.features,
+        validityType: updatedPlan.validityType as ValidityType,
+        validityDuration: updatedPlan.validityDuration,
+        permissionGroupId: updatedPlan.permissionGroupId,
+        permissionGroup: updatedPlan.permissionGroup,
+        stripeProductId: updatedPlan.stripeProductId,
+        stripePriceId: updatedPlan.stripePriceId,
+        allowedEmployees: updatedPlan.allowedEmployees,
+        isCampaign: updatedPlan.isCampaign,
+        isActive: updatedPlan.isActive,
+        createdAt: updatedPlan.createdAt,
+        updatedAt: updatedPlan.updatedAt
+      };
+
+      res.status(200).json(formattedPlan);
+    } catch (error) {
+      console.error('Error updating plan status:', error);
+      res.status(500).json({ message: 'Error updating plan status', error: (error as Error).message });
+    }
+  }
+
   // Transformando em método estático para poder ser chamado sem o contexto de 'this'
   private static async checkPlanAssociations(id: string): Promise<boolean> {
     const subscriptionsCount = await prisma.subscription.count({
@@ -432,6 +487,6 @@ export class PlanController {
       where: { planId: id }
     });
 
-    return subscriptionsCount > 0 || companiesCount > 0;
+    return subscriptionsCount > 0 || companiesCount > 0; 
   }
 } 

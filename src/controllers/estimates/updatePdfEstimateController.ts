@@ -5,7 +5,12 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import multer from "multer";
 import S3Storage from "../../utils/S3/s3Storage";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { addCompanySignatureToPdfBuffer, addClientSignatureImageToPdfBuffer, addManualApprovalClientSignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import {
+  addCompanySignatureToPdfBuffer,
+  addCompanySignatureImageToPdfBuffer,
+  addClientSignatureImageToPdfBuffer,
+  addManualApprovalClientSignatureToPdfBuffer,
+} from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 
@@ -135,14 +140,16 @@ export class updatePdfEstimateController {
                                 number: true,
                                 project: {
                                     select: {
-                                        company: { select: { name: true } },
+                                        company: { select: { name: true, signature: true } },
                                         workContext: { select: { Name: true } },
                                         client: { select: { name: true } }
                                     }
                                 }
                             }
                         });
-                        const companyName = estimateWithCompany?.project?.company?.name || "Company";
+                        const company = estimateWithCompany?.project?.company;
+                        const companyName = company?.name || "Company";
+                        const companySignature = company?.signature;
                         const clientName = estimateWithCompany?.project?.workContext?.Name
                             || estimateWithCompany?.project?.client?.name
                             || "Client";
@@ -150,11 +157,10 @@ export class updatePdfEstimateController {
                         const pdfUrl = await getPresignedUrl(updatedPdf.uri);
                         const pdfResponse = await fetch(pdfUrl);
                         if (pdfResponse.ok) {
-                            let pdfToUpload = await addCompanySignatureToPdfBuffer(
-                                Buffer.from(await pdfResponse.arrayBuffer()),
-                                companyName,
-                                new Date()
-                            );
+                            const rawPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+                            let pdfToUpload = companySignature
+                                ? await addCompanySignatureImageToPdfBuffer(rawPdfBuffer, companySignature, companyName)
+                                : await addCompanySignatureToPdfBuffer(rawPdfBuffer, companyName, new Date());
 
                             const shouldReapplyClientSignature =
                                 !isClearSignature &&
