@@ -11,13 +11,15 @@ export class DashboardController {
             const oneMonthAgo = new Date(now);
             oneMonthAgo.setMonth(now.getMonth() - 1);
 
-            const [companies, activeProjects, activePlans, permissionsGroups, adminAccessRecords, activeSubscriptions] = await Promise.all([
+            const [companies, archivedClientsCount, activeProjects, activePlans, permissionsGroups, adminAccessRecords, activeSubscriptions] = await Promise.all([
                 prisma.company.findMany({
+                    where: { isActive: true },
                     select: {
                         id: true,
                         date_creation: true
                     }
                 }),
+                prisma.company.count({ where: { isActive: false } }),
                 prisma.project.findMany({
                     where: {
                         status_project: {
@@ -39,6 +41,9 @@ export class DashboardController {
                     where: {
                         office: {
                             name: "Owner"
+                        },
+                        company: {
+                            isActive: true
                         }
                     },
                     select: {
@@ -52,7 +57,8 @@ export class DashboardController {
                 }),
                 prisma.subscription.findMany({
                     where: {
-                        isActive: true
+                        isActive: true,
+                        company: { isActive: true }
                     },
                     select: {
                         companyId: true,
@@ -65,9 +71,10 @@ export class DashboardController {
                 })
             ]);
 
-            // Buscar dados para cálculo cumulativo de novas empresas por mês
+            // Buscar dados para cálculo cumulativo de novas empresas por mês (apenas ativas)
             const clientsBeforeYear = await prisma.company.count({
                 where: {
+                    isActive: true,
                     date_creation: {
                         lt: new Date(`${selectedYear}-01-01`)
                     }
@@ -75,6 +82,7 @@ export class DashboardController {
             });
             const companiesCreatedThisYear = await prisma.company.findMany({
                 where: {
+                    isActive: true,
                     date_creation: {
                         gte: new Date(`${selectedYear}-01-01`),
                         lte: new Date(`${selectedYear}-12-31 23:59:59`)
@@ -107,11 +115,15 @@ export class DashboardController {
                 });
             }
 
-            // Buscar os 5 clientes mais recentes
+            // Buscar os 5 clientes mais recentes (apenas empresas ativas)
             const recentClients = await prisma.user.findMany({
                 where: {
                     companies: {
-                        some: {}
+                        some: {
+                            company: {
+                                isActive: true
+                            }
+                        }
                     },
                     office: {
                         name: {
@@ -170,11 +182,12 @@ export class DashboardController {
                 })
             );
 
-            // Buscar distribuição por planos
+            // Buscar distribuição por planos (apenas empresas ativas)
             const plansDistribution = await prisma.subscription.groupBy({
                 by: ['planId'],
                 where: {
-                    isActive: true
+                    isActive: true,
+                    company: { isActive: true }
                 },
                 _count: {
                     planId: true
@@ -259,6 +272,7 @@ export class DashboardController {
                 paidClients,
                 activeClients,
                 inactiveClients,
+                archivedClients: archivedClientsCount,
                 activeProjects: activeProjects.length,
                 activePlans: activePlans.length,
                 permissionsGroups: permissionsGroups.length,
