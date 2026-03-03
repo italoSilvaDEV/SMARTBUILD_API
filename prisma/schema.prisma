@@ -334,6 +334,7 @@ model Category {
   customServiceSchedules       CustomServiceSchedule[]
   userServiceProjects          UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
 
   @@map("service")
 }
@@ -996,6 +997,9 @@ model Workedhours {
 
   subcontractor_service    SubcontractorService? @relation(fields: [subcontractor_service_id], references: [id])
   subcontractor_service_id String?
+
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
 
   @@map("worked_hours")
 }
