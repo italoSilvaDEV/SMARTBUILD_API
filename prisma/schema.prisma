@@ -330,6 +330,12 @@ model Category {
   company         Company?      @relation(fields: [company_id], references: [id])
   company_id      String?
 
+  subServicesProjects          SubServicesProject[]
+  customServiceSchedules       CustomServiceSchedule[]
+  userServiceProjects          UserServiceProject[]
+  subContractorServiceProjects SubContractorServiceProject[]
+  workedHours                  Workedhours[]
+
   @@map("service")
 }
 
@@ -436,6 +442,9 @@ model SubServicesProject {
   subContractorServiceProjects SubContractorServiceProject[]
   workedHours                  Workedhours[]
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@map("sub_services_project")
 }
 
@@ -459,6 +468,9 @@ model CustomServiceSchedule {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String?
+
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
 
   @@map("custom_service_schedule")
 }
@@ -986,6 +998,9 @@ model Workedhours {
   subcontractor_service    SubcontractorService? @relation(fields: [subcontractor_service_id], references: [id])
   subcontractor_service_id String?
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@map("worked_hours")
 }
 
@@ -1025,6 +1040,9 @@ model UserServiceProject {
   user_attendances UserAttendance[]
   TimeLine         TimeLine[]
 
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
+
   @@unique([user_id, service_project_id], map: "user_service_project_unique")
   @@unique([user_id, sub_service_project_id], map: "user_service_project_unique_sub_service_unique")
   @@unique([user_id, custom_service_schedule_id], map: "user_service_project_unique_custom_schedule")
@@ -1054,6 +1072,9 @@ model SubContractorServiceProject {
   date_update   DateTime @updatedAt
 
   workedHours Workedhours[]
+
+  category    Category? @relation(fields: [category_id], references: [id])
+  category_id String?
 
   @@unique([subcontractor_id, service_project_id], map: "sub_contractor_service_project_unique")
   @@unique([subcontractor_id, sub_service_project_id], map: "sub_contractor_service_project_unique_sub_service_unique")
