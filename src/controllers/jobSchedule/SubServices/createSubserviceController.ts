@@ -22,6 +22,7 @@ interface CreateSubserviceRequest {
     users?: User[]
     subcontractors?: Subcontractor[]
     skipEmail?: boolean
+    categoryId?: string
 }
 
 export class CreateSubserviceController {
@@ -73,19 +74,20 @@ export class CreateSubserviceController {
                         deadline: deadlineOnly,
                         quantity: 1,
                         price: body.price || 0,
-                        status: "pending"
+                        status: "pending",
+                        category_id: body.categoryId || null,
                     }
                 });
 
                 for (const id of workerIds) {
                     await tx.userServiceProject.create({
-                        data: { user_id: id, sub_service_project_id: created.id }
+                        data: { user_id: id, sub_service_project_id: created.id, category_id: body.categoryId || null }
                     });
                 }
 
                 for (const id of subcontractorIds) {
                     await tx.subContractorServiceProject.create({
-                        data: { subcontractor_id: id, sub_service_project_id: created.id }
+                        data: { subcontractor_id: id, sub_service_project_id: created.id, category_id: body.categoryId || null }
                     });
                 }
 

@@ -41,6 +41,15 @@ export class GetJobsByProjectController {
                     deadline: true,
                     description: true,
                     scheduleCompleted: true,
+                    service: {
+                        select: {
+                            service: {
+                                select: {
+                                    subcategory: { select: { id: true, category_name: true } }
+                                }
+                            }
+                        }
+                    },
                     UserServiceProject: {
                         select: {
                             user: {
@@ -87,6 +96,7 @@ export class GetJobsByProjectController {
                             description: true,
                             deadline: true,
                             scheduleCompleted: true,
+                            category: { select: { id: true, category_name: true } },
                             userServiceProject: {
                                 select: {
                                     user: {
@@ -136,9 +146,13 @@ export class GetJobsByProjectController {
                     return {
                         ...ss,
                         users: ssUsers,
-                        subContractors: formatSubcontractors(ss.subContractorServiceProjects)
+                        subContractors: formatSubcontractors(ss.subContractorServiceProjects),
+                        categoryId: ss.category?.id ?? null,
+                        categoryName: ss.category?.category_name ?? null,
                     }
                 }))
+
+                const serviceCategory = job.service?.service?.subcategory;
 
                 return {
                     id: job.id,
@@ -154,6 +168,8 @@ export class GetJobsByProjectController {
                     projectId: job.Project?.id,
                     scheduleCompleted: job.scheduleCompleted,
                     type: 'service',
+                    categoryId: serviceCategory?.id ?? null,
+                    categoryName: serviceCategory?.category_name ?? null,
                     users,
                     subServicesProjects: subServices,
                     subContractors: formatSubcontractors(job.subContractorServiceProjects),

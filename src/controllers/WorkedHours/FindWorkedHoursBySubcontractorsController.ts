@@ -84,6 +84,8 @@ export class FindWorkedHoursBySubcontractorsController {
           subcontractor_service: { select: { id: true, name: true } },
           project_id: true,
           project: { select: { location: true } },
+          category_id: true,
+          category: { select: { id: true, category_name: true } },
         },
         orderBy: [{ subcontractor_id: "asc" }, { date_creation: "desc" }],
       });

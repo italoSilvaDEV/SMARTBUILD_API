@@ -22,6 +22,7 @@ interface UpdateCustomService {
     deadline?: string;
     users?: UserInput[];
     subcontractors?: SubcontractorInput[];
+    categoryId?: string | null;
 }
 
 export class UpdateCustomServiceController {
@@ -109,7 +110,8 @@ export class UpdateCustomServiceController {
                         name: body.name,
                         description: body.description,
                         ...(startDateOnly != null && { start_date: startDateOnly }),
-                        ...(deadlineOnly != null && { deadline: deadlineOnly })
+                        ...(deadlineOnly != null && { deadline: deadlineOnly }),
+                        ...('categoryId' in body && { category_id: body.categoryId ?? null }),
                     }
                 });
 

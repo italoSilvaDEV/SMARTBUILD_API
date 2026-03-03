@@ -34,6 +34,7 @@ export class GetAllProjectServicesController {
               deadline: true,
             },
           },
+          category: { select: { id: true, category_name: true } },
         },
       });
 
@@ -48,6 +49,7 @@ export class GetAllProjectServicesController {
           deadline: true,
           serviceProject: { select: { id: true, name: true } },
           custom_service_schedule: { select: { id: true, name: true } },
+          category: { select: { id: true, category_name: true } },
         },
       });
 
@@ -62,6 +64,7 @@ export class GetAllProjectServicesController {
           deadline: true,
           serviceProject: { select: { id: true, name: true } },
           custom_service_schedule: { select: { id: true, name: true } },
+          category: { select: { id: true, category_name: true } },
         },
       });
 
@@ -79,6 +82,7 @@ export class GetAllProjectServicesController {
           name: true,
           start_date: true,
           deadline: true,
+          category: { select: { id: true, category_name: true } },
         },
       });
 
@@ -90,6 +94,8 @@ export class GetAllProjectServicesController {
           type: "service" as const,
           start_date: s.service_project!.start_date,
           deadline: s.service_project!.deadline,
+          categoryId: s.category?.id ?? null,
+          categoryName: s.category?.category_name ?? null,
         }));
 
       const subServices = allSubServices.map((s) => ({
@@ -99,6 +105,8 @@ export class GetAllProjectServicesController {
         parentName: s.serviceProject?.name ?? s.custom_service_schedule?.name ?? null,
         start_date: s.start_date,
         deadline: s.deadline,
+        categoryId: s.category?.id ?? null,
+        categoryName: s.category?.category_name ?? null,
       }));
 
       const customServicesMapped = customServices.map((s) => ({
@@ -107,6 +115,8 @@ export class GetAllProjectServicesController {
         type: "custom" as const,
         start_date: s.start_date,
         deadline: s.deadline,
+        categoryId: s.category?.id ?? null,
+        categoryName: s.category?.category_name ?? null,
       }));
 
       return res.status(200).json({

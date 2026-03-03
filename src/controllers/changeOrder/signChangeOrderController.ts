@@ -3,9 +3,10 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument } from "pdf-lib";
 import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
+import { getSignaturePositionForChangeOrder } from "../../utils/pdfChangeOrderSignatures";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -28,6 +29,7 @@ export class SignChangeOrderController {
                 select: {
                     id: true,
                     status: true,
+                    assignatureRequired: true,
                     estimateId: true,
                     changeOrderServices: true,
                     pdfProjects: true,
@@ -41,117 +43,127 @@ export class SignChangeOrderController {
                 })
             }
 
-            await prisma.$transaction(async (smartbuild) => {
-                await smartbuild.changeOrder.update({
-                    where: {
-                        id: changeOrder.id
-                    },
-                    data: {
-                        status: "approved"
-                    }
+            const isPending = changeOrder.status === "pending"
+            const isApprovedPendingSignature =
+                changeOrder.status === "approved" && changeOrder.assignatureRequired === true
+
+            if (!isPending && !isApprovedPendingSignature) {
+                return res.status(400).json({
+                    error: "Change order must be pending or approved with signature required (assignatureRequired: true)"
                 })
+            }
 
-                const estimate = await smartbuild.estimate.findUnique({
-                    where: {
-                        id: changeOrder.estimateId
-                    },
-                    include: {
-                        serviceProjects: true,
-                        project: true,
-                    }
-                })
-
-                if (!estimate) {
-                    return res.status(404).json({
-                        error: "Estimate not found"
-                    })
-                }
-
-                console.log("Valor antigo do estimate:", estimate.totalAmount)
-
-                const createdEstimateServices: string[] = []
-
-                for (const service of changeOrder.changeOrderServices) {
-                    const estimateService = await smartbuild.estimateServiceProject.create({
+            if (isPending) {
+                await prisma.$transaction(async (smartbuild) => {
+                    await smartbuild.changeOrder.update({
+                        where: {
+                            id: changeOrder.id
+                        },
                         data: {
-                            name: service.name,
-                            description: service.description,
-                            quantity: service.quantity,
-                            unitPrice: service.unitPrice,
-                            lineTotal: service.lineTotal,
-                            price: service.price,
-                            estimateId: estimate?.id,
-                            hours: service.quantity
+                            status: "approved"
                         }
                     })
 
-                    createdEstimateServices.push(estimateService.id)
-                }
-
-                const newPriceServices = await smartbuild.estimateServiceProject.findMany({
-                    where: {
-                        estimateId: estimate.id
-                    },
-                    select: {
-                        price: true
-                    }
-                })
-
-                const newPrice = newPriceServices.reduce((acc, curr) => acc + Number(curr.price), 0)
-
-                await smartbuild.estimate.update({
-                    where: {
-                        id: estimate.id
-                    },
-                    data: {
-                        totalAmount: newPrice,
-                        pdf_needs_update: true
-                    }
-                })
-
-                console.log("Valor novo do estimate:", newPrice)
-
-                if (estimate.status === "approved") {
-                    const project = await smartbuild.project.findUnique({
+                    const estimate = await smartbuild.estimate.findUnique({
                         where: {
-                            id: estimate.projectId
+                            id: changeOrder.estimateId
                         },
                         include: {
-                            serviceProject: true,
+                            serviceProjects: true,
+                            project: true,
                         }
                     })
 
-                    if (!project) {
+                    if (!estimate) {
                         return res.status(404).json({
-                            error: "Project not found"
+                            error: "Estimate not found"
                         })
                     }
 
-                    const estimateServicesToCreateInProject = await smartbuild.estimateServiceProject.findMany({
-                        where: {
-                            id: {
-                                in: createdEstimateServices
+                    const createdEstimateServices: string[] = []
+
+                    for (const service of changeOrder.changeOrderServices) {
+                        const estimateService = await smartbuild.estimateServiceProject.create({
+                            data: {
+                                name: service.name,
+                                description: service.description,
+                                quantity: service.quantity,
+                                unitPrice: service.unitPrice,
+                                lineTotal: service.lineTotal,
+                                price: service.price,
+                                estimateId: estimate?.id,
+                                hours: service.quantity
                             }
+                        })
+
+                        createdEstimateServices.push(estimateService.id)
+                    }
+
+                    const newPriceServices = await smartbuild.estimateServiceProject.findMany({
+                        where: {
+                            estimateId: estimate.id
+                        },
+                        select: {
+                            price: true
                         }
                     })
 
-                    for (const estimateService of estimateServicesToCreateInProject) {
-                        await smartbuild.serviceProject.create({
-                            data: {
-                                name: estimateService.name,
-                                description: estimateService.description || "",
-                                hours: estimateService.hours || estimateService.quantity,
-                                price: estimateService.price || estimateService.lineTotal,
-                                projectId: project.id,
-                                estimateServiceId: estimateService.id,
-                                start_date: estimateService.start_date,
-                                deadline: estimateService.deadline,
-                                id_service: estimateService.id_service
+                    const newPrice = newPriceServices.reduce((acc, curr) => acc + Number(curr.price), 0)
+
+                    await smartbuild.estimate.update({
+                        where: {
+                            id: estimate.id
+                        },
+                        data: {
+                            totalAmount: newPrice,
+                            pdf_needs_update: true
+                        }
+                    })
+
+                    console.log("Valor novo do estimate:", newPrice)
+
+                    if (estimate.status === "approved") {
+                        const project = await smartbuild.project.findUnique({
+                            where: {
+                                id: estimate.projectId
+                            },
+                            include: {
+                                serviceProject: true,
                             }
                         })
+
+                        if (!project) {
+                            return res.status(404).json({
+                                error: "Project not found"
+                            })
+                        }
+
+                        const estimateServicesToCreateInProject = await smartbuild.estimateServiceProject.findMany({
+                            where: {
+                                id: {
+                                    in: createdEstimateServices
+                                }
+                            }
+                        })
+
+                        for (const estimateService of estimateServicesToCreateInProject) {
+                            await smartbuild.serviceProject.create({
+                                data: {
+                                    name: estimateService.name,
+                                    description: estimateService.description || "",
+                                    hours: estimateService.hours || estimateService.quantity,
+                                    price: estimateService.price || estimateService.lineTotal,
+                                    projectId: project.id,
+                                    estimateServiceId: estimateService.id,
+                                    start_date: estimateService.start_date,
+                                    deadline: estimateService.deadline,
+                                    id_service: estimateService.id_service
+                                }
+                            })
+                        }
                     }
-                }
-            })
+                })
+            }
 
             const pdfProject = await prisma.pdfProject.findFirst({
                 where: {
@@ -193,21 +205,17 @@ export class SignChangeOrderController {
                         }
                     }
 
-                    const signatureWidth = 100;
-                    const signatureHeight = 35;
-
-                    const page = pages[0];
-                    const { width, height } = page.getSize();
-
-                    const x = 95;
-                    const y = 625;
-
-                    page.drawImage(signatureImage, {
-                        x,
-                        y,
-                        width: signatureWidth,
-                        height: signatureHeight,
-                    });
+                    const lastPageIndex = pages.length - 1;
+                    const position = await getSignaturePositionForChangeOrder(originalPdfBuffer, lastPageIndex);
+                    const targetPage = pages[position.pageIndex];
+                    if (targetPage) {
+                        targetPage.drawImage(signatureImage, {
+                            x: position.x,
+                            y: position.y,
+                            width: position.width,
+                            height: position.height,
+                        });
+                    }
                 } catch (signatureError) {
                     console.error('Error processing signature:', signatureError);
                 }
@@ -243,7 +251,15 @@ export class SignChangeOrderController {
                 }
             });
 
-            // Enviar email para a company quando o change order for aceito
+            await prisma.changeOrder.update({
+                where: {
+                    id: changeOrder.id
+                },
+                data: {
+                    assignatureRequired: false
+                }
+            });
+
             try {
                 const changeOrderWithDetails = await prisma.changeOrder.findUnique({
                     where: { id: changeOrder.id },
@@ -275,7 +291,7 @@ export class SignChangeOrderController {
                     const changeOrderNumber = changeOrderWithDetails.number?.toString() || changeOrder.id;
                     const estimateNumber = changeOrderWithDetails.estimate?.number || "";
                     const totalAmount = Number(changeOrderWithDetails.total_amount || 0);
-                    
+
                     const formattedAmount = new Intl.NumberFormat('en-US', {
                         style: 'currency',
                         currency: 'USD',

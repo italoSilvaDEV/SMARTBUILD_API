@@ -1,68 +1,68 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 
+/** Applies given permission IDs to an office (replaces existing UserPermissions for that office). */
+async function applyPermissionsToOffice(officeId: string, permissionIds: string[]): Promise<void> {
+  await prisma.userPermission.deleteMany({ where: { office_id: officeId } });
+  if (permissionIds.length === 0) return;
+  await prisma.userPermission.createMany({
+    data: permissionIds.map((permission_id) => ({
+      office_id: officeId,
+      permission_id,
+      editAll: false
+    }))
+  });
+}
+
 export class SubscriptionController {
   async create(req: Request, res: Response) {
     try {
-      const { companyId, planId, startDate, endDate, campaignId } = req.body;
-      
-      // Validações
+      const { companyId, planId, campaignId } = req.body;
+
       if (!companyId || !planId) {
-        return res.status(400).json({ message: 'Empresa e plano são obrigatórios' });
-      }
- 
-      if (!startDate || !endDate) {
-        return res.status(400).json({ message: 'Datas de início e fim são obrigatórias' });
-      } 
-
-      const startDateObj = new Date(startDate);
-      const endDateObj = new Date(endDate);
-
-      if (startDateObj >= endDateObj) {
-        return res.status(400).json({ message: 'A data de início deve ser anterior à data de fim' });
+        return res.status(400).json({ message: 'Company and plan are required' });
       }
 
-      // Buscar o plano para obter allowedEmployees
       const plan = await prisma.plan.findUnique({
-        where: { id: planId }
+        where: { id: planId },
+        include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } }
       });
 
       if (!plan) {
-        return res.status(400).json({ message: 'Plano não encontrado' });
+        return res.status(400).json({ message: 'Plan not found' });
       }
 
-      // Buscar a empresa para verificar allowedEmployees atual
+      if (plan.validityType !== 'FREE') {
+        return res.status(400).json({ message: 'This endpoint is only for FREE plan subscription. Use Stripe checkout for paid plans.' });
+      }
+
       const company = await prisma.company.findUnique({
         where: { id: companyId }
       });
 
       if (!company) {
-        return res.status(400).json({ message: 'Empresa não encontrada' });
+        return res.status(400).json({ message: 'Company not found' });
       }
 
-      // Se há campaignId, verificar se a campanha existe e está ativa
       let fromCampaign = false;
       if (campaignId) {
-        const campaign = await prisma.campaign.findUnique({
-          where: { id: campaignId }
-        });
-
+        const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
         if (!campaign) {
-          return res.status(400).json({ message: 'Campanha não encontrada' });
+          return res.status(400).json({ message: 'Campaign not found' });
         }
-
         if (!campaign.isActive || campaign.endDate < new Date()) {
-          return res.status(400).json({ message: 'Campanha inativa ou expirada' });
+          return res.status(400).json({ message: 'Campaign inactive or expired' });
         }
-
         if (campaign.planId !== planId) {
-          return res.status(400).json({ message: 'O plano não corresponde ao plano da campanha' });
+          return res.status(400).json({ message: 'Plan does not match campaign plan' });
         }
-
         fromCampaign = true;
       }
 
-      // Criar a assinatura
+      const startDateObj = new Date();
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(endDateObj.getDate() + (plan.validityDuration ?? 0));
+
       const subscription = await prisma.subscription.create({
         data: {
           companyId,
@@ -75,17 +75,33 @@ export class SubscriptionController {
         }
       });
 
-      // Atualizar a empresa com o novo planId e allowedEmployees do plano
-      await prisma.company.update({ 
-        where: { id: companyId }, 
-        data: { 
+      await prisma.company.update({
+        where: { id: companyId },
+        data: {
           planId,
-          // Se a empresa não tem allowedEmployees definido, usar o do plano
           allowedEmployees: company.allowedEmployees ?? plan.allowedEmployees
-        } 
+        }
       });
-      
-      // Formatar resposta para compatibilidade com PrismaSubscriptionRepository
+
+      const ownerOffice = await prisma.office.findFirst({
+        where: { company_id: companyId, name: 'Owner' }
+      });
+
+      const permissionIds = plan.permissionGroup.GroupPermissionsList.map((row) => row.permission_id);
+
+      if (ownerOffice) {
+        await applyPermissionsToOffice(ownerOffice.id, permissionIds);
+      }
+
+      await prisma.office.create({
+        data: { name: 'Worker', company_id: companyId }
+      });
+
+      const adminOffice = await prisma.office.create({
+        data: { name: 'Administrator', company_id: companyId }
+      });
+      await applyPermissionsToOffice(adminOffice.id, permissionIds);
+
       const formattedSubscription = {
         id: subscription.id,
         companyId: subscription.companyId,
@@ -96,7 +112,7 @@ export class SubscriptionController {
         fromCampaign: subscription.fromCampaign,
         campaignId: subscription.campaignId
       };
-      
+
       res.status(201).json(formattedSubscription);
     } catch (error) {
       console.error('Error creating subscription:', error);

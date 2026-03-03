@@ -22,6 +22,7 @@ interface CreateCustomService {
     projectId: string
     companyId: string
     skipEmail?: boolean
+    categoryId?: string
 }
 
 export class CreateCustomServiceController {
@@ -68,6 +69,7 @@ export class CreateCustomServiceController {
                         start_date: startDateOnly,
                         deadline: deadlineOnly,
                         projectId: project.id,
+                        category_id: body.categoryId || null,
                     }
                 });
 
@@ -75,7 +77,8 @@ export class CreateCustomServiceController {
                     await tx.userServiceProject.create({
                         data: {
                             user_id: workerId,
-                            custom_service_schedule_id: service.id
+                            custom_service_schedule_id: service.id,
+                            category_id: body.categoryId || null,
                         }
                     });
                 }
@@ -84,7 +87,8 @@ export class CreateCustomServiceController {
                     await tx.subContractorServiceProject.create({
                         data: {
                             subcontractor_id: subId,
-                            custom_service_schedule_id: service.id
+                            custom_service_schedule_id: service.id,
+                            category_id: body.categoryId || null,
                         }
                     });
                 }

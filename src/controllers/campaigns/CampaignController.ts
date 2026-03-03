@@ -316,7 +316,8 @@ export class CampaignController {
     try {
       const campaignPlans = await prisma.plan.findMany({
         where: {
-          isCampaign: true
+          isCampaign: true,
+          isActive: true
         },
         include: {
           permissionGroup: true

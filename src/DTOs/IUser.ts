@@ -48,6 +48,7 @@ export interface INewUser {
 export interface INewCompany {
   company_name: string
   avatar?: string;
+  signature?: string;
   name: string;
   email: string;
   document?: string;

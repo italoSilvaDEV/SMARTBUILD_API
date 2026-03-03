@@ -58,8 +58,35 @@ export class GetServicesByProjectController {
                     hours: true,
                     price: true,
                     deadline: true,
+                    id_service: true,
+                    service: {
+                        select: {
+                            service: {
+                                select: {
+                                    subcategory: {
+                                        select: {
+                                            id: true,
+                                            category_name: true,
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             })
+
+            const mappedServices = services.map((s) => ({
+                id: s.id,
+                name: s.name,
+                start_date: s.start_date,
+                description: s.description,
+                hours: s.hours,
+                price: s.price,
+                deadline: s.deadline,
+                categoryId: s.service?.service?.subcategory?.id ?? null,
+                categoryName: s.service?.service?.subcategory?.category_name ?? null,
+            }))
 
             const customServices = await prisma.customServiceSchedule.findMany({
                 where: {
@@ -77,7 +104,7 @@ export class GetServicesByProjectController {
             return res.status(200).json({
                 message: "Services fetched successfully",
                 data: {
-                    services: services,
+                    services: mappedServices,
                     customServices: customServices,
                 }
             })

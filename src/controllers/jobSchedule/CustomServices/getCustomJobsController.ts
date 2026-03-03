@@ -65,6 +65,7 @@ export class GetCustomJobsController {
                         }
                     },
                     scheduleCompleted: true,
+                    category: { select: { id: true, category_name: true } },
                     userServiceProjects: {
                         select: {
                             user: {
@@ -101,6 +102,7 @@ export class GetCustomJobsController {
                             deadline: true,
                             description: true,
                             scheduleCompleted: true,
+                            category: { select: { id: true, category_name: true } },
                             subContractorServiceProjects: {
                                 select: {
                                     subcontractor: {
@@ -171,6 +173,8 @@ export class GetCustomJobsController {
                         start_date: subService.start_date,
                         deadline: subService.deadline,
                         scheduleCompleted: subService.scheduleCompleted,
+                        categoryId: subService.category?.id ?? null,
+                        categoryName: subService.category?.category_name ?? null,
                         users: users,
                         subContractors: subService.subContractorServiceProjects,
                     }
@@ -189,6 +193,8 @@ export class GetCustomJobsController {
                     clientName: customJob.project?.workContext?.Name || customJob.project?.client?.name,
                     clientEmail: customJob.project?.workContext?.Email || customJob.project?.client?.email,
                     scheduleCompleted: customJob.scheduleCompleted,
+                    categoryId: customJob.category?.id ?? null,
+                    categoryName: customJob.category?.category_name ?? null,
                     users: users,
                     subContractors: customJob.subContractorServiceProjects,
                     subServices: subServices,
