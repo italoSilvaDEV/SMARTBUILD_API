@@ -1100,10 +1100,17 @@ model UserAttendance {
   date                    DateTime           @default(now())
   user                    User               @relation(fields: [user_id], references: [id])
   user_id                 String
-  UserServiceProject      UserServiceProject @relation(fields: [user_service_project_id], references: [id], onDelete: Cascade)
-  user_service_project_id String
+  UserServiceProject      UserServiceProject? @relation(fields: [user_service_project_id], references: [id], onDelete: Cascade)
+  user_service_project_id String?
   company                 Company?           @relation(fields: [company_id], references: [id])
   company_id              String?
+  service_selection_status AttendanceServiceSelectionStatus @default(selected)
+  pending_project_id      String?
+  pending_project_name    String?
+  pending_project_address String?
+  pending_project_latitude Float?
+  pending_project_longitude Float?
+  pending_project_radius  Float?
 
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String?
@@ -1120,6 +1127,11 @@ enum TimeCardEditRequestStatus {
   pending
   approved
   denied
+}
+
+enum AttendanceServiceSelectionStatus {
+  pending
+  selected
 }
 
 model TimeCardEditRequest {

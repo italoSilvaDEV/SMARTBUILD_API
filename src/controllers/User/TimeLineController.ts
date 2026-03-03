@@ -540,7 +540,7 @@ AND index_name = ${indexName}
             }
             const clockInTime = timeline?.check_in_time ? new Date(timeline.check_in_time).toLocaleString() : 'N/A';
             const clockOutTime = timeline?.check_out_time ? new Date(timeline.check_out_time).toLocaleString() : 'N/A';
-            const auditMessage = `Delete clock-in/clock-out record ${timeline.id} for user ${timeline.user.name} (${timeline.user.id}) on service project ${timeline.UserServiceProject.service_project?.name || 'Unnamed project'} (${timeline.UserServiceProject.service_project?.id}). Clock-in: ${clockInTime}, Clock-out: ${clockOutTime}`;
+            const auditMessage = `Delete clock-in/clock-out record ${timeline.id} for user ${timeline.user.name} (${timeline.user.id}) on service project ${timeline.UserServiceProject?.service_project?.name || 'Unnamed project'} (${timeline.UserServiceProject?.service_project?.id || 'n/a'}). Clock-in: ${clockInTime}, Clock-out: ${clockOutTime}`;
             logAudit(auditMessage, user.id);
             await prisma.userAttendance.delete({
                 where: { id }
