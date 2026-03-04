@@ -212,6 +212,7 @@ model Company {
   attendanceMode        AttendanceMode @default(manual)
   projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
   isActive              Boolean        @default(true) // false = arquivado (master)
+  createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
 
   // Relacionamento original 1:N (mantido)
   User User[]

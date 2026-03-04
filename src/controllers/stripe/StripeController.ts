@@ -2079,7 +2079,8 @@ export class StripeController {
             const {
                 planId,
                 companyId,
-                referralId //  Receber o referral ID do front-end
+                referralId, //  Receber o referral ID do front-end
+                returnUrl // URL customizada para success/cancel (ex: master/clients)
             } = req.body;
 
             if (!planId || !companyId) {
@@ -2141,6 +2142,14 @@ export class StripeController {
                 console.log(' [Info] Nenhum referral ID - checkout direto');
             }
 
+            const URL_FRONT = process.env.URL_FRONT || '';
+            const successUrl = returnUrl
+                ? `${URL_FRONT}/${returnUrl}?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`
+                : `${URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`;
+            const cancelUrl = returnUrl
+                ? `${URL_FRONT}/${returnUrl}`
+                : `${URL_FRONT}/login`;
+
             // Configuração base da sessão de checkout
             const sessionConfig: Stripe.Checkout.SessionCreateParams = {
                 payment_method_types: ['card'],
@@ -2151,8 +2160,8 @@ export class StripeController {
                     },
                 ],
                 mode: 'subscription',
-                success_url: `${process.env.URL_FRONT}/loading?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${process.env.URL_FRONT}/login`,
+                success_url: successUrl,
+                cancel_url: cancelUrl,
                 // client_reference_id: clientReferenceId, //  APENAS referralId (para Rewardful)
                 metadata: {
                     //  Sistema interno usa metadata (sem limites de tamanho)
