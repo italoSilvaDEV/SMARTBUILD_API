@@ -57,7 +57,7 @@ export class ChatController {
       const archivedOnly = archived === "true";
 
       const chatMemberships = await prisma.chatMember.findMany({
-        where: { 
+        where: {
           userId,
           archivedAt: archivedOnly ? { not: null } : null,
           chat: {
@@ -91,7 +91,7 @@ export class ChatController {
 
       const chats = await Promise.all(chatMemberships.map(async (membership) => {
         const chat = membership.chat;
-        
+
         // Se for 1:1, definir o nome e avatar baseado no outro membro
         if (!chat.isGroup) {
           const otherMember = chat.members.find(m => m.userId !== userId);
@@ -290,24 +290,36 @@ export class ChatController {
       const { companyId } = req.params;
       const { userId } = req.query; // ID do usuário logado para excluir da lista
 
-      const users = await prisma.user.findMany({
+      const users = await prisma.userCompany.findMany({
         where: {
-          company_id: companyId,
-          id: { not: userId as string },
-          isDisabled: false
+          companyId: companyId,
+          userId: {
+            not: userId as string
+          },
+          user: {
+            isDisabled: false
+          }
         },
         select: {
-          id: true,
-          name: true,
-          avatar: true,
-          profession: true,
-          office: { select: { name: true } }
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+              profession: true
+            }
+          },
+          office: {
+            select: {
+              name: true
+            }
+          }
         }
       });
 
       const usersWithUrls = await Promise.all(users.map(async (u) => {
-        if (u.avatar) u.avatar = await getPresignedUrl(u.avatar);
-        return u;
+        if (u.user.avatar) u.user.avatar = await getPresignedUrl(u.user.avatar);
+        return u.user;
       }));
 
       return res.json(usersWithUrls);
@@ -404,7 +416,7 @@ export class ChatController {
           senderName,
           messageBody,
           chatId
-        ).catch(() => {}); // Fire-and-forget, não bloqueia a resposta
+        ).catch(() => { }); // Fire-and-forget, não bloqueia a resposta
       }
 
       return res.status(201).json(messageToSend);
