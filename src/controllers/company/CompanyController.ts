@@ -13,6 +13,7 @@ import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
+        this.createFromMaster = this.createFromMaster.bind(this);
         this.deleteFiles = this.deleteFiles.bind(this);
     }
 
@@ -97,6 +98,122 @@ export class CompanyController {
             return res.status(201).json(company);
         } catch (error: any) {
             console.error("36. Erro no processo:", error);
+            return res.status(500).json({ error: error.message || "Internal error" });
+        }
+    }
+
+    async createFromMaster(req: Request, res: Response) {
+        type MasterNewClientBody = {
+            company_name: string;
+            name: string;
+            email: string;
+            useManualPassword?: boolean;
+            password?: string;
+            password_confirmation?: string;
+        };
+
+        function validateMasterNewClient(data: MasterNewClientBody): string | null {
+            if (!data.company_name) return "Company name is mandatory";
+            if (!data.name) return "Name is required";
+            if (!data.email) return "Email is required";
+            if (data.useManualPassword === true) {
+                if (!data.password || !data.password.trim()) return "Password is required when using manual password";
+                if (data.password !== data.password_confirmation) return "Passwords do not match";
+            }
+            return null;
+        }
+
+        try {
+            const data: MasterNewClientBody = req.body;
+            const validationError = validateMasterNewClient(data);
+
+            if (validationError) {
+                return res.status(400).json({ error: validationError });
+            }
+
+            const userExists = await prisma.user.findUnique({
+                where: { email: data.email },
+            });
+
+            if (userExists) {
+                return res
+                    .status(400)
+                    .json({ error: "Email has already been registered in the system" });
+            }
+
+            let pass: string;
+            let hashedPassword: string;
+
+            if (data.useManualPassword === true && data.password && data.password.trim() !== '') {
+                pass = data.password;
+                hashedPassword = bcrypt.hashSync(pass, 10);
+            } else {
+                pass = crypto.randomBytes(3).toString("hex").toUpperCase();
+                hashedPassword = bcrypt.hashSync(pass, 10);
+            }
+
+            const company = await prisma.company.create({
+                data: {
+                    name: data.company_name,
+                    createdFromMaster: true,
+                }
+            });
+
+            const ownerOffice = await prisma.office.create({
+                data: {
+                    name: 'Owner',
+                    company_id: company.id,
+                }
+            });
+
+            const user = await prisma.user.create({
+                data: {
+                    name: data.name,
+                    email: data.email,
+                    document: null,
+                    phone: null,
+                    city_and_state: null,
+                    rules: JSON.stringify({}),
+                    office_id: ownerOffice.id,
+                    password: hashedPassword,
+                    profession: null,
+                    company_id: company.id,
+                    onBoardingCompleted: false
+                },
+            });
+
+            await prisma.userCompany.create({
+                data: {
+                    userId: user.id,
+                    companyId: company.id,
+                    office_id: ownerOffice.id,
+                }
+            });
+
+            // Enviar email com a senha quando não for manual
+            if (data.useManualPassword !== true) {
+                const companyAvatar = await prisma.company.findUnique({
+                    where: { id: company.id },
+                    select: { avatar: true }
+                });
+                const urlLogo = companyAvatar?.avatar ? await getPresignedUrl(companyAvatar.avatar) : '';
+                const templateEmail = NewUser(data.name.toUpperCase(), urlLogo, pass);
+
+                try {
+                    await sendEmail({
+                        to: data.email,
+                        subject: "Smart Build - Welcome",
+                        html: templateEmail,
+                        text: `Welcome ${data.name}!\n\nYour password is: ${pass}\n\nPlease login and change your password for security.\n\nBest regards,\nSmart Build Team`
+                    });
+                } catch (mailErr) {
+                    console.error(`[createFromMaster] Error sending email:`, mailErr);
+                }
+            }
+
+            return res.status(201).json({ id: company.id });
+        } catch (error: any) {
+            console.error("[createFromMaster] Erro no processo:", error);
             return res.status(500).json({ error: error.message || "Internal error" });
         }
     }
@@ -503,7 +620,11 @@ export class CompanyController {
             } else {
                 whereClause.isActive = true;
             }
-            
+
+            // Filtro fromMaster: só empresas criadas pelo fluxo New Client no Master
+            if (filter === 'fromMaster') {
+                whereClause.createdFromMaster = true;
+            }
 
             const response = await prisma.company.findMany({
                 where: whereClause,
