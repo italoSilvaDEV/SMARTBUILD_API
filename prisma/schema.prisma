@@ -92,9 +92,11 @@ model User {
   FeedNotificationActors FeedNotification[] @relation("FeedNotificationActors")
   PublicFeedLinks        PublicFeedLink[]   @relation("PublicFeedLinkCreators")
 
-  ProjectFiles     ProjectFiles[]
-  ProjectPastes    ProjectPastes[]
-  changeOrders     ChangeOrder[]
+  ProjectFiles        ProjectFiles[]
+  ProjectPastes       ProjectPastes[]
+  SubcontractorFiles  SubcontractorFiles[]
+  SubcontractorPastes SubcontractorPastes[]
+  changeOrders        ChangeOrder[]
   tutorialProgress TutorialProgress[]
 
   // Sales CRM
@@ -258,6 +260,8 @@ model Company {
 
   ProjectFiles          ProjectFiles[]
   ProjectPastes         ProjectPastes[]
+  SubcontractorFiles    SubcontractorFiles[]
+  SubcontractorPastes   SubcontractorPastes[]
   Subcontractors        Subcontractor[]
   SubcontractorServices SubcontractorService[]
 
@@ -951,6 +955,8 @@ model Subcontractor {
   company                      Company?                      @relation(fields: [company_id], references: [id])
   company_id                   String?
   subContractorServiceProjects SubContractorServiceProject[]
+  SubcontractorPastes          SubcontractorPastes[]
+  SubcontractorFiles            SubcontractorFiles[]
 
   @@unique([email, company_id])
   @@map("subcontractors")
@@ -2051,6 +2057,54 @@ model ProjectPastes {
   companyId     String?
 
   @@map("project_pastes")
+}
+
+model SubcontractorPastes {
+  id String @id @default(uuid())
+
+  name String @db.Text
+
+  files SubcontractorFiles[]
+
+  userAuthorId String
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  subcontractorId String
+  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
+
+  @@map("subcontractor_pastes")
+}
+
+model SubcontractorFiles {
+  id String @id @default(uuid())
+
+  file String?
+
+  name        String? @db.Text
+  description String? @db.Text
+
+  type_file TypeFile @default(others)
+
+  pasteId String?
+  paste   SubcontractorPastes? @relation(fields: [pasteId], references: [id], onDelete: Cascade)
+
+  userAuthorId String
+  userAuthor   User   @relation(fields: [userAuthorId], references: [id], onDelete: Cascade)
+
+  subcontractorId String
+  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  companyId     String?
+
+  @@map("subcontractor_files")
 }
 
 enum ChangeOrderStatus {
