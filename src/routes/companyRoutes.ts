@@ -18,6 +18,10 @@ companyRoutes.post("/company",
     compressImage("company"),
     Company.create)
 
+companyRoutes.post("/company/master-new-client",
+    checkToken,
+    Company.createFromMaster)
+
 companyRoutes.post("/company/master",
     checkToken,
     uploadPhoto.single("avatar"),

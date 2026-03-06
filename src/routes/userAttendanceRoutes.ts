@@ -8,6 +8,7 @@ const userAttendanceRoutes = Router();
 
 userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn.bind(userAttendanceControlller));
 userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControlller.checkOut.bind(userAttendanceControlller));
+userAttendanceRoutes.post('/check-in-pending-service', checkToken, userAttendanceControlller.checkInPendingServiceSelection.bind(userAttendanceControlller));
 userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser.bind(userAttendanceControlller));
 
 // Nova rota para registrar clock in/out em um único endpoint
@@ -35,6 +36,7 @@ userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.de
 
 // Nova rota para mudança de projeto
 userAttendanceRoutes.put('/user-attendance/change-project/:attendanceId', checkToken, userAttendanceControlller.changeProject.bind(userAttendanceControlller)); 
+userAttendanceRoutes.put('/user-attendance/select-service/:attendanceId', checkToken, userAttendanceControlller.selectServiceForAttendance.bind(userAttendanceControlller));
 
 // Nova rota para listar projetos disponíveis para check-in (sem necessidade de estar atribuído)
 userAttendanceRoutes.get('/available-projects-for-checkin', checkToken, userAttendanceControlller.getAvailableProjectsForCheckIn.bind(userAttendanceControlller));

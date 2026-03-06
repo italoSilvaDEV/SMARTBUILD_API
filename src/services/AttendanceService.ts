@@ -1,4 +1,4 @@
-import { PrismaClient, UserAttendance, UserServiceProject } from '@prisma/client';
+import { Prisma, PrismaClient, UserAttendance, UserServiceProject } from '@prisma/client';
 import { getPresignedUrl } from '../utils/S3/getPresignedUrl';
 
 const prisma = new PrismaClient();
@@ -6,6 +6,16 @@ const prisma = new PrismaClient();
 export interface CheckInData {
     user_id: string;
     service_project_id: string;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    check_in_time?: Date | string | null;
+    date?: Date | string | null;
+}
+
+export interface PendingCheckInData {
+    user_id: string;
+    project_id: string;
     address?: string | null;
     latitude?: number | null;
     longitude?: number | null;
@@ -21,6 +31,88 @@ export interface CheckOutData {
 }
 
 export class AttendanceService {
+    private async getUserAttendanceConfig(tx: Prisma.TransactionClient, user_id: string) {
+        const user = await tx.user.findUnique({
+            where: { id: user_id },
+            select: {
+                isOverTime: true,
+                projectVisibilityMode: true,
+                company: {
+                    select: {
+                        id: true,
+                        workStartTime: true,
+                        workEndTime: true,
+                        projectVisibilityMode: true
+                    }
+                }
+            }
+        });
+
+        if (!user) throw new Error('USER_NOT_FOUND');
+        return user;
+    }
+
+    private async getAnyOpenAttendance(tx: Prisma.TransactionClient, user_id: string) {
+        return await tx.userAttendance.findFirst({
+            where: {
+                user_id,
+                check_out_time: null,
+            },
+            include: {
+                UserServiceProject: {
+                    include: {
+                        service_project: {
+                            include: { Project: true }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    private async ensureUserServiceProjectLink(
+        tx: Prisma.TransactionClient,
+        params: {
+            user_id: string;
+            service_project_id: string;
+            date?: Date | string | null;
+            visibilityMode?: string | null;
+            serviceStatus?: string | null;
+        }
+    ) {
+        const { user_id, service_project_id, date, visibilityMode, serviceStatus } = params;
+
+        let userServiceProject = await tx.userServiceProject.findFirst({
+            where: {
+                user_id,
+                service_project_id
+            }
+        });
+
+        if (!userServiceProject) {
+            if (visibilityMode === 'assignedOnly') {
+                throw new Error('NOT_ASSIGNED');
+            }
+
+            userServiceProject = await tx.userServiceProject.create({
+                data: {
+                    user_id,
+                    service_project_id,
+                    assigned_at: date ? new Date(date) : new Date()
+                }
+            });
+
+            if (!serviceStatus || serviceStatus === 'In Progress' || serviceStatus === 'Scheduled') {
+                await tx.serviceProject.update({
+                    where: { id: service_project_id },
+                    data: { status: 'In Progress' }
+                });
+            }
+        }
+
+        return userServiceProject;
+    }
+
     /**
      * Processa o check-in de um usuário em um serviço/projeto.
      * Centraliza validações e criação de vínculos automáticos.
@@ -31,41 +123,11 @@ export class AttendanceService {
         // Usar transação para garantir atomicidade e evitar duplicatas em chamadas simultâneas
         return await prisma.$transaction(async (tx) => {
             // 1. Validar Usuário e Configurações
-            const user = await tx.user.findUnique({
-                where: { id: user_id },
-                select: {
-                    isOverTime: true,
-                    projectVisibilityMode: true,
-                    company: {
-                        select: {
-                            id: true,
-                            workStartTime: true,
-                            workEndTime: true,
-                            projectVisibilityMode: true
-                        }
-                    }
-                }
-            });
-
-            if (!user) throw new Error('USER_NOT_FOUND');
+            const user = await this.getUserAttendanceConfig(tx, user_id);
 
             // 2. Verificar se JÁ EXISTE QUALQUER ponto aberto para este usuário
             // IMPORTANTE: Um usuário só pode ter UM ponto aberto no sistema todo, independente do projeto.
-            const anyOpenAttendance = await tx.userAttendance.findFirst({
-                where: {
-                    user_id,
-                    check_out_time: null,
-                },
-                include: {
-                    UserServiceProject: {
-                        include: {
-                            service_project: {
-                                include: { Project: true }
-                            }
-                        }
-                    }
-                }
-            });
+            const anyOpenAttendance = await this.getAnyOpenAttendance(tx, user_id);
 
             if (anyOpenAttendance) {
                 console.log(`[AttendanceService] Usuário ${user_id} já possui ponto aberto (ID: ${anyOpenAttendance.id}). Retornando existente.`);
@@ -94,33 +156,13 @@ export class AttendanceService {
 
             // 4. Gerenciar Vínculo (UserServiceProject)
             const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
-            let userServiceProject = await tx.userServiceProject.findFirst({
-                where: {
-                    user_id: user_id,
-                    service_project_id: service_project_id
-                }
+            const userServiceProject = await this.ensureUserServiceProjectLink(tx, {
+                user_id,
+                service_project_id,
+                date,
+                visibilityMode,
+                serviceStatus: serviceProject.status,
             });
-
-            if (!userServiceProject) {
-                if (visibilityMode === 'assignedOnly') {
-                    throw new Error('NOT_ASSIGNED');
-                }
-
-                userServiceProject = await tx.userServiceProject.create({
-                    data: {
-                        user_id: user_id,
-                        service_project_id: service_project_id,
-                        assigned_at: date ? new Date(date) : new Date()
-                    }
-                });
-
-                if (!serviceProject.status || serviceProject.status === 'In Progress' || serviceProject.status === 'Scheduled') {
-                    await tx.serviceProject.update({
-                        where: { id: service_project_id },
-                        data: { status: 'In Progress' }
-                    });
-                }
-            }
 
             // 5. Criar Registro de Ponto
             const attendance = await tx.userAttendance.create({
@@ -157,6 +199,153 @@ export class AttendanceService {
         });
     }
 
+    async processPendingCheckIn(data: PendingCheckInData) {
+        const { user_id, project_id, address, latitude, longitude, check_in_time, date } = data;
+
+        return await prisma.$transaction(async (tx) => {
+            const user = await this.getUserAttendanceConfig(tx, user_id);
+            const anyOpenAttendance = await this.getAnyOpenAttendance(tx, user_id);
+
+            if (anyOpenAttendance) {
+                console.log(`[AttendanceService] Usuário ${user_id} já possui ponto aberto (ID: ${anyOpenAttendance.id}). Retornando existente.`);
+                return {
+                    alreadyOpen: true,
+                    attendance: anyOpenAttendance
+                };
+            }
+
+            const project = await tx.project.findUnique({
+                where: { id: project_id },
+                include: {
+                    client: {
+                        select: { location: true }
+                    }
+                }
+            });
+
+            if (!project) throw new Error('PROJECT_NOT_FOUND');
+            if (['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
+                throw new Error('PROJECT_INACTIVE');
+            }
+
+            const projectLatitude = project.lat && !isNaN(parseFloat(project.lat)) ? parseFloat(project.lat) : 0;
+            const projectLongitude = project.log && !isNaN(parseFloat(project.log)) ? parseFloat(project.log) : 0;
+
+            const attendance = await tx.userAttendance.create({
+                data: {
+                    user_id,
+                    check_in_time: check_in_time ? new Date(check_in_time) : new Date(),
+                    date: date ? new Date(date) : new Date(),
+                    check_in_address: address || project.location || project.client?.location || '',
+                    check_in_latitude: Number.isFinite(latitude) ? latitude! : projectLatitude,
+                    check_in_longitude: Number.isFinite(longitude) ? longitude! : projectLongitude,
+                    isOvertime: user.isOverTime,
+                    workStartTime: user.isOverTime ? user.company?.workStartTime : null,
+                    workEndTime: user.isOverTime ? user.company?.workEndTime : null,
+                    company_id: project.company_id || user.company?.id || null,
+                    service_selection_status: 'pending',
+                    pending_project_id: project.id,
+                    pending_project_name: project.location || `Project ${project.contract_number || ''}`.trim(),
+                    pending_project_address: project.location || project.client?.location || '',
+                    pending_project_latitude: projectLatitude,
+                    pending_project_longitude: projectLongitude,
+                    pending_project_radius: project.radius || null,
+                },
+                include: {
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: { Project: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return {
+                alreadyOpen: false,
+                attendance
+            };
+        }, {
+            isolationLevel: 'Serializable',
+        });
+    }
+
+    async assignServiceToAttendance(attendanceId: string, service_project_id: string) {
+        return await prisma.$transaction(async (tx) => {
+            const attendance = await tx.userAttendance.findUnique({
+                where: { id: attendanceId },
+                include: {
+                    user: {
+                        select: {
+                            projectVisibilityMode: true,
+                            company: {
+                                select: {
+                                    projectVisibilityMode: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+
+            const serviceProject = await tx.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: { Project: true }
+            });
+
+            if (!serviceProject) throw new Error('SERVICE_NOT_FOUND');
+
+            if (
+                attendance.pending_project_id &&
+                serviceProject.projectId &&
+                attendance.pending_project_id !== serviceProject.projectId
+            ) {
+                throw new Error('SERVICE_PROJECT_MISMATCH');
+            }
+
+            const visibilityMode =
+                attendance.user?.projectVisibilityMode ||
+                attendance.user?.company?.projectVisibilityMode ||
+                'allActive';
+
+            const userServiceProject = await this.ensureUserServiceProjectLink(tx, {
+                user_id: attendance.user_id,
+                service_project_id,
+                date: attendance.date,
+                visibilityMode,
+                serviceStatus: serviceProject.status,
+            });
+
+            return await tx.userAttendance.update({
+                where: { id: attendanceId },
+                data: {
+                    user_service_project_id: userServiceProject.id,
+                    service_selection_status: 'selected',
+                    pending_project_id: null,
+                    pending_project_name: null,
+                    pending_project_address: null,
+                    pending_project_latitude: null,
+                    pending_project_longitude: null,
+                    pending_project_radius: null,
+                },
+                include: {
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: {
+                                    Project: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    }
+
     /**
      * Processa o check-out de um registro de ponto.
      */
@@ -186,7 +375,24 @@ export class AttendanceService {
      */
     getProjectCoordinates(attendance: any) {
         const project = attendance.UserServiceProject?.service_project?.Project;
-        if (!project) return null;
+        if (!project) {
+            if (
+                attendance?.pending_project_latitude != null &&
+                attendance?.pending_project_longitude != null
+            ) {
+                const radius = attendance?.pending_project_radius
+                    ? Number(attendance.pending_project_radius)
+                    : null;
+                return {
+                    location: attendance?.pending_project_address || attendance?.pending_project_name || null,
+                    latitude: Number(attendance.pending_project_latitude),
+                    longitude: Number(attendance.pending_project_longitude),
+                    radius,
+                    radiusInKm: radius ? radius / 1000 : null
+                };
+            }
+            return null;
+        }
 
         return {
             location: project.location || null,
@@ -230,6 +436,14 @@ export class AttendanceService {
         });
 
         if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+        if (!attendance.user_service_project_id) {
+            return {
+                totalInsideTime: 0,
+                totalOutsideTime: 0,
+                timelineCount: 0,
+                timeline: []
+            };
+        }
 
         const startTime = attendance.check_in_time;
         const endTime = attendance.check_out_time || new Date();

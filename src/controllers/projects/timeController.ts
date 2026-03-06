@@ -61,7 +61,7 @@ export class TimeController {
             const processed = timeService.calculatePeriodTotals(allAttendances as any);
             const indicators = this.calculateIndicators(processed);
             const consolidated = this.consolidateByWorker(processed);
-            
+
             const pageSize = 10;
             const paginatedWorkers = consolidated
                 .sort((a, b) => a.user.name.localeCompare(b.user.name))
@@ -206,6 +206,7 @@ export class TimeController {
                         status: att.check_out_time ? 'Out' : 'In',
                         check_in_time: att.check_in_time,
                         check_out_time: att.check_out_time,
+                        user_service_project_id: att.user_service_project_id,
                         client: {
                             clientName: att.UserServiceProject?.service_project?.Project?.client?.name,
                             clientAddress: att.UserServiceProject?.service_project?.Project?.location

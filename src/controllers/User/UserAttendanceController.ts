@@ -6,6 +6,20 @@ import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 const prisma = new PrismaClient();
 const attendanceService = new AttendanceService();
 
+const formatActiveAttendance = (att: any) => {
+    const serviceProject = att.UserServiceProject?.service_project;
+    const project = serviceProject?.Project;
+
+    return {
+        ...att,
+        idServiceProject: serviceProject?.id || null,
+        service_project_name: serviceProject?.name || att.pending_project_name || 'Pending service selection',
+        project_id: project?.id || att.pending_project_id || null,
+        work_radius: project?.radius || att.pending_project_radius || null,
+        pending_service_selection: att.service_selection_status === 'pending',
+    };
+};
+
 export class UserAttendanceController {
     // Check-in consolidado (usado pelo App)
     async checkInByServiceProject(req: Request, res: Response): Promise<void> {
@@ -45,6 +59,47 @@ export class UserAttendanceController {
             res.status(status).json({ 
                 error: error.message,
                 details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+            });
+        }
+    }
+
+    async checkInPendingServiceSelection(req: Request, res: Response): Promise<void> {
+        try {
+            const { user_id, project_id, address, latitude, longitude } = req.body;
+
+            if (!user_id || !project_id) {
+                res.status(400).json({ error: 'user_id and project_id are required.' });
+                return;
+            }
+
+            const result = await attendanceService.processPendingCheckIn({
+                user_id,
+                project_id,
+                address,
+                latitude,
+                longitude
+            });
+
+            if (result.alreadyOpen) {
+                res.status(400).json({
+                    error: 'There is already an open attendance for this user.',
+                    attendance_id: result.attendance.id
+                });
+                return;
+            }
+
+            res.status(201).json({
+                success: true,
+                data: formatActiveAttendance(result.attendance),
+                projectCoordinates: attendanceService.getProjectCoordinates(result.attendance),
+                message: 'Pending attendance created successfully.'
+            });
+        } catch (error: any) {
+            console.error('[AttendanceController] Error in checkInPendingServiceSelection:', error);
+            const status = this.mapErrorToStatus(error.message);
+            res.status(status).json({
+                error: error.message,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
     }
@@ -100,17 +155,22 @@ export class UserAttendanceController {
                     user: { select: { id: true, name: true } },
                     UserServiceProject: {
                         include: {
-                            service_project: { select: { name: true, id: true } },
+                            service_project: {
+                                include: {
+                                    Project: {
+                                        select: {
+                                            id: true,
+                                            radius: true
+                                        }
+                                    }
+                                }
+                            },
                         },
                     },
                 },
             });
 
-            const formatted = activeAttendances.map((att) => ({
-                ...att,
-                idServiceProject: att.UserServiceProject?.service_project?.id || null,
-                service_project_name: att.UserServiceProject?.service_project?.name || null,
-            }));
+            const formatted = activeAttendances.map(formatActiveAttendance);
 
             res.status(200).json(formatted);
         } catch (error) {
@@ -235,16 +295,62 @@ export class UserAttendanceController {
 
             const updated = await prisma.userAttendance.update({
                 where: { id: attendanceId },
-                data: { user_service_project_id: userServiceProject.id },
+                data: {
+                    user_service_project_id: userServiceProject.id,
+                    service_selection_status: 'selected',
+                    pending_project_id: null,
+                    pending_project_name: null,
+                    pending_project_address: null,
+                    pending_project_latitude: null,
+                    pending_project_longitude: null,
+                    pending_project_radius: null,
+                },
                 include: {
                     user: { select: { id: true, name: true } },
-                    UserServiceProject: { include: { service_project: { select: { id: true, name: true } } } }
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: {
+                                    Project: {
+                                        select: {
+                                            id: true,
+                                            radius: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             });
 
-            return res.status(200).json({ message: 'Project changed successfully', attendance: updated });
+            return res.status(200).json({ message: 'Project changed successfully', attendance: formatActiveAttendance(updated) });
         } catch (error) {
             return res.status(500).json({ error: 'Error processing request' });
+        }
+    }
+
+    async selectServiceForAttendance(req: Request, res: Response) {
+        try {
+            const { attendanceId } = req.params;
+            const { serviceProjectId } = req.body;
+
+            if (!attendanceId || !serviceProjectId) {
+                return res.status(400).json({ error: 'Attendance ID and serviceProjectId are required.' });
+            }
+
+            const updatedAttendance = await attendanceService.assignServiceToAttendance(attendanceId, serviceProjectId);
+
+            return res.status(200).json({
+                success: true,
+                data: formatActiveAttendance(updatedAttendance),
+                projectCoordinates: attendanceService.getProjectCoordinates(updatedAttendance),
+                message: 'Service selected successfully.'
+            });
+        } catch (error: any) {
+            console.error('[AttendanceController] Error in selectServiceForAttendance:', error);
+            const status = this.mapErrorToStatus(error.message);
+            return res.status(status).json({ error: error.message });
         }
     }
 
@@ -373,6 +479,8 @@ export class UserAttendanceController {
             case 'PROJECT_INACTIVE': return 400;
             case 'SERVICE_CANCELED': return 400;
             case 'NOT_ASSIGNED': return 403;
+            case 'PROJECT_NOT_FOUND': return 404;
+            case 'SERVICE_PROJECT_MISMATCH': return 400;
             case 'ATTENDANCE_NOT_FOUND': return 404;
             case 'ALREADY_CHECKED_OUT': return 400;
             default: return 500;

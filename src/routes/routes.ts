@@ -33,6 +33,8 @@ import { isMultiCompanyEnabled } from '../helpers/featureToggle'
 import { fildsPdfProjectRoutes } from './fildsPdfProjectRoutes'
 import fileRoutes from './fileRoutes'
 import pasteRoutes from './pasteRoutes'
+import subcontractorPasteRoutes from './subcontractorPasteRoutes'
+import subcontractorFileRoutes from './subcontractorFileRoutes'
 import { checkToken } from '../middlewares/checkToken'
 import multer from 'multer'
 import uploadConfig from "../config/upload";
@@ -103,6 +105,8 @@ router.use("/estimate", estimateRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);
 router.use(pasteRoutes);
+router.use(subcontractorPasteRoutes);
+router.use(subcontractorFileRoutes);
 // Novas rotas para planos e permissões
 router.use(planRoutes)
 router.use(permissionRoutes)
