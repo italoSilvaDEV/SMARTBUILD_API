@@ -849,7 +849,7 @@ export class AIAssistantController {
       try {
         for (let attempt = 0; attempt < 6; attempt += 1) {
           const completion = await withTimeout(openai.chat.completions.create({
-            model: "gpt-5-mini",
+            model: "gpt-4o-mini",
             temperature: 0.2,
             messages,
             tools: this.getTools(),
@@ -892,7 +892,7 @@ export class AIAssistantController {
         }
 
         const synthesisCompletion = await withTimeout(openai.chat.completions.create({
-          model: "gpt-5-mini",
+          model: "gpt-4o-mini",
           temperature: 0.2,
           messages: [
             { role: "system", content: SYNTHESIS_PROMPT },
