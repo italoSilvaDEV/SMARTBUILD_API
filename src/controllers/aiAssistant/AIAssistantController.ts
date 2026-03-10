@@ -191,6 +191,49 @@ function isCapabilityQuestion(question: string) {
   );
 }
 
+function expandProjectStatuses(statuses: string[]) {
+  const normalized = statuses.map((status) => status.trim()).filter(Boolean);
+  const expanded = new Set<string>();
+
+  for (const status of normalized) {
+    const lower = status.toLowerCase();
+
+    if (["active", "in progress", "in_progress", "pre start", "pre_start", "final walkthrough", "final_walkthrough"].includes(lower)) {
+      [
+        "active",
+        "Active",
+        "in progress",
+        "In Progress",
+        "in_progress",
+        "IN_PROGRESS",
+        "pre start",
+        "Pre Start",
+        "pre_start",
+        "PRE_START",
+        "final walkthrough",
+        "Final Walkthrough",
+        "final_walkthrough",
+        "FINAL_WALKTHROUGH",
+      ].forEach((item) => expanded.add(item));
+      continue;
+    }
+
+    if (["completed", "done", "finished", "closed"].includes(lower)) {
+      ["completed", "Completed", "done", "Done", "finished", "Finished", "closed", "Closed"].forEach((item) => expanded.add(item));
+      continue;
+    }
+
+    if (["planned", "planning", "pending"].includes(lower)) {
+      ["planned", "Planned", "planning", "Planning", "pending", "Pending"].forEach((item) => expanded.add(item));
+      continue;
+    }
+
+    expanded.add(status);
+  }
+
+  return Array.from(expanded);
+}
+
 function extractProjectIdFromOutput(output: any): string | null {
   if (!output || typeof output !== "object") return null;
   if (typeof output.projectId === "string" && output.projectId) return output.projectId;
@@ -1160,7 +1203,7 @@ export class AIAssistantController {
   private async listProjects(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
     const limit = Math.min(Number(input.limit || 8) || 8, 20);
-    const status = Array.isArray(input.status) ? input.status.map(String) : [];
+    const status = Array.isArray(input.status) ? expandProjectStatuses(input.status.map(String)) : [];
 
     const projects = await prisma.project.findMany({
       where: {
