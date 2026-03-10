@@ -64,7 +64,8 @@ const SYSTEM_PROMPT = `
 You are the SmartBuild AI Assistant for admin users.
 You are consultative, analytical, and concise.
 By default, reply in the same language used by the user unless they explicitly ask for another language.
-You must use tools whenever data is needed.
+You must decide autonomously when tools are needed.
+When the user asks for business data, rankings, reports, comparisons, financial insight, projects, clients, invoices, or time cards, you must use tools.
 You never invent project, client, invoice, or company numbers when tools are available.
 Focus on operational and financial intelligence for construction businesses.
 When relevant, combine multiple tools before answering.
@@ -73,6 +74,8 @@ Whenever you mention a project, always include the project address and client na
 Never use the client name as the project name.
 If the user asks for a report, return a report payload.
 If the user asks to export as PDF, CSV, Excel or spreadsheet, still return the report payload so the client can generate the file.
+Never answer with generic bridge phrases such as "I understand your question", "I can go deeper", or "I can reframe this".
+If the request is data-related and you are not yet certain, call the closest tool first and continue from there.
 `;
 
 const SYNTHESIS_PROMPT = `
@@ -255,25 +258,6 @@ function summarizeTitle(content: string): string {
   return compact.length > 60 ? `${compact.slice(0, 57)}...` : compact;
 }
 
-function isGreetingQuestion(question: string) {
-  const normalized = question.toLowerCase().trim();
-  return ["oi", "olá", "ola", "hi", "hello", "hey", "e ai", "e aí"].includes(normalized);
-}
-
-function isCapabilityQuestion(question: string) {
-  const normalized = question.toLowerCase();
-  return (
-    normalized.includes("what can you do") ||
-    normalized.includes("what do you do") ||
-    normalized.includes("how can you help") ||
-    normalized.includes("oq vc sabe fazer") ||
-    normalized.includes("o que voce sabe fazer") ||
-    normalized.includes("o que você sabe fazer") ||
-    normalized.includes("como voce pode ajudar") ||
-    normalized.includes("como você pode ajudar")
-  );
-}
-
 function expandProjectStatuses(statuses: string[]) {
   const normalized = statuses.map((status) => status.trim()).filter(Boolean);
   const expanded = new Set<string>();
@@ -438,6 +422,40 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
       metrics: [
         { label: "Top client", value: output.items[0].clientName, tone: "warning" },
         { label: "Top AR", value: formatCurrency(output.items[0].openAmount || 0) },
+      ],
+    };
+  }
+
+  if (tool.tool === "client_risk_analysis" && output?.items?.length) {
+    return {
+      title: "Client Revenue And Delay Risk",
+      description: "Clients ranked by revenue and payment delay exposure.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.clientName,
+        value: item.revenueAmount,
+      })),
+      metrics: [
+        { label: "Top revenue", value: output.items[0].clientName, tone: "warning" },
+        { label: "Revenue", value: formatCurrency(output.items[0].revenueAmount || 0) },
+        { label: "Risk", value: `${Math.round((output.items[0].riskScore || 0) * 100)}%` },
+      ],
+    };
+  }
+
+  if (tool.tool === "cashflow_projection" && output?.items?.length) {
+    return {
+      title: "Cash Impact Next 30 Days",
+      description: "Upcoming and overdue unpaid invoices impacting short-term cash flow.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.label,
+        value: item.amount,
+      })),
+      metrics: [
+        { label: "Overdue", value: formatCurrency(output.overdueAmount || 0), tone: "warning" },
+        { label: "Next 30 days", value: formatCurrency(output.next30DaysAmount || 0) },
+        { label: "Invoices", value: String(output.totalInvoices || 0), tone: "success" },
       ],
     };
   }
@@ -675,7 +693,7 @@ async function insertMessage(params: {
   };
 }
 
-function buildFallbackResponse(question: string, tools: ExecutedTool[]): AssistantStructuredResponse {
+function buildToolSummaryResponse(tools: ExecutedTool[]): AssistantStructuredResponse {
   const latestTool = tools[tools.length - 1];
   const base = latestTool?.output as any;
 
@@ -789,112 +807,91 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
     };
   }
 
-  if (isCapabilityQuestion(question)) {
+  if (latestTool?.tool === "client_risk_analysis" && base?.items?.length) {
+    const topClient = base.items[0];
     return {
-      content: "I can query live SmartBuild data and answer in a consultative way.",
+      content: `${topClient.clientName} currently combines the highest revenue with the highest payment delay risk in the selected sample.`,
       bullets: [
-        "Search projects, clients, invoices, estimates and time cards.",
-        "Compare cost, revenue, margin, risk and receivables.",
-        "Generate executive reports with charts directly in the conversation.",
+        `Revenue amount: ${formatCurrency(topClient.revenueAmount || 0)}.`,
+        `Open amount: ${formatCurrency(topClient.openAmount || 0)} with ${topClient.overdueInvoices || 0} overdue invoices.`,
+        `Risk score: ${Math.round((topClient.riskScore || 0) * 100)}%.`,
       ],
-      followUp: "If you want, I can start with a project, a client, or a financial report.",
+      followUp: "I can list the rest of the clients by revenue and delay risk.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "invoice_aging" && base?.buckets?.length) {
+    return {
+      content: `I grouped the current open invoices by aging bucket.`,
+      bullets: [
+        `Open receivables: ${formatCurrency(base.totalOpen || 0)}.`,
+        `${base.buckets.length} aging buckets were used in this view.`,
+      ],
+      followUp: "I can list the overdue invoices or break this down by client.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "overdue_invoices" && base?.items?.length) {
+    return {
+      content: `I found overdue invoices that are already impacting cash flow.`,
+      bullets: [
+        `Overdue amount: ${formatCurrency(base.overdueAmount || 0)}.`,
+        `${base.total || 0} overdue invoices are in the current result set.`,
+      ],
+      followUp: "I can show the clients or projects creating the largest overdue exposure.",
+      report: buildReportFromTool(latestTool) || null,
+    };
+  }
+
+  if (latestTool?.tool === "receivables_by_client" && base?.items?.length) {
+    const topClient = base.items[0];
+    return {
+      content: `${topClient.clientName} currently has the highest open receivables.`,
+      bullets: [
+        `Open amount: ${formatCurrency(topClient.openAmount || 0)}.`,
+        `Overdue amount: ${formatCurrency(topClient.overdueAmount || 0)}.`,
+        `${topClient.invoiceCount || 0} unpaid invoices are contributing to this exposure.`,
+      ],
+      followUp: "I can compare this client against the rest of the portfolio by delay risk.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "list_clients" && base?.items?.length) {
+    const topClient = base.items[0];
+    return {
+      content: `I found client records relevant to your question.`,
+      bullets: [
+        `Top client in the current result set: ${topClient.name}.`,
+        `Revenue/invoiced amount: ${formatCurrency(topClient.invoicedAmount || 0)}.`,
+        `${base.total || 0} clients were returned by this query.`,
+      ],
+      followUp: "I can sort this view by revenue, open balance, or delay risk.",
       report: null,
     };
   }
 
-  if (isGreetingQuestion(question)) {
+  if (latestTool?.tool === "cashflow_projection" && base?.items?.length) {
     return {
-      content: "Hi. I can help with projects, clients, invoices, time cards and SmartBuild reports.",
+      content: `I mapped the short-term cash impact using overdue invoices and unpaid invoices due in the next 30 days.`,
       bullets: [
-        "Ask about cost, margin, delays, receivables or performance.",
+        `Overdue impact: ${formatCurrency(base.overdueAmount || 0)}.`,
+        `Next 30 days impact: ${formatCurrency(base.next30DaysAmount || 0)}.`,
+        `${base.totalInvoices || 0} unpaid invoices are contributing to this cash view.`,
       ],
-      followUp: "If you want, I can start with a project review or a financial summary.",
-      report: null,
+      followUp: "I can also break this down by client or by project.",
+      report: buildReportFromTool(latestTool),
     };
   }
 
   return {
-    content: `I understand your question about "${question}".`,
-    bullets: [
-      "I can go deeper using project, client, invoice, time card or reporting data.",
-    ],
-    followUp: "If you want, I can reframe this with a more financial, operational, or client-focused angle.",
+    content: "I couldn't produce a structured answer from the available tool results.",
+    bullets: [],
+    followUp: undefined,
     report: null,
   };
-}
-
-function inferFallbackToolSequence(question: string): string[] {
-  const normalized = question.toLowerCase();
-  if (isGreetingQuestion(question) || isCapabilityQuestion(question)) {
-    return [];
-  }
-  if (
-    normalized.includes("breakdown") ||
-    normalized.includes("detalhamento") ||
-    normalized.includes("em que ta gastando") ||
-    normalized.includes("em que está gastando") ||
-    normalized.includes("cost breakdown")
-  ) {
-    return ["project_cost_breakdown"];
-  }
-  if (
-    normalized.includes("timecard") ||
-    normalized.includes("time card") ||
-    normalized.includes("worker") ||
-    normalized.includes("employee") ||
-    normalized.includes("person") ||
-    normalized.includes("pessoa") ||
-    normalized.includes("hours") ||
-    normalized.includes("horas") ||
-    normalized.includes("labor") ||
-    ((normalized.includes("week") || normalized.includes("semana")) &&
-      (normalized.includes("most expensive") || normalized.includes("mais caro") || normalized.includes("highest cost")))
-  ) {
-    if (
-      normalized.includes("who") ||
-      normalized.includes("quem") ||
-      normalized.includes("most expensive") ||
-      normalized.includes("mais caro") ||
-      normalized.includes("highest cost")
-    ) {
-      return ["timecards_by_worker"];
-    }
-
-    if (
-      normalized.includes("detail") ||
-      normalized.includes("detalhe") ||
-      normalized.includes("specific date") ||
-      normalized.includes("data especifica") ||
-      normalized.includes("data específica")
-    ) {
-      return ["worker_timecard_details"];
-    }
-
-    if (normalized.includes("project")) {
-      return ["timecards_by_project"];
-    }
-
-    return ["timecard_summary"];
-  }
-  if (normalized.includes("lucrativo") || normalized.includes("profit") || normalized.includes("profitable")) {
-    return ["top_profitable_projects"];
-  }
-  if (normalized.includes("gasto") || normalized.includes("cost") || normalized.includes("gastando")) {
-    return ["top_spending_projects"];
-  }
-  if (normalized.includes("margem") || normalized.includes("margin")) {
-    return ["company_overview", "top_spending_projects"];
-  }
-  if (normalized.includes("invoice") || normalized.includes("receber") || normalized.includes("aging")) {
-    return ["invoice_aging", "overdue_invoices", "receivables_by_client"];
-  }
-  if (normalized.includes("cliente") || normalized.includes("client")) {
-    return ["list_clients", "receivables_by_client"];
-  }
-  if (normalized.includes("estimate")) {
-    return ["estimate_summary"];
-  }
-  return ["company_overview"];
 }
 
 export class AIAssistantController {
@@ -992,6 +989,18 @@ export class AIAssistantController {
           tool: toolName,
           input: resolvedInput,
           output: await this.receivablesByClient(companyId, resolvedInput),
+        };
+      case "client_risk_analysis":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.clientRiskAnalysis(companyId, resolvedInput),
+        };
+      case "cashflow_projection":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.cashflowProjection(companyId, resolvedInput),
         };
       case "project_cost_breakdown":
         return {
@@ -1285,6 +1294,34 @@ export class AIAssistantController {
       {
         type: "function" as const,
         function: {
+          name: "client_risk_analysis",
+          description: "Rank clients by revenue, open balance, overdue exposure and delay risk.",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "cashflow_projection",
+          description: "Summarize overdue and next-30-day unpaid invoice impact on cash flow.",
+          parameters: {
+            type: "object",
+            properties: {
+              days: { type: "number" },
+              clientId: { type: "string" },
+              projectId: { type: "string" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "estimate_summary",
           description: "Summarize estimates by project or status.",
           parameters: {
@@ -1491,15 +1528,12 @@ export class AIAssistantController {
 
           if (!assistantMessage.tool_calls?.length && !executedTools.length && assistantMessage.content?.trim()) {
             return {
-              structured: normalizeStructuredResponse(
-                {
-                  content: assistantMessage.content.trim(),
-                  bullets: [],
-                  followUp: undefined,
-                  report: null,
-                },
-                buildFallbackResponse(question, [])
-              ),
+              structured: {
+                content: assistantMessage.content.trim(),
+                bullets: [],
+                followUp: null,
+                report: null,
+              },
               executedTools: [],
             };
           }
@@ -1508,13 +1542,18 @@ export class AIAssistantController {
         }
 
         if (executedTools.length === 0) {
-          const fallbackTools = inferFallbackToolSequence(question);
-          for (const toolName of fallbackTools) {
-            executedTools.push(await this.executeTool(toolName, "{}", companyId, history));
-          }
+          return {
+            structured: {
+              content: "I couldn't determine a reliable data path for that request. Please ask it more directly.",
+              bullets: [],
+              followUp: null,
+              report: null,
+            },
+            executedTools: [],
+          };
         }
 
-        const fallback = buildFallbackResponse(question, executedTools);
+        const fallback = buildToolSummaryResponse(executedTools);
         const fallbackWithReport = {
           ...fallback,
           report: fallback.report || buildReportFromTool(executedTools[0]) || null,
@@ -1558,17 +1597,14 @@ export class AIAssistantController {
       }
     }
 
-    const tools: ExecutedTool[] = [];
-    for (const toolName of inferFallbackToolSequence(question)) {
-      tools.push(await this.executeTool(toolName, "{}", companyId, history));
-    }
-    const fallback = buildFallbackResponse(question, tools);
     return {
-      structured: normalizeStructuredResponse(fallback, {
-        ...fallback,
-        report: fallback.report || buildReportFromTool(tools[0]) || null,
-      }),
-      executedTools: tools,
+      structured: {
+        content: "I couldn't complete that request right now.",
+        bullets: [],
+        followUp: null,
+        report: null,
+      },
+      executedTools: [],
     };
   }
 
@@ -2581,6 +2617,180 @@ export class AIAssistantController {
       items: Array.from(byClient.values())
         .sort((a, b) => b.openAmount - a.openAmount)
         .slice(0, limit),
+    };
+  }
+
+  private async clientRiskAnalysis(companyId: string, input: Record<string, unknown>) {
+    const limit = Math.min(Number(input.limit || 10) || 10, 25);
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        companyId,
+      },
+      select: {
+        totalAmount: true,
+        status: true,
+        dueDate: true,
+        project: {
+          select: {
+            client: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    const byClient = new Map<string, {
+      clientId: string;
+      clientName: string;
+      email: string | null;
+      revenueAmount: number;
+      openAmount: number;
+      overdueAmount: number;
+      overdueInvoices: number;
+      invoiceCount: number;
+      riskScore: number;
+    }>();
+
+    for (const invoice of invoices) {
+      const client = invoice.project?.client;
+      if (!client) continue;
+      const amount = decimalToNumber(invoice.totalAmount);
+      const current = byClient.get(client.id) || {
+        clientId: client.id,
+        clientName: client.name,
+        email: client.email || null,
+        revenueAmount: 0,
+        openAmount: 0,
+        overdueAmount: 0,
+        overdueInvoices: 0,
+        invoiceCount: 0,
+        riskScore: 0,
+      };
+
+      current.revenueAmount += amount;
+      current.invoiceCount += 1;
+
+      const isPaid = String(invoice.status || "").toLowerCase() === "paid";
+      const isOverdue = !isPaid && invoice.dueDate && new Date(invoice.dueDate) < now;
+
+      if (!isPaid) {
+        current.openAmount += amount;
+      }
+
+      if (isOverdue) {
+        current.overdueAmount += amount;
+        current.overdueInvoices += 1;
+      }
+
+      byClient.set(client.id, current);
+    }
+
+    const items = Array.from(byClient.values())
+      .map((item) => {
+        const overdueRatio = item.openAmount > 0 ? item.overdueAmount / item.openAmount : 0;
+        const revenueWeight = item.revenueAmount > 0 ? Math.min(item.revenueAmount / 100000, 1) : 0;
+        const invoiceWeight = item.invoiceCount > 0 ? Math.min(item.overdueInvoices / item.invoiceCount, 1) : 0;
+        const riskScore = Math.min(overdueRatio * 0.6 + invoiceWeight * 0.25 + revenueWeight * 0.15, 1);
+
+        return {
+          ...item,
+          riskScore,
+        };
+      })
+      .sort((a, b) => {
+        if (b.revenueAmount !== a.revenueAmount) return b.revenueAmount - a.revenueAmount;
+        return b.riskScore - a.riskScore;
+      })
+      .slice(0, limit);
+
+    return {
+      totalClients: byClient.size,
+      items,
+    };
+  }
+
+  private async cashflowProjection(companyId: string, input: Record<string, unknown>) {
+    const days = Math.min(Number(input.days || 30) || 30, 90);
+    const clientId = input.clientId ? String(input.clientId) : undefined;
+    const projectId = input.projectId ? String(input.projectId) : undefined;
+    const now = new Date();
+    const future = new Date();
+    future.setDate(now.getDate() + days);
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        companyId,
+        status: { not: "paid" },
+        ...(projectId ? { projectId } : {}),
+        ...(clientId ? { project: { client_id: clientId } } : {}),
+      },
+      select: {
+        id: true,
+        totalAmount: true,
+        dueDate: true,
+        project: {
+          select: {
+            id: true,
+            contract_number: true,
+            location: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const overdueInvoices = invoices.filter((invoice: any) => invoice.dueDate && new Date(invoice.dueDate) < now);
+    const nextInvoices = invoices.filter((invoice: any) => {
+      if (!invoice.dueDate) return false;
+      const dueDate = new Date(invoice.dueDate);
+      return dueDate >= now && dueDate <= future;
+    });
+
+    return {
+      totalInvoices: invoices.length,
+      overdueAmount: overdueInvoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
+      next30DaysAmount: nextInvoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
+      items: [
+        {
+          label: "Overdue",
+          amount: overdueInvoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
+        },
+        {
+          label: `Next ${days} Days`,
+          amount: nextInvoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
+        },
+      ],
+      overdueInvoices: overdueInvoices.slice(0, 8).map((invoice: any) => ({
+        id: invoice.id,
+        totalAmount: decimalToNumber(invoice.totalAmount),
+        dueDate: invoice.dueDate,
+        projectId: invoice.project?.id || null,
+        projectName: invoice.project ? getProjectDisplayName(invoice.project) : null,
+        projectAddress: invoice.project?.location || null,
+        clientName: invoice.project?.client?.name || null,
+        contractNumber: invoice.project?.contract_number || null,
+      })),
+      upcomingInvoices: nextInvoices.slice(0, 8).map((invoice: any) => ({
+        id: invoice.id,
+        totalAmount: decimalToNumber(invoice.totalAmount),
+        dueDate: invoice.dueDate,
+        projectId: invoice.project?.id || null,
+        projectName: invoice.project ? getProjectDisplayName(invoice.project) : null,
+        projectAddress: invoice.project?.location || null,
+        clientName: invoice.project?.client?.name || null,
+        contractNumber: invoice.project?.contract_number || null,
+      })),
     };
   }
 
