@@ -55,13 +55,15 @@ const openai = process.env.OPENAI_KEY
   : null;
 
 const SYSTEM_PROMPT = `
-You are the SmartBuild IA Assistant for admin users.
+You are the SmartBuild AI Assistant for admin users.
 You are consultative, analytical, and concise.
 You must use tools whenever data is needed.
 You never invent project, client, invoice, or company numbers when tools are available.
 Focus on operational and financial intelligence for construction businesses.
 When relevant, combine multiple tools before answering.
 Prefer specific numbers, rankings, gaps, risk signals and next actions.
+Whenever you mention a project, always include the project address and client name when available.
+Never use the client name as the project name.
 If the user asks for a report, return a report payload.
 `;
 
@@ -128,6 +130,33 @@ function formatCurrency(value: number): string {
   }).format(value || 0);
 }
 
+function getProjectDisplayName(project: {
+  id?: string;
+  contract_number?: number | string | null;
+  location?: string | null;
+}) {
+  const location = typeof project.location === "string" ? project.location.trim() : "";
+  if (location) return location;
+  if (project.contract_number != null && String(project.contract_number).trim()) {
+    return `Project ${project.contract_number}`;
+  }
+  return `Project ${String(project.id || "").slice(0, 6) || "N/A"}`;
+}
+
+function getProjectReference(project: {
+  id?: string;
+  contract_number?: number | string | null;
+  location?: string | null;
+  client?: { id?: string; name?: string | null; email?: string | null } | null;
+}) {
+  return {
+    projectName: getProjectDisplayName(project),
+    projectAddress: project.location || null,
+    client: project.client || null,
+    clientName: project.client?.name || null,
+  };
+}
+
 function summarizeTitle(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim();
   if (!compact) return "New conversation";
@@ -168,14 +197,15 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "top_spending_projects" && output?.items?.length) {
     return {
       title: "Top Spending Projects",
-      description: "Ranking dos projetos com maior custo acumulado.",
+      description: "Projects ranked by highest accumulated cost.",
       chartMode: "bar",
       chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.projectName,
+        label: item.projectAddress || item.projectName,
         value: item.totalCost,
       })),
       metrics: [
-        { label: "Top project", value: output.items[0].projectName, tone: "warning" },
+        { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
+        { label: "Client", value: output.items[0].clientName || "Not available" },
         { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
         { label: "Projects", value: String(output.items.length), tone: "success" },
       ],
@@ -185,7 +215,7 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "invoice_aging" && output?.buckets?.length) {
     return {
       title: "Invoice Aging",
-      description: "Distribuicao das invoices abertas por faixa de atraso.",
+      description: "Distribution of open invoices by aging bucket.",
       chartMode: "pie",
       chartData: output.buckets,
       metrics: [
@@ -198,7 +228,7 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "receivables_by_client" && output?.items?.length) {
     return {
       title: "Receivables By Client",
-      description: "Clientes com maior valor aberto a receber.",
+      description: "Clients with the highest outstanding receivables.",
       chartMode: "bar",
       chartData: output.items.slice(0, 6).map((item: any) => ({
         label: item.clientName,
@@ -214,7 +244,7 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "company_overview" && output?.totals) {
     return {
       title: "Company Overview",
-      description: "Visao consolidada de projetos, clientes e invoices.",
+      description: "Consolidated view of projects, clients and invoices.",
       chartMode: "bar",
       chartData: [
         { label: "Invoiced", value: output.totals.invoiced || 0 },
@@ -363,24 +393,27 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
   const base = latestTool?.output as any;
 
   if (latestTool?.tool === "top_spending_projects" && base?.items?.length) {
+    const topProject = base.items[0];
     return {
-      content: `O projeto com maior gasto no período é ${base.items[0].projectName}.`,
+      content: `${topProject.projectName} is currently the highest-spending project in the selected period for ${topProject.clientName || "this client"}.`,
       bullets: [
-        `Custo total estimado: ${formatCurrency(base.items[0].totalCost || 0)}.`,
-        `Foram analisados ${base.items.length} projetos para o ranking.`,
+        `Project address: ${topProject.projectAddress || topProject.projectName}.`,
+        `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`,
+        `${base.items.length} projects were evaluated for this ranking.`,
       ],
-      followUp: "Posso detalhar os custos por materiais, mão de obra e invoices.",
+      followUp: "I can break this down by materials, labor and invoice impact.",
       report: {
         title: "Top Spending Projects",
-        description: "Ranking dos projetos por custo total.",
+        description: "Projects ranked by total cost exposure.",
         chartMode: "bar",
         chartData: base.items.slice(0, 5).map((item: any) => ({
-          label: item.projectName,
+          label: item.projectAddress || item.projectName,
           value: item.totalCost,
         })),
         metrics: [
-          { label: "Top project", value: base.items[0].projectName, tone: "warning" },
-          { label: "Top cost", value: formatCurrency(base.items[0].totalCost || 0) },
+          { label: "Top project", value: topProject.projectAddress || topProject.projectName, tone: "warning" },
+          { label: "Client", value: topProject.clientName || "Not available" },
+          { label: "Top cost", value: formatCurrency(topProject.totalCost || 0) },
           { label: "Projects analyzed", value: String(base.items.length), tone: "success" },
         ],
       },
@@ -388,12 +421,12 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
   }
 
   return {
-    content: `Analisei a pergunta "${question}" e a infraestrutura do assistant está pronta para responder usando dados reais do SmartBuild.`,
+    content: `I reviewed "${question}" and prepared the assistant to answer with live SmartBuild data.`,
     bullets: [
-      "A resposta foi gerada em fallback porque o provedor de IA não retornou uma síntese estruturada.",
-      "As conversas continuam salvas na VPS normalmente.",
+      "This answer was generated through the fallback path because the AI provider did not return a structured synthesis.",
+      "Your conversation history is still being saved normally.",
     ],
-    followUp: "Se quiser, posso refazer a pergunta com outro foco: projetos, clientes ou invoices.",
+    followUp: "I can retry this with a sharper focus on projects, clients, invoices or cash flow.",
     report: null,
   };
 }
@@ -424,7 +457,7 @@ export class AIAssistantController {
       threadId,
       role: "assistant",
       content:
-        "Sou o IA Assistant do SmartBuild. Posso consultar projetos, clientes, invoices e indicadores e responder em formato consultivo com relatórios e gráficos.",
+        "I’m your SmartBuild AI Assistant. Ask about projects, clients, invoices, margins or reports, and I’ll answer with live business data.",
       toolsUsed: ["Projects", "Clients", "Invoices", "Financials"],
     });
   }
@@ -849,7 +882,7 @@ export class AIAssistantController {
       try {
         for (let attempt = 0; attempt < 6; attempt += 1) {
           const completion = await withTimeout(openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-5-mini",
             temperature: 0.2,
             messages,
             tools: this.getTools(),
@@ -892,7 +925,7 @@ export class AIAssistantController {
         }
 
         const synthesisCompletion = await withTimeout(openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-5-mini",
           temperature: 0.2,
           messages: [
             { role: "system", content: SYNTHESIS_PROMPT },
@@ -997,6 +1030,7 @@ export class AIAssistantController {
       total: projects.length,
       items: projects.map((project) => ({
         id: project.id,
+        ...getProjectReference(project),
         contractNumber: project.contract_number,
         status: project.status_project,
         price: decimalToNumber(project.price),
@@ -1005,7 +1039,6 @@ export class AIAssistantController {
         startDate: project.start_date,
         deadline: project.deadline,
         location: project.location,
-        client: project.client,
         serviceCount: project.serviceProject.length,
         invoiceCount: project.invoices.length,
       })),
@@ -1163,6 +1196,7 @@ export class AIAssistantController {
 
     return {
       id: project.id,
+      ...getProjectReference(project),
       contractNumber: project.contract_number,
       status: project.status_project,
       startDate: project.start_date,
@@ -1172,7 +1206,6 @@ export class AIAssistantController {
       price: decimalToNumber(project.price),
       amountPaid: decimalToNumber(project.amountPaid),
       balanceDue: decimalToNumber(project.balanceDue),
-      client: project.client,
       seller: project.user,
       projectManager: project.project_manager,
       services: project.serviceProject.map((service: any) => ({
@@ -1268,11 +1301,7 @@ export class AIAssistantController {
 
         return {
           projectId: project.id,
-          projectName:
-            project.client?.name ||
-            project.serviceProject[0]?.name ||
-            project.location ||
-            `Project ${project.contract_number || project.id.slice(0, 6)}`,
+          ...getProjectReference(project),
           contractNumber: project.contract_number,
           materialCost,
           laborCost,
@@ -1294,6 +1323,7 @@ export class AIAssistantController {
       select: {
         id: true,
         contract_number: true,
+        location: true,
         client: { select: { name: true } },
         serviceProject: {
           select: {
@@ -1344,7 +1374,7 @@ export class AIAssistantController {
 
     return {
       projectId: project.id,
-      projectName: project.client?.name || `Project ${project.contract_number || project.id.slice(0, 6)}`,
+      ...getProjectReference(project),
       totals: {
         materialCost,
         laborCost,
@@ -1365,6 +1395,7 @@ export class AIAssistantController {
       select: {
         id: true,
         contract_number: true,
+        location: true,
         price: true,
         amountPaid: true,
         balanceDue: true,
@@ -1404,7 +1435,7 @@ export class AIAssistantController {
 
     return {
       projectId: project.id,
-      projectName: project.client?.name || `Project ${project.contract_number || project.id.slice(0, 6)}`,
+      ...getProjectReference(project),
       soldValue,
       invoiced,
       amountPaid: decimalToNumber(project.amountPaid),
@@ -1427,6 +1458,7 @@ export class AIAssistantController {
       select: {
         id: true,
         contract_number: true,
+        location: true,
         start_date: true,
         deadline: true,
         status_project: true,
@@ -1469,7 +1501,7 @@ export class AIAssistantController {
 
     return {
       projectId: project.id,
-      projectName: project.client?.name || `Project ${project.contract_number || project.id.slice(0, 6)}`,
+      ...getProjectReference(project),
       status: project.status_project,
       deadline: project.deadline,
       daysToDeadline,
@@ -1707,6 +1739,7 @@ export class AIAssistantController {
           select: {
             id: true,
             contract_number: true,
+            location: true,
             client: { select: { id: true, name: true } },
           },
         },
@@ -1923,6 +1956,8 @@ export class AIAssistantController {
         amountPaid: decimalToNumber(estimate.amountPaid),
         balanceDue: decimalToNumber(estimate.balanceDue),
         projectId: estimate.project.id,
+        projectName: getProjectDisplayName(estimate.project),
+        projectAddress: estimate.project.location || null,
         contractNumber: estimate.project.contract_number,
         client: estimate.project.client,
         changeOrderCount: estimate.changeOrders.length,
@@ -1939,6 +1974,7 @@ export class AIAssistantController {
       select: {
         id: true,
         contract_number: true,
+        location: true,
         price: true,
         client: { select: { name: true } },
         invoices: { select: { totalAmount: true, status: true } },
@@ -1976,7 +2012,7 @@ export class AIAssistantController {
 
     return {
       projectId: project.id,
-      projectName: project.client?.name || `Project ${project.contract_number || project.id.slice(0, 6)}`,
+      ...getProjectReference(project),
       soldValue: decimalToNumber(project.price),
       latestEstimate: latestEstimate
         ? {
@@ -2019,6 +2055,7 @@ export class AIAssistantController {
           select: {
             id: true,
             contract_number: true,
+            location: true,
             client: { select: { id: true, name: true } },
           },
         },
@@ -2039,6 +2076,8 @@ export class AIAssistantController {
         totalAmount: decimalToNumber(row.total_amount),
         createdAt: row.date_creation,
         projectId: row.project?.id,
+        projectName: row.project ? getProjectDisplayName(row.project) : null,
+        projectAddress: row.project?.location || null,
         contractNumber: row.project?.contract_number,
         client: row.project?.client,
       })),
@@ -2065,20 +2104,23 @@ export class AIAssistantController {
           select: {
             id: true,
             contract_number: true,
+            location: true,
             client: { select: { name: true } },
           },
         },
       },
     });
 
-    const byProject = new Map<string, { projectId: string; projectName: string; totalHours: number; totalCost: number; entries: number }>();
+    const byProject = new Map<string, { projectId: string; projectName: string; projectAddress: string | null; clientName: string | null; totalHours: number; totalCost: number; entries: number }>();
     for (const row of workedHours) {
       const amountHours = decimalToNumber(row.amount_of_hours);
       const totalCost = row.type_price === "fixed" ? decimalToNumber(row.fixed_price) : amountHours * decimalToNumber(row.hourly_price);
       const key = row.project?.id || "unknown";
       const current = byProject.get(key) || {
         projectId: row.project?.id || "unknown",
-        projectName: row.project?.client?.name || `Project ${row.project?.contract_number || "N/A"}`,
+        projectName: row.project ? getProjectDisplayName(row.project) : "Project N/A",
+        projectAddress: row.project?.location || null,
+        clientName: row.project?.client?.name || null,
         totalHours: 0,
         totalCost: 0,
         entries: 0,
@@ -2127,6 +2169,7 @@ export class AIAssistantController {
           select: {
             id: true,
             contract_number: true,
+            location: true,
             client: { select: { name: true } },
           },
         },
@@ -2150,7 +2193,7 @@ export class AIAssistantController {
       };
       current.totalHours += decimalToNumber(row.amount_of_hours);
       current.totalCost += totalCost;
-      if (row.project?.id) current.projects.add(row.project.id);
+      if (row.project?.id) current.projects.add(getProjectDisplayName(row.project));
       current.projectCount = current.projects.size;
       bySubcontractor.set(key, current);
     }
@@ -2307,6 +2350,46 @@ export class AIAssistantController {
       return res.status(200).json({ thread, messages });
     } catch (error: any) {
       console.error("[AIAssistantController.getThread]", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  }
+
+  async deleteThread(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId as string | undefined;
+      const companyId = String(req.query.companyId || "");
+      const { threadId } = req.params;
+
+      if (!userId) return res.status(401).json({ error: "User not authenticated" });
+      if (!companyId) return res.status(400).json({ error: "companyId is required" });
+
+      await ensureCompanyAccess(userId, companyId);
+
+      const thread = await getThreadById(threadId, companyId, userId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+      await prisma.$transaction([
+        prisma.$executeRawUnsafe(
+          `
+            DELETE FROM ai_assistant_messages
+            WHERE threadId = ?
+          `,
+          threadId
+        ),
+        prisma.$executeRawUnsafe(
+          `
+            DELETE FROM ai_assistant_threads
+            WHERE id = ? AND companyId = ? AND userId = ?
+          `,
+          threadId,
+          companyId,
+          userId
+        ),
+      ]);
+
+      return res.status(200).json({ success: true, threadId });
+    } catch (error: any) {
+      console.error("[AIAssistantController.deleteThread]", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
