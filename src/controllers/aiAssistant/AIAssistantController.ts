@@ -57,6 +57,7 @@ const openai = process.env.OPENAI_KEY
 const SYSTEM_PROMPT = `
 You are the SmartBuild AI Assistant for admin users.
 You are consultative, analytical, and concise.
+By default, reply in the same language used by the user unless they explicitly ask for another language.
 You must use tools whenever data is needed.
 You never invent project, client, invoice, or company numbers when tools are available.
 Focus on operational and financial intelligence for construction businesses.
@@ -83,6 +84,7 @@ Return ONLY valid JSON with this shape:
 }
 If no report is appropriate, set "report" to null.
 Keep chartData compact and directly derived from the provided tool results.
+Match the user's language naturally.
 `;
 
 const OPENAI_TIMEOUT_MS = 25000;
@@ -161,6 +163,25 @@ function summarizeTitle(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim();
   if (!compact) return "New conversation";
   return compact.length > 60 ? `${compact.slice(0, 57)}...` : compact;
+}
+
+function isGreetingQuestion(question: string) {
+  const normalized = question.toLowerCase().trim();
+  return ["oi", "olá", "ola", "hi", "hello", "hey", "e ai", "e aí"].includes(normalized);
+}
+
+function isCapabilityQuestion(question: string) {
+  const normalized = question.toLowerCase();
+  return (
+    normalized.includes("what can you do") ||
+    normalized.includes("what do you do") ||
+    normalized.includes("how can you help") ||
+    normalized.includes("oq vc sabe fazer") ||
+    normalized.includes("o que voce sabe fazer") ||
+    normalized.includes("o que você sabe fazer") ||
+    normalized.includes("como voce pode ajudar") ||
+    normalized.includes("como você pode ajudar")
+  );
 }
 
 function normalizeStructuredResponse(
@@ -420,19 +441,45 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
     };
   }
 
+  if (isCapabilityQuestion(question)) {
+    return {
+      content: "I can query live SmartBuild data and answer in a consultative way.",
+      bullets: [
+        "Search projects, clients, invoices, estimates and time cards.",
+        "Compare cost, revenue, margin, risk and receivables.",
+        "Generate executive reports with charts directly in the conversation.",
+      ],
+      followUp: "If you want, I can start with a project, a client, or a financial report.",
+      report: null,
+    };
+  }
+
+  if (isGreetingQuestion(question)) {
+    return {
+      content: "Hi. I can help with projects, clients, invoices, time cards and SmartBuild reports.",
+      bullets: [
+        "Ask about cost, margin, delays, receivables or performance.",
+      ],
+      followUp: "If you want, I can start with a project review or a financial summary.",
+      report: null,
+    };
+  }
+
   return {
-    content: `I reviewed "${question}" and prepared the assistant to answer with live SmartBuild data.`,
+    content: `I understand your question about "${question}".`,
     bullets: [
-      "This answer was generated through the fallback path because the AI provider did not return a structured synthesis.",
-      "Your conversation history is still being saved normally.",
+      "I can go deeper using project, client, invoice, time card or reporting data.",
     ],
-    followUp: "I can retry this with a sharper focus on projects, clients, invoices or cash flow.",
+    followUp: "If you want, I can reframe this with a more financial, operational, or client-focused angle.",
     report: null,
   };
 }
 
 function inferFallbackToolSequence(question: string): string[] {
   const normalized = question.toLowerCase();
+  if (isGreetingQuestion(question) || isCapabilityQuestion(question)) {
+    return [];
+  }
   if (normalized.includes("gasto") || normalized.includes("cost") || normalized.includes("gastando")) {
     return ["top_spending_projects"];
   }
@@ -912,6 +959,21 @@ export class AIAssistantController {
             }
 
             continue;
+          }
+
+          if (!assistantMessage.tool_calls?.length && !executedTools.length && assistantMessage.content?.trim()) {
+            return {
+              structured: normalizeStructuredResponse(
+                {
+                  content: assistantMessage.content.trim(),
+                  bullets: [],
+                  followUp: undefined,
+                  report: null,
+                },
+                buildFallbackResponse(question, [])
+              ),
+              executedTools: [],
+            };
           }
 
           break;
