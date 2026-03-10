@@ -72,6 +72,7 @@ Prefer specific numbers, rankings, gaps, risk signals and next actions.
 Whenever you mention a project, always include the project address and client name when available.
 Never use the client name as the project name.
 If the user asks for a report, return a report payload.
+If the user asks to export as PDF, CSV, Excel or spreadsheet, still return the report payload so the client can generate the file.
 `;
 
 const SYNTHESIS_PROMPT = `
@@ -92,6 +93,7 @@ If no report is appropriate, set "report" to null.
 Keep chartData compact and directly derived from the provided tool results.
 Match the user's language naturally.
 When answering about profitability, margin, or rankings, explicitly state the calculation basis in plain language.
+When the user asks for an export, keep the report payload populated whenever there is structured data worth exporting.
 `;
 
 const OPENAI_TIMEOUT_MS = 25000;
