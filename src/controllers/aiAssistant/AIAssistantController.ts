@@ -50,6 +50,12 @@ type ExecutedTool = {
   output: unknown;
 };
 
+type AssistantToolData = {
+  bullets?: string[];
+  followUp?: string | null;
+  executedTools?: ExecutedTool[];
+} | null;
+
 const openai = process.env.OPENAI_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_KEY })
   : null;
@@ -85,6 +91,7 @@ Return ONLY valid JSON with this shape:
 If no report is appropriate, set "report" to null.
 Keep chartData compact and directly derived from the provided tool results.
 Match the user's language naturally.
+When answering about profitability, margin, or rankings, explicitly state the calculation basis in plain language.
 `;
 
 const OPENAI_TIMEOUT_MS = 25000;
@@ -184,6 +191,35 @@ function isCapabilityQuestion(question: string) {
   );
 }
 
+function extractProjectIdFromOutput(output: any): string | null {
+  if (!output || typeof output !== "object") return null;
+  if (typeof output.projectId === "string" && output.projectId) return output.projectId;
+  if (typeof output.id === "string" && output.location) return output.id;
+  if (Array.isArray(output.items)) {
+    for (const item of output.items) {
+      if (item && typeof item.projectId === "string" && item.projectId) {
+        return item.projectId;
+      }
+    }
+  }
+  return null;
+}
+
+function getRecentProjectIdFromHistory(history: AssistantMessageRow[]): string | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    const toolData = message.toolData as AssistantToolData;
+    const executedTools = Array.isArray(toolData?.executedTools) ? toolData.executedTools : [];
+
+    for (let toolIndex = executedTools.length - 1; toolIndex >= 0; toolIndex -= 1) {
+      const projectId = extractProjectIdFromOutput(executedTools[toolIndex]?.output);
+      if (projectId) return projectId;
+    }
+  }
+
+  return null;
+}
+
 function normalizeStructuredResponse(
   response: AssistantStructuredResponse,
   fallback: AssistantStructuredResponse
@@ -230,6 +266,23 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Client", value: output.items[0].clientName || "Not available" },
         { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
         { label: "Projects", value: String(output.items.length), tone: "success" },
+      ],
+    };
+  }
+
+  if (tool.tool === "top_profitable_projects" && output?.items?.length) {
+    return {
+      title: "Top Projects By Profit",
+      description: "Profitability ranked using sold value minus material and labor cost.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.projectAddress || item.projectName,
+        value: item.profitValue,
+      })),
+      metrics: [
+        { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
+        { label: "Top profit", value: formatCurrency(output.items[0].profitValue || 0) },
+        { label: "Profitable", value: String(output.profitableCount || 0), tone: "success" },
       ],
     };
   }
@@ -442,6 +495,34 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
     };
   }
 
+  if (latestTool?.tool === "top_profitable_projects" && base?.items?.length) {
+    const topProject = base.items[0];
+    return {
+      content: `${topProject.projectName} is currently the most profitable project for ${topProject.clientName || "this client"}.`,
+      bullets: [
+        `Project address: ${topProject.projectAddress || topProject.projectName}.`,
+        `Sold value: ${formatCurrency(topProject.soldValue || 0)}.`,
+        `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}.`,
+        `Profit: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`,
+      ],
+      followUp: "I can break down why this project is outperforming the rest.",
+      report: {
+        title: "Top Projects By Profit",
+        description: "Profitability ranked using sold value minus material and labor cost.",
+        chartMode: "bar",
+        chartData: base.items.slice(0, 5).map((item: any) => ({
+          label: item.projectAddress || item.projectName,
+          value: item.profitValue,
+        })),
+        metrics: [
+          { label: "Top profit", value: formatCurrency(topProject.profitValue || 0), tone: "success" },
+          { label: "Profit margin", value: `${((topProject.profitPct || 0) * 100).toFixed(1)}%` },
+          { label: "Profitable projects", value: String(base.profitableCount || 0), tone: "success" },
+        ],
+      },
+    };
+  }
+
   if (isCapabilityQuestion(question)) {
     return {
       content: "I can query live SmartBuild data and answer in a consultative way.",
@@ -481,6 +562,18 @@ function inferFallbackToolSequence(question: string): string[] {
   if (isGreetingQuestion(question) || isCapabilityQuestion(question)) {
     return [];
   }
+  if (
+    normalized.includes("breakdown") ||
+    normalized.includes("detalhamento") ||
+    normalized.includes("em que ta gastando") ||
+    normalized.includes("em que está gastando") ||
+    normalized.includes("cost breakdown")
+  ) {
+    return ["project_cost_breakdown"];
+  }
+  if (normalized.includes("lucrativo") || normalized.includes("profit") || normalized.includes("profitable")) {
+    return ["top_profitable_projects"];
+  }
   if (normalized.includes("gasto") || normalized.includes("cost") || normalized.includes("gastando")) {
     return ["top_spending_projects"];
   }
@@ -513,129 +606,146 @@ export class AIAssistantController {
   private async executeTool(
     toolName: string,
     rawArgs: string,
-    companyId: string
+    companyId: string,
+    history: AssistantMessageRow[] = []
   ): Promise<ExecutedTool> {
     const input = safeJsonParse<Record<string, unknown>>(rawArgs, {});
+    const contextualProjectId = getRecentProjectIdFromHistory(history);
+    const resolvedInput = { ...input };
+
+    if (
+      !resolvedInput.projectId &&
+      contextualProjectId &&
+      ["get_project_details", "project_cost_breakdown", "project_margin_analysis", "project_schedule_risk", "project_vs_estimate"].includes(toolName)
+    ) {
+      resolvedInput.projectId = contextualProjectId;
+    }
 
     switch (toolName) {
       case "list_projects":
         return {
           tool: toolName,
-          input,
-          output: await this.listProjects(companyId, input),
+          input: resolvedInput,
+          output: await this.listProjects(companyId, resolvedInput),
         };
       case "get_project_details":
         return {
           tool: toolName,
-          input,
-          output: await this.getProjectDetails(companyId, String(input.projectId || "")),
+          input: resolvedInput,
+          output: await this.getProjectDetails(companyId, String(resolvedInput.projectId || "")),
         };
       case "top_spending_projects":
         return {
           tool: toolName,
-          input,
-          output: await this.topSpendingProjects(companyId, input),
+          input: resolvedInput,
+          output: await this.topSpendingProjects(companyId, resolvedInput),
+        };
+      case "top_profitable_projects":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.topProfitableProjects(companyId, resolvedInput),
         };
       case "list_clients":
         return {
           tool: toolName,
-          input,
-          output: await this.listClients(companyId, input),
+          input: resolvedInput,
+          output: await this.listClients(companyId, resolvedInput),
         };
       case "get_client_details":
         return {
           tool: toolName,
-          input,
-          output: await this.getClientDetails(companyId, String(input.clientId || "")),
+          input: resolvedInput,
+          output: await this.getClientDetails(companyId, String(resolvedInput.clientId || "")),
         };
       case "invoice_summary":
         return {
           tool: toolName,
-          input,
-          output: await this.invoiceSummary(companyId, input),
+          input: resolvedInput,
+          output: await this.invoiceSummary(companyId, resolvedInput),
         };
       case "list_invoices":
         return {
           tool: toolName,
-          input,
-          output: await this.listInvoices(companyId, input),
+          input: resolvedInput,
+          output: await this.listInvoices(companyId, resolvedInput),
         };
       case "invoice_aging":
         return {
           tool: toolName,
-          input,
-          output: await this.invoiceAging(companyId, input),
+          input: resolvedInput,
+          output: await this.invoiceAging(companyId, resolvedInput),
         };
       case "overdue_invoices":
         return {
           tool: toolName,
-          input,
-          output: await this.overdueInvoices(companyId, input),
+          input: resolvedInput,
+          output: await this.overdueInvoices(companyId, resolvedInput),
         };
       case "receivables_by_client":
         return {
           tool: toolName,
-          input,
-          output: await this.receivablesByClient(companyId, input),
+          input: resolvedInput,
+          output: await this.receivablesByClient(companyId, resolvedInput),
         };
       case "project_cost_breakdown":
         return {
           tool: toolName,
-          input,
-          output: await this.projectCostBreakdown(companyId, String(input.projectId || "")),
+          input: resolvedInput,
+          output: await this.projectCostBreakdown(companyId, String(resolvedInput.projectId || "")),
         };
       case "project_margin_analysis":
         return {
           tool: toolName,
-          input,
-          output: await this.projectMarginAnalysis(companyId, String(input.projectId || "")),
+          input: resolvedInput,
+          output: await this.projectMarginAnalysis(companyId, String(resolvedInput.projectId || "")),
         };
       case "project_schedule_risk":
         return {
           tool: toolName,
-          input,
-          output: await this.projectScheduleRisk(companyId, String(input.projectId || "")),
+          input: resolvedInput,
+          output: await this.projectScheduleRisk(companyId, String(resolvedInput.projectId || "")),
         };
       case "estimate_summary":
         return {
           tool: toolName,
-          input,
-          output: await this.estimateSummary(companyId, input),
+          input: resolvedInput,
+          output: await this.estimateSummary(companyId, resolvedInput),
         };
       case "project_vs_estimate":
         return {
           tool: toolName,
-          input,
-          output: await this.projectVsEstimate(companyId, String(input.projectId || "")),
+          input: resolvedInput,
+          output: await this.projectVsEstimate(companyId, String(resolvedInput.projectId || "")),
         };
       case "change_order_summary":
         return {
           tool: toolName,
-          input,
-          output: await this.changeOrderSummary(companyId, input),
+          input: resolvedInput,
+          output: await this.changeOrderSummary(companyId, resolvedInput),
         };
       case "timecard_summary":
         return {
           tool: toolName,
-          input,
-          output: await this.timecardSummary(companyId, input),
+          input: resolvedInput,
+          output: await this.timecardSummary(companyId, resolvedInput),
         };
       case "subcontractor_summary":
         return {
           tool: toolName,
-          input,
-          output: await this.subcontractorSummary(companyId, input),
+          input: resolvedInput,
+          output: await this.subcontractorSummary(companyId, resolvedInput),
         };
       case "company_overview":
         return {
           tool: toolName,
-          input,
+          input: resolvedInput,
           output: await this.companyOverview(companyId),
         };
       default:
         return {
           tool: toolName,
-          input,
+          input: resolvedInput,
           output: { error: `Tool ${toolName} is not implemented` },
         };
     }
@@ -719,6 +829,19 @@ export class AIAssistantController {
         function: {
           name: "top_spending_projects",
           description: "Rank projects by total spending using material and labor costs.",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "top_profitable_projects",
+          description: "Rank projects by profit using sold value minus material and labor cost.",
           parameters: {
             type: "object",
             properties: {
@@ -947,7 +1070,8 @@ export class AIAssistantController {
               const toolResult = await this.executeTool(
                 functionCall?.name || "",
                 functionCall?.arguments || "{}",
-                companyId
+                companyId,
+                history
               );
 
               executedTools.push(toolResult);
@@ -982,7 +1106,7 @@ export class AIAssistantController {
         if (executedTools.length === 0) {
           const fallbackTools = inferFallbackToolSequence(question);
           for (const toolName of fallbackTools) {
-            executedTools.push(await this.executeTool(toolName, "{}", companyId));
+            executedTools.push(await this.executeTool(toolName, "{}", companyId, history));
           }
         }
 
@@ -1021,7 +1145,7 @@ export class AIAssistantController {
 
     const tools: ExecutedTool[] = [];
     for (const toolName of inferFallbackToolSequence(question)) {
-      tools.push(await this.executeTool(toolName, "{}", companyId));
+      tools.push(await this.executeTool(toolName, "{}", companyId, history));
     }
     const fallback = buildFallbackResponse(question, tools);
     return {
@@ -1375,6 +1499,85 @@ export class AIAssistantController {
     return {
       total: items.length,
       items,
+    };
+  }
+
+  private async topProfitableProjects(companyId: string, input: Record<string, unknown>) {
+    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const projects: any[] = await prisma.project.findMany({
+      where: {
+        company_id: companyId,
+      },
+      select: {
+        id: true,
+        contract_number: true,
+        location: true,
+        price: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        serviceProject: {
+          select: {
+            costProject: {
+              select: {
+                price: true,
+                amout: true,
+              },
+            },
+          },
+        },
+        workedHours: {
+          select: {
+            amount_of_hours: true,
+            hourly_price: true,
+            fixed_price: true,
+            type_price: true,
+          },
+        },
+      },
+    });
+
+    const items = projects
+      .map((project: any) => {
+        const soldValue = decimalToNumber(project.price);
+        const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
+          return acc + service.costProject.reduce((costAcc: number, cost: any) => {
+            return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
+          }, 0);
+        }, 0);
+
+        const laborCost = project.workedHours.reduce((acc: number, work: any) => {
+          if (work.type_price === "fixed") return acc + decimalToNumber(work.fixed_price);
+          return acc + decimalToNumber(work.amount_of_hours) * decimalToNumber(work.hourly_price);
+        }, 0);
+
+        const totalCost = materialCost + laborCost;
+        const profitValue = soldValue - totalCost;
+        const profitPct = soldValue > 0 ? profitValue / soldValue : 0;
+
+        return {
+          projectId: project.id,
+          ...getProjectReference(project),
+          contractNumber: project.contract_number,
+          soldValue,
+          materialCost,
+          laborCost,
+          totalCost,
+          profitValue,
+          profitPct,
+        };
+      })
+      .filter((item) => item.soldValue > 0)
+      .sort((a, b) => b.profitValue - a.profitValue);
+
+    return {
+      total: Math.min(items.length, limit),
+      profitableCount: items.filter((item) => item.profitValue > 0).length,
+      unprofitableCount: items.filter((item) => item.profitValue <= 0).length,
+      items: items.slice(0, limit),
     };
   }
 
