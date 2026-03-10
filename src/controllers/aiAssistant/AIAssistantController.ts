@@ -81,6 +81,16 @@ Never answer with generic bridge phrases such as "I understand your question", "
 If the request is data-related and you are not yet certain, call the closest tool first and continue from there.
 `;
 
+const PLANNING_SYSTEM_PROMPT = `
+You are the SmartBuild AI Assistant planner.
+Reply in the user's language.
+Decide autonomously when tools are needed.
+If the user asks for business data, projects, clients, invoices, time cards, subcontractors, rankings, comparisons, reports, margins, schedules, files, feed, tasks, change orders, or operational details, you must use tools.
+If the user is only making casual conversation or asking a non-data question, you may answer directly without tools.
+Whenever a project is mentioned, prefer project address and client name.
+Never use generic bridge phrases.
+`;
+
 const SYNTHESIS_PROMPT = `
 Return ONLY valid JSON with this shape:
 {
@@ -103,8 +113,10 @@ When the user asks for an export, keep the report payload populated whenever the
 When the user asks for detail, do not compress away available business data such as addresses, clients, statuses, payment dates, categories, cost basis, project counts or entry counts.
 `;
 
-const OPENAI_TOOL_TIMEOUT_MS = 20000;
+const OPENAI_TOOL_TIMEOUT_MS = 60000;
 const OPENAI_SYNTHESIS_TIMEOUT_MS = 45000;
+const PLANNER_HISTORY_MESSAGE_LIMIT = 8;
+const PLANNER_MESSAGE_CHAR_LIMIT = 500;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -312,6 +324,12 @@ function summarizeTitle(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim();
   if (!compact) return "New conversation";
   return compact.length > 60 ? `${compact.slice(0, 57)}...` : compact;
+}
+
+function trimMessageContent(value: string, maxChars = PLANNER_MESSAGE_CHAR_LIMIT) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) return compact;
+  return `${compact.slice(0, maxChars - 3)}...`;
 }
 
 function expandProjectStatuses(statuses: string[]) {
@@ -2514,27 +2532,77 @@ export class AIAssistantController {
     ];
   }
 
-  private async synthesizeResponse(question: string, history: AssistantMessageRow[], companyId: string) {
+  private buildPlannerMessages(question: string, history: AssistantMessageRow[], mode: "standard" | "minimal" = "standard") {
+    const recentProjectId = getRecentProjectIdFromHistory(history);
+    const recentSubcontractorId = getRecentSubcontractorIdFromHistory(history);
+    const recentHistory = mode === "minimal"
+      ? history.slice(-4)
+      : history.slice(-PLANNER_HISTORY_MESSAGE_LIMIT);
+
+    const contextParts: string[] = [];
+    if (recentProjectId) contextParts.push(`recentProjectId=${recentProjectId}`);
+    if (recentSubcontractorId) contextParts.push(`recentSubcontractorId=${recentSubcontractorId}`);
+
     const messages: any[] = [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...history.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-      { role: "user", content: question },
+      { role: "system", content: PLANNING_SYSTEM_PROMPT },
     ];
+
+    if (contextParts.length) {
+      messages.push({
+        role: "system",
+        content: `Recent thread context: ${contextParts.join(", ")}.`,
+      });
+    }
+
+    messages.push(
+      ...recentHistory.map((message) => ({
+        role: message.role,
+        content: trimMessageContent(message.content),
+      }))
+    );
+
+    messages.push({ role: "user", content: trimMessageContent(question, 700) });
+    return messages;
+  }
+
+  private async runPlanningCompletion(messages: any[]) {
+    return withTimeout(
+      openai!.chat.completions.create({
+        model: "gpt-5-mini",
+        messages,
+        tools: this.getTools(),
+        tool_choice: "auto",
+      }),
+      OPENAI_TOOL_TIMEOUT_MS,
+      "assistant tool planning"
+    );
+  }
+
+  private async synthesizeResponse(question: string, history: AssistantMessageRow[], companyId: string) {
+    const messages = this.buildPlannerMessages(question, history, "standard");
 
     const executedTools: ExecutedTool[] = [];
 
     if (openai) {
       try {
         for (let attempt = 0; attempt < 6; attempt += 1) {
-          const completion = await withTimeout(openai.chat.completions.create({
-            model: "gpt-5-mini",
-            messages,
-            tools: this.getTools(),
-            tool_choice: "auto",
-          }), OPENAI_TOOL_TIMEOUT_MS, "assistant tool planning");
+          let completion;
+
+          try {
+            completion = await this.runPlanningCompletion(messages);
+          } catch (planningError) {
+            const errorMessage = planningError instanceof Error ? planningError.message : String(planningError);
+            const shouldRetryMinimal = errorMessage.includes("assistant tool planning timed out after");
+
+            if (!shouldRetryMinimal) {
+              throw planningError;
+            }
+
+            console.error("[AIAssistantController.synthesizeResponse] Planning retry with minimal context:", planningError);
+            const minimalMessages = this.buildPlannerMessages(question, history, "minimal");
+            completion = await this.runPlanningCompletion(minimalMessages);
+            messages.splice(0, messages.length, ...minimalMessages);
+          }
 
           const assistantMessage = completion.choices[0]?.message;
           if (!assistantMessage) break;
