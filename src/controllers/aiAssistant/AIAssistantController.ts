@@ -1145,21 +1145,21 @@ export class AIAssistantController {
       return { error: "Project not found" };
     }
 
-    const materialCost = project.serviceProject.reduce((acc, service) => {
+    const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
       return (
         acc +
-        service.costProject.reduce((serviceAcc, cost) => {
+        service.costProject.reduce((serviceAcc: number, cost: any) => {
           return serviceAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
         }, 0)
       );
     }, 0);
 
-    const laborCost = project.workedHours.reduce((acc, item) => {
+    const laborCost = project.workedHours.reduce((acc: number, item: any) => {
       if (item.type_price === "fixed") return acc + decimalToNumber(item.fixed_price);
       return acc + decimalToNumber(item.amount_of_hours) * decimalToNumber(item.hourly_price);
     }, 0);
 
-    const invoicedAmount = project.invoices.reduce((acc, invoice) => acc + decimalToNumber(invoice.totalAmount), 0);
+    const invoicedAmount = project.invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
 
     return {
       id: project.id,
@@ -1175,7 +1175,7 @@ export class AIAssistantController {
       client: project.client,
       seller: project.user,
       projectManager: project.project_manager,
-      services: project.serviceProject.map((service) => ({
+      services: project.serviceProject.map((service: any) => ({
         id: service.id,
         name: service.name,
         status: service.status,
@@ -1183,7 +1183,7 @@ export class AIAssistantController {
         price: decimalToNumber(service.price),
         stageCompletion:
           service.stages.length > 0
-            ? service.stages.filter((stage) => stage.check).length / service.stages.length
+            ? service.stages.filter((stage: any) => stage.check).length / service.stages.length
             : 0,
         costItems: service.costProject.length,
         photos: service.photos.length,
@@ -1195,7 +1195,7 @@ export class AIAssistantController {
         totalCost: materialCost + laborCost,
         invoicedAmount,
       },
-      invoices: project.invoices.map((invoice) => ({
+      invoices: project.invoices.map((invoice: any) => ({
         id: invoice.id,
         status: invoice.status,
         totalAmount: decimalToNumber(invoice.totalAmount),
@@ -1251,17 +1251,17 @@ export class AIAssistantController {
     });
 
     const items = projects
-      .map((project) => {
-        const materialCost = project.serviceProject.reduce((acc, service) => {
+      .map((project: any) => {
+        const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
           return (
             acc +
-            service.costProject.reduce((costAcc, cost) => {
+            service.costProject.reduce((costAcc: number, cost: any) => {
               return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
             }, 0)
           );
         }, 0);
 
-        const laborCost = project.workedHours.reduce((acc, work) => {
+        const laborCost = project.workedHours.reduce((acc: number, work: any) => {
           if (work.type_price === "fixed") return acc + decimalToNumber(work.fixed_price);
           return acc + decimalToNumber(work.amount_of_hours) * decimalToNumber(work.hourly_price);
         }, 0);
@@ -1279,7 +1279,7 @@ export class AIAssistantController {
           totalCost: materialCost + laborCost,
         };
       })
-      .sort((a, b) => b.totalCost - a.totalCost)
+      .sort((a: any, b: any) => b.totalCost - a.totalCost)
       .slice(0, limit);
 
     return {
@@ -1522,9 +1522,9 @@ export class AIAssistantController {
 
     return {
       total: clients.length,
-      items: clients.map((client) => {
-        const invoices = client.projects.flatMap((project) => project.invoices);
-        const revenue = invoices.reduce((acc, invoice) => acc + decimalToNumber(invoice.totalAmount), 0);
+      items: clients.map((client: any) => {
+        const invoices = client.projects.flatMap((project: any) => project.invoices);
+        const revenue = invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
         return {
           id: client.id,
           name: client.name,
@@ -1578,9 +1578,9 @@ export class AIAssistantController {
       return { error: "Client not found" };
     }
 
-    const invoices = client.projects.flatMap((project) => project.invoices);
-    const invoicedAmount = invoices.reduce((acc, invoice) => acc + decimalToNumber(invoice.totalAmount), 0);
-    const overdueCount = invoices.filter((invoice) => {
+    const invoices = client.projects.flatMap((project: any) => project.invoices);
+    const invoicedAmount = invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
+    const overdueCount = invoices.filter((invoice: any) => {
       return invoice.status !== "paid" && invoice.dueDate && new Date(invoice.dueDate) < new Date();
     }).length;
 
@@ -1592,7 +1592,7 @@ export class AIAssistantController {
       cityAndState: client.city_and_state,
       address: client.addressOffice,
       createdAt: client.date_creation,
-      projects: client.projects.map((project) => ({
+      projects: client.projects.map((project: any) => ({
         id: project.id,
         contractNumber: project.contract_number,
         status: project.status_project,
@@ -1649,11 +1649,11 @@ export class AIAssistantController {
     });
 
     const filtered = overdueOnly
-      ? invoices.filter((invoice) => invoice.status !== "paid" && invoice.dueDate && new Date(invoice.dueDate) < new Date())
+      ? invoices.filter((invoice: any) => invoice.status !== "paid" && invoice.dueDate && new Date(invoice.dueDate) < new Date())
       : invoices;
 
     const totals = filtered.reduce(
-      (acc, invoice) => {
+      (acc: any, invoice: any) => {
         const amount = decimalToNumber(invoice.totalAmount);
         acc.total += amount;
         if (invoice.status === "paid") acc.paid += amount;
@@ -1667,7 +1667,7 @@ export class AIAssistantController {
     return {
       totalCount: filtered.length,
       totals,
-      items: filtered.map((invoice) => ({
+      items: filtered.map((invoice: any) => ({
         id: invoice.id,
         status: invoice.status,
         totalAmount: decimalToNumber(invoice.totalAmount),
@@ -1715,7 +1715,7 @@ export class AIAssistantController {
 
     return {
       total: invoices.length,
-      items: invoices.map((invoice) => ({
+      items: invoices.map((invoice: any) => ({
         id: invoice.id,
         status: invoice.status,
         totalAmount: decimalToNumber(invoice.totalAmount),
@@ -1770,7 +1770,7 @@ export class AIAssistantController {
     }
 
     return {
-      totalOpen: invoices.reduce((acc, invoice) => acc + decimalToNumber(invoice.totalAmount), 0),
+      totalOpen: invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
       buckets: [
         { label: "Current", value: buckets.current },
         { label: "1-15 days", value: buckets["1_15"] },
@@ -1812,8 +1812,8 @@ export class AIAssistantController {
 
     return {
       total: invoices.length,
-      overdueAmount: invoices.reduce((acc, invoice) => acc + decimalToNumber(invoice.totalAmount), 0),
-      items: invoices.map((invoice) => ({
+      overdueAmount: invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0),
+      items: invoices.map((invoice: any) => ({
         id: invoice.id,
         status: invoice.status,
         totalAmount: decimalToNumber(invoice.totalAmount),
@@ -1911,11 +1911,11 @@ export class AIAssistantController {
     return {
       total: estimates.length,
       totals: {
-        amount: estimates.reduce((acc, estimate) => acc + decimalToNumber(estimate.totalAmount), 0),
-        paid: estimates.reduce((acc, estimate) => acc + decimalToNumber(estimate.amountPaid), 0),
-        balance: estimates.reduce((acc, estimate) => acc + decimalToNumber(estimate.balanceDue), 0),
+        amount: estimates.reduce((acc: number, estimate: any) => acc + decimalToNumber(estimate.totalAmount), 0),
+        paid: estimates.reduce((acc: number, estimate: any) => acc + decimalToNumber(estimate.amountPaid), 0),
+        balance: estimates.reduce((acc: number, estimate: any) => acc + decimalToNumber(estimate.balanceDue), 0),
       },
-      items: estimates.map((estimate) => ({
+      items: estimates.map((estimate: any) => ({
         id: estimate.id,
         number: estimate.number,
         status: estimate.status,
@@ -1927,8 +1927,8 @@ export class AIAssistantController {
         client: estimate.project.client,
         changeOrderCount: estimate.changeOrders.length,
         approvedChangeOrdersValue: estimate.changeOrders
-          .filter((item) => String(item.status) === "approved")
-          .reduce((acc, item) => acc + decimalToNumber(item.total_amount), 0),
+          .filter((item: any) => String(item.status) === "approved")
+          .reduce((acc: number, item: any) => acc + decimalToNumber(item.total_amount), 0),
       })),
     };
   }
@@ -2028,11 +2028,11 @@ export class AIAssistantController {
     return {
       total: rows.length,
       totals: {
-        approved: rows.filter((row) => String(row.status) === "approved").reduce((acc, row) => acc + decimalToNumber(row.total_amount), 0),
-        pending: rows.filter((row) => String(row.status) === "pending").reduce((acc, row) => acc + decimalToNumber(row.total_amount), 0),
-        canceled: rows.filter((row) => String(row.status) === "canceled").reduce((acc, row) => acc + decimalToNumber(row.total_amount), 0),
+        approved: rows.filter((row: any) => String(row.status) === "approved").reduce((acc: number, row: any) => acc + decimalToNumber(row.total_amount), 0),
+        pending: rows.filter((row: any) => String(row.status) === "pending").reduce((acc: number, row: any) => acc + decimalToNumber(row.total_amount), 0),
+        canceled: rows.filter((row: any) => String(row.status) === "canceled").reduce((acc: number, row: any) => acc + decimalToNumber(row.total_amount), 0),
       },
-      items: rows.map((row) => ({
+      items: rows.map((row: any) => ({
         id: row.id,
         number: row.number,
         status: row.status,
@@ -2091,8 +2091,8 @@ export class AIAssistantController {
 
     return {
       totalEntries: workedHours.length,
-      totalHours: workedHours.reduce((acc, row) => acc + decimalToNumber(row.amount_of_hours), 0),
-      totalCost: workedHours.reduce((acc, row) => {
+      totalHours: workedHours.reduce((acc: number, row: any) => acc + decimalToNumber(row.amount_of_hours), 0),
+      totalCost: workedHours.reduce((acc: number, row: any) => {
         return acc + (row.type_price === "fixed" ? decimalToNumber(row.fixed_price) : decimalToNumber(row.amount_of_hours) * decimalToNumber(row.hourly_price));
       }, 0),
       byProject: Array.from(byProject.values()).sort((a, b) => b.totalCost - a.totalCost),
@@ -2181,7 +2181,7 @@ export class AIAssistantController {
     ]);
 
     const totals = invoices.reduce(
-      (acc, invoice) => {
+      (acc: any, invoice: any) => {
         const amount = decimalToNumber(invoice.totalAmount);
         acc.invoiced += amount;
         if (invoice.status === "paid") acc.paid += amount;
@@ -2342,7 +2342,7 @@ export class AIAssistantController {
         role: "assistant",
         content: structured.content,
         report: structured.report || null,
-        toolsUsed: executedTools.map((tool) => tool.tool),
+      toolsUsed: executedTools.map((tool: ExecutedTool) => tool.tool),
         toolData: {
           bullets: structured.bullets || [],
           followUp: structured.followUp || null,
