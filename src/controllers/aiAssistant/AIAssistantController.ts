@@ -213,6 +213,7 @@ function normalizeStructuredResponse(
 }
 
 function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
+  if (!tool) return null;
   const output: any = tool.output;
 
   if (tool.tool === "top_spending_projects" && output?.items?.length) {
@@ -930,7 +931,6 @@ export class AIAssistantController {
         for (let attempt = 0; attempt < 6; attempt += 1) {
           const completion = await withTimeout(openai.chat.completions.create({
             model: "gpt-5-mini",
-            temperature: 0.2,
             messages,
             tools: this.getTools(),
             tool_choice: "auto",
@@ -988,7 +988,6 @@ export class AIAssistantController {
 
         const synthesisCompletion = await withTimeout(openai.chat.completions.create({
           model: "gpt-5-mini",
-          temperature: 0.2,
           messages: [
             { role: "system", content: SYNTHESIS_PROMPT },
             {
