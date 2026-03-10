@@ -96,7 +96,8 @@ When answering about profitability, margin, or rankings, explicitly state the ca
 When the user asks for an export, keep the report payload populated whenever there is structured data worth exporting.
 `;
 
-const OPENAI_TIMEOUT_MS = 25000;
+const OPENAI_TOOL_TIMEOUT_MS = 20000;
+const OPENAI_SYNTHESIS_TIMEOUT_MS = 45000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -139,6 +140,86 @@ function formatCurrency(value: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function formatHours(value: number) {
+  return `${value.toFixed(1)}h`;
+}
+
+function parseDateValue(value: unknown): Date | null {
+  if (!value) return null;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
+function buildTimecardDateFilter(input: Record<string, unknown>) {
+  const exactDate = parseDateValue(input.date);
+  const startDate = parseDateValue(input.startDate);
+  const endDate = parseDateValue(input.endDate);
+
+  const rangeStart = exactDate ? startOfDay(exactDate) : startDate ? startOfDay(startDate) : null;
+  const rangeEnd = exactDate ? endOfDay(exactDate) : endDate ? endOfDay(endDate) : null;
+
+  if (!rangeStart && !rangeEnd) return undefined;
+
+  const paymentDateFilter: Record<string, Date> = {};
+  const createdAtFilter: Record<string, Date> = {};
+
+  if (rangeStart) {
+    paymentDateFilter.gte = rangeStart;
+    createdAtFilter.gte = rangeStart;
+  }
+
+  if (rangeEnd) {
+    paymentDateFilter.lte = rangeEnd;
+    createdAtFilter.lte = rangeEnd;
+  }
+
+  return {
+    OR: [
+      { payment_date: paymentDateFilter },
+      {
+        payment_date: null,
+        date_creation: createdAtFilter,
+      },
+    ],
+  };
+}
+
+function getWorkedHourEffectiveCost(row: {
+  amount_of_hours?: unknown;
+  hourly_price?: unknown;
+  fixed_price?: unknown;
+  type_price?: string | null;
+}) {
+  const hours = decimalToNumber(row.amount_of_hours);
+  const totalCost = row.type_price === "fixed"
+    ? decimalToNumber(row.fixed_price)
+    : hours * decimalToNumber(row.hourly_price);
+
+  return {
+    totalCost,
+    totalHours: hours,
+  };
+}
+
+function getWorkedHourWorkerName(row: {
+  name_user?: string | null;
+  subcontractor?: { name?: string | null } | null;
+}) {
+  return row.subcontractor?.name || row.name_user || "Unknown worker";
 }
 
 function getProjectDisplayName(project: {
@@ -361,6 +442,92 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
     };
   }
 
+  if (tool.tool === "timecards_by_worker" && output?.items?.length) {
+    return {
+      title: "Labor Cost By Worker",
+      description: "Workers ranked by total time card cost for the selected period.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.workerName,
+        value: item.totalCost,
+      })),
+      metrics: [
+        { label: "Top worker", value: output.items[0].workerName, tone: "warning" },
+        { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
+        { label: "Hours", value: formatHours(output.items[0].totalHours || 0) },
+      ],
+    };
+  }
+
+  if (tool.tool === "timecard_summary" && output?.byProject?.length) {
+    return {
+      title: "Time Card Summary",
+      description: "Summary of labor hours and cost for the selected scope.",
+      chartMode: "bar",
+      chartData: output.byProject.slice(0, 6).map((item: any) => ({
+        label: item.projectAddress || item.projectName,
+        value: item.totalCost,
+      })),
+      metrics: [
+        { label: "Entries", value: String(output.totalEntries || 0) },
+        { label: "Hours", value: formatHours(output.totalHours || 0), tone: "success" },
+        { label: "Labor cost", value: formatCurrency(output.totalCost || 0), tone: "warning" },
+      ],
+    };
+  }
+
+  if (tool.tool === "timecards_by_project" && output?.items?.length) {
+    return {
+      title: "Labor Cost By Project",
+      description: "Projects ranked by time card cost for the selected period.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.projectAddress || item.projectName,
+        value: item.totalCost,
+      })),
+      metrics: [
+        { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
+        { label: "Top labor cost", value: formatCurrency(output.items[0].totalCost || 0) },
+        { label: "Hours", value: formatHours(output.items[0].totalHours || 0) },
+      ],
+    };
+  }
+
+  if (tool.tool === "worker_timecard_details" && output?.workerName && output?.entries?.length) {
+    return {
+      title: `${output.workerName} Time Card Details`,
+      description: "Entry-level time card detail for the selected worker and period.",
+      chartMode: "line",
+      chartData: output.entries.slice(0, 10).map((entry: any) => ({
+        label: entry.workDateLabel || entry.projectAddress || "Entry",
+        value: entry.totalCost,
+      })),
+      metrics: [
+        { label: "Worker", value: output.workerName, tone: "warning" },
+        { label: "Entries", value: String(output.totalEntries || 0) },
+        { label: "Total cost", value: formatCurrency(output.totalCost || 0) },
+        { label: "Hours", value: formatHours(output.totalHours || 0), tone: "success" },
+      ],
+    };
+  }
+
+  if (tool.tool === "timecards_daily_breakdown" && output?.items?.length) {
+    return {
+      title: "Daily Time Card Breakdown",
+      description: "Daily trend of hours and cost for the selected time frame.",
+      chartMode: "line",
+      chartData: output.items.slice(0, 14).map((item: any) => ({
+        label: item.dateLabel,
+        value: item.totalCost,
+      })),
+      metrics: [
+        { label: "Days", value: String(output.items.length) },
+        { label: "Total cost", value: formatCurrency(output.totalCost || 0) },
+        { label: "Hours", value: formatHours(output.totalHours || 0), tone: "success" },
+      ],
+    };
+  }
+
   if (tool.tool === "company_overview" && output?.totals) {
     return {
       title: "Company Overview",
@@ -568,6 +735,60 @@ function buildFallbackResponse(question: string, tools: ExecutedTool[]): Assista
     };
   }
 
+  if (latestTool?.tool === "timecards_by_worker" && base?.items?.length) {
+    const topWorker = base.items[0];
+    return {
+      content: `${topWorker.workerName} is currently the highest labor cost worker in the selected period.`,
+      bullets: [
+        `Total labor cost: ${formatCurrency(topWorker.totalCost || 0)}.`,
+        `Total logged hours: ${formatHours(topWorker.totalHours || 0)} across ${topWorker.entryCount || 0} entries.`,
+        `Main project: ${topWorker.topProjectAddress || topWorker.topProjectName || "Not available"}.`,
+      ],
+      followUp: "I can break this worker down by project or by specific date.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "worker_timecard_details" && base?.entries?.length) {
+    return {
+      content: `${base.workerName} has ${base.totalEntries || 0} time card entries in the selected period.`,
+      bullets: [
+        `Total cost: ${formatCurrency(base.totalCost || 0)}.`,
+        `Total hours: ${formatHours(base.totalHours || 0)}.`,
+        `Most recent project: ${base.entries[0].projectAddress || base.entries[0].projectName || "Not available"}.`,
+      ],
+      followUp: "I can also compare this worker against the rest of the team for the same week.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "timecards_by_project" && base?.items?.length) {
+    const topProject = base.items[0];
+    return {
+      content: `${topProject.projectAddress || topProject.projectName} currently has the highest labor cost in the selected period.`,
+      bullets: [
+        `Client: ${topProject.clientName || "Not available"}.`,
+        `Labor cost: ${formatCurrency(topProject.totalCost || 0)}.`,
+        `Total hours: ${formatHours(topProject.totalHours || 0)} across ${topProject.entryCount || 0} entries.`,
+      ],
+      followUp: "I can show which workers are driving the labor cost on this project.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "timecard_summary" && base?.byProject?.length) {
+    return {
+      content: `I summarized the available time cards for the selected scope.`,
+      bullets: [
+        `Total entries: ${base.totalEntries || 0}.`,
+        `Total hours: ${formatHours(base.totalHours || 0)}.`,
+        `Total labor cost: ${formatCurrency(base.totalCost || 0)}.`,
+      ],
+      followUp: "I can also rank workers, projects, or show one worker on a specific date.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
   if (isCapabilityQuestion(question)) {
     return {
       content: "I can query live SmartBuild data and answer in a consultative way.",
@@ -615,6 +836,45 @@ function inferFallbackToolSequence(question: string): string[] {
     normalized.includes("cost breakdown")
   ) {
     return ["project_cost_breakdown"];
+  }
+  if (
+    normalized.includes("timecard") ||
+    normalized.includes("time card") ||
+    normalized.includes("worker") ||
+    normalized.includes("employee") ||
+    normalized.includes("person") ||
+    normalized.includes("pessoa") ||
+    normalized.includes("hours") ||
+    normalized.includes("horas") ||
+    normalized.includes("labor") ||
+    ((normalized.includes("week") || normalized.includes("semana")) &&
+      (normalized.includes("most expensive") || normalized.includes("mais caro") || normalized.includes("highest cost")))
+  ) {
+    if (
+      normalized.includes("who") ||
+      normalized.includes("quem") ||
+      normalized.includes("most expensive") ||
+      normalized.includes("mais caro") ||
+      normalized.includes("highest cost")
+    ) {
+      return ["timecards_by_worker"];
+    }
+
+    if (
+      normalized.includes("detail") ||
+      normalized.includes("detalhe") ||
+      normalized.includes("specific date") ||
+      normalized.includes("data especifica") ||
+      normalized.includes("data específica")
+    ) {
+      return ["worker_timecard_details"];
+    }
+
+    if (normalized.includes("project")) {
+      return ["timecards_by_project"];
+    }
+
+    return ["timecard_summary"];
   }
   if (normalized.includes("lucrativo") || normalized.includes("profit") || normalized.includes("profitable")) {
     return ["top_profitable_projects"];
@@ -774,6 +1034,30 @@ export class AIAssistantController {
           tool: toolName,
           input: resolvedInput,
           output: await this.timecardSummary(companyId, resolvedInput),
+        };
+      case "timecards_by_worker":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.timecardsByWorker(companyId, resolvedInput),
+        };
+      case "worker_timecard_details":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.workerTimecardDetails(companyId, resolvedInput),
+        };
+      case "timecards_by_project":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.timecardsByProject(companyId, resolvedInput),
+        };
+      case "timecards_daily_breakdown":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.timecardsDailyBreakdown(companyId, resolvedInput),
         };
       case "subcontractor_summary":
         return {
@@ -1045,11 +1329,86 @@ export class AIAssistantController {
         type: "function" as const,
         function: {
           name: "timecard_summary",
-          description: "Summarize labor cost and hours from worked hours/time cards.",
+          description: "Summarize labor cost and hours from worked hours/time cards with optional project, worker and period filters.",
           parameters: {
             type: "object",
             properties: {
               projectId: { type: "string" },
+              workerName: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "timecards_by_worker",
+          description: "Rank workers by labor cost and hours for a selected period, project or date.",
+          parameters: {
+            type: "object",
+            properties: {
+              projectId: { type: "string" },
+              workerName: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
+              limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "worker_timecard_details",
+          description: "Return detailed time card entries for a specific worker with optional exact date or date range filters.",
+          parameters: {
+            type: "object",
+            properties: {
+              workerName: { type: "string" },
+              projectId: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
+              limit: { type: "number" },
+            },
+            required: ["workerName"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "timecards_by_project",
+          description: "Rank projects by labor cost and hours from time cards for a selected period.",
+          parameters: {
+            type: "object",
+            properties: {
+              workerName: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
+              limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "timecards_daily_breakdown",
+          description: "Show daily hours and labor cost trends from time cards for a selected worker, project or period.",
+          parameters: {
+            type: "object",
+            properties: {
+              projectId: { type: "string" },
+              workerName: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
             },
           },
         },
@@ -1102,7 +1461,7 @@ export class AIAssistantController {
             messages,
             tools: this.getTools(),
             tool_choice: "auto",
-          }), OPENAI_TIMEOUT_MS, "assistant tool planning");
+          }), OPENAI_TOOL_TIMEOUT_MS, "assistant tool planning");
 
           const assistantMessage = completion.choices[0]?.message;
           if (!assistantMessage) break;
@@ -1155,32 +1514,43 @@ export class AIAssistantController {
           }
         }
 
-        const synthesisCompletion = await withTimeout(openai.chat.completions.create({
-          model: "gpt-5-mini",
-          messages: [
-            { role: "system", content: SYNTHESIS_PROMPT },
-            {
-              role: "user",
-              content: JSON.stringify({
-                question,
-                tools: executedTools,
-              }),
-            },
-          ],
-        }), OPENAI_TIMEOUT_MS, "assistant synthesis");
-
-        const rawContent = synthesisCompletion.choices[0]?.message?.content || "{}";
         const fallback = buildFallbackResponse(question, executedTools);
-        const structured = normalizeStructuredResponse(
-          safeJsonParse<AssistantStructuredResponse>(rawContent, fallback),
-          {
-            ...fallback,
-            report: fallback.report || buildReportFromTool(executedTools[0]) || null,
-          }
-        );
+        const fallbackWithReport = {
+          ...fallback,
+          report: fallback.report || buildReportFromTool(executedTools[0]) || null,
+        };
+
+        try {
+          const synthesisCompletion = await withTimeout(openai.chat.completions.create({
+            model: "gpt-5-mini",
+            messages: [
+              { role: "system", content: SYNTHESIS_PROMPT },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  question,
+                  tools: executedTools,
+                }),
+              },
+            ],
+          }), OPENAI_SYNTHESIS_TIMEOUT_MS, "assistant synthesis");
+
+          const rawContent = synthesisCompletion.choices[0]?.message?.content || "{}";
+          const structured = normalizeStructuredResponse(
+            safeJsonParse<AssistantStructuredResponse>(rawContent, fallbackWithReport),
+            fallbackWithReport
+          );
+
+          return {
+            structured,
+            executedTools,
+          };
+        } catch (synthesisError) {
+          console.error("[AIAssistantController.synthesizeResponse] Synthesis fallback:", synthesisError);
+        }
 
         return {
-          structured,
+          structured: normalizeStructuredResponse(fallbackWithReport, fallbackWithReport),
           executedTools,
         };
       } catch (error) {
@@ -2393,14 +2763,26 @@ export class AIAssistantController {
     };
   }
 
-  private async timecardSummary(companyId: string, input: Record<string, unknown>) {
+  private async getWorkedHours(companyId: string, input: Record<string, unknown>) {
     const projectId = input.projectId ? String(input.projectId) : undefined;
-    const workedHours = await prisma.workedhours.findMany({
+    const workerName = input.workerName ? String(input.workerName).trim() : "";
+    const dateFilter = buildTimecardDateFilter(input);
+
+    return prisma.workedhours.findMany({
       where: {
         project: {
           company_id: companyId,
           ...(projectId ? { id: projectId } : {}),
         },
+        ...(workerName
+          ? {
+              OR: [
+                { name_user: { contains: workerName } },
+                { subcontractor: { name: { contains: workerName } } },
+              ],
+            }
+          : {}),
+        ...(dateFilter || {}),
       },
       select: {
         id: true,
@@ -2409,23 +2791,44 @@ export class AIAssistantController {
         hourly_price: true,
         fixed_price: true,
         type_price: true,
+        start_date: true,
+        end_date: true,
+        payment_date: true,
+        date_creation: true,
+        subcontractor: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         project: {
           select: {
             id: true,
             contract_number: true,
             location: true,
-            client: { select: { name: true } },
+            client: { select: { id: true, name: true } },
           },
         },
       },
+      orderBy: {
+        date_creation: "desc",
+      },
     });
+  }
+
+  private async timecardSummary(companyId: string, input: Record<string, unknown>) {
+    const workedHours = await this.getWorkedHours(companyId, input);
 
     const byProject = new Map<string, { projectId: string; projectName: string; projectAddress: string | null; clientName: string | null; totalHours: number; totalCost: number; entries: number }>();
+    const byWorker = new Map<string, { workerName: string; totalHours: number; totalCost: number; entries: number }>();
+
     for (const row of workedHours) {
-      const amountHours = decimalToNumber(row.amount_of_hours);
-      const totalCost = row.type_price === "fixed" ? decimalToNumber(row.fixed_price) : amountHours * decimalToNumber(row.hourly_price);
-      const key = row.project?.id || "unknown";
-      const current = byProject.get(key) || {
+      const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+      const projectKey = row.project?.id || "unknown";
+      const workerName = getWorkedHourWorkerName(row);
+
+      const projectCurrent = byProject.get(projectKey) || {
         projectId: row.project?.id || "unknown",
         projectName: row.project ? getProjectDisplayName(row.project) : "Project N/A",
         projectAddress: row.project?.location || null,
@@ -2434,19 +2837,192 @@ export class AIAssistantController {
         totalCost: 0,
         entries: 0,
       };
-      current.totalHours += amountHours;
-      current.totalCost += totalCost;
-      current.entries += 1;
-      byProject.set(key, current);
+      projectCurrent.totalHours += totalHours;
+      projectCurrent.totalCost += totalCost;
+      projectCurrent.entries += 1;
+      byProject.set(projectKey, projectCurrent);
+
+      const workerCurrent = byWorker.get(workerName) || {
+        workerName,
+        totalHours: 0,
+        totalCost: 0,
+        entries: 0,
+      };
+      workerCurrent.totalHours += totalHours;
+      workerCurrent.totalCost += totalCost;
+      workerCurrent.entries += 1;
+      byWorker.set(workerName, workerCurrent);
     }
 
     return {
       totalEntries: workedHours.length,
-      totalHours: workedHours.reduce((acc: number, row: any) => acc + decimalToNumber(row.amount_of_hours), 0),
-      totalCost: workedHours.reduce((acc: number, row: any) => {
-        return acc + (row.type_price === "fixed" ? decimalToNumber(row.fixed_price) : decimalToNumber(row.amount_of_hours) * decimalToNumber(row.hourly_price));
-      }, 0),
+      totalHours: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalHours, 0),
+      totalCost: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalCost, 0),
       byProject: Array.from(byProject.values()).sort((a, b) => b.totalCost - a.totalCost),
+      byWorker: Array.from(byWorker.values()).sort((a, b) => b.totalCost - a.totalCost).slice(0, 10),
+    };
+  }
+
+  private async timecardsByWorker(companyId: string, input: Record<string, unknown>) {
+    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const workedHours = await this.getWorkedHours(companyId, input);
+
+    const byWorker = new Map<string, {
+      workerName: string;
+      totalHours: number;
+      totalCost: number;
+      entryCount: number;
+      topProjectName: string | null;
+      topProjectAddress: string | null;
+      topProjectCost: number;
+      subcontractorId: string | null;
+    }>();
+
+    for (const row of workedHours) {
+      const workerName = getWorkedHourWorkerName(row);
+      const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+      const current = byWorker.get(workerName) || {
+        workerName,
+        totalHours: 0,
+        totalCost: 0,
+        entryCount: 0,
+        topProjectName: null,
+        topProjectAddress: null,
+        topProjectCost: 0,
+        subcontractorId: row.subcontractor?.id || null,
+      };
+
+      current.totalHours += totalHours;
+      current.totalCost += totalCost;
+      current.entryCount += 1;
+      if (totalCost >= current.topProjectCost) {
+        current.topProjectCost = totalCost;
+        current.topProjectName = row.project ? getProjectDisplayName(row.project) : null;
+        current.topProjectAddress = row.project?.location || null;
+      }
+      byWorker.set(workerName, current);
+    }
+
+    return {
+      totalWorkers: byWorker.size,
+      totalEntries: workedHours.length,
+      items: Array.from(byWorker.values())
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .slice(0, limit),
+    };
+  }
+
+  private async workerTimecardDetails(companyId: string, input: Record<string, unknown>) {
+    const limit = Math.min(Number(input.limit || 25) || 25, 60);
+    const workerName = String(input.workerName || "").trim();
+    const workedHours = await this.getWorkedHours(companyId, { ...input, workerName });
+
+    const entries = workedHours.slice(0, limit).map((row: any) => {
+      const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+      const workDate = row.payment_date || row.date_creation;
+
+      return {
+        id: row.id,
+        workerName: getWorkedHourWorkerName(row),
+        projectId: row.project?.id || null,
+        projectName: row.project ? getProjectDisplayName(row.project) : null,
+        projectAddress: row.project?.location || null,
+        clientName: row.project?.client?.name || null,
+        workDate,
+        workDateLabel: workDate ? new Date(workDate).toISOString().slice(0, 10) : "N/A",
+        startDate: row.start_date || null,
+        endDate: row.end_date || null,
+        totalHours,
+        totalCost,
+        priceType: row.type_price || "hourly",
+      };
+    });
+
+    return {
+      workerName,
+      totalEntries: workedHours.length,
+      totalHours: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalHours, 0),
+      totalCost: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalCost, 0),
+      entries,
+    };
+  }
+
+  private async timecardsByProject(companyId: string, input: Record<string, unknown>) {
+    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const workedHours = await this.getWorkedHours(companyId, input);
+    const byProject = new Map<string, {
+      projectId: string;
+      projectName: string;
+      projectAddress: string | null;
+      clientName: string | null;
+      totalHours: number;
+      totalCost: number;
+      entryCount: number;
+      topWorkerName: string | null;
+      topWorkerCost: number;
+    }>();
+
+    for (const row of workedHours) {
+      const key = row.project?.id || "unknown";
+      const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+      const current = byProject.get(key) || {
+        projectId: row.project?.id || "unknown",
+        projectName: row.project ? getProjectDisplayName(row.project) : "Project N/A",
+        projectAddress: row.project?.location || null,
+        clientName: row.project?.client?.name || null,
+        totalHours: 0,
+        totalCost: 0,
+        entryCount: 0,
+        topWorkerName: null,
+        topWorkerCost: 0,
+      };
+
+      current.totalHours += totalHours;
+      current.totalCost += totalCost;
+      current.entryCount += 1;
+      if (totalCost >= current.topWorkerCost) {
+        current.topWorkerCost = totalCost;
+        current.topWorkerName = getWorkedHourWorkerName(row);
+      }
+      byProject.set(key, current);
+    }
+
+    return {
+      totalProjects: byProject.size,
+      totalEntries: workedHours.length,
+      items: Array.from(byProject.values())
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .slice(0, limit),
+    };
+  }
+
+  private async timecardsDailyBreakdown(companyId: string, input: Record<string, unknown>) {
+    const workedHours = await this.getWorkedHours(companyId, input);
+    const byDate = new Map<string, { dateLabel: string; totalHours: number; totalCost: number; entries: number }>();
+
+    for (const row of workedHours) {
+      const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+      const dateValue = row.payment_date || row.date_creation;
+      const dateLabel = dateValue ? new Date(dateValue).toISOString().slice(0, 10) : "N/A";
+      const current = byDate.get(dateLabel) || {
+        dateLabel,
+        totalHours: 0,
+        totalCost: 0,
+        entries: 0,
+      };
+
+      current.totalHours += totalHours;
+      current.totalCost += totalCost;
+      current.entries += 1;
+      byDate.set(dateLabel, current);
+    }
+
+    const items = Array.from(byDate.values()).sort((a, b) => a.dateLabel.localeCompare(b.dateLabel));
+
+    return {
+      totalHours: items.reduce((acc, item) => acc + item.totalHours, 0),
+      totalCost: items.reduce((acc, item) => acc + item.totalCost, 0),
+      items,
     };
   }
 
