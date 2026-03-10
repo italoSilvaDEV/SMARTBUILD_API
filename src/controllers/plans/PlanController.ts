@@ -12,7 +12,7 @@ export class PlanController {
   // integrado com stripe
   async create(req: Request, res: Response) {
     try {
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isActive } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isActive, trialDays } = req.body;
       
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
@@ -79,7 +79,8 @@ export class PlanController {
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
           isCampaign: isCampaign || false,
-          isActive: isActive !== undefined ? isActive : true
+          isActive: isActive !== undefined ? isActive : true,
+          trialDays: trialDays !== undefined && trialDays !== null ? parseInt(trialDays) : null
         },
         include: {
           permissionGroup: true
@@ -111,6 +112,7 @@ export class PlanController {
         allowedEmployees: plan.allowedEmployees,
         isCampaign: plan.isCampaign,
         isActive: plan.isActive,
+        trialDays: plan.trialDays,
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt
       };
@@ -158,7 +160,8 @@ export class PlanController {
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
         isCampaign: plan.isCampaign,
-        isActive: plan.isActive
+        isActive: plan.isActive,
+        trialDays: plan.trialDays
       }));
 
       // Se solicitado agrupamento, organizar por grupos de permissão e periodicidade
@@ -225,7 +228,8 @@ export class PlanController {
         createdAt: plan.createdAt,
         stripeProductId: plan.stripeProductId,
         updatedAt: plan.updatedAt,
-        isActive: plan.isActive
+        isActive: plan.isActive,
+        trialDays: plan.trialDays
       };
       
       res.status(200).json(formattedPlan);
@@ -238,7 +242,7 @@ export class PlanController {
   async updatePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign,  isActive } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isActive, trialDays } = req.body;
       
       // Buscar o plano atual para verificar se há alterações e se existem IDs do Stripe
       const currentPlan = await prisma.plan.findUnique({
@@ -345,7 +349,8 @@ export class PlanController {
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
           isCampaign: isCampaign !== undefined ? isCampaign : undefined,
-          isActive: isActive !== undefined ? isActive : undefined
+          isActive: isActive !== undefined ? isActive : undefined,
+          trialDays: trialDays !== undefined ? (trialDays !== null ? parseInt(trialDays) : null) : undefined
         },
         include: { permissionGroup: true }
       });
@@ -365,6 +370,8 @@ export class PlanController {
         stripePriceId: updatedPlan.stripePriceId,
         allowedEmployees: updatedPlan.allowedEmployees,
         isCampaign: updatedPlan.isCampaign,
+        isActive: updatedPlan.isActive,
+        trialDays: updatedPlan.trialDays,
         createdAt: updatedPlan.createdAt,
         updatedAt: updatedPlan.updatedAt
       };
@@ -474,6 +481,96 @@ export class PlanController {
     } catch (error) {
       console.error('Error updating plan status:', error);
       res.status(500).json({ message: 'Error updating plan status', error: (error as Error).message });
+    }
+  }
+
+  async getPermissionDiff(req: Request, res: Response) {
+    try {
+      const { fromPlanId, toPlanId } = req.query as { fromPlanId: string; toPlanId: string };
+
+      if (!fromPlanId || !toPlanId) {
+        return res.status(400).json({ message: 'fromPlanId and toPlanId are required' });
+      }
+
+      const [fromPlan, toPlan] = await Promise.all([
+        prisma.plan.findUnique({
+          where: { id: fromPlanId },
+          include: { permissionGroup: { include: { GroupPermissionsList: { include: { Permissions: true } } } } }
+        }),
+        prisma.plan.findUnique({
+          where: { id: toPlanId },
+          include: { permissionGroup: { include: { GroupPermissionsList: { include: { Permissions: true } } } } }
+        })
+      ]);
+
+      if (!fromPlan || !toPlan) {
+        return res.status(404).json({ message: 'One or both plans not found' });
+      }
+
+      const fromPerms = fromPlan.permissionGroup?.GroupPermissionsList?.map(g => ({ id: g.permission_id, name: g.Permissions.description })) ?? [];
+      const toPerms = toPlan.permissionGroup?.GroupPermissionsList?.map(g => ({ id: g.permission_id, name: g.Permissions.description })) ?? [];
+
+      const fromPermIds = new Set(fromPerms.map(p => p.id));
+      const toPermIds = new Set(toPerms.map(p => p.id));
+
+      const added = toPerms.filter(p => !fromPermIds.has(p.id));
+      const removed = fromPerms.filter(p => !toPermIds.has(p.id));
+
+      return res.status(200).json({ added, removed });
+    } catch (error) {
+      console.error('Error calculating permission diff:', error);
+      return res.status(500).json({ message: 'Error calculating permission diff', error: (error as Error).message });
+    }
+  }
+
+  async getAvailablePlans(req: Request, res: Response) {
+    try {
+      const { validityType, validityDuration } = req.query as { validityType?: string; validityDuration?: string };
+
+      const whereClause: any = {
+        isActive: true,
+        isCampaign: false,
+        stripePriceId: { not: null },
+      };
+
+      if (validityType) {
+        whereClause.validityType = validityType as ValidityType;
+      }
+
+      if (validityDuration) {
+        const durationNumber = Number(validityDuration);
+        if (!Number.isNaN(durationNumber) && durationNumber > 0) {
+          whereClause.validityDuration = durationNumber;
+        }
+      }
+
+      const plans = await prisma.plan.findMany({
+        where: whereClause,
+        include: {
+          permissionGroup: true,
+        },
+        orderBy: { price: 'asc' },
+      });
+
+      const formatted = plans.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        features: p.features,
+        validityType: p.validityType,
+        validityDuration: p.validityDuration,
+        stripePriceId: p.stripePriceId,
+        trialDays: p.trialDays,
+        isCampaign: p.isCampaign,
+        isActive: p.isActive,
+        permissionGroupId: p.permissionGroupId,
+      }));
+
+      return res.status(200).json(formatted);
+    } catch (error) {
+      console.error('Error fetching available plans:', error);
+      return res.status(500).json({ message: 'Error fetching available plans', error: (error as Error).message });
     }
   }
 

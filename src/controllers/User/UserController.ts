@@ -1694,6 +1694,9 @@ export class UserController {
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
+        stripeStatus: subscription?.stripeStatus ?? null,
+        trialEndDate: subscription?.trialEndDate ?? null,
+        cancelRequested: subscription?.cancelRequested ?? false,
         permissions: finalPermissions, // Permissões do Office do usuário
         plan: planInfo,
         office: office

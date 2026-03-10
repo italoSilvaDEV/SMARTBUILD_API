@@ -2118,6 +2118,12 @@ export class StripeController {
                 return res.status(404).json({ error: "Empresa não encontrada" });
             }
 
+            // Retornantes (empresa já teve subscription) não recebem trial
+            const existingSubscription = await prisma.subscription.findFirst({
+                where: { companyId }
+            });
+            const shouldApplyTrial = plan.trialDays && plan.trialDays > 0 && !existingSubscription;
+
             // Preparar datas para a assinatura
             const startDate = new Date();
             let endDate = new Date();
@@ -2179,7 +2185,21 @@ export class StripeController {
                     //  Referral ID também no metadata para backup/debugging
                     ...(referralId && { referralId })
                 },
-                ...(referralId && referralId.trim() !== '' && { client_reference_id: referralId }), // Incluir client_reference_id 
+                ...(referralId && referralId.trim() !== '' && { client_reference_id: referralId }), // Incluir client_reference_id
+                // Trial pago: apenas para primeiras assinaturas sem histórico
+                ...(shouldApplyTrial && {
+                    subscription_data: {
+                        trial_period_days: plan.trialDays,
+                        trial_settings: {
+                            end_behavior: {
+                                // Atua APENAS quando não há método de pagamento no fim do trial.
+                                // Se o cartão existe mas falha, entra em invoice.payment_failed / past_due / dunning.
+                                missing_payment_method: 'cancel' as const
+                            }
+                        },
+                        metadata: { companyId, planId }
+                    }
+                })
             };
 
             // Se a empresa já tem um stripeCustomerId, usamos ele para evitar duplicação
@@ -2260,6 +2280,94 @@ export class StripeController {
             return res.status(500).json({
                 error: error instanceof Error ? error.message : "Internal server error"
             });
+        }
+    }
+
+    async cancelTrial(req: Request, res: Response) {
+        try {
+            const { companyId } = req.params;
+
+            const subscription = await prisma.subscription.findFirst({
+                where: { companyId, isActive: true },
+                orderBy: { startDate: 'desc' }
+            });
+
+            if (!subscription || !subscription.stripeSubscriptionId) {
+                return res.status(404).json({ error: "No active subscription found." });
+            }
+
+            if (subscription.stripeStatus !== 'trialing') {
+                return res.status(400).json({ error: "Subscription is not in trial." });
+            }
+
+            // 1. Marcar estado intermediário local
+            await prisma.subscription.update({
+                where: { id: subscription.id },
+                data: { cancelRequested: true }
+            });
+
+            // 2. Cancelar no Stripe — o webhook subscription.deleted vai finalizar isActive=false
+            await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+
+            return res.status(200).json({ success: true, message: 'Cancellation requested. Access will be revoked shortly.' });
+        } catch (error) {
+            console.error("Error cancelling trial:", error);
+            return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+        }
+    }
+
+    async switchTrialPlan(req: Request, res: Response) {
+        try {
+            const { companyId } = req.params;
+            const { newPlanId } = req.body;
+
+            if (!newPlanId) {
+                return res.status(400).json({ error: "newPlanId is required." });
+            }
+
+            const subscription = await prisma.subscription.findFirst({
+                where: { companyId, isActive: true },
+                orderBy: { startDate: 'desc' },
+                include: { plan: true }
+            });
+
+            if (!subscription || !subscription.stripeSubscriptionId) {
+                return res.status(404).json({ error: "No active subscription found." });
+            }
+
+            if (subscription.stripeStatus !== 'trialing') {
+                return res.status(400).json({ error: "Subscription is not in trial." });
+            }
+
+            const newPlan = await prisma.plan.findUnique({ where: { id: newPlanId } });
+            if (!newPlan || !newPlan.stripePriceId) {
+                return res.status(404).json({ error: "Plan not found or not configured for payments." });
+            }
+
+            // Escopo v1: apenas planos com mesmo intervalo de cobrança
+            if (subscription.plan.validityType !== newPlan.validityType) {
+                return res.status(400).json({
+                    error: "Changing billing interval during trial is not supported in v1. Please cancel and resubscribe."
+                });
+            }
+
+            const stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+            const existingItemId = stripeSub.items.data[0]?.id;
+
+            if (!existingItemId) {
+                return res.status(400).json({ error: "Could not find subscription item." });
+            }
+
+            await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+                items: [{ id: existingItemId, price: newPlan.stripePriceId }],
+                trial_end: stripeSub.trial_end ?? undefined,
+                proration_behavior: 'none'
+            });
+
+            return res.status(200).json({ success: true, newPlanId });
+        } catch (error) {
+            console.error("Error switching trial plan:", error);
+            return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }
 

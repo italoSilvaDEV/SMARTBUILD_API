@@ -32,6 +32,10 @@ stripeRoutes.post("/stripe/checkout-plan", stripeController.createCheckoutSessio
 // Nova rota para o portal do cliente
 stripeRoutes.post("/stripe/company/:companyId/customer-portal", checkToken, stripeController.createCustomerPortalSession.bind(stripeController));
 
+// Trial pago: cancelar trial e trocar plano durante trial
+stripeRoutes.post("/stripe/company/:companyId/cancel-trial", checkToken, stripeController.cancelTrial.bind(stripeController));
+stripeRoutes.put("/stripe/company/:companyId/trial-plan", checkToken, stripeController.switchTrialPlan.bind(stripeController));
+
 // Rotas para pagamentos manuais de invoices Stripe
 stripeRoutes.post("/stripe/invoices/:invoiceId/payment", checkToken, stripeInvoicePaymentController.createPayment.bind(stripeInvoicePaymentController));
 stripeRoutes.get("/stripe/invoices/:invoiceId/payment", checkToken, stripeInvoicePaymentController.getPayment.bind(stripeInvoicePaymentController));

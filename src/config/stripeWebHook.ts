@@ -18,7 +18,8 @@ export async function setupWebhook() {
     { event: "customer.subscription.created", name: "Subscription created" },
     { event: "customer.subscription.deleted", name: "Subscription deleted" },
     { event: "invoice.payment_failed", name: "Invoice payment failed" },
-    { event: "customer.updated", name: "Customer updated" }
+    { event: "customer.updated", name: "Customer updated" },
+    { event: "customer.subscription.trial_will_end", name: "Subscription trial will end" }
   ];
 
   try {

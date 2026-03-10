@@ -171,13 +171,10 @@ export class StripeWebHooksController {
                     });
                     
                     if (subscription) {
-                        // Atualizar status paymentFailed para false
                         await prisma.subscription.update({
                             where: { id: subscription.id },
-                            data: { paymentFailed: false }
+                            data: { paymentFailed: false, stripeStatus: 'active' }
                         });
-                        
-                        // console.log("    Assinatura na conta principal atualizada");
                     }
                 }
             }
@@ -264,7 +261,11 @@ export class StripeWebHooksController {
                                     stripeSubscriptionId: sub.id,
                                     stripeSubscriptionCanceled: false,
                                     paymentFailed: false,
-                                    stripeDateSubscriptionCanceled: null
+                                    stripeDateSubscriptionCanceled: null,
+                                    stripeStatus: sub.status,
+                                    ...(sub.status === 'trialing' && sub.trial_end && {
+                                        trialEndDate: new Date(sub.trial_end * 1000)
+                                    })
                                 }
                             });
                             await ensureWorkerAndAdministratorOfficesForNewCompany(companyIdFromMeta, plan.id);
@@ -281,56 +282,53 @@ export class StripeWebHooksController {
                 
                 // Verificar tipo de cancelamento
                 if (sub.status === 'canceled') {
-                    // Cancelamento imediato
                     console.log("    Assinatura cancelada imediatamente detectada!");
-                    
                     await prisma.subscription.update({
                         where: { id: localSub.id },
                         data: { 
                             isActive: false,
                             stripeSubscriptionCanceled: true,
-                            stripeDateSubscriptionCanceled: new Date() // Data atual para cancelamento imediato
+                            stripeDateSubscriptionCanceled: new Date(),
+                            stripeStatus: 'canceled',
+                            cancelRequested: false
                         }
                     });
-                    
                     console.log("    Assinatura marcada como inativa e cancelada imediatamente");
                     return res.json({ received: true });
                 } 
                 else if (sub.cancel_at_period_end) {
-                    // Cancelamento agendado para o final do período
-                    // console.log("    Cancelamento ao final do período detectado");
-                    // console.log("   • Data de término do período:", newEnd.toISOString());
-                    
-                    // Manter assinatura ativa até o final do período
                     await prisma.subscription.update({
                         where: { id: localSub.id },
                         data: {
                             endDate: newEnd,
                             isActive: true,
                             stripeSubscriptionCanceled: false,
-                            stripeDateSubscriptionCanceled: newEnd // Data de término da assinatura
+                            stripeDateSubscriptionCanceled: newEnd,
+                            stripeStatus: sub.status,
+                            ...(sub.status === 'trialing' && sub.trial_end && {
+                                trialEndDate: new Date(sub.trial_end * 1000)
+                            })
                         }
                     });
-                    
                     console.log("    Assinatura permanecerá ativa até o final do período");
                 }
                 else {
-                    // Para outros casos, continua com a lógica normal
                     const isActive = sub.status === "active" || sub.status === "trialing";
-                    
-                    // console.log("    Novo endDate:", newEnd.toISOString());
-                    // console.log("    isActive calculado:", isActive);
-                    
                     await prisma.subscription.update({
                         where: { id: localSub.id },
                         data: {
                             endDate: newEnd,
                             isActive,
-                            // Remover data de cancelamento caso a assinatura tenha sido reativada
-                            ...(isActive && { stripeDateSubscriptionCanceled: null })
+                            stripeStatus: sub.status,
+                            ...(isActive && { stripeDateSubscriptionCanceled: null }),
+                            ...(sub.status === 'trialing' && sub.trial_end && {
+                                trialEndDate: new Date(sub.trial_end * 1000)
+                            }),
+                            ...(sub.status === 'active' && {
+                                trialEndDate: null
+                            })
                         }
                     });
-                    
                     console.log("    Assinatura local atualizada.");
                 }
 
@@ -491,7 +489,11 @@ export class StripeWebHooksController {
                                     stripeSubscriptionId: sub.id,
                                     stripeSubscriptionCanceled: false,
                                     paymentFailed: false,
-                                    stripeDateSubscriptionCanceled: null
+                                    stripeDateSubscriptionCanceled: null,
+                                    stripeStatus: sub.status,
+                                    ...(sub.status === 'trialing' && sub.trial_end && {
+                                        trialEndDate: new Date(sub.trial_end * 1000)
+                                    })
                                 }
                             });
 
@@ -594,7 +596,11 @@ export class StripeWebHooksController {
                             stripeSubscriptionId: sub.id,
                             stripeSubscriptionCanceled: false,
                             paymentFailed: false,
-                            stripeDateSubscriptionCanceled: null
+                            stripeDateSubscriptionCanceled: null,
+                            stripeStatus: sub.status,
+                            ...(sub.status === 'trialing' && sub.trial_end && {
+                                trialEndDate: new Date(sub.trial_end * 1000)
+                            })
                         }
                     });
                     
@@ -633,12 +639,15 @@ export class StripeWebHooksController {
                 // 1. Assinatura foi cancelada imediatamente (não no fim do período)
                 // 2. Assinatura com cancelamento no fim do período chegou ao final
                 
-                // Em ambos os casos, devemos marcar como inativa e cancelada
+                // Em ambos os casos, devemos marcar como inativa e cancelada.
+                // Este evento é a FONTE DE VERDADE para isActive=false após cancelamento.
                 await prisma.subscription.update({
                     where: { id: localSubscription.id },
                     data: { 
                         isActive: false,
-                        stripeSubscriptionCanceled: true
+                        stripeSubscriptionCanceled: true,
+                        stripeStatus: 'canceled',
+                        cancelRequested: false
                     }
                 });
                 console.log("    Assinatura marcada como inativa e cancelada");
@@ -647,6 +656,20 @@ export class StripeWebHooksController {
                 // Isso permitirá que o front-end mostre a página "subscription expired/canceled"
             }
 
+
+            /* ---------- TRIAL WILL END (3 days before) ---------- */
+            else if (event.type === "customer.subscription.trial_will_end") {
+                const sub = event.data.object as Stripe.Subscription;
+                console.log("customer.subscription.trial_will_end recebido para subscription:", sub.id);
+                // Registrar log — base para futuros emails de aviso personalizados.
+                // O Stripe já envia email automático ao cliente 7 dias antes.
+                const localSub = await prisma.subscription.findFirst({
+                    where: { stripeSubscriptionId: sub.id }
+                });
+                if (localSub) {
+                    console.log("    Trial termina em breve para assinatura local:", localSub.id);
+                }
+            }
 
             /* ---------- INVOICE PAYMENT FAILED ---------- */
             else if (event.type === "invoice.payment_failed") {
@@ -673,7 +696,7 @@ export class StripeWebHooksController {
                         // Atualizar a assinatura como pagamento falho
                         await prisma.subscription.update({
                             where: { id: subscription.id },
-                            data: { paymentFailed: true }
+                            data: { paymentFailed: true, stripeStatus: 'past_due' }
                         });
 
                         console.log("    Assinatura marcada com pagamento falho");

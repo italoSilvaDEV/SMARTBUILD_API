@@ -8,6 +8,8 @@ const planController = new PlanController();
 // Rotas para planos
 planRoutes.post('/plans', checkToken, planController.create);
 planRoutes.get('/plans', planController.getAllPlans);
+planRoutes.get('/plans/available', checkToken, planController.getAvailablePlans.bind(planController));
+planRoutes.get('/plans/permission-diff', checkToken, planController.getPermissionDiff.bind(planController));
 planRoutes.get('/plans/:id', planController.getPlanById);
 planRoutes.put('/plans/:id', checkToken, planController.updatePlan);
 planRoutes.patch('/plans/:id/status', checkToken, planController.patchPlanStatus);

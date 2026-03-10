@@ -1578,6 +1578,9 @@ model Subscription {
   paymentFailed                  Boolean   @default(false)
   stripeSubscriptionCanceled     Boolean   @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
+  stripeStatus                   String?   // Status no Stripe: trialing | active | past_due | canceled | ...
+  trialEndDate                   DateTime? // Data de termino do trial (somente para assinaturas com trial pago)
+  cancelRequested                Boolean   @default(false) // Flag intermediaria: cancel enviado ao Stripe, aguardando webhook
   fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
   campaignId                     String? // ID da campanha (opcional)
   campaign                       Campaign? @relation(fields: [campaignId], references: [id])
@@ -1612,6 +1615,7 @@ model Plan {
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
   isCampaign       Boolean @default(false) // Indica se o plano pode ser usado em campanhas
   isActive         Boolean @default(true) // Indica se o plano está ativo (visível/disponível)
+  trialDays        Int?    // Dias de trial antes da 1a cobranca. null = sem trial (cobranca imediata)
 }
 
 model Campaign {
