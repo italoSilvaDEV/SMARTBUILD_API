@@ -36,7 +36,7 @@ export class UpdateImgCategoryController {
                     where: { id }
                 });
 
-                if (!category) {                    
+                if (!category) {
                     throw new Error("Category not found!");
                 }
 
@@ -91,13 +91,16 @@ export class UpdateImgCategoryController {
 
             if (category.category_name === category_name) {
                 return response.json({});
-            }else if(category.category_name !== category_name){
+            } else if (category.category_name !== category_name) {
                 const existingCategory = await prisma.category.findFirst({
                     where: {
                         category_name: category_name,
                         type_category: type_category,
+                        company_id: category.company_id,
+                        NOT: { id }
                     }
                 });
+
                 if (existingCategory) {
                     return response.status(400).json({ error: "This category has already been registered!" });
                 }
@@ -121,7 +124,7 @@ export class UpdateImgCategoryController {
         try {
             const { id, status_category } = request.body;
 
-            if (!id ) {
+            if (!id) {
                 throw new Error("ID are required!");
             }
             const category = await prisma.category.findUnique({
@@ -146,6 +149,6 @@ export class UpdateImgCategoryController {
             return response.status(500).json({ error: "Internal error" });
         }
     }
-    
+
 
 }
