@@ -4,7 +4,7 @@ import { deleteFile } from "../../config/file";
 import multer from "multer";
 import { uploadImageWebpToS3 } from "../../utils/S3/uploadFIleS3";
 
-const upload = multer({ dest: './public/tmp/category' }).single('file'); 
+const upload = multer({ dest: './public/tmp/category' }).single('file');
 export class CreateCategoryController {
 
     constructor() {
@@ -29,10 +29,9 @@ export class CreateCategoryController {
                     company_id
                 } = request.body;
 
-                if (!category_name || !type_category) {
+                if (!category_name || !type_category || !company_id) {
                     this.deleteFiles(request.file?.filename?.split('.')[0] + '.webp', request.file?.filename);
-                    return response.status(400).json({ error: "Category name and type are required!" });
-                
+                    return response.status(400).json({ error: "Category name, type and company id are required!" });
                 }
 
                 let file = "";
@@ -41,6 +40,16 @@ export class CreateCategoryController {
                     const filePath = `./public/tmp/category/${request.file.filename}`;
                     const bucket = `${process.env.AMAZON_S3_BUCKET}`
                     file = await uploadImageWebpToS3(filePath, bucket);
+                }
+
+                const company = await prisma.company.findUnique({
+                    where: {
+                        id: company_id
+                    }
+                });
+
+                if (!company) {
+                    return response.status(400).json({ error: "Company not found!" });
                 }
 
                 const category = await prisma.category.findFirst({
@@ -54,7 +63,7 @@ export class CreateCategoryController {
                 if (category) {
                     this.deleteFiles(file, request.file?.filename);
                     return response.status(400).json({ error: "This category has already been registered!" });
-                
+
                 }
 
                 const result = await prisma.category.create({
