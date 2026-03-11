@@ -477,6 +477,9 @@ export class UserController {
             // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
             isExpired = true;
           }
+          else if (subscription.stripeStatus === 'trialing' && subscription.trialEndDate) {
+            isExpired = new Date(subscription.trialEndDate) < new Date();
+          }
           else {
             try {
               // Inicializar cliente Stripe
@@ -498,6 +501,12 @@ export class UserController {
                 isExpired = stripeSubscription.cancel_at
                   ? new Date(stripeSubscription.cancel_at * 1000) < new Date()
                   : false;
+
+                if (!isExpired && stripeSubscription.status === 'trialing' && subscription.trialEndDate) {
+                  if (new Date(subscription.trialEndDate) < new Date()) {
+                    isExpired = true;
+                  }
+                }
               } else {
                 // Status inativo (canceled, unpaid, incomplete_expired, etc)
                 isExpired = true;
@@ -1474,6 +1483,10 @@ export class UserController {
           // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
           isExpired = true;
         }
+        
+        else if (subscription.stripeStatus === 'trialing' && subscription.trialEndDate) {
+          isExpired = new Date(subscription.trialEndDate) < new Date();
+        }
         else {
           try {
             // Inicializar cliente Stripe
@@ -1495,6 +1508,12 @@ export class UserController {
               isExpired = stripeSubscription.cancel_at
                 ? new Date(stripeSubscription.cancel_at * 1000) < new Date()
                 : false;
+
+              if (!isExpired && stripeSubscription.status === 'trialing' && subscription.trialEndDate) {
+                if (new Date(subscription.trialEndDate) < new Date()) {
+                  isExpired = true;
+                }
+              }
             } else {
               // Status inativo (canceled, unpaid, incomplete_expired, etc)
               isExpired = true;
@@ -1505,7 +1524,7 @@ export class UserController {
               paymentFailed = true;
 
               // Atualizar no banco se identificamos pelo Stripe
-              if (!subscription.paymentFailed) {
+              if (!subscription.paymentFailed) { 
                 await prisma.subscription.update({
                   where: { id: subscription.id },
                   data: { paymentFailed: true }
@@ -1647,7 +1666,12 @@ export class UserController {
       else {
         // Para planos PAGOS (não-FREE), usar os valores da assinatura local
         if (subscription) {
-          isExpired = !subscription.isActive;
+          
+          if (subscription.stripeStatus === 'trialing' && subscription.trialEndDate) {
+            isExpired = new Date(subscription.trialEndDate) < new Date();
+          } else {
+            isExpired = !subscription.isActive;
+          }
           stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
           paymentFailed = subscription.paymentFailed;
         }

@@ -333,12 +333,19 @@ export class StripeWebHooksController {
                 }
 
                 // Só aplicar mudança de plano/permissões quando a assinatura está paga (active/trialing)
-                const price = sub.items.data[0].price;
+                const price = sub.items.data[0].price as Stripe.Price;
 
                 console.log("esse é o price", JSON.stringify(price, null, 2));
-                const plan = await prisma.plan.findFirst({
+
+                let plan = await prisma.plan.findFirst({
                     where: { stripePriceId: price.id },
                 });
+
+                if (!plan && price.metadata && typeof price.metadata.planId === "string") {
+                    plan = await prisma.plan.findUnique({
+                        where: { id: price.metadata.planId },
+                    });
+                }
 
                 if (plan && isSubscriptionPaid(sub.status)) {
                     console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
