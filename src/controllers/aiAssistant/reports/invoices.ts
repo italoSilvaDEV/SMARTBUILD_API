@@ -9,13 +9,6 @@ export function buildInvoiceReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Invoice Summary",
       description: "Company invoice totals with paid, open and overdue exposure.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Total", value: output.totals.total || 0 },
-        { label: "Paid", value: output.totals.paid || 0 },
-        { label: "Open", value: output.totals.open || 0 },
-        { label: "Overdue", value: output.totals.overdue || 0 },
-      ],
       metrics: [
         { label: "Invoices", value: String(output.totalCount || 0), tone: "success" },
         { label: "Total", value: formatCurrency(output.totals.total || 0) },
@@ -49,11 +42,6 @@ export function buildInvoiceReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Invoices",
       description: "Invoice list with client, project, due date and amount.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.client?.name || `Invoice ${item.id}`,
-        value: item.totalAmount || 0,
-      })),
       metrics: [
         { label: "Invoices", value: String(output.total || output.items.length), tone: "success" },
         { label: "Latest", value: String(output.items[0].id || "N/A"), tone: "warning" },
@@ -108,11 +96,6 @@ export function buildInvoiceReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Overdue Invoices",
       description: "Invoices already past due and impacting cash collection.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.client?.name || `Invoice ${item.id}`,
-        value: item.totalAmount || 0,
-      })),
       metrics: [
         { label: "Overdue amount", value: formatCurrency(output.overdueAmount || 0), tone: "warning" },
         { label: "Invoices", value: String(output.total || output.items.length) },

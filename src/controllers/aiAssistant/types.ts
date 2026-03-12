@@ -32,8 +32,8 @@ export type AssistantReportTable = {
 export type AssistantReport = {
   title: string;
   description: string;
-  chartMode: AssistantChartMode;
-  chartData: Record<string, string | number>[];
+  chartMode?: AssistantChartMode;
+  chartData?: Record<string, string | number>[];
   metrics: { label: string; value: string; tone?: "default" | "warning" | "success" }[];
   table?: AssistantReportTable | null;
 };

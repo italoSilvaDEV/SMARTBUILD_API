@@ -46,8 +46,8 @@ Return ONLY valid JSON with this shape:
   "report": {
     "title": "optional",
     "description": "optional",
-    "chartMode": "bar|line|pie",
-    "chartData": [{"label":"A","value":10}],
+    "chartMode": "optional: bar|line|pie",
+    "chartData": "optional: [{\"label\":\"A\",\"value\":10}]",
     "metrics": [{"label":"Total","value":"$100","tone":"default|warning|success"}],
     "table": {
       "columns": [{"key":"projectAddress","label":"Project"}],
@@ -56,6 +56,7 @@ Return ONLY valid JSON with this shape:
   }
 }
 If no report is appropriate, set "report" to null.
+Only include chartMode and chartData when a chart genuinely improves understanding, such as rankings, trends, distributions, or comparisons. Do not force charts for simple lists or detailed tables.
 Keep chartData compact and directly derived from the provided tool results.
 For analytical, ranked, list, aging, receivables, invoice, worker, subcontractor, and project responses, prefer including report.table by default whenever rows are available. Do not require the user to explicitly ask for a list first.
 Match the user's language naturally.

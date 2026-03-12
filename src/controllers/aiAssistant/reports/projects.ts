@@ -9,11 +9,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Projects",
       description: "Active projects aligned with the Seller Projects list.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.projectAddress || item.projectName,
-        value: item.price || 0,
-      })),
       metrics: [
         { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
         { label: "Shown", value: String(output.returnedCount || output.items.length) },
@@ -118,12 +113,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Overview",
       description: "Operational and financial snapshot for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Sold value", value: output.price || 0 },
-        { label: "Total cost", value: output.financials?.totalCost || 0 },
-        { label: "Invoiced", value: output.financials?.invoicedAmount || 0 },
-      ],
       metrics: [
         { label: "Project", value: output.projectAddress || output.projectName, tone: "warning" },
         { label: "Client", value: output.clientName || "Not available" },
@@ -137,11 +126,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Status Transitions",
       description: "Projects that moved into the requested status during the selected period, based on the stored status change date.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 8).map((item: any) => ({
-        label: item.projectAddress || item.projectName,
-        value: 1,
-      })),
       metrics: [
         { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
         { label: "Statuses", value: output.statuses?.length ? output.statuses.join(", ") : "All statuses" },
@@ -227,11 +211,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Services",
       description: "Services ranked by planned value, stage progression and material cost.",
-      chartMode: "bar",
-      chartData: output.services.slice(0, 6).map((service: any) => ({
-        label: service.name,
-        value: service.plannedValue,
-      })),
       metrics: [
         { label: "Services", value: String(output.totalServices || output.services.length) },
         { label: "Planned value", value: formatCurrency(output.totals?.plannedValue || 0) },
@@ -244,12 +223,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Files",
       description: "File cabinet overview including folders, project files and contract files.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Folders", value: output.totals.folders || 0 },
-        { label: "Files", value: output.totals.files || 0 },
-        { label: "Contract files", value: output.totals.contractFiles || 0 },
-      ],
       metrics: [
         { label: "Folders", value: String(output.totals.folders || 0) },
         { label: "Files", value: String(output.totals.files || 0), tone: "success" },
@@ -262,13 +235,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Tasks",
       description: "Task status and urgency distribution for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Open", value: output.totals?.open || 0 },
-        { label: "In progress", value: output.totals?.inProgress || 0 },
-        { label: "Completed", value: output.totals?.completed || 0 },
-        { label: "Overdue", value: output.totals?.overdue || 0 },
-      ],
       metrics: [
         { label: "Tasks", value: String(output.totals?.totalTasks || 0) },
         { label: "Urgent", value: String(output.totals?.urgent || 0), tone: "warning" },
@@ -281,12 +247,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Activity Feed",
       description: "Recent feed activity and photo volume for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Activities", value: output.totals.activities || 0 },
-        { label: "Photos", value: output.totals.photos || 0 },
-        { label: "Services", value: output.totals.services || 0 },
-      ],
       metrics: [
         { label: "Activities", value: String(output.totals.activities || 0) },
         { label: "Photos", value: String(output.totals.photos || 0), tone: "success" },
@@ -298,13 +258,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Invoices",
       description: "Invoice totals and receivable status for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Invoiced", value: output.totals?.totalInvoiced || 0 },
-        { label: "Paid", value: output.totals?.paidAmount || 0 },
-        { label: "Open", value: output.totals?.openAmount || 0 },
-        { label: "Overdue", value: output.totals?.overdueAmount || 0 },
-      ],
       metrics: [
         { label: "Invoices", value: String(output.totals?.invoiceCount || 0) },
         { label: "Open", value: formatCurrency(output.totals?.openAmount || 0), tone: "warning" },
@@ -317,12 +270,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Change Orders",
       description: "Change order volume and value for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Approved", value: output.totals?.approvedAmount || 0 },
-        { label: "Pending", value: output.totals?.pendingAmount || 0 },
-        { label: "Total", value: output.totals?.totalAmount || 0 },
-      ],
       metrics: [
         { label: "Count", value: String(output.totals?.count || 0) },
         { label: "Approved", value: formatCurrency(output.totals?.approvedAmount || 0), tone: "success" },
@@ -335,11 +282,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Team Cost",
       description: "Internal employee and subcontractor cost footprint for the selected project.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Employees", value: output.totals?.employeeLaborCost || 0 },
-        { label: "Subcontractors", value: output.totals?.subcontractorCost || 0 },
-      ],
       metrics: [
         { label: "Employees", value: String(output.totals?.employeeCount || 0) },
         { label: "Subcontractors", value: String(output.totals?.subcontractorCount || 0), tone: "success" },
@@ -352,11 +294,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Estimate Summary",
       description: "Estimates with sold value, paid amount, balance and approved change-order lift.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.projectAddress || item.projectName || `Estimate ${item.number || item.id}`,
-        value: item.totalAmount || 0,
-      })),
       metrics: [
         { label: "Estimates", value: String(output.total || output.items.length), tone: "success" },
         { label: "Total", value: formatCurrency(output.totals?.amount || 0) },
@@ -392,13 +329,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Project Vs Estimate",
       description: "Comparison between sold value, latest estimate, invoiced amount and accumulated project cost.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Sold value", value: output.soldValue || 0 },
-        { label: "Latest estimate", value: output.latestEstimate?.totalAmount || 0 },
-        { label: "Invoiced", value: output.invoiced || 0 },
-        { label: "Total cost", value: output.costs?.totalCost || 0 },
-      ],
       metrics: [
         { label: "Project", value: output.projectAddress || output.projectName, tone: "warning" },
         { label: "Sold vs estimate", value: formatCurrency(output.deltas?.soldVsEstimate || 0) },
@@ -428,12 +358,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Change Order Summary",
       description: "Change orders by project with approved, pending and canceled value.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Approved", value: output.totals?.approved || 0 },
-        { label: "Pending", value: output.totals?.pending || 0 },
-        { label: "Canceled", value: output.totals?.canceled || 0 },
-      ],
       metrics: [
         { label: "Change orders", value: String(output.total || output.items.length), tone: "success" },
         { label: "Approved", value: formatCurrency(output.totals?.approved || 0) },

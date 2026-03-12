@@ -9,12 +9,6 @@ export function buildClientReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Client Overview",
       description: "Client profile with active projects and invoice exposure.",
-      chartMode: "bar",
-      chartData: [
-        { label: "Invoiced", value: output.financials?.invoicedAmount || 0 },
-        { label: "Projects", value: output.financials?.projectCount || 0 },
-        { label: "Invoices", value: output.financials?.invoiceCount || 0 },
-      ],
       metrics: [
         { label: "Client", value: output.name || "Not available", tone: "warning" },
         { label: "Projects", value: String(output.financials?.projectCount || 0), tone: "success" },
@@ -46,11 +40,6 @@ export function buildClientReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Clients",
       description: "Client list with active project exposure and invoiced amount.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.name,
-        value: item.invoicedAmount || 0,
-      })),
       metrics: [
         { label: "Clients", value: String(output.total || output.items.length), tone: "success" },
         { label: "Top client", value: output.items[0].name, tone: "warning" },
@@ -80,11 +69,6 @@ export function buildClientReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Receivables By Client",
       description: "Clients with the highest outstanding receivables.",
-      chartMode: "bar",
-      chartData: output.items.slice(0, 6).map((item: any) => ({
-        label: item.clientName,
-        value: item.openAmount,
-      })),
       metrics: [
         { label: "Top client", value: output.items[0].clientName, tone: "warning" },
         { label: "Top AR", value: formatCurrency(output.items[0].openAmount || 0) },
