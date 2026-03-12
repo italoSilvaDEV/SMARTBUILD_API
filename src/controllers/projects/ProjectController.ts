@@ -770,20 +770,19 @@ export class ProjectController {
         );
         const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
-        let costofwork = project.invoiceCostProject.reduce(
-          (total, invoice) => {
-            const costSum = invoice.costProject.reduce((subtotal, cost) => {
-              if (cost.transaction_type === "Cost") {
-                return subtotal + Number(cost.price) * Number(cost.amout);
-              } else if (cost.transaction_type === "Credit") {
-                return subtotal - Number(cost.price) * Number(cost.amout);
-              }
-              return subtotal;
-            }, 0);
-            return total + costSum;
-          },
-          0
-        );
+        const costofwork = flatCostProjects.reduce((total, cost) => {
+          const lineTotal = Number(cost.price) * Number(cost.amout);
+
+          if (cost.transaction_type === "Cost") {
+            return total + lineTotal;
+          }
+
+          if (cost.transaction_type === "Credit") {
+            return total - lineTotal;
+          }
+
+          return total;
+        }, 0);
 
         const userAttendance = project.serviceProject.reduce((total, service) => {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
