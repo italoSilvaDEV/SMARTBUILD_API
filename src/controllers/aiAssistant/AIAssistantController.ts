@@ -77,6 +77,28 @@ function buildAttendanceDateFilter(input: Record<string, unknown>) {
   return filter;
 }
 
+function isDateWithinRange(value: unknown, rangeStart: Date | null, rangeEnd: Date | null) {
+  const date = parseDateValue(value);
+  if (!date) return !rangeStart && !rangeEnd;
+  if (rangeStart && date < rangeStart) return false;
+  if (rangeEnd && date > rangeEnd) return false;
+  return true;
+}
+
+function buildProjectStatusWhere(input: Record<string, unknown>) {
+  const rawStatuses = Array.isArray(input.status)
+    ? input.status.map((value) => String(value)).filter(Boolean)
+    : input.status
+      ? [String(input.status)]
+      : [];
+
+  const statuses = rawStatuses.length ? expandProjectStatuses(rawStatuses) : [];
+  return {
+    statuses,
+    filter: statuses.length ? { in: statuses } : getActiveProjectStatusFilter(),
+  };
+}
+
 function getWorkedHourEffectiveCost(row: {
   amount_of_hours?: unknown;
   hourly_price?: unknown;
@@ -391,6 +413,12 @@ export class AIAssistantController {
           input: resolvedInput,
           output: await this.getProjectDetails(companyId, String(resolvedInput.projectId || "")),
         };
+      case "project_status_transitions":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.projectStatusTransitions(companyId, resolvedInput),
+        };
       case "top_spending_projects":
         return {
           tool: toolName,
@@ -650,6 +678,23 @@ export class AIAssistantController {
       {
         type: "function" as const,
         function: {
+          name: "project_status_transitions",
+          description: "Count and list projects that moved into one or more project statuses during a selected period, using the stored project status change date.",
+          parameters: {
+            type: "object",
+            properties: {
+              status: { type: "array", items: { type: "string" } },
+              period: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "project_cost_breakdown",
           description: "Break down project costs by materials and labor.",
           parameters: {
@@ -791,11 +836,15 @@ export class AIAssistantController {
         type: "function" as const,
         function: {
           name: "top_spending_projects",
-          description: "Rank active projects by total spending using material and labor costs. Use higher limits when the user asks for a full ranking or full list.",
+          description: "Rank active projects by total spending using material and labor costs. Accepts period or explicit dates for rankings like this week, last month or custom windows.",
           parameters: {
             type: "object",
             properties: {
               limit: { type: "number" },
+              period: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
             },
           },
         },
@@ -804,11 +853,15 @@ export class AIAssistantController {
         type: "function" as const,
         function: {
           name: "top_profitable_projects",
-          description: "Rank active projects by profit using sold value minus material and labor cost. Use higher limits when the user asks for a full ranking, full list, or table.",
+          description: "Rank active projects by profit using sold value minus material and labor cost. Accepts period or explicit dates for rankings like this month, last month or custom windows.",
           parameters: {
             type: "object",
             properties: {
               limit: { type: "number" },
+              period: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
             },
           },
         },
@@ -1398,11 +1451,12 @@ export class AIAssistantController {
   private async listProjects(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
     const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const { filter: statusFilter } = buildProjectStatusWhere(input);
 
     const projects = await prisma.project.findMany({
       where: {
         company_id: companyId,
-        status_project: getActiveProjectStatusFilter(),
+        status_project: statusFilter,
         ...(search
           ? {
               OR: [
@@ -1422,6 +1476,7 @@ export class AIAssistantController {
         id: true,
         contract_number: true,
         status_project: true,
+        status_changed_at: true,
         price: true,
         start_date: true,
         deadline: true,
@@ -1446,15 +1501,16 @@ export class AIAssistantController {
           },
         },
       },
-    });
+    } as any);
 
     return {
       total: projects.length,
-      items: projects.map((project) => ({
+      items: projects.map((project: any) => ({
         id: project.id,
         ...getProjectReference(project),
         contractNumber: project.contract_number,
         status: project.status_project,
+        statusChangedAt: (project as any).status_changed_at || null,
         price: decimalToNumber(project.price),
         amountPaid: decimalToNumber(project.amountPaid),
         balanceDue: decimalToNumber(project.balanceDue),
@@ -1464,6 +1520,76 @@ export class AIAssistantController {
         serviceCount: project.serviceProject.length,
         invoiceCount: project.invoices.length,
       })),
+    };
+  }
+
+  private async projectStatusTransitions(companyId: string, input: Record<string, unknown>) {
+    const requestedStatuses = Array.isArray(input.status)
+      ? input.status.map((value) => String(value)).filter(Boolean)
+      : input.status
+        ? [String(input.status)]
+        : [];
+    const statuses = requestedStatuses.length ? expandProjectStatuses(requestedStatuses) : [];
+    const limit = Math.min(Number(input.limit || 50) || 50, 100);
+    const { rangeStart, rangeEnd } = getRequestedDateRange(input);
+
+    const statusChangedAt: Record<string, Date> = {};
+    if (rangeStart) statusChangedAt.gte = rangeStart;
+    if (rangeEnd) statusChangedAt.lte = rangeEnd;
+
+    const projects = await prisma.project.findMany({
+      where: {
+        company_id: companyId,
+        ...(statuses.length ? { status_project: { in: statuses } } : {}),
+        status_changed_at: Object.keys(statusChangedAt).length ? statusChangedAt : { not: null },
+      } as any,
+      take: limit,
+      orderBy: { status_changed_at: "desc" as const },
+      select: {
+        id: true,
+        contract_number: true,
+        status_project: true,
+        status_changed_at: true,
+        price: true,
+        amountPaid: true,
+        balanceDue: true,
+        location: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    } as any);
+
+    const statusDateCoverage = await prisma.project.count({
+      where: {
+        company_id: companyId,
+        ...(statuses.length ? { status_project: { in: statuses } } : {}),
+        status_changed_at: { not: null },
+      } as any,
+    });
+
+    return {
+      total: projects.length,
+      statuses: statuses.length ? statuses : [],
+      period: {
+        start: rangeStart || null,
+        end: rangeEnd || null,
+      },
+      items: projects.map((project) => ({
+        id: project.id,
+        ...getProjectReference(project),
+        contractNumber: project.contract_number,
+        status: project.status_project,
+        statusChangedAt: (project as any).status_changed_at || null,
+        price: decimalToNumber(project.price),
+        amountPaid: decimalToNumber(project.amountPaid),
+        balanceDue: decimalToNumber(project.balanceDue),
+      })),
+      missingStatusChangeDateSupport: statusDateCoverage === 0,
     };
   }
 
@@ -1479,6 +1605,7 @@ export class AIAssistantController {
         contract_number: true,
         price: true,
         status_project: true,
+        status_changed_at: true,
         start_date: true,
         deadline: true,
         amountPaid: true,
@@ -1603,7 +1730,7 @@ export class AIAssistantController {
           },
         },
       },
-    });
+    } as any);
 
     if (!project) {
       return { error: "Project not found" };
@@ -1652,6 +1779,7 @@ export class AIAssistantController {
       ...getProjectReference(project),
       contractNumber: project.contract_number,
       status: project.status_project,
+      statusChangedAt: (project as any).status_changed_at || null,
       startDate: project.start_date,
       deadline: project.deadline,
       createdAt: project.date_creation,
@@ -1706,44 +1834,38 @@ export class AIAssistantController {
 
   private async topSpendingProjects(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 5) || 5, 100);
-    const [projects, employeeRows] = await Promise.all([
+    const { rangeStart, rangeEnd } = getRequestedDateRange(input);
+    const [projects, employeeRows, subcontractorRows] = await Promise.all([
       prisma.project.findMany({
-      where: {
-        company_id: companyId,
-        status_project: getActiveProjectStatusFilter(),
-      },
-      select: {
-        id: true,
-        contract_number: true,
-        location: true,
-        client: {
-          select: {
-            name: true,
-          },
+        where: {
+          company_id: companyId,
+          status_project: getActiveProjectStatusFilter(),
         },
-        serviceProject: {
-          select: {
-            name: true,
-            costProject: {
-              select: {
-                price: true,
-                amout: true,
+        select: {
+          id: true,
+          contract_number: true,
+          location: true,
+          client: {
+            select: {
+              name: true,
+            },
+          },
+          serviceProject: {
+            select: {
+              name: true,
+              costProject: {
+                select: {
+                  price: true,
+                  amout: true,
+                  cost_date: true,
+                },
               },
             },
           },
         },
-        workedHours: {
-          select: {
-            subcontractor_id: true,
-            amount_of_hours: true,
-            hourly_price: true,
-            fixed_price: true,
-            type_price: true,
-          },
-        },
-      },
-    }),
-      this.getEmployeeWorkedHours(companyId, {}),
+      }),
+      this.getEmployeeWorkedHours(companyId, input),
+      this.getSubcontractorWorkedHours(companyId, input),
     ]);
 
     const employeeLaborByProject = new Map<string, number>();
@@ -1753,21 +1875,26 @@ export class AIAssistantController {
       employeeLaborByProject.set(projectKey, (employeeLaborByProject.get(projectKey) || 0) + getWorkedHourEffectiveCost(row).totalCost);
     }
 
+    const subcontractorLaborByProject = new Map<string, number>();
+    for (const row of subcontractorRows) {
+      const projectKey = row.project?.id;
+      if (!projectKey) continue;
+      subcontractorLaborByProject.set(projectKey, (subcontractorLaborByProject.get(projectKey) || 0) + this.getSubcontractorEntryCost(row).totalCost);
+    }
+
     const items = projects
       .map((project: any) => {
         const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
           return (
             acc +
             service.costProject.reduce((costAcc: number, cost: any) => {
+              if (!isDateWithinRange(cost.cost_date, rangeStart, rangeEnd)) return costAcc;
               return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
             }, 0)
           );
         }, 0);
 
-        const subcontractorLaborCost = project.workedHours.reduce((acc: number, work: any) => {
-          return acc + (work.subcontractor_id ? this.getSubcontractorEntryCost(work).totalCost : 0);
-        }, 0);
-        const laborCost = (employeeLaborByProject.get(project.id) || 0) + subcontractorLaborCost;
+        const laborCost = (employeeLaborByProject.get(project.id) || 0) + (subcontractorLaborByProject.get(project.id) || 0);
 
         return {
           projectId: project.id,
@@ -1783,51 +1910,49 @@ export class AIAssistantController {
 
     return {
       total: items.length,
+      period: {
+        start: rangeStart || null,
+        end: rangeEnd || null,
+      },
       items,
     };
   }
 
   private async topProfitableProjects(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 8) || 8, 100);
-    const [projects, employeeRows] = await Promise.all([
+    const { rangeStart, rangeEnd } = getRequestedDateRange(input);
+    const [projects, employeeRows, subcontractorRows] = await Promise.all([
       prisma.project.findMany({
-      where: {
-        company_id: companyId,
-        status_project: getActiveProjectStatusFilter(),
-      },
-      select: {
-        id: true,
-        contract_number: true,
-        location: true,
-        price: true,
-        client: {
-          select: {
-            id: true,
-            name: true,
-          },
+        where: {
+          company_id: companyId,
+          status_project: getActiveProjectStatusFilter(),
         },
-        serviceProject: {
-          select: {
-            costProject: {
-              select: {
-                price: true,
-                amout: true,
+        select: {
+          id: true,
+          contract_number: true,
+          location: true,
+          price: true,
+          client: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          serviceProject: {
+            select: {
+              costProject: {
+                select: {
+                  price: true,
+                  amout: true,
+                  cost_date: true,
+                },
               },
             },
           },
         },
-        workedHours: {
-          select: {
-            subcontractor_id: true,
-            amount_of_hours: true,
-            hourly_price: true,
-            fixed_price: true,
-            type_price: true,
-          },
-        },
-      },
-    }),
-      this.getEmployeeWorkedHours(companyId, {}),
+      }),
+      this.getEmployeeWorkedHours(companyId, input),
+      this.getSubcontractorWorkedHours(companyId, input),
     ]);
 
     const employeeLaborByProject = new Map<string, number>();
@@ -1837,19 +1962,24 @@ export class AIAssistantController {
       employeeLaborByProject.set(projectKey, (employeeLaborByProject.get(projectKey) || 0) + getWorkedHourEffectiveCost(row).totalCost);
     }
 
+    const subcontractorLaborByProject = new Map<string, number>();
+    for (const row of subcontractorRows) {
+      const projectKey = row.project?.id;
+      if (!projectKey) continue;
+      subcontractorLaborByProject.set(projectKey, (subcontractorLaborByProject.get(projectKey) || 0) + this.getSubcontractorEntryCost(row).totalCost);
+    }
+
     const items = projects
       .map((project: any) => {
         const soldValue = decimalToNumber(project.price);
         const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
           return acc + service.costProject.reduce((costAcc: number, cost: any) => {
+            if (!isDateWithinRange(cost.cost_date, rangeStart, rangeEnd)) return costAcc;
             return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
           }, 0);
         }, 0);
 
-        const subcontractorLaborCost = project.workedHours.reduce((acc: number, work: any) => {
-          return acc + (work.subcontractor_id ? this.getSubcontractorEntryCost(work).totalCost : 0);
-        }, 0);
-        const laborCost = (employeeLaborByProject.get(project.id) || 0) + subcontractorLaborCost;
+        const laborCost = (employeeLaborByProject.get(project.id) || 0) + (subcontractorLaborByProject.get(project.id) || 0);
 
         const totalCost = materialCost + laborCost;
         const profitValue = soldValue - totalCost;
@@ -1874,6 +2004,10 @@ export class AIAssistantController {
       total: Math.min(items.length, limit),
       profitableCount: items.filter((item) => item.profitValue > 0).length,
       unprofitableCount: items.filter((item) => item.profitValue <= 0).length,
+      period: {
+        start: rangeStart || null,
+        end: rangeEnd || null,
+      },
       items: items.slice(0, limit),
     };
   }
@@ -2824,6 +2958,7 @@ export class AIAssistantController {
             id: true,
             contract_number: true,
             status_project: true,
+            status_changed_at: true,
             price: true,
             amountPaid: true,
             balanceDue: true,
@@ -2838,7 +2973,7 @@ export class AIAssistantController {
           },
         },
       },
-    });
+    } as any);
 
     if (!client) {
       return { error: "Client not found" };
@@ -2862,6 +2997,7 @@ export class AIAssistantController {
         id: project.id,
         contractNumber: project.contract_number,
         status: project.status_project,
+        statusChangedAt: (project as any).status_changed_at || null,
         price: decimalToNumber(project.price),
         amountPaid: decimalToNumber(project.amountPaid),
         balanceDue: decimalToNumber(project.balanceDue),

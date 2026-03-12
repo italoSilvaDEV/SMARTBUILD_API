@@ -28,6 +28,18 @@ export function buildToolSummaryResponse(
   const latestTool = tools[tools.length - 1];
   const base = latestTool?.output as any;
 
+  if (latestTool?.tool === "project_status_transitions" && base?.missingStatusChangeDateSupport) {
+    return {
+      content: "SmartBuild does not have stored project status change dates available for this query yet.",
+      bullets: [
+        "A reliable monthly or weekly count of projects moving into a status requires the stored status change date.",
+        "Without that field populated, I should not infer transitions from generic update dates, deadlines, or start dates.",
+      ],
+      followUp: "Once status change dates are being stored, I can count how many projects moved into any status over any period.",
+      report: null,
+    };
+  }
+
   if (latestTool?.tool === "top_spending_projects" && base?.items?.length) {
     const topProject = base.items[0];
     return {
@@ -66,6 +78,20 @@ export function buildToolSummaryResponse(
         `Scope: ${base.services?.length || 0} services, ${base.counts?.tasks || 0} tasks, ${base.counts?.changeOrders || 0} change orders and ${base.counts?.files || 0} files.`,
       ],
       followUp: "I can open services, team, feed, files, invoices, tasks or change orders for this project.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "project_status_transitions" && base?.items?.length) {
+    const firstProject = base.items[0];
+    return {
+      content: `${base.total || base.items.length} projects moved into the requested status during the selected period.`,
+      bullets: [
+        `Latest project in the result: ${firstProject.projectAddress || firstProject.projectName} for ${firstProject.clientName || "this client"}.`,
+        `Current status: ${firstProject.status || "Not available"}.`,
+        `Status changed on: ${firstProject.statusChangedAt ? String(firstProject.statusChangedAt).slice(0, 10) : "Not available"}.`,
+      ],
+      followUp: "I can show the full table, narrow this by another status, or compare one month against another.",
       report: buildReportFromTool(latestTool),
     };
   }
@@ -195,6 +221,71 @@ export function buildToolSummaryResponse(
         `Total hours captured: ${formatHours(base.totals?.totalHours || 0)} across ${base.totals?.totalEntries || 0} entries.`,
       ],
       followUp: "I can rank the most expensive employee, the most expensive subcontractor, or show team cost by date.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "get_client_details" && base?.id) {
+    return {
+      content: `${base.name} currently has ${base.financials?.projectCount || 0} active projects and ${formatCurrency(base.financials?.invoicedAmount || 0)} in invoiced volume.`,
+      bullets: [
+        `Invoices on record: ${base.financials?.invoiceCount || 0}.`,
+        `Overdue invoices: ${base.financials?.overdueCount || 0}.`,
+        `Address: ${base.address || base.cityAndState || "Not available"}.`,
+      ],
+      followUp: "I can break this client down by projects, receivables, overdue invoices, or payment risk.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "invoice_summary" && base?.totals) {
+    return {
+      content: `The selected invoice set totals ${formatCurrency(base.totals.total || 0)}, with ${formatCurrency(base.totals.open || 0)} still open.`,
+      bullets: [
+        `Paid amount: ${formatCurrency(base.totals.paid || 0)}.`,
+        `Overdue exposure: ${formatCurrency(base.totals.overdue || 0)}.`,
+        `Invoices in scope: ${base.totalCount || 0}.`,
+      ],
+      followUp: "I can show the underlying invoices, isolate only overdue items, or break receivables down by client.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "estimate_summary" && base?.items?.length) {
+    return {
+      content: `The selected estimates total ${formatCurrency(base.totals?.amount || 0)}, with ${formatCurrency(base.totals?.balance || 0)} still outstanding.`,
+      bullets: [
+        `Paid against these estimates: ${formatCurrency(base.totals?.paid || 0)}.`,
+        `Estimate count: ${base.total || base.items.length}.`,
+        `Top estimate project: ${base.items[0].projectAddress || base.items[0].projectName || "Not available"}.`,
+      ],
+      followUp: "I can compare any one of these projects against cost, invoicing, or approved change orders.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "project_vs_estimate" && base?.projectId) {
+    return {
+      content: `${base.projectAddress || base.projectName} is currently ${formatCurrency(base.deltas?.soldVsCost || 0)} above cost versus sold value.`,
+      bullets: [
+        `Sold value: ${formatCurrency(base.soldValue || 0)}.`,
+        `Latest estimate: ${base.latestEstimate ? formatCurrency(base.latestEstimate.totalAmount || 0) : "Not available"}.`,
+        `Total project cost: ${formatCurrency(base.costs?.totalCost || 0)} and invoiced amount: ${formatCurrency(base.invoiced || 0)}.`,
+      ],
+      followUp: "I can explain whether the gap is coming from materials, labor, change orders, or invoicing pace.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "change_order_summary" && base?.items?.length) {
+    return {
+      content: `There are ${base.total || base.items.length} change orders in scope, with ${formatCurrency(base.totals?.approved || 0)} approved and ${formatCurrency(base.totals?.pending || 0)} still pending.`,
+      bullets: [
+        `Canceled value: ${formatCurrency(base.totals?.canceled || 0)}.`,
+        `Latest project in scope: ${base.items[0].projectAddress || base.items[0].projectName || "Not available"}.`,
+        `Latest client in scope: ${base.items[0].client?.name || "Not available"}.`,
+      ],
+      followUp: "I can open the pending change orders, group them by project, or compare them against estimate and margin.",
       report: buildReportFromTool(latestTool),
     };
   }

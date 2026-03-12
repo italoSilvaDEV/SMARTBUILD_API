@@ -5,6 +5,46 @@ import type { AssistantReport, ExecutedTool } from "../types";
 export function buildInvoiceReport(tool: ExecutedTool): AssistantReport | null {
   const output: any = tool.output;
 
+  if (tool.tool === "invoice_summary" && output?.totals) {
+    return {
+      title: "Invoice Summary",
+      description: "Company invoice totals with paid, open and overdue exposure.",
+      chartMode: "bar",
+      chartData: [
+        { label: "Total", value: output.totals.total || 0 },
+        { label: "Paid", value: output.totals.paid || 0 },
+        { label: "Open", value: output.totals.open || 0 },
+        { label: "Overdue", value: output.totals.overdue || 0 },
+      ],
+      metrics: [
+        { label: "Invoices", value: String(output.totalCount || 0), tone: "success" },
+        { label: "Total", value: formatCurrency(output.totals.total || 0) },
+        { label: "Open", value: formatCurrency(output.totals.open || 0), tone: "warning" },
+        { label: "Overdue", value: formatCurrency(output.totals.overdue || 0) },
+      ],
+      table: buildTable(
+        [
+          { key: "id", label: "Invoice" },
+          { key: "clientName", label: "Client" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "status", label: "Status" },
+          { key: "invoiceType", label: "Type" },
+          { key: "dueDate", label: "Due Date" },
+          { key: "totalAmount", label: "Amount" },
+        ],
+        (output.items || []).map((item: any) => ({
+          id: item.id,
+          clientName: item.client?.name || null,
+          contractNumber: item.contractNumber ?? null,
+          status: item.status || null,
+          invoiceType: item.invoiceType || null,
+          dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : null,
+          totalAmount: formatCurrency(item.totalAmount || 0),
+        }))
+      ),
+    };
+  }
+
   if (tool.tool === "list_invoices" && output?.items?.length) {
     return {
       title: "Invoices",

@@ -5,6 +5,43 @@ import type { AssistantReport, ExecutedTool } from "../types";
 export function buildClientReport(tool: ExecutedTool): AssistantReport | null {
   const output: any = tool.output;
 
+  if (tool.tool === "get_client_details" && output?.id) {
+    return {
+      title: "Client Overview",
+      description: "Client profile with active projects and invoice exposure.",
+      chartMode: "bar",
+      chartData: [
+        { label: "Invoiced", value: output.financials?.invoicedAmount || 0 },
+        { label: "Projects", value: output.financials?.projectCount || 0 },
+        { label: "Invoices", value: output.financials?.invoiceCount || 0 },
+      ],
+      metrics: [
+        { label: "Client", value: output.name || "Not available", tone: "warning" },
+        { label: "Projects", value: String(output.financials?.projectCount || 0), tone: "success" },
+        { label: "Invoices", value: String(output.financials?.invoiceCount || 0) },
+        { label: "Invoiced", value: formatCurrency(output.financials?.invoicedAmount || 0) },
+      ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "status", label: "Status" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "price", label: "Sold Value" },
+          { key: "balanceDue", label: "Balance Due" },
+          { key: "invoiceCount", label: "Invoices" },
+        ],
+        (output.projects || []).map((project: any) => ({
+          projectAddress: project.projectAddress || project.projectName || null,
+          status: project.status || null,
+          contractNumber: project.contractNumber ?? null,
+          price: formatCurrency(project.price || 0),
+          balanceDue: formatCurrency(project.balanceDue || 0),
+          invoiceCount: project.invoiceCount ?? 0,
+        }))
+      ),
+    };
+  }
+
   if (tool.tool === "list_clients" && output?.items?.length) {
     return {
       title: "Clients",

@@ -139,6 +139,40 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     };
   }
 
+  if (tool.tool === "project_status_transitions" && output?.items?.length) {
+    return {
+      title: "Project Status Transitions",
+      description: "Projects that moved into the requested status during the selected period, based on the stored status change date.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 8).map((item: any) => ({
+        label: item.projectAddress || item.projectName,
+        value: 1,
+      })),
+      metrics: [
+        { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Statuses", value: output.statuses?.length ? output.statuses.join(", ") : "All statuses" },
+      ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "status", label: "Current Status" },
+          { key: "statusChangedAt", label: "Status Changed" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "price", label: "Sold Value" },
+        ],
+        output.items.map((item: any) => ({
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          status: item.status || null,
+          statusChangedAt: item.statusChangedAt ? String(item.statusChangedAt).slice(0, 10) : null,
+          contractNumber: item.contractNumber ?? null,
+          price: formatCurrency(item.price || 0),
+        }))
+      ),
+    };
+  }
+
   if (tool.tool === "project_cost_breakdown" && output?.totals) {
     return {
       title: "Project Cost Breakdown",
@@ -317,6 +351,119 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
         { label: "Subcontractors", value: String(output.totals?.subcontractorCount || 0), tone: "success" },
         { label: "Hours", value: formatHours(output.totals?.totalHours || 0) },
       ],
+    };
+  }
+
+  if (tool.tool === "estimate_summary" && output?.items?.length) {
+    return {
+      title: "Estimate Summary",
+      description: "Estimates with sold value, paid amount, balance and approved change-order lift.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.projectAddress || item.projectName || `Estimate ${item.number || item.id}`,
+        value: item.totalAmount || 0,
+      })),
+      metrics: [
+        { label: "Estimates", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Total", value: formatCurrency(output.totals?.amount || 0) },
+        { label: "Paid", value: formatCurrency(output.totals?.paid || 0) },
+        { label: "Balance", value: formatCurrency(output.totals?.balance || 0), tone: "warning" },
+      ],
+      table: buildTable(
+        [
+          { key: "number", label: "Estimate" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "status", label: "Status" },
+          { key: "totalAmount", label: "Amount" },
+          { key: "amountPaid", label: "Paid" },
+          { key: "balanceDue", label: "Balance" },
+          { key: "approvedChangeOrdersValue", label: "Approved COs" },
+        ],
+        output.items.map((item: any) => ({
+          number: item.number || item.id,
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.client?.name || null,
+          status: item.status || null,
+          totalAmount: formatCurrency(item.totalAmount || 0),
+          amountPaid: formatCurrency(item.amountPaid || 0),
+          balanceDue: formatCurrency(item.balanceDue || 0),
+          approvedChangeOrdersValue: formatCurrency(item.approvedChangeOrdersValue || 0),
+        }))
+      ),
+    };
+  }
+
+  if (tool.tool === "project_vs_estimate" && output?.projectId) {
+    return {
+      title: "Project Vs Estimate",
+      description: "Comparison between sold value, latest estimate, invoiced amount and accumulated project cost.",
+      chartMode: "bar",
+      chartData: [
+        { label: "Sold value", value: output.soldValue || 0 },
+        { label: "Latest estimate", value: output.latestEstimate?.totalAmount || 0 },
+        { label: "Invoiced", value: output.invoiced || 0 },
+        { label: "Total cost", value: output.costs?.totalCost || 0 },
+      ],
+      metrics: [
+        { label: "Project", value: output.projectAddress || output.projectName, tone: "warning" },
+        { label: "Sold vs estimate", value: formatCurrency(output.deltas?.soldVsEstimate || 0) },
+        { label: "Sold vs cost", value: formatCurrency(output.deltas?.soldVsCost || 0), tone: output.deltas?.soldVsCost >= 0 ? "success" : "warning" },
+        { label: "Estimate vs cost", value: formatCurrency(output.deltas?.estimateVsCost || 0) },
+      ],
+      table: buildTable(
+        [
+          { key: "label", label: "Metric" },
+          { key: "value", label: "Value" },
+        ],
+        [
+          { label: "Project", value: output.projectAddress || output.projectName || null },
+          { label: "Client", value: output.clientName || null },
+          { label: "Latest estimate", value: output.latestEstimate ? formatCurrency(output.latestEstimate.totalAmount || 0) : "Not available" },
+          { label: "Invoiced", value: formatCurrency(output.invoiced || 0) },
+          { label: "Materials", value: formatCurrency(output.costs?.materialCost || 0) },
+          { label: "Labor", value: formatCurrency(output.costs?.laborCost || 0) },
+          { label: "Total cost", value: formatCurrency(output.costs?.totalCost || 0) },
+          { label: "Sold vs cost", value: formatCurrency(output.deltas?.soldVsCost || 0) },
+        ]
+      ),
+    };
+  }
+
+  if (tool.tool === "change_order_summary" && output?.items?.length) {
+    return {
+      title: "Change Order Summary",
+      description: "Change orders by project with approved, pending and canceled value.",
+      chartMode: "bar",
+      chartData: [
+        { label: "Approved", value: output.totals?.approved || 0 },
+        { label: "Pending", value: output.totals?.pending || 0 },
+        { label: "Canceled", value: output.totals?.canceled || 0 },
+      ],
+      metrics: [
+        { label: "Change orders", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Approved", value: formatCurrency(output.totals?.approved || 0) },
+        { label: "Pending", value: formatCurrency(output.totals?.pending || 0), tone: "warning" },
+        { label: "Canceled", value: formatCurrency(output.totals?.canceled || 0) },
+      ],
+      table: buildTable(
+        [
+          { key: "number", label: "CO #" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "status", label: "Status" },
+          { key: "createdAt", label: "Created" },
+          { key: "totalAmount", label: "Amount" },
+        ],
+        output.items.map((item: any) => ({
+          number: item.number || item.id,
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.client?.name || null,
+          status: item.status || null,
+          createdAt: item.createdAt ? String(item.createdAt).slice(0, 10) : null,
+          totalAmount: formatCurrency(item.totalAmount || 0),
+        }))
+      ),
     };
   }
 

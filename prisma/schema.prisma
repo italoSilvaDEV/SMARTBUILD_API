@@ -697,6 +697,7 @@ model Project {
   contract_number    Int?
   price              Decimal
   status_project     String
+  status_changed_at  DateTime?
   autorId            String?
   start_date         String?
   deadline           String?
