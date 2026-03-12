@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
 import { DateTime } from "luxon";
 import { prisma } from "../../utils/prisma";
+import { TimeService } from "../../services/TimeService";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { PLANNING_SYSTEM_PROMPT, SYNTHESIS_PROMPT, SYSTEM_PROMPT } from "./prompts";
 import {
@@ -37,6 +38,8 @@ import type {
 const openai = process.env.OPENAI_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_KEY })
   : null;
+const timeService = new TimeService();
+const TIMECARD_PROJECT_STATUSES = ["Pre-Start", "In Progress", "Final walkthrough", "Finished"] as const;
 
 
 function buildTimecardDateFilter(input: Record<string, unknown>) {
@@ -2833,7 +2836,7 @@ export class AIAssistantController {
 
   private async projectTeamDetail(companyId: string, projectId: string) {
     const project: any = await prisma.project.findFirst({
-      where: { id: projectId, company_id: companyId, status_project: getActiveProjectStatusFilter() },
+      where: { id: projectId, company_id: companyId, status_project: { in: [...TIMECARD_PROJECT_STATUSES] } },
       select: {
         id: true,
         contract_number: true,
@@ -4008,7 +4011,7 @@ export class AIAssistantController {
               service_project: {
                 Project: {
                   company_id: companyId,
-                  status_project: getActiveProjectStatusFilter(),
+                  status_project: { in: [...TIMECARD_PROJECT_STATUSES] },
                   ...(projectId ? { id: projectId } : {}),
                 },
               },
@@ -4020,7 +4023,7 @@ export class AIAssistantController {
                 serviceProject: {
                   Project: {
                     company_id: companyId,
-                    status_project: getActiveProjectStatusFilter(),
+                    status_project: { in: [...TIMECARD_PROJECT_STATUSES] },
                     ...(projectId ? { id: projectId } : {}),
                   },
                 },
@@ -4033,7 +4036,7 @@ export class AIAssistantController {
                 custom_service_schedule: {
                   project: {
                     company_id: companyId,
-                    status_project: getActiveProjectStatusFilter(),
+                    status_project: { in: [...TIMECARD_PROJECT_STATUSES] },
                     ...(projectId ? { id: projectId } : {}),
                   },
                 },
@@ -4045,9 +4048,17 @@ export class AIAssistantController {
               custom_service_schedule: {
                 project: {
                   company_id: companyId,
-                  status_project: getActiveProjectStatusFilter(),
+                  status_project: { in: [...TIMECARD_PROJECT_STATUSES] },
                   ...(projectId ? { id: projectId } : {}),
                 },
+              },
+            },
+          },
+          {
+            UserServiceProject: {
+              service_project: {
+                projectId: null,
+                company_id: companyId,
               },
             },
           },
@@ -4067,7 +4078,9 @@ export class AIAssistantController {
             name: true,
             email: true,
             hourly_price: true,
+            isOverTime: true,
             defaultBreakMinutes: true,
+            dailyRate: true,
           },
         },
         UserServiceProject: {
@@ -4083,6 +4096,8 @@ export class AIAssistantController {
               select: {
                 id: true,
                 name: true,
+                projectId: true,
+                company_id: true,
                 Project: {
                   select: {
                     id: true,
@@ -4199,85 +4214,32 @@ export class AIAssistantController {
       };
     };
 
-    const getAttendanceHours = (attendance: any) => {
-      if (!attendance.check_in_time || !attendance.check_out_time || !attendance.user) {
-        return 0;
-      }
+    const calculatedAttendances = timeService.calculatePeriodTotals(attendances as any[]);
 
-      const hours = calcularHorasTrabalhadas(
-        attendance.check_in_time.toISOString(),
-        attendance.check_out_time.toISOString(),
-        attendance.workStartTime,
-        attendance.workEndTime,
-        attendance.user.defaultBreakMinutes || 0
-      );
+    return calculatedAttendances
+      .map((attendance: any) => {
+        const context = resolveProjectContext(attendance);
 
-      return convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-    };
-
-    const weeklyBuckets = new Map<string, any[]>();
-
-    for (const attendance of attendances) {
-      if (!attendance.user?.id || !attendance.check_in_time) continue;
-      const context = resolveProjectContext(attendance);
-      if (!context.project) continue;
-
-      const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf("week").plus({ days: 1 }).toISODate();
-      const bucketKey = `${attendance.user.id}-${weekStart}`;
-      const bucket = weeklyBuckets.get(bucketKey) || [];
-      bucket.push({ attendance, context });
-      weeklyBuckets.set(bucketKey, bucket);
-    }
-
-    const normalizedRows: any[] = [];
-
-    for (const bucket of weeklyBuckets.values()) {
-      const sorted = bucket.sort((a, b) => new Date(a.attendance.check_in_time).getTime() - new Date(b.attendance.check_in_time).getTime());
-      let weeklyRegularHoursUsed = 0;
-      const WEEKLY_REGULAR_LIMIT = 40;
-
-      for (const entry of sorted) {
-        const attendance = entry.attendance;
-        const totalHours = getAttendanceHours(attendance);
-        const hourlyRate = decimalToNumber(attendance.user?.hourly_price);
-        const remainingRegularHours = Math.max(0, WEEKLY_REGULAR_LIMIT - weeklyRegularHoursUsed);
-        let regularHours = Math.min(totalHours, remainingRegularHours);
-        const potentialOvertimeHours = Math.max(0, totalHours - regularHours);
-
-        weeklyRegularHoursUsed += regularHours;
-
-        let overtimeHours = 0;
-        let totalCost = totalHours * hourlyRate;
-
-        if (attendance.isOvertime === true && potentialOvertimeHours > 0) {
-          overtimeHours = potentialOvertimeHours;
-          totalCost = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
-        } else {
-          regularHours += potentialOvertimeHours;
-        }
-
-        normalizedRows.push({
+        return {
           id: attendance.id,
           workerId: attendance.user?.id || null,
           workerName: attendance.user?.name || "Unknown worker",
           user: attendance.user,
-          project: entry.context.project,
-          serviceName: entry.context.serviceName,
-          categoryName: entry.context.categoryName,
+          project: context.project,
+          serviceName: context.serviceName,
+          categoryName: context.categoryName,
           check_in_time: attendance.check_in_time,
           check_out_time: attendance.check_out_time,
           payment_date: attendance.date || attendance.check_in_time,
           date_creation: attendance.check_in_time,
-          regular_hours: regularHours,
-          overtime_hours: overtimeHours,
-          computed_total_hours: totalHours,
-          computed_total_cost: totalCost,
+          regular_hours: decimalToNumber(attendance.regular_hours),
+          overtime_hours: decimalToNumber(attendance.overtime_hours),
+          computed_total_hours: decimalToNumber(attendance.hours_worked),
+          computed_total_cost: decimalToNumber(attendance.price),
           subcontractor: null,
-        });
-      }
-    }
-
-    return normalizedRows.sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime());
+        };
+      })
+      .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime());
   }
 
   private async getSubcontractorWorkedHours(companyId: string, input: Record<string, unknown>) {
