@@ -31,12 +31,18 @@ type AssistantMessageRow = {
 
 type AssistantChartMode = "bar" | "line" | "pie";
 
+type AssistantReportTable = {
+  columns: { key: string; label: string }[];
+  rows: Record<string, string | number | boolean | null>[];
+};
+
 type AssistantReport = {
   title: string;
   description: string;
   chartMode: AssistantChartMode;
   chartData: Record<string, string | number>[];
   metrics: { label: string; value: string; tone?: "default" | "warning" | "success" }[];
+  table?: AssistantReportTable | null;
 };
 
 type AssistantStructuredResponse = {
@@ -86,6 +92,7 @@ If the user asks for a report, return a report payload.
 If the user asks to export as PDF, CSV, Excel or spreadsheet, still return the report payload so the client can generate the file.
 Never answer with generic bridge phrases such as "I understand your question", "I can go deeper", or "I can reframe this".
 If the request is data-related and you are not yet certain, call the closest tool first and continue from there.
+If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit instead of only summarizing the top item again.
 `;
 
 const PLANNING_SYSTEM_PROMPT = `
@@ -97,6 +104,7 @@ If the user is only making casual conversation or asking a non-data question, yo
 Use the SmartBuild schema faithfully: active projects are only Pre-Start, In Progress, and Final walkthrough. Internal employee labor comes from UserAttendance. Subcontractor cost comes from workedhours with subcontractor_id.
 Whenever a project is mentioned, prefer project address and client name.
 Never use generic bridge phrases.
+If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit.
 `;
 
 const SYNTHESIS_PROMPT = `
@@ -110,15 +118,21 @@ Return ONLY valid JSON with this shape:
     "description": "optional",
     "chartMode": "bar|line|pie",
     "chartData": [{"label":"A","value":10}],
-    "metrics": [{"label":"Total","value":"$100","tone":"default|warning|success"}]
+    "metrics": [{"label":"Total","value":"$100","tone":"default|warning|success"}],
+    "table": {
+      "columns": [{"key":"projectAddress","label":"Project"}],
+      "rows": [{"projectAddress":"1 Elm St","profitValue":1000}]
+    }
   }
 }
 If no report is appropriate, set "report" to null.
 Keep chartData compact and directly derived from the provided tool results.
+For analytical, ranked, list, aging, receivables, invoice, worker, subcontractor, and project responses, prefer including report.table by default whenever rows are available. Do not require the user to explicitly ask for a list first.
 Match the user's language naturally.
 When answering about profitability, margin, or rankings, explicitly state the calculation basis in plain language.
 When the user asks for an export, keep the report payload populated whenever there is structured data worth exporting.
 When the user asks for detail, do not compress away available business data such as addresses, clients, statuses, payment dates, categories, cost basis, project counts or entry counts.
+Never expose internal schema names, raw field paths, tool names, or code-like references such as "timecard_summary.totalCost" or "subcontractor_summary.totals". Explain the calculation in natural business language only.
 `;
 
 const OPENAI_TOOL_TIMEOUT_MS = 60000;
@@ -485,6 +499,22 @@ function getRecentSubcontractorIdFromHistory(history: AssistantMessageRow[]): st
   return null;
 }
 
+function getRecentToolOutput(history: AssistantMessageRow[], toolName: string): any | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    const toolData = message.toolData as AssistantToolData;
+    const executedTools = Array.isArray(toolData?.executedTools) ? toolData.executedTools : [];
+
+    for (let toolIndex = executedTools.length - 1; toolIndex >= 0; toolIndex -= 1) {
+      if (executedTools[toolIndex]?.tool === toolName) {
+        return executedTools[toolIndex]?.output || null;
+      }
+    }
+  }
+
+  return null;
+}
+
 function normalizeStructuredResponse(
   response: AssistantStructuredResponse,
   fallback: AssistantStructuredResponse
@@ -501,7 +531,7 @@ function normalizeStructuredResponse(
     ? response.followUp.trim()
     : fallback.followUp;
 
-  const report = response?.report && response.report.chartData?.length
+  const report = response?.report && (response.report.chartData?.length || response.report.table?.rows?.length)
     ? response.report
     : fallback.report || null;
 
@@ -513,9 +543,176 @@ function normalizeStructuredResponse(
   };
 }
 
+function buildTable(
+  columns: { key: string; label: string }[],
+  rows: Record<string, string | number | boolean | null>[]
+): AssistantReportTable | null {
+  if (!columns.length || !rows.length) return null;
+  return {
+    columns,
+    rows,
+  };
+}
+
+function getCompactReport(report: AssistantReport | null): AssistantReport | null {
+  if (!report) return null;
+  return {
+    ...report,
+    chartData: Array.isArray(report.chartData) ? report.chartData.slice(0, 8) : [],
+    metrics: Array.isArray(report.metrics) ? report.metrics.slice(0, 6) : [],
+    table: report.table
+      ? {
+          columns: report.table.columns.slice(0, 8),
+          rows: report.table.rows.slice(0, 12),
+        }
+      : null,
+  };
+}
+
+function compactValue(value: unknown, depth = 0): unknown {
+  if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (depth >= 2) {
+    if (Array.isArray(value)) return `[${value.length} items]`;
+    return "[object]";
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 6).map((item) => compactValue(item, depth + 1));
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).slice(0, 12);
+  return Object.fromEntries(entries.map(([key, item]) => [key, compactValue(item, depth + 1)]));
+}
+
+function compactToolOutputForModel(tool: ExecutedTool) {
+  const fallback = buildToolSummaryResponse([tool]);
+  const report = getCompactReport(buildReportFromTool(tool) || fallback.report || null);
+
+  return {
+    tool: tool.tool,
+    input: compactValue(tool.input),
+    output: compactValue(tool.output),
+    summary: {
+      content: fallback.content,
+      bullets: (fallback.bullets || []).slice(0, 4),
+      followUp: fallback.followUp || null,
+    },
+    report,
+  };
+}
+
 function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
   if (!tool) return null;
   const output: any = tool.output;
+
+  if (tool.tool === "list_projects" && output?.items?.length) {
+    return {
+      title: "Projects",
+      description: "Active projects with status, client and financial position.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.projectAddress || item.projectName,
+        value: item.price || 0,
+      })),
+      metrics: [
+        { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
+      ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "status", label: "Status" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "price", label: "Sold Value" },
+          { key: "balanceDue", label: "Balance Due" },
+          { key: "invoiceCount", label: "Invoices" },
+        ],
+        output.items.map((item: any) => ({
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          status: item.status || null,
+          contractNumber: item.contractNumber ?? null,
+          price: formatCurrency(item.price || 0),
+          balanceDue: formatCurrency(item.balanceDue || 0),
+          invoiceCount: item.invoiceCount ?? 0,
+        }))
+      ),
+    };
+  }
+
+  if (tool.tool === "list_clients" && output?.items?.length) {
+    return {
+      title: "Clients",
+      description: "Client list with active project exposure and invoiced amount.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.name,
+        value: item.invoicedAmount || 0,
+      })),
+      metrics: [
+        { label: "Clients", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Top client", value: output.items[0].name, tone: "warning" },
+      ],
+      table: buildTable(
+        [
+          { key: "name", label: "Client" },
+          { key: "email", label: "Email" },
+          { key: "cityAndState", label: "Location" },
+          { key: "projectCount", label: "Projects" },
+          { key: "invoiceCount", label: "Invoices" },
+          { key: "invoicedAmount", label: "Invoiced" },
+        ],
+        output.items.map((item: any) => ({
+          name: item.name || null,
+          email: item.email || null,
+          cityAndState: item.cityAndState || null,
+          projectCount: item.projectCount ?? 0,
+          invoiceCount: item.invoiceCount ?? 0,
+          invoicedAmount: formatCurrency(item.invoicedAmount || 0),
+        }))
+      ),
+    };
+  }
+
+  if (tool.tool === "list_invoices" && output?.items?.length) {
+    return {
+      title: "Invoices",
+      description: "Invoice list with client, project, due date and amount.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.client?.name || `Invoice ${item.id}`,
+        value: item.totalAmount || 0,
+      })),
+      metrics: [
+        { label: "Invoices", value: String(output.total || output.items.length), tone: "success" },
+        { label: "Latest", value: String(output.items[0].id || "N/A"), tone: "warning" },
+      ],
+      table: buildTable(
+        [
+          { key: "id", label: "Invoice" },
+          { key: "clientName", label: "Client" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "status", label: "Status" },
+          { key: "invoiceType", label: "Type" },
+          { key: "dueDate", label: "Due Date" },
+          { key: "totalAmount", label: "Amount" },
+        ],
+        output.items.map((item: any) => ({
+          id: item.id,
+          clientName: item.client?.name || null,
+          contractNumber: item.contractNumber ?? null,
+          status: item.status || null,
+          invoiceType: item.invoiceType || null,
+          dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : null,
+          totalAmount: formatCurrency(item.totalAmount || 0),
+        }))
+      ),
+    };
+  }
 
   if (tool.tool === "top_spending_projects" && output?.items?.length) {
     return {
@@ -532,6 +729,26 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
         { label: "Projects", value: String(output.items.length), tone: "success" },
       ],
+      table: buildTable(
+        [
+          { key: "rank", label: "#" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "materialCost", label: "Materials" },
+          { key: "laborCost", label: "Labor" },
+          { key: "totalCost", label: "Total Cost" },
+        ],
+        output.items.map((item: any, index: number) => ({
+          rank: index + 1,
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          contractNumber: item.contractNumber ?? null,
+          materialCost: formatCurrency(item.materialCost || 0),
+          laborCost: formatCurrency(item.laborCost || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+        }))
+      ),
     };
   }
 
@@ -549,6 +766,30 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top profit", value: formatCurrency(output.items[0].profitValue || 0) },
         { label: "Profitable", value: String(output.profitableCount || 0), tone: "success" },
       ],
+      table: buildTable(
+        [
+          { key: "rank", label: "#" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "soldValue", label: "Sold Value" },
+          { key: "materialCost", label: "Materials" },
+          { key: "laborCost", label: "Labor" },
+          { key: "profitValue", label: "Profit" },
+          { key: "profitPct", label: "Margin %" },
+        ],
+        output.items.map((item: any, index: number) => ({
+          rank: index + 1,
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          contractNumber: item.contractNumber ?? null,
+          soldValue: formatCurrency(item.soldValue || 0),
+          materialCost: formatCurrency(item.materialCost || 0),
+          laborCost: formatCurrency(item.laborCost || 0),
+          profitValue: formatCurrency(item.profitValue || 0),
+          profitPct: `${((item.profitPct || 0) * 100).toFixed(1)}%`,
+        }))
+      ),
     };
   }
 
@@ -762,6 +1003,50 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Open AR", value: formatCurrency(output.totalOpen || 0), tone: "warning" },
         { label: "Buckets", value: String(output.buckets.length) },
       ],
+      table: buildTable(
+        [
+          { key: "label", label: "Bucket" },
+          { key: "value", label: "Open Amount" },
+        ],
+        output.buckets.map((item: any) => ({
+          label: item.label,
+          value: formatCurrency(item.value || 0),
+        }))
+      ),
+    };
+  }
+
+  if (tool.tool === "overdue_invoices" && output?.items?.length) {
+    return {
+      title: "Overdue Invoices",
+      description: "Invoices already past due and impacting cash collection.",
+      chartMode: "bar",
+      chartData: output.items.slice(0, 6).map((item: any) => ({
+        label: item.client?.name || `Invoice ${item.id}`,
+        value: item.totalAmount || 0,
+      })),
+      metrics: [
+        { label: "Overdue amount", value: formatCurrency(output.overdueAmount || 0), tone: "warning" },
+        { label: "Invoices", value: String(output.total || output.items.length) },
+      ],
+      table: buildTable(
+        [
+          { key: "id", label: "Invoice" },
+          { key: "clientName", label: "Client" },
+          { key: "contractNumber", label: "Contract" },
+          { key: "status", label: "Status" },
+          { key: "dueDate", label: "Due Date" },
+          { key: "totalAmount", label: "Amount" },
+        ],
+        output.items.map((item: any) => ({
+          id: item.id,
+          clientName: item.client?.name || null,
+          contractNumber: item.contractNumber ?? null,
+          status: item.status || null,
+          dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : null,
+          totalAmount: formatCurrency(item.totalAmount || 0),
+        }))
+      ),
     };
   }
 
@@ -778,6 +1063,22 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top client", value: output.items[0].clientName, tone: "warning" },
         { label: "Top AR", value: formatCurrency(output.items[0].openAmount || 0) },
       ],
+      table: buildTable(
+        [
+          { key: "clientName", label: "Client" },
+          { key: "email", label: "Email" },
+          { key: "invoiceCount", label: "Invoices" },
+          { key: "openAmount", label: "Open AR" },
+          { key: "overdueAmount", label: "Overdue" },
+        ],
+        output.items.map((item: any) => ({
+          clientName: item.clientName || null,
+          email: item.email || null,
+          invoiceCount: item.invoiceCount ?? 0,
+          openAmount: formatCurrency(item.openAmount || 0),
+          overdueAmount: formatCurrency(item.overdueAmount || 0),
+        }))
+      ),
     };
   }
 
@@ -795,6 +1096,22 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Revenue", value: formatCurrency(output.items[0].revenueAmount || 0) },
         { label: "Risk", value: `${Math.round((output.items[0].riskScore || 0) * 100)}%` },
       ],
+      table: buildTable(
+        [
+          { key: "clientName", label: "Client" },
+          { key: "revenueAmount", label: "Revenue" },
+          { key: "openAmount", label: "Open AR" },
+          { key: "overdueInvoices", label: "Overdue Invoices" },
+          { key: "riskScore", label: "Risk %" },
+        ],
+        output.items.map((item: any) => ({
+          clientName: item.clientName || null,
+          revenueAmount: formatCurrency(item.revenueAmount || 0),
+          openAmount: formatCurrency(item.openAmount || 0),
+          overdueInvoices: item.overdueInvoices ?? 0,
+          riskScore: `${Math.round((item.riskScore || 0) * 100)}%`,
+        }))
+      ),
     };
   }
 
@@ -829,6 +1146,26 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
         { label: "Hours", value: formatHours(output.items[0].totalHours || 0) },
       ],
+      table: buildTable(
+        [
+          { key: "workerName", label: "Worker" },
+          { key: "entryCount", label: "Entries" },
+          { key: "totalHours", label: "Hours" },
+          { key: "regularHours", label: "Regular" },
+          { key: "overtimeHours", label: "Overtime" },
+          { key: "totalCost", label: "Cost" },
+          { key: "topProjectAddress", label: "Top Project" },
+        ],
+        output.items.map((item: any) => ({
+          workerName: item.workerName || null,
+          entryCount: item.entryCount ?? 0,
+          totalHours: formatHours(item.totalHours || 0),
+          regularHours: formatHours(item.regularHours || 0),
+          overtimeHours: formatHours(item.overtimeHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+          topProjectAddress: item.topProjectAddress || item.topProjectName || null,
+        }))
+      ),
     };
   }
 
@@ -846,6 +1183,73 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Hours", value: formatHours(output.totalHours || 0), tone: "success" },
         { label: "Labor cost", value: formatCurrency(output.totalCost || 0), tone: "warning" },
       ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "entries", label: "Entries" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+        ],
+        output.byProject.map((item: any) => ({
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          entries: item.entries ?? 0,
+          totalHours: formatHours(item.totalHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+        }))
+      ),
+    };
+  }
+
+  if (tool.tool === "employee_vs_subcontractor_spend" && output?.totals) {
+    return {
+      title: "Employee Vs Subcontractor Spend",
+      description: "Combined labor spend for employees and subcontractors using the same selected period.",
+      chartMode: "bar",
+      chartData: [
+        { label: "Employees", value: output.totals.employeeCost || 0 },
+        { label: "Subcontractors", value: output.totals.subcontractorCost || 0 },
+        { label: "Total", value: output.totals.totalCost || 0 },
+      ],
+      metrics: [
+        { label: "Employee cost", value: formatCurrency(output.totals.employeeCost || 0), tone: "warning" },
+        { label: "Subcontractor cost", value: formatCurrency(output.totals.subcontractorCost || 0) },
+        { label: "Total spend", value: formatCurrency(output.totals.totalCost || 0), tone: "success" },
+        { label: "Period", value: output.periodLabel || "Selected period" },
+      ],
+      table: buildTable(
+        [
+          { key: "group", label: "Cost Group" },
+          { key: "entries", label: "Entries" },
+          { key: "hours", label: "Hours" },
+          { key: "projects", label: "Projects" },
+          { key: "amount", label: "Amount" },
+        ],
+        [
+          {
+            group: "Employees",
+            entries: output.employee?.totalEntries ?? 0,
+            hours: formatHours(output.employee?.totalHours || 0),
+            projects: output.employee?.projectCount ?? 0,
+            amount: formatCurrency(output.totals.employeeCost || 0),
+          },
+          {
+            group: "Subcontractors",
+            entries: output.subcontractor?.totalEntries ?? 0,
+            hours: formatHours(output.subcontractor?.totalHours || 0),
+            projects: output.subcontractor?.projectCount ?? 0,
+            amount: formatCurrency(output.totals.subcontractorCost || 0),
+          },
+          {
+            group: "Combined total",
+            entries: (output.employee?.totalEntries || 0) + (output.subcontractor?.totalEntries || 0),
+            hours: formatHours((output.employee?.totalHours || 0) + (output.subcontractor?.totalHours || 0)),
+            projects: output.totals.projectCount ?? 0,
+            amount: formatCurrency(output.totals.totalCost || 0),
+          },
+        ]
+      ),
     };
   }
 
@@ -863,6 +1267,24 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top labor cost", value: formatCurrency(output.items[0].totalCost || 0) },
         { label: "Hours", value: formatHours(output.items[0].totalHours || 0) },
       ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "entryCount", label: "Entries" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+          { key: "topWorkerName", label: "Top Worker" },
+        ],
+        output.items.map((item: any) => ({
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          entryCount: item.entryCount ?? 0,
+          totalHours: formatHours(item.totalHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+          topWorkerName: item.topWorkerName || null,
+        }))
+      ),
     };
   }
 
@@ -881,6 +1303,24 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Total cost", value: formatCurrency(output.totalCost || 0) },
         { label: "Hours", value: formatHours(output.totalHours || 0), tone: "success" },
       ],
+      table: buildTable(
+        [
+          { key: "workDateLabel", label: "Date" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "serviceName", label: "Service" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+        ],
+        output.entries.map((entry: any) => ({
+          workDateLabel: entry.workDateLabel || null,
+          projectAddress: entry.projectAddress || entry.projectName || null,
+          clientName: entry.clientName || null,
+          serviceName: entry.serviceName || null,
+          totalHours: formatHours(entry.totalHours || 0),
+          totalCost: formatCurrency(entry.totalCost || 0),
+        }))
+      ),
     };
   }
 
@@ -1115,6 +1555,24 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Projects", value: String(output.totals?.totalProjects || 0) },
         { label: "Subcontractors", value: String(output.totalSubcontractors || output.items.length), tone: "success" },
       ],
+      table: buildTable(
+        [
+          { key: "name", label: "Subcontractor" },
+          { key: "projectCount", label: "Projects" },
+          { key: "entryCount", label: "Entries" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+          { key: "topProjectAddress", label: "Top Project" },
+        ],
+        output.items.map((item: any) => ({
+          name: item.name || null,
+          projectCount: item.projectCount ?? 0,
+          entryCount: item.entryCount ?? 0,
+          totalHours: formatHours(item.totalHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+          topProjectAddress: item.topProjectAddress || item.topProjectName || null,
+        }))
+      ),
     };
   }
 
@@ -1150,6 +1608,24 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
         { label: "Top cost", value: formatCurrency(output.items[0].totalCost || 0) },
       ],
+      table: buildTable(
+        [
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "status", label: "Status" },
+          { key: "entryCount", label: "Entries" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+        ],
+        output.items.map((item: any) => ({
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          status: item.status || null,
+          entryCount: item.entryCount ?? 0,
+          totalHours: formatHours(item.totalHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+        }))
+      ),
     };
   }
 
@@ -1167,6 +1643,24 @@ function buildReportFromTool(tool: ExecutedTool): AssistantReport | null {
         { label: "Total cost", value: formatCurrency(output.totals?.totalCost || 0), tone: "warning" },
         { label: "Hours", value: formatHours(output.totals?.totalHours || 0), tone: "success" },
       ],
+      table: buildTable(
+        [
+          { key: "paymentDate", label: "Payment Date" },
+          { key: "projectAddress", label: "Project" },
+          { key: "clientName", label: "Client" },
+          { key: "serviceName", label: "Service" },
+          { key: "totalHours", label: "Hours" },
+          { key: "totalCost", label: "Cost" },
+        ],
+        output.items.map((item: any) => ({
+          paymentDate: String(item.paymentDate || item.createdAt || "").slice(0, 10) || null,
+          projectAddress: item.projectAddress || item.projectName || null,
+          clientName: item.clientName || null,
+          serviceName: item.serviceName || item.categoryName || null,
+          totalHours: formatHours(item.totalHours || 0),
+          totalCost: formatCurrency(item.totalCost || 0),
+        }))
+      ),
     };
   }
 
@@ -1330,22 +1824,8 @@ function buildToolSummaryResponse(tools: ExecutedTool[]): AssistantStructuredRes
         `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`,
         `${base.items.length} projects were evaluated for this ranking.`,
       ],
-      followUp: "I can break this down by materials, labor and invoice impact.",
-      report: {
-        title: "Top Spending Projects",
-        description: "Projects ranked by total cost exposure.",
-        chartMode: "bar",
-        chartData: base.items.slice(0, 5).map((item: any) => ({
-          label: item.projectAddress || item.projectName,
-          value: item.totalCost,
-        })),
-        metrics: [
-          { label: "Top project", value: topProject.projectAddress || topProject.projectName, tone: "warning" },
-          { label: "Client", value: topProject.clientName || "Not available" },
-          { label: "Top cost", value: formatCurrency(topProject.totalCost || 0) },
-          { label: "Projects analyzed", value: String(base.items.length), tone: "success" },
-        ],
-      },
+      followUp: "I can break this down by materials, labor and invoice impact, or show the full ranked list in a table.",
+      report: buildReportFromTool(latestTool),
     };
   }
 
@@ -1359,21 +1839,8 @@ function buildToolSummaryResponse(tools: ExecutedTool[]): AssistantStructuredRes
         `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}.`,
         `Profit: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`,
       ],
-      followUp: "I can break down why this project is outperforming the rest.",
-      report: {
-        title: "Top Projects By Profit",
-        description: "Profitability ranked using sold value minus material and labor cost.",
-        chartMode: "bar",
-        chartData: base.items.slice(0, 5).map((item: any) => ({
-          label: item.projectAddress || item.projectName,
-          value: item.profitValue,
-        })),
-        metrics: [
-          { label: "Top profit", value: formatCurrency(topProject.profitValue || 0), tone: "success" },
-          { label: "Profit margin", value: `${((topProject.profitPct || 0) * 100).toFixed(1)}%` },
-          { label: "Profitable projects", value: String(base.profitableCount || 0), tone: "success" },
-        ],
-      },
+      followUp: "I can break down why this project is outperforming the rest, or show the full ranked list in a table.",
+      report: buildReportFromTool(latestTool),
     };
   }
 
@@ -1575,6 +2042,19 @@ function buildToolSummaryResponse(tools: ExecutedTool[]): AssistantStructuredRes
     };
   }
 
+  if (latestTool?.tool === "employee_vs_subcontractor_spend" && base?.totals) {
+    return {
+      content: `Total labor spend for ${base.periodLabel || "the selected period"} is ${formatCurrency(base.totals.totalCost || 0)}.`,
+      bullets: [
+        `Employees account for ${formatCurrency(base.totals.employeeCost || 0)} across ${base.employee?.totalEntries || 0} time-card entries.`,
+        `Subcontractors account for ${formatCurrency(base.totals.subcontractorCost || 0)} across ${base.subcontractor?.totalEntries || 0} cost entries.`,
+        `Combined project coverage: ${base.totals.projectCount || 0} active projects.`,
+      ],
+      followUp: "I can break this down by project, by worker, by subcontractor, or show the detailed tables behind each side.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
   if ((latestTool?.tool === "subcontractor_summary" || latestTool?.tool === "list_subcontractors") && base?.items?.length) {
     const topSubcontractor = base.items[0];
     return {
@@ -1739,6 +2219,7 @@ export class AIAssistantController {
     const contextualProjectId = getRecentProjectIdFromHistory(history);
     const contextualSubcontractorId = getRecentSubcontractorIdFromHistory(history);
     const resolvedInput = { ...input };
+    const recentProfitableProjects = getRecentToolOutput(history, "top_profitable_projects");
 
     if (
       !resolvedInput.projectId &&
@@ -1767,6 +2248,15 @@ export class AIAssistantController {
       ["get_subcontractor_details", "subcontractor_projects", "subcontractor_cost_entries"].includes(toolName)
     ) {
       resolvedInput.subcontractorId = contextualSubcontractorId;
+    }
+
+    if (
+      toolName === "top_profitable_projects" &&
+      !resolvedInput.limit &&
+      recentProfitableProjects &&
+      Number(recentProfitableProjects.profitableCount) > 0
+    ) {
+      resolvedInput.limit = Math.min(Number(recentProfitableProjects.profitableCount), 100);
     }
 
     switch (toolName) {
@@ -1937,6 +2427,12 @@ export class AIAssistantController {
           tool: toolName,
           input: resolvedInput,
           output: await this.timecardsByWorker(companyId, resolvedInput),
+        };
+      case "employee_vs_subcontractor_spend":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.employeeVsSubcontractorSpend(companyId, resolvedInput),
         };
       case "worker_timecard_details":
         return {
@@ -2176,7 +2672,7 @@ export class AIAssistantController {
         type: "function" as const,
         function: {
           name: "top_spending_projects",
-          description: "Rank projects by total spending using material and labor costs.",
+          description: "Rank active projects by total spending using material and labor costs. Use higher limits when the user asks for a full ranking or full list.",
           parameters: {
             type: "object",
             properties: {
@@ -2189,7 +2685,7 @@ export class AIAssistantController {
         type: "function" as const,
         function: {
           name: "top_profitable_projects",
-          description: "Rank projects by profit using sold value minus material and labor cost.",
+          description: "Rank active projects by profit using sold value minus material and labor cost. Use higher limits when the user asks for a full ranking, full list, or table.",
           parameters: {
             type: "object",
             properties: {
@@ -2405,6 +2901,24 @@ export class AIAssistantController {
               endDate: { type: "string" },
               date: { type: "string" },
               limit: { type: "number" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "employee_vs_subcontractor_spend",
+          description: "Compare employee time-card labor cost versus subcontractor cost for the same selected period on active projects, returning one consolidated financial answer.",
+          parameters: {
+            type: "object",
+            properties: {
+              projectId: { type: "string" },
+              period: { type: "string" },
+              status: { type: "array", items: { type: "string" } },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
             },
           },
         },
@@ -2672,7 +3186,7 @@ export class AIAssistantController {
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
-                content: JSON.stringify(toolResult.output),
+                content: JSON.stringify(compactToolOutputForModel(toolResult)),
               });
             }
 
@@ -2713,6 +3227,7 @@ export class AIAssistantController {
         };
 
         try {
+          const compactTools = executedTools.map((tool) => compactToolOutputForModel(tool));
           const synthesisCompletion = await withTimeout(openai.chat.completions.create({
             model: "gpt-5-mini",
             messages: [
@@ -2721,7 +3236,7 @@ export class AIAssistantController {
                 role: "user",
                 content: JSON.stringify({
                   question,
-                  tools: executedTools,
+                  tools: compactTools,
                 }),
               },
             ],
@@ -3071,7 +3586,7 @@ export class AIAssistantController {
   }
 
   private async topSpendingProjects(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 5) || 5, 10);
+    const limit = Math.min(Number(input.limit || 5) || 5, 100);
     const [projects, employeeRows] = await Promise.all([
       prisma.project.findMany({
       where: {
@@ -3154,7 +3669,7 @@ export class AIAssistantController {
   }
 
   private async topProfitableProjects(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 8) || 8, 100);
     const [projects, employeeRows] = await Promise.all([
       prisma.project.findMany({
       where: {
@@ -5058,7 +5573,7 @@ export class AIAssistantController {
     };
 
     for (const row of rows) {
-      const baseDate = parseDateValue(row.date_creation) || parseDateValue(row.payment_date) || new Date();
+      const baseDate = parseDateValue(row.payment_date) || parseDateValue(row.date_creation) || new Date();
       const bucket = addMonth(baseDate);
       bucket.value += this.getSubcontractorEntryCost(row).totalCost;
     }
@@ -5461,6 +5976,17 @@ export class AIAssistantController {
     const dateFilter = this.buildSubcontractorDateFilter(input);
     const subcontractor = await this.resolveSubcontractor(companyId, input);
 
+    const dateScopedWhere = dateFilter
+      ? {
+          OR: [
+            { payment_date: dateFilter },
+            {
+              AND: [{ payment_date: null }, { date_creation: dateFilter }],
+            },
+          ],
+        }
+      : {};
+
     return prisma.workedhours.findMany({
       where: {
         subcontractor_id: { not: null },
@@ -5491,7 +6017,7 @@ export class AIAssistantController {
               ],
             }
           : {}),
-        ...(dateFilter ? { date_creation: dateFilter } : {}),
+        ...dateScopedWhere,
       },
       select: {
         id: true,
@@ -5557,7 +6083,7 @@ export class AIAssistantController {
           },
         },
       },
-      orderBy: [{ date_creation: "desc" }],
+      orderBy: [{ payment_date: "desc" }, { date_creation: "desc" }],
     });
   }
 
@@ -5604,6 +6130,67 @@ export class AIAssistantController {
       totalCost: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalCost, 0),
       byProject: Array.from(byProject.values()).sort((a, b) => b.totalCost - a.totalCost),
       byWorker: Array.from(byWorker.values()).sort((a, b) => b.totalCost - a.totalCost).slice(0, 10),
+    };
+  }
+
+  private async employeeVsSubcontractorSpend(companyId: string, input: Record<string, unknown>) {
+    const [employeeRows, subcontractorRows] = await Promise.all([
+      this.getEmployeeWorkedHours(companyId, input),
+      this.getSubcontractorWorkedHours(companyId, input),
+    ]);
+
+    const employeeProjectIds = new Set<string>();
+    const subcontractorProjectIds = new Set<string>();
+
+    const employeeTotalCost = employeeRows.reduce((acc: number, row: any) => {
+      if (row.project?.id) employeeProjectIds.add(row.project.id);
+      return acc + getWorkedHourEffectiveCost(row).totalCost;
+    }, 0);
+
+    const employeeTotalHours = employeeRows.reduce((acc: number, row: any) => {
+      return acc + getWorkedHourEffectiveCost(row).totalHours;
+    }, 0);
+
+    const subcontractorTotalCost = subcontractorRows.reduce((acc: number, row: any) => {
+      if (row.project?.id) subcontractorProjectIds.add(row.project.id);
+      return acc + this.getSubcontractorEntryCost(row).totalCost;
+    }, 0);
+
+    const subcontractorTotalHours = subcontractorRows.reduce((acc: number, row: any) => {
+      return acc + this.getSubcontractorEntryCost(row).totalHours;
+    }, 0);
+
+    const period = String(input.period || "").trim();
+    const periodLabelMap: Record<string, string> = {
+      thisWeek: "this week",
+      lastWeek: "last week",
+      thisMonth: "this month",
+      lastMonth: "last month",
+      last30Days: "the last 30 days",
+      thisYear: "this year",
+    };
+
+    return {
+      period: period || null,
+      periodLabel: periodLabelMap[period] || "the selected period",
+      totals: {
+        employeeCost: employeeTotalCost,
+        subcontractorCost: subcontractorTotalCost,
+        totalCost: employeeTotalCost + subcontractorTotalCost,
+        projectCount: new Set<string>([...employeeProjectIds, ...subcontractorProjectIds]).size,
+      },
+      employee: {
+        totalEntries: employeeRows.length,
+        totalHours: employeeTotalHours,
+        totalCost: employeeTotalCost,
+        projectCount: employeeProjectIds.size,
+      },
+      subcontractor: {
+        totalEntries: subcontractorRows.length,
+        totalHours: subcontractorTotalHours,
+        totalCost: subcontractorTotalCost,
+        projectCount: subcontractorProjectIds.size,
+      },
     };
   }
 
