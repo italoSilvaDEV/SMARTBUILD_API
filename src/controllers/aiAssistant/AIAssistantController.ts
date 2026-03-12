@@ -649,7 +649,7 @@ export class AIAssistantController {
   }
 
   private getTools() {
-    return [
+    const tools = [
       {
         type: "function" as const,
         function: {
@@ -1268,12 +1268,14 @@ export class AIAssistantController {
           },
         },
       },
-    ].map((tool: any) => ({
-      ...tool,
-      function: {
-        ...tool.function,
-        strict: false,
-      },
+    ];
+
+    return tools.map((tool: any) => ({
+      type: "function",
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters,
+      strict: false,
     }));
   }
 
