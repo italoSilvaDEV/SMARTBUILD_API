@@ -4560,7 +4560,6 @@ export class AIAssistantController {
       topProjectAddress: string | null;
       topProjectClientName: string | null;
       topProjectCost: number;
-      subcontractorId: string | null;
     }>();
 
     for (const row of workedHours) {
@@ -4578,7 +4577,6 @@ export class AIAssistantController {
         topProjectAddress: null,
         topProjectClientName: null,
         topProjectCost: 0,
-        subcontractorId: row.subcontractor?.id || null,
       };
 
       current.totalHours += totalHours;
