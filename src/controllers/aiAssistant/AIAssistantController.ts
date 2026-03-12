@@ -1457,61 +1457,69 @@ export class AIAssistantController {
 
   private async listProjects(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 100) || 100, 100);
     const { filter: statusFilter } = buildProjectStatusWhere(input);
+    const where = {
+      company_id: companyId,
+      status_project: statusFilter,
+      ...(search
+        ? {
+            OR: [
+              { client: { name: { contains: search } } },
+              { location: { contains: search } },
+              { status_project: { contains: search } },
+              ...(Number.isFinite(Number(search))
+                ? [{ contract_number: { equals: Number(search) } }]
+                : []),
+            ],
+          }
+        : {}),
+    };
 
-    const projects = await prisma.project.findMany({
-      where: {
-        company_id: companyId,
-        status_project: statusFilter,
-        ...(search
-          ? {
-              OR: [
-                { client: { name: { contains: search } } },
-                { location: { contains: search } },
-                { status_project: { contains: search } },
-                ...(Number.isFinite(Number(search))
-                  ? [{ contract_number: { equals: Number(search) } }]
-                  : []),
-              ],
-            }
-          : {}),
-      },
-      take: limit,
-      orderBy: { date_creation: "desc" },
-      select: {
-        id: true,
-        contract_number: true,
-        status_project: true,
-        status_changed_at: true,
-        price: true,
-        start_date: true,
-        deadline: true,
-        amountPaid: true,
-        balanceDue: true,
-        location: true,
-        client: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+    const [total, projects] = await Promise.all([
+      prisma.project.count({ where: where as any }),
+      prisma.project.findMany({
+        where: where as any,
+        take: limit,
+        orderBy: [
+          { contract_number: "asc" },
+          { date_creation: "desc" },
+        ],
+        select: {
+          id: true,
+          contract_number: true,
+          status_project: true,
+          status_changed_at: true,
+          price: true,
+          start_date: true,
+          deadline: true,
+          amountPaid: true,
+          balanceDue: true,
+          location: true,
+          client: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          serviceProject: {
+            select: {
+              id: true,
+            },
+          },
+          invoices: {
+            select: {
+              id: true,
+            },
           },
         },
-        serviceProject: {
-          select: {
-            id: true,
-          },
-        },
-        invoices: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    } as any);
+      } as any),
+    ]);
 
     return {
-      total: projects.length,
+      total,
+      returnedCount: projects.length,
       items: projects.map((project: any) => ({
         id: project.id,
         ...getProjectReference(project),

@@ -8,7 +8,7 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "list_projects" && output?.items?.length) {
     return {
       title: "Projects",
-      description: "Active projects with status, client and financial position.",
+      description: "Active projects aligned with the Seller Projects list.",
       chartMode: "bar",
       chartData: output.items.slice(0, 6).map((item: any) => ({
         label: item.projectAddress || item.projectName,
@@ -16,26 +16,20 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
       })),
       metrics: [
         { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
-        { label: "Top project", value: output.items[0].projectAddress || output.items[0].projectName, tone: "warning" },
+        { label: "Shown", value: String(output.returnedCount || output.items.length) },
       ],
       table: buildTable(
         [
-          { key: "projectAddress", label: "Project" },
+          { key: "contractNumber", label: "Number" },
           { key: "clientName", label: "Client" },
-          { key: "status", label: "Status" },
-          { key: "contractNumber", label: "Contract" },
-          { key: "price", label: "Sold Value" },
-          { key: "balanceDue", label: "Balance Due" },
-          { key: "invoiceCount", label: "Invoices" },
+          { key: "projectAddress", label: "Address" },
+          { key: "price", label: "Value" },
         ],
         output.items.map((item: any) => ({
-          projectAddress: item.projectAddress || item.projectName || null,
-          clientName: item.clientName || null,
-          status: item.status || null,
           contractNumber: item.contractNumber ?? null,
+          clientName: item.clientName || null,
+          projectAddress: item.projectAddress || item.projectName || null,
           price: formatCurrency(item.price || 0),
-          balanceDue: formatCurrency(item.balanceDue || 0),
-          invoiceCount: item.invoiceCount ?? 0,
         }))
       ),
     };

@@ -86,15 +86,14 @@ export function buildToolSummaryResponse(
   }
 
   if (latestTool?.tool === "list_projects" && base?.items?.length) {
-    const firstProject = base.items[0];
     return {
-      content: `I found ${base.total || base.items.length} projects in the current result set for ${firstProject.clientName || "your active pipeline"}.`,
+      content: `I found ${base.total || base.items.length} active projects.`,
       bullets: [
-        `Top project in the current list: ${firstProject.projectAddress || firstProject.projectName}.`,
-        `Status: ${firstProject.status || "Not available"} and sold value: ${formatCurrency(firstProject.price || 0)}.`,
-        `The table includes address, client, status, contract number, sold value and balance due.`,
+        `The table follows the Seller Projects structure: number, client, address and value.`,
+        `${base.returnedCount || base.items.length} projects are loaded in this response.`,
+        `I can narrow this list by status, client, contract number, profitability or highest cost.`,
       ],
-      followUp: "I can narrow this by status, client, contract number, profitability, or highest cost.",
+      followUp: "If you want, I can sort this by highest value, highest cost, best margin, or filter to one status only.",
       report: buildReportFromTool(latestTool),
     };
   }
