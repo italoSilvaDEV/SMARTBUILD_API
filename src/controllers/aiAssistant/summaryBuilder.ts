@@ -4,6 +4,37 @@ import type { AssistantReport, AssistantStructuredResponse, ExecutedTool } from 
 
 type BuildReportFromTool = (tool: ExecutedTool) => AssistantReport | null;
 
+const DIRECT_SUMMARY_TOOL_SET = new Set([
+  "list_projects",
+  "list_clients",
+  "list_invoices",
+  "invoice_summary",
+  "invoice_aging",
+  "overdue_invoices",
+  "receivables_by_client",
+  "client_risk_analysis",
+  "cashflow_projection",
+  "top_spending_projects",
+  "top_profitable_projects",
+  "estimate_summary",
+  "change_order_summary",
+  "timecards_by_worker",
+  "timecards_by_project",
+  "timecard_summary",
+  "worker_timecard_details",
+  "subcontractor_summary",
+  "subcontractor_projects",
+  "subcontractor_cost_entries",
+]);
+
+export function shouldPreferDirectToolSummary(tools: ExecutedTool[], buildReportFromTool: BuildReportFromTool) {
+  if (tools.length !== 1) return false;
+  const [tool] = tools;
+  if (!DIRECT_SUMMARY_TOOL_SET.has(tool.tool)) return false;
+  const report = buildReportFromTool(tool);
+  return Boolean(report?.table?.rows?.length || report?.chartData?.length);
+}
+
 export function compactToolOutputForModel(tool: ExecutedTool, buildReportFromTool: BuildReportFromTool) {
   const fallback = buildToolSummaryResponse([tool], buildReportFromTool);
   const report = getCompactReport(buildReportFromTool(tool) || fallback.report || null);
@@ -50,6 +81,20 @@ export function buildToolSummaryResponse(
         `${base.items.length} projects were evaluated for this ranking.`,
       ],
       followUp: "I can break this down by materials, labor and invoice impact, or show the full ranked list in a table.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "list_projects" && base?.items?.length) {
+    const firstProject = base.items[0];
+    return {
+      content: `I found ${base.total || base.items.length} projects in the current result set for ${firstProject.clientName || "your active pipeline"}.`,
+      bullets: [
+        `Top project in the current list: ${firstProject.projectAddress || firstProject.projectName}.`,
+        `Status: ${firstProject.status || "Not available"} and sold value: ${formatCurrency(firstProject.price || 0)}.`,
+        `The table includes address, client, status, contract number, sold value and balance due.`,
+      ],
+      followUp: "I can narrow this by status, client, contract number, profitability, or highest cost.",
       report: buildReportFromTool(latestTool),
     };
   }

@@ -24,7 +24,7 @@ import {
   withTimeout,
 } from "./utils";
 import { normalizeStructuredResponse } from "./reportUtils";
-import { buildToolSummaryResponse, compactToolOutputForModel } from "./summaryBuilder";
+import { buildToolSummaryResponse, compactToolOutputForModel, shouldPreferDirectToolSummary } from "./summaryBuilder";
 import { buildReportFromTool } from "./reportBuilder";
 import { getRecentProjectIdFromHistory, getRecentSubcontractorIdFromHistory, getRecentToolOutput } from "./threadContext";
 import type {
@@ -1397,6 +1397,13 @@ export class AIAssistantController {
           ...fallback,
           report: fallback.report || buildReportFromTool(executedTools[0]) || null,
         };
+
+        if (shouldPreferDirectToolSummary(executedTools, buildReportFromTool)) {
+          return {
+            structured: normalizeStructuredResponse(fallbackWithReport, fallbackWithReport),
+            executedTools,
+          };
+        }
 
         try {
           const compactTools = executedTools.map((tool) => compactToolOutputForModel(tool, buildReportFromTool));
