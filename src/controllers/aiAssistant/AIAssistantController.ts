@@ -1457,7 +1457,7 @@ export class AIAssistantController {
 
   private async listProjects(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
-    const limit = Math.min(Number(input.limit || 100) || 100, 100);
+    const requestedLimit = Math.min(Number(input.limit || 100) || 100, 100);
     const { filter: statusFilter } = buildProjectStatusWhere(input);
     const where = {
       company_id: companyId,
@@ -1480,7 +1480,7 @@ export class AIAssistantController {
       prisma.project.count({ where: where as any }),
       prisma.project.findMany({
         where: where as any,
-        take: limit,
+        take: Math.min(requestedLimit, 100),
         orderBy: [
           { contract_number: "asc" },
           { date_creation: "desc" },
@@ -1517,10 +1517,51 @@ export class AIAssistantController {
       } as any),
     ]);
 
+    const effectiveTotal = Math.min(total, 100);
+    const items = total > projects.length && !search && effectiveTotal > projects.length
+      ? await prisma.project.findMany({
+          where: where as any,
+          take: effectiveTotal,
+          orderBy: [
+            { contract_number: "asc" },
+            { date_creation: "desc" },
+          ],
+          select: {
+            id: true,
+            contract_number: true,
+            status_project: true,
+            status_changed_at: true,
+            price: true,
+            start_date: true,
+            deadline: true,
+            amountPaid: true,
+            balanceDue: true,
+            location: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+            serviceProject: {
+              select: {
+                id: true,
+              },
+            },
+            invoices: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        } as any)
+      : projects;
+
     return {
       total,
-      returnedCount: projects.length,
-      items: projects.map((project: any) => ({
+      returnedCount: items.length,
+      items: items.map((project: any) => ({
         id: project.id,
         ...getProjectReference(project),
         contractNumber: project.contract_number,

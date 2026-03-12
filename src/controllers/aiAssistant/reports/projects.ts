@@ -9,10 +9,6 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
     return {
       title: "Projects",
       description: "Active projects aligned with the Seller Projects list.",
-      metrics: [
-        { label: "Projects", value: String(output.total || output.items.length), tone: "success" },
-        { label: "Shown", value: String(output.returnedCount || output.items.length) },
-      ],
       table: buildTable(
         [
           { key: "contractNumber", label: "Number" },

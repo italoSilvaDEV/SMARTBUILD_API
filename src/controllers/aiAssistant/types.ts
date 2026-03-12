@@ -34,7 +34,7 @@ export type AssistantReport = {
   description: string;
   chartMode?: AssistantChartMode;
   chartData?: Record<string, string | number>[];
-  metrics: { label: string; value: string; tone?: "default" | "warning" | "success" }[];
+  metrics?: { label: string; value: string; tone?: "default" | "warning" | "success" }[];
   table?: AssistantReportTable | null;
 };
 
