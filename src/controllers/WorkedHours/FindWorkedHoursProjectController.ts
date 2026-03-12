@@ -3,6 +3,36 @@ import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
+function calculateManualWorkedHoursOvertime(workedHours: {
+    type_price?: string | null;
+    amount_of_hours?: unknown;
+    hourly_price?: unknown;
+    fixed_price?: unknown;
+}) {
+    const totalHours = Number(workedHours.amount_of_hours ?? 0);
+    const hourlyRate = Number(workedHours.hourly_price ?? 0);
+    const fixedPrice = Number(workedHours.fixed_price ?? 0);
+
+    if (workedHours.type_price === "fixed") {
+        return {
+            regularHours: null,
+            overtimeHours: null,
+            price: fixedPrice || null,
+        };
+    }
+
+    const safeHours = Number.isFinite(totalHours) ? totalHours : 0;
+    const regularHours = Math.min(safeHours, 40);
+    const overtimeHours = Math.max(safeHours - 40, 0);
+    const price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
+
+    return {
+        regularHours,
+        overtimeHours: overtimeHours > 0 ? overtimeHours : null,
+        price,
+    };
+}
+
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
         try {
@@ -301,16 +331,12 @@ export class FindWorkedHoursProjectController {
                 }
             });
             const formattedResult = result.map((workedHours) => {
-                let price = null;
-                if (workedHours.type_price === "fixed") {
-                    price = workedHours.fixed_price ? Number(workedHours.fixed_price) : null;
-                } else {
-                    price = workedHours.amount_of_hours && workedHours.hourly_price ? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price) : null;
-                }
+                const manualHours = calculateManualWorkedHoursOvertime(workedHours);
                 return {
                     ...workedHours,
-                    overtime_hours: null,
-                    price
+                    amount_of_hours: manualHours.regularHours,
+                    overtime_hours: manualHours.overtimeHours,
+                    price: manualHours.price
                 }
             })
             // Calcular as horas trabalhadas

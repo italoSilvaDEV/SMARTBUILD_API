@@ -13,6 +13,37 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
+function calculateManualWorkedHoursOvertime(workedHours: {
+  type_price?: string | null;
+  amount_of_hours?: unknown;
+  hourly_price?: unknown;
+  fixed_price?: unknown;
+}) {
+  const totalHours = Number(workedHours.amount_of_hours ?? 0);
+  const hourlyRate = Number(workedHours.hourly_price ?? 0);
+  const fixedPrice = Number(workedHours.fixed_price ?? 0);
+
+  if (workedHours.type_price === "fixed") {
+    return {
+      regularHours: 0,
+      overtimeHours: 0,
+      totalHoursWorked: 0,
+      price: fixedPrice,
+    };
+  }
+
+  const safeHours = Number.isFinite(totalHours) ? totalHours : 0;
+  const regularHours = Math.min(safeHours, 40);
+  const overtimeHours = Math.max(safeHours - 40, 0);
+
+  return {
+    regularHours,
+    overtimeHours,
+    totalHoursWorked: safeHours,
+    price: (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5),
+  };
+}
+
 function getDateRange(periodType: string) {
   const now = new Date();
   let startDate: Date;
@@ -477,12 +508,9 @@ export class ProjectController {
         if (wh.type_price === "fixed") {
           cost = Number(wh.fixed_price || 0);
         } else {
-          if (wh.amount_of_hours !== null) {
-            cost = Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
-            projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
-          } else {
-            cost = Number(wh.hourly_price || 0);
-          }
+          const manualHours = calculateManualWorkedHoursOvertime(wh);
+          cost = manualHours.price;
+          projectData.totalNumberOfHoursWorked += manualHours.totalHoursWorked;
         }
 
         if (isSubcontractor) {
@@ -836,12 +864,9 @@ export class ProjectController {
           if (workedHour.type_price === "fixed") {
             cost = Number(workedHour.fixed_price || 0);
           } else {
-            if (workedHour.amount_of_hours !== null) {
-              cost = Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price || 0);
-              totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-            } else {
-              cost = Number(workedHour.hourly_price || 0);
-            }
+            const manualHours = calculateManualWorkedHoursOvertime(workedHour);
+            cost = manualHours.price;
+            totalNumberOfHoursWorked += manualHours.totalHoursWorked;
           }
 
           if (isSubcontractor) {
