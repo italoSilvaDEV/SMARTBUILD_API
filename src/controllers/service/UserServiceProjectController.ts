@@ -210,14 +210,23 @@ export class UserServiceProjectController {
       });
 
       // Formatar o resultado
-      const result = employees.map((employee) => {
+      const result = await Promise.all(employees.map(async (employee) => {
         const isLinked = employee.UserServiceProject.some(
           (usp) => usp.service_project?.id === id
         );
 
+        let avatar = employee.avatar;
+        if (avatar) {
+          try {
+            avatar = await getPresignedUrl(avatar);
+          } catch (error) {
+            console.error("Error generating presigned URL for employee avatar:", error);
+          }
+        }
+
         return {
           id: employee.id,
-          avatar: employee.avatar,
+          avatar,
           name: employee.name,
           isLinked, // Retorna true se o usuário estiver vinculado ao serviço
           office: employee.companies.find((c) => c.companyId === id_company)?.office.name,
@@ -226,9 +235,9 @@ export class UserServiceProjectController {
             name: usp.service_project?.name,
             start_date: usp.service_project?.start_date,
             deadline: usp.service_project?.deadline,
-          })),
+            })),
         };
-      });
+      }));
 
       res.status(200).json(result);
     } catch (error) {
