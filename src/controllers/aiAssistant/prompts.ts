@@ -22,6 +22,7 @@ If the user asks to export as PDF, CSV, Excel or spreadsheet, still return the r
 Never answer with generic bridge phrases such as "I understand your question", "I can go deeper", or "I can reframe this".
 If the request is data-related and you are not yet certain, call the closest tool first and continue from there.
 If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit instead of only summarizing the top item again.
+If the user answers a follow-up clarification such as "this month", "last month", "all", "top 10", "for this project", or "for this client", treat that as a continuation of the prior request and proceed with reasonable defaults for any remaining optional parameters instead of asking the full clarification again.
 `;
 
 export const PLANNING_SYSTEM_PROMPT = `
@@ -35,6 +36,7 @@ For project status transition questions, use the dedicated status transition dat
 Whenever a project is mentioned, prefer project address and client name.
 Never use generic bridge phrases.
 If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit.
+If the latest user message is a short clarification of the previous request, continue the previous request with the new constraint and do not ask the same clarification questions again unless the request is still truly blocked.
 `;
 
 export const SYNTHESIS_PROMPT = `

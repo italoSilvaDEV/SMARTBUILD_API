@@ -54,5 +54,6 @@ export type ExecutedTool = {
 export type AssistantToolData = {
   bullets?: string[];
   followUp?: string | null;
+  responseId?: string | null;
   executedTools?: ExecutedTool[];
 } | null;

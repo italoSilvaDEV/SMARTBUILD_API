@@ -337,8 +337,9 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "timecards_by_worker" && base?.items?.length) {
     const topWorker = base.items[0];
     return {
-      content: `${topWorker.workerName} is currently the highest labor cost employee in the selected period based on SmartBuild time cards.`,
+      content: `${topWorker.workerName} is currently the highest labor cost employee for ${base.periodLabel || "the selected period"} based on SmartBuild time cards.`,
       bullets: [
+        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
         `Total labor cost: ${formatCurrency(topWorker.totalCost || 0)}.`,
         `Total logged hours: ${formatHours(topWorker.totalHours || 0)} across ${topWorker.entryCount || 0} entries, including ${formatHours(topWorker.regularHours || 0)} regular and ${formatHours(topWorker.overtimeHours || 0)} overtime.`,
         `Main project: ${topWorker.topProjectAddress || topWorker.topProjectName || "Not available"} for ${topWorker.topProjectClientName || "the client on record"}.`,
@@ -351,8 +352,9 @@ export function buildToolSummaryResponse(
 
   if (latestTool?.tool === "worker_timecard_details" && base?.entries?.length) {
     return {
-      content: `${base.workerName} has ${base.totalEntries || 0} time card entries in the selected period.`,
+      content: `${base.workerName} has ${base.totalEntries || 0} time card entries for ${base.periodLabel || "the selected period"}.`,
       bullets: [
+        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
         `Total labor cost: ${formatCurrency(base.totalCost || 0)} based on SmartBuild time cards.`,
         `Total hours: ${formatHours(base.totalHours || 0)}.`,
         `Most recent project: ${base.entries[0].projectAddress || base.entries[0].projectName || "Not available"} for ${base.entries[0].clientName || "the recorded client"}.`,
@@ -366,8 +368,9 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "timecards_by_project" && base?.items?.length) {
     const topProject = base.items[0];
     return {
-      content: `${topProject.projectAddress || topProject.projectName} currently has the highest labor cost in the selected period.`,
+      content: `${topProject.projectAddress || topProject.projectName} currently has the highest labor cost for ${base.periodLabel || "the selected period"}.`,
       bullets: [
+        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
         `Client: ${topProject.clientName || "Not available"}.`,
         `Labor cost: ${formatCurrency(topProject.totalCost || 0)}.`,
         `Total hours: ${formatHours(topProject.totalHours || 0)} across ${topProject.entryCount || 0} entries.`,
@@ -379,8 +382,9 @@ export function buildToolSummaryResponse(
 
   if (latestTool?.tool === "timecard_summary" && base?.byProject?.length) {
     return {
-      content: "I summarized the available time cards for the selected scope.",
+      content: `I summarized the available time cards for ${base.periodLabel || "the selected scope"}.`,
       bullets: [
+        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected scope"}.`,
         `Total entries: ${base.totalEntries || 0}.`,
         `Total hours: ${formatHours(base.totalHours || 0)}.`,
         `Total labor cost: ${formatCurrency(base.totalCost || 0)}.`,
@@ -394,6 +398,7 @@ export function buildToolSummaryResponse(
     return {
       content: `Total labor spend for ${base.periodLabel || "the selected period"} is ${formatCurrency(base.totals.totalCost || 0)}.`,
       bullets: [
+        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
         `Employees account for ${formatCurrency(base.totals.employeeCost || 0)} across ${base.employee?.totalEntries || 0} time-card entries.`,
         `Subcontractors account for ${formatCurrency(base.totals.subcontractorCost || 0)} across ${base.subcontractor?.totalEntries || 0} cost entries.`,
         `Combined project coverage: ${base.totals.projectCount || 0} active projects.`,

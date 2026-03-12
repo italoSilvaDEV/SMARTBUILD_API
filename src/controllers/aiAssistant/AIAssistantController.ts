@@ -11,6 +11,7 @@ import {
   OPENAI_SYNTHESIS_TIMEOUT_MS,
   OPENAI_TOOL_TIMEOUT_MS,
   PLANNER_HISTORY_MESSAGE_LIMIT,
+  describeRequestedDateRange,
   decimalToNumber,
   endOfDay,
   formatCurrency,
@@ -27,7 +28,7 @@ import {
 import { normalizeStructuredResponse } from "./reportUtils";
 import { buildToolSummaryResponse, compactToolOutputForModel, shouldPreferDirectToolSummary } from "./summaryBuilder";
 import { buildReportFromTool } from "./reportBuilder";
-import { getRecentProjectIdFromHistory, getRecentSubcontractorIdFromHistory, getRecentToolOutput } from "./threadContext";
+import { getRecentProjectIdFromHistory, getRecentResponseIdFromHistory, getRecentSubcontractorIdFromHistory, getRecentToolContexts, getRecentToolOutput } from "./threadContext";
 import type {
   AssistantMessageRow,
   AssistantStructuredResponse,
@@ -1267,12 +1268,19 @@ export class AIAssistantController {
           },
         },
       },
-    ];
+    ].map((tool: any) => ({
+      ...tool,
+      function: {
+        ...tool.function,
+        strict: false,
+      },
+    }));
   }
 
   private buildPlannerMessages(question: string, history: AssistantMessageRow[], mode: "standard" | "minimal" = "standard") {
     const recentProjectId = getRecentProjectIdFromHistory(history);
     const recentSubcontractorId = getRecentSubcontractorIdFromHistory(history);
+    const recentToolContexts = getRecentToolContexts(history, mode === "minimal" ? 1 : 3);
     const recentHistory = mode === "minimal"
       ? history.slice(-4)
       : history.slice(-PLANNER_HISTORY_MESSAGE_LIMIT);
@@ -1292,6 +1300,13 @@ export class AIAssistantController {
       });
     }
 
+    if (recentToolContexts.length) {
+      messages.push({
+        role: "system",
+        content: `Recent tool context: ${JSON.stringify(recentToolContexts)}.`,
+      });
+    }
+
     messages.push(
       ...recentHistory.map((message) => ({
         role: message.role,
@@ -1305,29 +1320,60 @@ export class AIAssistantController {
 
   private async runPlanningCompletion(messages: any[]) {
     return withTimeout(
-      openai!.chat.completions.create({
+      openai!.responses.create({
         model: "gpt-5-mini",
-        messages,
-        tools: this.getTools(),
-        tool_choice: "auto",
-      }),
+        instructions: PLANNING_SYSTEM_PROMPT,
+        input: messages.filter((message: any) => message.role !== "system"),
+        tools: this.getTools() as any,
+      } as any),
       OPENAI_TOOL_TIMEOUT_MS,
       "assistant tool planning"
     );
   }
 
+  private getResponseText(response: any) {
+    if (typeof response?.output_text === "string" && response.output_text.trim()) {
+      return response.output_text.trim();
+    }
+
+    const output = Array.isArray(response?.output) ? response.output : [];
+    const messageItem = output.find((item: any) => item?.type === "message");
+    const content = Array.isArray(messageItem?.content) ? messageItem.content : [];
+
+    const text = content
+      .filter((item: any) => item?.type === "output_text" && typeof item.text === "string")
+      .map((item: any) => item.text)
+      .join("\n")
+      .trim();
+
+    return text || "";
+  }
+
   private async synthesizeResponse(question: string, history: AssistantMessageRow[], companyId: string) {
     const messages = this.buildPlannerMessages(question, history, "standard");
+    const previousResponseId = getRecentResponseIdFromHistory(history);
 
     const executedTools: ExecutedTool[] = [];
 
     if (openai) {
       try {
+        let lastResponseId: string | null = previousResponseId;
+
         for (let attempt = 0; attempt < 6; attempt += 1) {
-          let completion;
+          let completion: any;
 
           try {
-            completion = await this.runPlanningCompletion(messages);
+            completion = await withTimeout(
+              openai.responses.create({
+                model: "gpt-5-mini",
+                instructions: PLANNING_SYSTEM_PROMPT,
+                input: messages.filter((message: any) => message.role !== "system"),
+                previous_response_id: lastResponseId || undefined,
+                tools: this.getTools() as any,
+              } as any),
+              OPENAI_TOOL_TIMEOUT_MS,
+              "assistant tool planning"
+            );
           } catch (planningError) {
             const errorMessage = planningError instanceof Error ? planningError.message : String(planningError);
             const shouldRetryMinimal = errorMessage.includes("assistant tool planning timed out after");
@@ -1338,49 +1384,82 @@ export class AIAssistantController {
 
             console.error("[AIAssistantController.synthesizeResponse] Planning retry with minimal context:", planningError);
             const minimalMessages = this.buildPlannerMessages(question, history, "minimal");
-            completion = await this.runPlanningCompletion(minimalMessages);
+            completion = await withTimeout(
+              openai.responses.create({
+                model: "gpt-5-mini",
+                instructions: PLANNING_SYSTEM_PROMPT,
+                input: minimalMessages.filter((message: any) => message.role !== "system"),
+                previous_response_id: lastResponseId || undefined,
+                tools: this.getTools() as any,
+              } as any),
+              OPENAI_TOOL_TIMEOUT_MS,
+              "assistant tool planning"
+            );
             messages.splice(0, messages.length, ...minimalMessages);
           }
 
-          const assistantMessage = completion.choices[0]?.message;
-          if (!assistantMessage) break;
+          lastResponseId = completion?.id || lastResponseId;
+          const responseOutput = Array.isArray(completion?.output) ? completion.output : [];
+          const toolCalls = responseOutput.filter((item: any) => item?.type === "function_call");
 
-          if (assistantMessage.tool_calls?.length) {
-            messages.push(assistantMessage);
+          if (toolCalls.length) {
+            const toolOutputs: any[] = [];
 
-            for (const toolCall of assistantMessage.tool_calls) {
-              const functionCall = (toolCall as any).function;
+            for (const toolCall of toolCalls) {
               const toolResult = await this.executeTool(
-                functionCall?.name || "",
-                functionCall?.arguments || "{}",
+                toolCall?.name || "",
+                toolCall?.arguments || "{}",
                 companyId,
                 history
               );
 
               executedTools.push(toolResult);
-              messages.push({
-                role: "tool",
-                tool_call_id: toolCall.id,
-                content: JSON.stringify(compactToolOutputForModel(toolResult, buildReportFromTool)),
+              toolOutputs.push({
+                type: "function_call_output",
+                call_id: toolCall.call_id,
+                output: JSON.stringify(compactToolOutputForModel(toolResult, buildReportFromTool)),
               });
             }
 
-            continue;
+            completion = await withTimeout(
+              openai.responses.create({
+                model: "gpt-5-mini",
+                instructions: PLANNING_SYSTEM_PROMPT,
+                previous_response_id: lastResponseId || undefined,
+                input: toolOutputs,
+                tools: this.getTools() as any,
+              } as any),
+              OPENAI_TOOL_TIMEOUT_MS,
+              "assistant tool planning"
+            );
+            lastResponseId = completion?.id || lastResponseId;
+            const followUpToolCalls = Array.isArray(completion?.output)
+              ? completion.output.filter((item: any) => item?.type === "function_call")
+              : [];
+
+            if (followUpToolCalls.length) {
+              continue;
+            }
           }
 
-          if (!assistantMessage.tool_calls?.length && !executedTools.length && assistantMessage.content?.trim()) {
+          const assistantText = this.getResponseText(completion);
+
+          if (!executedTools.length && assistantText) {
             return {
               structured: {
-                content: assistantMessage.content.trim(),
+                content: assistantText,
                 bullets: [],
                 followUp: null,
                 report: null,
               },
               executedTools: [],
+              responseId: lastResponseId,
             };
           }
 
-          break;
+          if (executedTools.length || assistantText) {
+            break;
+          }
         }
 
         if (executedTools.length === 0) {
@@ -1392,6 +1471,7 @@ export class AIAssistantController {
               report: null,
             },
             executedTools: [],
+            responseId: lastResponseId,
           };
         }
 
@@ -1405,26 +1485,23 @@ export class AIAssistantController {
           return {
             structured: normalizeStructuredResponse(fallbackWithReport, fallbackWithReport),
             executedTools,
+            responseId: lastResponseId,
           };
         }
 
         try {
           const compactTools = executedTools.map((tool) => compactToolOutputForModel(tool, buildReportFromTool));
-          const synthesisCompletion = await withTimeout(openai.chat.completions.create({
+          const synthesisCompletion: any = await withTimeout(openai.responses.create({
             model: "gpt-5-mini",
-            messages: [
-              { role: "system", content: SYNTHESIS_PROMPT },
-              {
-                role: "user",
-                content: JSON.stringify({
-                  question,
-                  tools: compactTools,
-                }),
-              },
-            ],
-          }), OPENAI_SYNTHESIS_TIMEOUT_MS, "assistant synthesis");
+            instructions: SYNTHESIS_PROMPT,
+            previous_response_id: lastResponseId || undefined,
+            input: JSON.stringify({
+              question,
+              tools: compactTools,
+            }),
+          } as any), OPENAI_SYNTHESIS_TIMEOUT_MS, "assistant synthesis");
 
-          const rawContent = synthesisCompletion.choices[0]?.message?.content || "{}";
+          const rawContent = this.getResponseText(synthesisCompletion) || "{}";
           const structured = normalizeStructuredResponse(
             safeJsonParse<AssistantStructuredResponse>(rawContent, fallbackWithReport),
             fallbackWithReport
@@ -1433,6 +1510,7 @@ export class AIAssistantController {
           return {
             structured,
             executedTools,
+            responseId: synthesisCompletion?.id || lastResponseId,
           };
         } catch (synthesisError) {
           console.error("[AIAssistantController.synthesizeResponse] Synthesis fallback:", synthesisError);
@@ -1441,6 +1519,7 @@ export class AIAssistantController {
         return {
           structured: normalizeStructuredResponse(fallbackWithReport, fallbackWithReport),
           executedTools,
+          responseId: lastResponseId,
         };
       } catch (error) {
         console.error("[AIAssistantController.synthesizeResponse] OpenAI fallback:", error);
@@ -1455,6 +1534,7 @@ export class AIAssistantController {
         report: null,
       },
       executedTools: [],
+      responseId: null,
     };
   }
 
@@ -4362,6 +4442,7 @@ export class AIAssistantController {
 
   private async timecardSummary(companyId: string, input: Record<string, unknown>) {
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
+    const dateContext = describeRequestedDateRange(input);
 
     const byProject = new Map<string, { projectId: string; projectName: string; projectAddress: string | null; clientName: string | null; totalHours: number; totalCost: number; entries: number }>();
     const byWorker = new Map<string, { workerName: string; totalHours: number; totalCost: number; entries: number }>();
@@ -4398,6 +4479,9 @@ export class AIAssistantController {
     }
 
     return {
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totalEntries: workedHours.length,
       totalHours: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalHours, 0),
       totalCost: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalCost, 0),
@@ -4411,6 +4495,7 @@ export class AIAssistantController {
       this.getEmployeeWorkedHours(companyId, input),
       this.getSubcontractorWorkedHours(companyId, input),
     ]);
+    const dateContext = describeRequestedDateRange(input);
 
     const employeeProjectIds = new Set<string>();
     const subcontractorProjectIds = new Set<string>();
@@ -4433,19 +4518,10 @@ export class AIAssistantController {
       return acc + this.getSubcontractorEntryCost(row).totalHours;
     }, 0);
 
-    const period = String(input.period || "").trim();
-    const periodLabelMap: Record<string, string> = {
-      thisWeek: "this week",
-      lastWeek: "last week",
-      thisMonth: "this month",
-      lastMonth: "last month",
-      last30Days: "the last 30 days",
-      thisYear: "this year",
-    };
-
     return {
-      period: period || null,
-      periodLabel: periodLabelMap[period] || "the selected period",
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totals: {
         employeeCost: employeeTotalCost,
         subcontractorCost: subcontractorTotalCost,
@@ -4470,6 +4546,7 @@ export class AIAssistantController {
   private async timecardsByWorker(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 8) || 8, 20);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
+    const dateContext = describeRequestedDateRange(input);
 
     const byWorker = new Map<string, {
       workerId: string | null;
@@ -4519,6 +4596,9 @@ export class AIAssistantController {
     }
 
     return {
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totalWorkers: byWorker.size,
       totalEntries: workedHours.length,
       items: Array.from(byWorker.values())
@@ -4531,6 +4611,7 @@ export class AIAssistantController {
     const limit = Math.min(Number(input.limit || 25) || 25, 60);
     const workerName = String(input.workerName || "").trim();
     const workedHours = await this.getEmployeeWorkedHours(companyId, { ...input, workerName });
+    const dateContext = describeRequestedDateRange(input);
 
     const entries = workedHours.slice(0, limit).map((row: any) => {
       const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
@@ -4560,6 +4641,9 @@ export class AIAssistantController {
 
     return {
       workerName,
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totalEntries: workedHours.length,
       totalHours: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalHours, 0),
       totalCost: workedHours.reduce((acc: number, row: any) => acc + getWorkedHourEffectiveCost(row).totalCost, 0),
@@ -4570,6 +4654,7 @@ export class AIAssistantController {
   private async timecardsByProject(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 8) || 8, 20);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
+    const dateContext = describeRequestedDateRange(input);
     const byProject = new Map<string, {
       projectId: string;
       projectName: string;
@@ -4608,6 +4693,9 @@ export class AIAssistantController {
     }
 
     return {
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totalProjects: byProject.size,
       totalEntries: workedHours.length,
       items: Array.from(byProject.values())
@@ -4618,6 +4706,7 @@ export class AIAssistantController {
 
   private async timecardsDailyBreakdown(companyId: string, input: Record<string, unknown>) {
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
+    const dateContext = describeRequestedDateRange(input);
     const byDate = new Map<string, { dateLabel: string; totalHours: number; totalCost: number; entries: number }>();
 
     for (const row of workedHours) {
@@ -4640,6 +4729,9 @@ export class AIAssistantController {
     const items = Array.from(byDate.values()).sort((a, b) => a.dateLabel.localeCompare(b.dateLabel));
 
     return {
+      period: dateContext.period,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       totalHours: items.reduce((acc, item) => acc + item.totalHours, 0),
       totalCost: items.reduce((acc, item) => acc + item.totalCost, 0),
       items,
@@ -5204,7 +5296,7 @@ export class AIAssistantController {
 
       const history = await listThreadMessages(threadId);
       const historyBeforeCurrentQuestion = history.slice(0, -1);
-      const { structured, executedTools } = await this.synthesizeResponse(trimmedContent, historyBeforeCurrentQuestion.slice(-12), companyId);
+      const { structured, executedTools, responseId } = await this.synthesizeResponse(trimmedContent, historyBeforeCurrentQuestion.slice(-12), companyId);
 
       const assistantMessage = await insertMessage({
         threadId,
@@ -5215,6 +5307,7 @@ export class AIAssistantController {
         toolData: {
           bullets: structured.bullets || [],
           followUp: structured.followUp || null,
+          responseId: responseId || null,
           executedTools,
         },
       });

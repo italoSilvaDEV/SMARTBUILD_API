@@ -129,6 +129,40 @@ export function getRequestedDateRange(input: Record<string, unknown>) {
   return { rangeStart, rangeEnd };
 }
 
+export function describeRequestedDateRange(input: Record<string, unknown>) {
+  const { rangeStart, rangeEnd } = getRequestedDateRange(input);
+  const period = String(input.period || "").trim();
+  const periodLabelMap: Record<string, string> = {
+    thisWeek: "this week",
+    lastWeek: "last week",
+    thisMonth: "this month",
+    lastMonth: "last month",
+    last30Days: "the last 30 days",
+    thisYear: "this year",
+  };
+
+  const formatDate = (value: Date | null) =>
+    value
+      ? new Intl.DateTimeFormat("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }).format(value)
+      : null;
+
+  const periodLabel = periodLabelMap[period] || null;
+  const startLabel = formatDate(rangeStart);
+  const endLabel = formatDate(rangeEnd);
+
+  return {
+    period: period || null,
+    periodLabel: periodLabel || "the selected period",
+    dateRangeLabel: startLabel && endLabel ? `${startLabel} to ${endLabel}` : startLabel || endLabel || "No date filter",
+    rangeStart,
+    rangeEnd,
+  };
+}
+
 export function trimMessageContent(value: string, max = PLANNER_MESSAGE_CHAR_LIMIT) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
