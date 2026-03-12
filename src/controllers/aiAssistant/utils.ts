@@ -163,6 +163,44 @@ export function describeRequestedDateRange(input: Record<string, unknown>) {
   };
 }
 
+export function inferRelativePeriodFromQuestion(question: string): string | null {
+  const normalized = question
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (!normalized) return null;
+
+  if (
+    /\b(this month|current month|este mes|desse mes|esse mes|mes atual|mes corrente)\b/.test(normalized)
+  ) {
+    return "thisMonth";
+  }
+
+  if (/\b(last month|previous month|mes passado)\b/.test(normalized)) {
+    return "lastMonth";
+  }
+
+  if (/\b(this week|current week|esta semana|essa semana|semana atual)\b/.test(normalized)) {
+    return "thisWeek";
+  }
+
+  if (/\b(last week|previous week|semana passada)\b/.test(normalized)) {
+    return "lastWeek";
+  }
+
+  if (/\b(last 30 days|ultimos 30 dias|ultimos trinta dias)\b/.test(normalized)) {
+    return "last30Days";
+  }
+
+  if (/\b(this year|current year|este ano|esse ano|ano atual)\b/.test(normalized)) {
+    return "thisYear";
+  }
+
+  return null;
+}
+
 export function trimMessageContent(value: string, max = PLANNER_MESSAGE_CHAR_LIMIT) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;

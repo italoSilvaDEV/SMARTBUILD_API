@@ -19,6 +19,7 @@ import {
   getActiveProjectStatusFilter,
   getActiveProjectStatuses,
   getRequestedDateRange,
+  inferRelativePeriodFromQuestion,
   parseDateValue,
   safeJsonParse,
   startOfDay,
@@ -39,6 +40,30 @@ import type {
 const openai = process.env.OPENAI_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_KEY })
   : null;
+
+const DATE_FILTER_TOOL_NAMES = new Set([
+  "project_status_transitions",
+  "top_spending_projects",
+  "top_profitable_projects",
+  "invoice_summary",
+  "list_invoices",
+  "invoice_aging",
+  "overdue_invoices",
+  "receivables_by_client",
+  "client_risk_analysis",
+  "cashflow_projection",
+  "timecard_summary",
+  "timecards_by_worker",
+  "employee_vs_subcontractor_spend",
+  "worker_timecard_details",
+  "timecards_by_project",
+  "timecards_daily_breakdown",
+  "subcontractor_summary",
+  "list_subcontractors",
+  "get_subcontractor_details",
+  "subcontractor_projects",
+  "subcontractor_cost_entries",
+]);
 const timeService = new TimeService();
 const TIMECARD_PROJECT_STATUSES = ["Pre-Start", "In Progress", "Final walkthrough", "Finished"] as const;
 
@@ -358,7 +383,8 @@ export class AIAssistantController {
     toolName: string,
     rawArgs: string,
     companyId: string,
-    history: AssistantMessageRow[] = []
+    history: AssistantMessageRow[] = [],
+    question = ""
   ): Promise<ExecutedTool> {
     const input = safeJsonParse<Record<string, unknown>>(rawArgs, {});
     const contextualProjectId = getRecentProjectIdFromHistory(history);
@@ -402,6 +428,19 @@ export class AIAssistantController {
       Number(recentProfitableProjects.profitableCount) > 0
     ) {
       resolvedInput.limit = Math.min(Number(recentProfitableProjects.profitableCount), 100);
+    }
+
+    if (
+      DATE_FILTER_TOOL_NAMES.has(toolName) &&
+      !resolvedInput.period &&
+      !resolvedInput.date &&
+      !resolvedInput.startDate &&
+      !resolvedInput.endDate
+    ) {
+      const inferredPeriod = inferRelativePeriodFromQuestion(question);
+      if (inferredPeriod) {
+        resolvedInput.period = inferredPeriod;
+      }
     }
 
     switch (toolName) {
@@ -1054,7 +1093,11 @@ export class AIAssistantController {
             properties: {
               projectId: { type: "string" },
               workerName: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               startDate: { type: "string" },
               endDate: { type: "string" },
               date: { type: "string" },
@@ -1072,7 +1115,11 @@ export class AIAssistantController {
             properties: {
               projectId: { type: "string" },
               workerName: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               startDate: { type: "string" },
               endDate: { type: "string" },
               date: { type: "string" },
@@ -1090,7 +1137,11 @@ export class AIAssistantController {
             type: "object",
             properties: {
               projectId: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               status: { type: "array", items: { type: "string" } },
               startDate: { type: "string" },
               endDate: { type: "string" },
@@ -1109,7 +1160,11 @@ export class AIAssistantController {
             properties: {
               workerName: { type: "string" },
               projectId: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               startDate: { type: "string" },
               endDate: { type: "string" },
               date: { type: "string" },
@@ -1128,7 +1183,11 @@ export class AIAssistantController {
             type: "object",
             properties: {
               workerName: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               startDate: { type: "string" },
               endDate: { type: "string" },
               date: { type: "string" },
@@ -1147,7 +1206,11 @@ export class AIAssistantController {
             properties: {
               projectId: { type: "string" },
               workerName: { type: "string" },
-              period: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+                description: "Relative period filter. Resolve phrases like 'this month'/'este mes' to thisMonth and 'last month'/'mes passado' to lastMonth.",
+              },
               startDate: { type: "string" },
               endDate: { type: "string" },
               date: { type: "string" },
@@ -1293,6 +1356,10 @@ export class AIAssistantController {
 
     const messages: any[] = [
       { role: "system", content: PLANNING_SYSTEM_PROMPT },
+      {
+        role: "system",
+        content: `Today's date is ${DateTime.now().setZone("America/Sao_Paulo").toFormat("yyyy-MM-dd")}. Resolve relative dates against this date.`,
+      },
     ];
 
     if (contextParts.length) {
@@ -1412,7 +1479,8 @@ export class AIAssistantController {
                 toolCall?.name || "",
                 toolCall?.arguments || "{}",
                 companyId,
-                history
+                history,
+                question
               );
 
               executedTools.push(toolResult);

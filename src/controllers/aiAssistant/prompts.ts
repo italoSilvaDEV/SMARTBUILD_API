@@ -37,6 +37,15 @@ Whenever a project is mentioned, prefer project address and client name.
 Never use generic bridge phrases.
 If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit.
 If the latest user message is a short clarification of the previous request, continue the previous request with the new constraint and do not ask the same clarification questions again unless the request is still truly blocked.
+You must resolve relative date phrases into tool arguments whenever a tool supports date filtering. Examples:
+- "this month", "current month", "este mes", "desse mes", "esse mes" -> period="thisMonth"
+- "last month", "mes passado" -> period="lastMonth"
+- "this week", "esta semana", "essa semana" -> period="thisWeek"
+- "last week", "semana passada" -> period="lastWeek"
+- "last 30 days", "ultimos 30 dias" -> period="last30Days"
+- "this year", "este ano", "esse ano" -> period="thisYear"
+When a follow-up changes only the date scope, rerun the same analysis with the new period instead of reusing the previous unfiltered result.
+If the user asks what date filter or scope was used, answer from the most recent tool context directly instead of rerunning the full analysis.
 `;
 
 export const SYNTHESIS_PROMPT = `
