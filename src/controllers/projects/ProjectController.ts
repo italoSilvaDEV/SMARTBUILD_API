@@ -1654,7 +1654,8 @@ export class ProjectController {
         where: { id },
         data: {
           status_project: status,
-        },
+          status_changed_at: new Date(),
+        } as any,
       });
       return res.json(project);
     } catch (error) {
