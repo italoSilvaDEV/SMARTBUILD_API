@@ -13,6 +13,37 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 
+function calculateManualWorkedHoursOvertime(workedHours: {
+  type_price?: string | null;
+  amount_of_hours?: unknown;
+  hourly_price?: unknown;
+  fixed_price?: unknown;
+}) {
+  const totalHours = Number(workedHours.amount_of_hours ?? 0);
+  const hourlyRate = Number(workedHours.hourly_price ?? 0);
+  const fixedPrice = Number(workedHours.fixed_price ?? 0);
+
+  if (workedHours.type_price === "fixed") {
+    return {
+      regularHours: 0,
+      overtimeHours: 0,
+      totalHoursWorked: 0,
+      price: fixedPrice,
+    };
+  }
+
+  const safeHours = Number.isFinite(totalHours) ? totalHours : 0;
+  const regularHours = Math.min(safeHours, 40);
+  const overtimeHours = Math.max(safeHours - 40, 0);
+
+  return {
+    regularHours,
+    overtimeHours,
+    totalHoursWorked: safeHours,
+    price: (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5),
+  };
+}
+
 function getDateRange(periodType: string) {
   const now = new Date();
   let startDate: Date;
@@ -322,7 +353,8 @@ export class ProjectController {
                       workEndTime: true,
                       user: {
                         select: {
-                          hourly_price: true
+                          hourly_price: true,
+                          defaultBreakMinutes: true
                         }
                       }
                     }
@@ -477,12 +509,9 @@ export class ProjectController {
         if (wh.type_price === "fixed") {
           cost = Number(wh.fixed_price || 0);
         } else {
-          if (wh.amount_of_hours !== null) {
-            cost = Number(wh.amount_of_hours) * Number(wh.hourly_price || 0);
-            projectData.totalNumberOfHoursWorked += Number(wh.amount_of_hours);
-          } else {
-            cost = Number(wh.hourly_price || 0);
-          }
+          const manualHours = calculateManualWorkedHoursOvertime(wh);
+          cost = manualHours.price;
+          projectData.totalNumberOfHoursWorked += manualHours.totalHoursWorked;
         }
 
         if (isSubcontractor) {
@@ -517,6 +546,7 @@ export class ProjectController {
                   attendance.check_out_time.toISOString(),
                   attendance.workStartTime,
                   attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
                 );
                 regularHours = convertHHMMToDecimal(hours.normais);
                 overtimeHours = convertHHMMToDecimal(hours.extras);
@@ -532,8 +562,15 @@ export class ProjectController {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
               let hoursWorked = 0;
-              if (attendance.check_out_time) {
-                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
               }
               return sub + parseFloat(hoursWorked.toFixed(2))
             }, 0)
@@ -664,7 +701,8 @@ export class ProjectController {
                     include: {
                       user: {
                         select: {
-                          hourly_price: true
+                          hourly_price: true,
+                          defaultBreakMinutes: true
                         },
                       }
                     }
@@ -797,6 +835,7 @@ export class ProjectController {
                   attendance.check_out_time.toISOString(),
                   attendance.workStartTime,
                   attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
                 );
                 regularHours = convertHHMMToDecimal(hours.normais);
                 overtimeHours = convertHHMMToDecimal(hours.extras);
@@ -813,8 +852,15 @@ export class ProjectController {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
               let hoursWorked = 0;
-              if (attendance.check_out_time) {
-                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
               }
               return sub + parseFloat(hoursWorked.toFixed(2))
 
@@ -836,12 +882,9 @@ export class ProjectController {
           if (workedHour.type_price === "fixed") {
             cost = Number(workedHour.fixed_price || 0);
           } else {
-            if (workedHour.amount_of_hours !== null) {
-              cost = Number(workedHour.amount_of_hours) * Number(workedHour.hourly_price || 0);
-              totalNumberOfHoursWorked += Number(workedHour.amount_of_hours);
-            } else {
-              cost = Number(workedHour.hourly_price || 0);
-            }
+            const manualHours = calculateManualWorkedHoursOvertime(workedHour);
+            cost = manualHours.price;
+            totalNumberOfHoursWorked += manualHours.totalHoursWorked;
           }
 
           if (isSubcontractor) {
@@ -1973,6 +2016,7 @@ export class ProjectController {
               name: true,
               avatar: true,
               hourly_price: true,
+              defaultBreakMinutes: true,
             },
           },
         },
@@ -1985,13 +2029,6 @@ export class ProjectController {
       const processedResult = await Promise.all(
         result.map(async (attendance) => {
           let hoursWorked = 0;
-          if (attendance.check_out_time) {
-            hoursWorked = dayjs(attendance.check_out_time).diff(
-              dayjs(attendance.check_in_time),
-              "hour",
-              true
-            );
-          }
           let regularHours = 0;
           let overtimeHours = 0;
 
@@ -2001,9 +2038,11 @@ export class ProjectController {
               attendance.check_out_time.toISOString(),
               attendance.workStartTime,
               attendance.workEndTime,
+              attendance.user.defaultBreakMinutes || 0,
             );
             regularHours = convertHHMMToDecimal(hours.normais);
             overtimeHours = convertHHMMToDecimal(hours.extras);
+            hoursWorked = regularHours + overtimeHours;
           }
           return {
             ...attendance,
