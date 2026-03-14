@@ -807,6 +807,7 @@ export class ProjectController {
                   attendance.check_out_time.toISOString(),
                   attendance.workStartTime,
                   attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
                 );
                 regularHours = convertHHMMToDecimal(hours.normais);
                 overtimeHours = convertHHMMToDecimal(hours.extras);
@@ -823,8 +824,15 @@ export class ProjectController {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
               let hoursWorked = 0;
-              if (attendance.check_out_time) {
-                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
               }
               return sub + parseFloat(hoursWorked.toFixed(2))
 
