@@ -67,15 +67,11 @@ export class TimeService {
     private processWeekAttendances(weekAttendances: AttendanceWithUser[]) {
         let totalWeekHours = 0;
         const user = weekAttendances[0].user;
+        const userHasOvertime = user.isOverTime;
         const dailyRate = user.dailyRate ? Number(user.dailyRate) : 0;
-        const sortedWeekAttendances = [...weekAttendances].sort((a, b) => {
-            const aTime = a.check_in_time?.getTime() ?? a.date.getTime();
-            const bTime = b.check_in_time?.getTime() ?? b.date.getTime();
-            return aTime - bTime;
-        });
 
         // 1. Calcular horas diárias
-        const withDailyHours = sortedWeekAttendances.map(att => {
+        const withDailyHours = weekAttendances.map(att => {
             if (!att.check_in_time || !att.check_out_time) {
                 return {
                     ...att,
@@ -115,34 +111,35 @@ export class TimeService {
             };
         });
 
-        // 2. Aplicar overtime em ordem cronologica.
-        // O excesso semanal so vira overtime se o proprio attendance estiver marcado como overtime.
+        // 2. Calcular Preço Semanal
+        let weeklyPrice = 0;
+        if (dailyRate > 0) {
+            weeklyPrice = weekAttendances.length * dailyRate;
+        } else {
+            const hourlyRate = user.hourly_price || 0;
+            if (userHasOvertime && totalWeekHours > 40) {
+                weeklyPrice = (40 * hourlyRate) + ((totalWeekHours - 40) * hourlyRate * 1.5);
+            } else {
+                weeklyPrice = totalWeekHours * hourlyRate;
+            }
+        }
+
+        // 3. Distribuir proporcionalmente por dia
         let weeklyRegularHoursUsed = 0;
         return withDailyHours.map(att => {
-            let regBase = 0;
-            let overBase = 0;
+            const proportionalPrice = totalWeekHours > 0 ? (att.dailyHours / totalWeekHours) * weeklyPrice : 0;
+            
+            let reg = 0;
+            let over = 0;
 
-            if (totalWeekHours > 40) {
+            if (userHasOvertime && totalWeekHours > 40) {
                 const remainingReg = Math.max(0, 40 - weeklyRegularHoursUsed);
-                regBase = Math.min(att.dailyHours, remainingReg);
-                overBase = Math.max(0, att.dailyHours - regBase);
-                weeklyRegularHoursUsed += regBase;
+                reg = Math.min(att.dailyHours, remainingReg);
+                over = Math.max(0, att.dailyHours - reg);
+                weeklyRegularHoursUsed += reg;
             } else {
-                regBase = att.dailyHours;
-                overBase = 0;
-            }
-
-            const overtimeAllowed = att.isOvertime === true;
-            const reg = overtimeAllowed ? regBase : att.dailyHours;
-            const over = overtimeAllowed ? overBase : 0;
-
-            let price = 0;
-            if (dailyRate > 0) {
-                const attendedDays = withDailyHours.filter(item => item.dailyHours > 0).length;
-                price = attendedDays > 0 && att.dailyHours > 0 ? dailyRate : 0;
-            } else {
-                const hourlyRate = user.hourly_price || 0;
-                price = (reg * hourlyRate) + (over * hourlyRate * 1.5);
+                reg = att.dailyHours;
+                over = 0;
             }
 
             return {
@@ -153,7 +150,7 @@ export class TimeService {
                 break_hours: parseFloat((att.breakHoursApplied || 0).toFixed(2)),
                 regular_hours: parseFloat(reg.toFixed(2)),
                 overtime_hours: parseFloat(over.toFixed(2)),
-                price: parseFloat(price.toFixed(2))
+                price: parseFloat(proportionalPrice.toFixed(2))
             };
         });
     }
