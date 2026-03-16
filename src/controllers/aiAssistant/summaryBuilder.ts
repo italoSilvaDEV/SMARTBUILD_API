@@ -91,10 +91,11 @@ export function buildToolSummaryResponse(
     return {
       content: textFor(
         question,
-        `${topProject.projectName} é atualmente o projeto com maior gasto no período selecionado para ${topProject.clientName || "este cliente"}.`,
-        `${topProject.projectName} is currently the highest-spending project in the selected period for ${topProject.clientName || "this client"}.`
+        `${topProject.projectName} é atualmente o projeto com maior gasto em ${base.dateRangeLabel || base.periodLabel || "all time"} para ${topProject.clientName || "este cliente"}.`,
+        `${topProject.projectName} is currently the highest-spending project for ${base.dateRangeLabel || base.periodLabel || "all time"} for ${topProject.clientName || "this client"}.`
       ),
       bullets: [
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "All time"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "All time"}.`),
         textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
         textFor(question, `Custo total estimado: ${formatCurrency(topProject.totalCost || 0)}.`, `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`),
         textFor(question, `Neste ranking, mão de obra = employee cost + subcontractor cost; custo total da obra = materiais + employee cost + subcontractor cost.`, `In this ranking, labor cost = employee cost + subcontractor cost; total project cost = materials + employee cost + subcontractor cost.`),
@@ -123,10 +124,11 @@ export function buildToolSummaryResponse(
     return {
       content: textFor(
         question,
-        `${topProject.projectName} é atualmente o projeto mais lucrativo para ${topProject.clientName || "este cliente"}.`,
-        `${topProject.projectName} is currently the most profitable project for ${topProject.clientName || "this client"}.`
+        `${topProject.projectName} é atualmente o projeto mais lucrativo em ${base.dateRangeLabel || base.periodLabel || "all time"} para ${topProject.clientName || "este cliente"}.`,
+        `${topProject.projectName} is currently the most profitable project for ${base.dateRangeLabel || base.periodLabel || "all time"} for ${topProject.clientName || "this client"}.`
       ),
       bullets: [
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "All time"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "All time"}.`),
         textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
         textFor(question, `Valor vendido: ${formatCurrency(topProject.soldValue || 0)}.`, `Sold value: ${formatCurrency(topProject.soldValue || 0)}.`),
         textFor(question, `Custo de material: ${formatCurrency(topProject.materialCost || 0)} e custo de mão de obra: ${formatCurrency(topProject.laborCost || 0)}. Aqui, mão de obra = employee cost + subcontractor cost.`, `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}. Here, labor cost = employee cost + subcontractor cost.`),

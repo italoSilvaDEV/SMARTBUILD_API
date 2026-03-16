@@ -156,8 +156,8 @@ export function describeRequestedDateRange(input: Record<string, unknown>) {
 
   return {
     period: period || null,
-    periodLabel: periodLabel || "the selected period",
-    dateRangeLabel: startLabel && endLabel ? `${startLabel} to ${endLabel}` : startLabel || endLabel || "No date filter",
+    periodLabel: periodLabel || "all time",
+    dateRangeLabel: startLabel && endLabel ? `${startLabel} to ${endLabel}` : startLabel || endLabel || "All time",
     rangeStart,
     rangeEnd,
   };
