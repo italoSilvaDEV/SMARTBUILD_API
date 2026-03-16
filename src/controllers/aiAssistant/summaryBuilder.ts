@@ -4,6 +4,19 @@ import type { AssistantReport, AssistantStructuredResponse, ExecutedTool } from 
 
 type BuildReportFromTool = (tool: ExecutedTool) => AssistantReport | null;
 
+function shouldUsePtBr(question = "") {
+  const normalized = question
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return /\b(qual|quais|quero|me mostre|mostra|liste|lista|desse|deste|esse|esta|mes|semana|projeto|cliente|fatura|custo|lucro|margem|trabalhador|trabalhadores|funcionario|funcionarios)\b/.test(normalized);
+}
+
+function textFor(question: string | undefined, pt: string, en: string) {
+  return shouldUsePtBr(question) ? pt : en;
+}
+
 const DIRECT_SUMMARY_TOOL_SET = new Set([
   "list_projects",
   "list_clients",
@@ -25,6 +38,7 @@ const DIRECT_SUMMARY_TOOL_SET = new Set([
   "subcontractor_summary",
   "subcontractor_projects",
   "subcontractor_cost_entries",
+  "financial_period_comparison",
 ]);
 
 export function shouldPreferDirectToolSummary(tools: ExecutedTool[], buildReportFromTool: BuildReportFromTool) {
@@ -54,7 +68,8 @@ export function compactToolOutputForModel(tool: ExecutedTool, buildReportFromToo
 
 export function buildToolSummaryResponse(
   tools: ExecutedTool[],
-  buildReportFromTool: BuildReportFromTool
+  buildReportFromTool: BuildReportFromTool,
+  question = ""
 ): AssistantStructuredResponse {
   const latestTool = tools[tools.length - 1];
   const base = latestTool?.output as any;
@@ -74,26 +89,32 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "top_spending_projects" && base?.items?.length) {
     const topProject = base.items[0];
     return {
-      content: `${topProject.projectName} is currently the highest-spending project in the selected period for ${topProject.clientName || "this client"}.`,
+      content: textFor(
+        question,
+        `${topProject.projectName} é atualmente o projeto com maior gasto em ${base.dateRangeLabel || base.periodLabel || "all time"} para ${topProject.clientName || "este cliente"}.`,
+        `${topProject.projectName} is currently the highest-spending project for ${base.dateRangeLabel || base.periodLabel || "all time"} for ${topProject.clientName || "this client"}.`
+      ),
       bullets: [
-        `Project address: ${topProject.projectAddress || topProject.projectName}.`,
-        `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`,
-        `${base.items.length} projects were evaluated for this ranking.`,
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "All time"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "All time"}.`),
+        textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
+        textFor(question, `Custo total estimado: ${formatCurrency(topProject.totalCost || 0)}.`, `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`),
+        textFor(question, `Neste ranking, mão de obra = employee cost + subcontractor cost; custo total da obra = materiais + employee cost + subcontractor cost.`, `In this ranking, labor cost = employee cost + subcontractor cost; total project cost = materials + employee cost + subcontractor cost.`),
+        textFor(question, `${base.items.length} projetos foram avaliados neste ranking.`, `${base.items.length} projects were evaluated for this ranking.`),
       ],
-      followUp: "I can break this down by materials, labor and invoice impact, or show the full ranked list in a table.",
+      followUp: textFor(question, "Posso quebrar isso por materiais, mão de obra e impacto de invoices, ou mostrar o ranking completo em tabela.", "I can break this down by materials, labor and invoice impact, or show the full ranked list in a table."),
       report: buildReportFromTool(latestTool),
     };
   }
 
   if (latestTool?.tool === "list_projects" && base?.items?.length) {
     return {
-      content: `I found ${base.total || base.items.length} active projects.`,
+      content: textFor(question, `Encontrei ${base.total || base.items.length} projetos ativos.`, `I found ${base.total || base.items.length} active projects.`),
       bullets: [
-        `The table follows the Seller Projects structure: number, client, address and value.`,
-        `${base.returnedCount || base.items.length} projects are loaded in this response.`,
-        `I can narrow this list by status, client, contract number, profitability or highest cost.`,
+        textFor(question, `A tabela segue a estrutura de Seller Projects: número, cliente, endereço e valor.`, `The table follows the Seller Projects structure: number, client, address and value.`),
+        textFor(question, `${base.returnedCount || base.items.length} projetos estão carregados nesta resposta.`, `${base.returnedCount || base.items.length} projects are loaded in this response.`),
+        textFor(question, `Posso refinar essa lista por status, cliente, número de contrato, lucratividade ou maior custo.`, `I can narrow this list by status, client, contract number, profitability or highest cost.`),
       ],
-      followUp: "If you want, I can sort this by highest value, highest cost, best margin, or filter to one status only.",
+      followUp: textFor(question, "Se quiser, posso ordenar por maior valor, maior custo, melhor margem ou filtrar por um único status.", "If you want, I can sort this by highest value, highest cost, best margin, or filter to one status only."),
       report: buildReportFromTool(latestTool),
     };
   }
@@ -101,14 +122,19 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "top_profitable_projects" && base?.items?.length) {
     const topProject = base.items[0];
     return {
-      content: `${topProject.projectName} is currently the most profitable project for ${topProject.clientName || "this client"}.`,
+      content: textFor(
+        question,
+        `${topProject.projectName} é atualmente o projeto mais lucrativo em ${base.dateRangeLabel || base.periodLabel || "all time"} para ${topProject.clientName || "este cliente"}.`,
+        `${topProject.projectName} is currently the most profitable project for ${base.dateRangeLabel || base.periodLabel || "all time"} for ${topProject.clientName || "this client"}.`
+      ),
       bullets: [
-        `Project address: ${topProject.projectAddress || topProject.projectName}.`,
-        `Sold value: ${formatCurrency(topProject.soldValue || 0)}.`,
-        `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}.`,
-        `Profit: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`,
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "All time"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "All time"}.`),
+        textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
+        textFor(question, `Valor vendido: ${formatCurrency(topProject.soldValue || 0)}.`, `Sold value: ${formatCurrency(topProject.soldValue || 0)}.`),
+        textFor(question, `Custo de material: ${formatCurrency(topProject.materialCost || 0)} e custo de mão de obra: ${formatCurrency(topProject.laborCost || 0)}. Aqui, mão de obra = employee cost + subcontractor cost.`, `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}. Here, labor cost = employee cost + subcontractor cost.`),
+        textFor(question, `Lucro: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`, `Profit: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`),
       ],
-      followUp: "I can break down why this project is outperforming the rest, or show the full ranked list in a table.",
+      followUp: textFor(question, "Posso detalhar por que esse projeto está performando melhor que os outros, ou mostrar o ranking completo em tabela.", "I can break down why this project is outperforming the rest, or show the full ranked list in a table."),
       report: buildReportFromTool(latestTool),
     };
   }
@@ -117,7 +143,7 @@ export function buildToolSummaryResponse(
     return {
       content: `${base.projectAddress || base.projectName} for ${base.clientName || "this client"} is ${String(base.status || "active").toLowerCase()} with ${formatCurrency(base.price || 0)} in sold value.`,
       bullets: [
-        `Total cost: ${formatCurrency(base.financials?.totalCost || 0)} with ${formatCurrency(base.financials?.materialCost || 0)} in materials and ${formatCurrency(base.financials?.laborCost || 0)} in labor.`,
+        `Total project cost: ${formatCurrency(base.financials?.totalCost || 0)} with ${formatCurrency(base.financials?.materialCost || 0)} in materials and ${formatCurrency(base.financials?.laborCost || 0)} in labor (employee + subcontractor).`,
         `Invoices: ${base.invoices?.length || 0} totaling ${formatCurrency(base.financials?.invoicedAmount || 0)}.`,
         `Scope: ${base.services?.length || 0} services, ${base.counts?.tasks || 0} tasks, ${base.counts?.changeOrders || 0} change orders and ${base.counts?.files || 0} files.`,
       ],
@@ -145,7 +171,8 @@ export function buildToolSummaryResponse(
       content: `${base.projectAddress || base.projectName} is currently carrying ${formatCurrency(base.totals.totalCost || 0)} in total cost.`,
       bullets: [
         `Material cost: ${formatCurrency(base.totals.materialCost || 0)}.`,
-        `Internal labor: ${formatCurrency(base.totals.internalLaborCost || 0)} and subcontractors: ${formatCurrency(base.totals.subcontractorCost || 0)}.`,
+        `Labor cost: ${formatCurrency(base.totals.laborCost || 0)} = employee cost ${formatCurrency(base.totals.internalLaborCost || 0)} + subcontractor cost ${formatCurrency(base.totals.subcontractorCost || 0)}.`,
+        `Total project cost: ${formatCurrency(base.totals.totalCost || 0)} = materials + employee cost + subcontractor cost.`,
         `${base.topMaterials?.length || 0} top material groups are available in this breakdown.`,
       ],
       followUp: "I can go line by line through materials, labor contributors, or subcontractor entries.",
@@ -337,30 +364,34 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "timecards_by_worker" && base?.items?.length) {
     const topWorker = base.items[0];
     return {
-      content: `${topWorker.workerName} is currently the highest labor cost employee for ${base.periodLabel || "the selected period"} based on SmartBuild time cards.`,
+      content: textFor(
+        question,
+        `${topWorker.workerName} é atualmente o funcionário com maior custo de mão de obra em ${base.periodLabel || "o período selecionado"}, com base nos time cards do SmartBuild.`,
+        `${topWorker.workerName} is currently the highest labor cost employee for ${base.periodLabel || "the selected period"} based on SmartBuild time cards.`
+      ),
       bullets: [
-        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
-        `Total labor cost: ${formatCurrency(topWorker.totalCost || 0)}.`,
-        `Total logged hours: ${formatHours(topWorker.totalHours || 0)} across ${topWorker.entryCount || 0} entries, including ${formatHours(topWorker.regularHours || 0)} regular and ${formatHours(topWorker.overtimeHours || 0)} overtime.`,
-        `Main project: ${topWorker.topProjectAddress || topWorker.topProjectName || "Not available"} for ${topWorker.topProjectClientName || "the client on record"}.`,
-        `This ranking is based on time-card labor pay/cost, not HR salary records.`,
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "o período selecionado"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`),
+        textFor(question, `Custo total de mão de obra: ${formatCurrency(topWorker.totalCost || 0)}.`, `Total labor cost: ${formatCurrency(topWorker.totalCost || 0)}.`),
+        textFor(question, `Total de horas registradas: ${formatHours(topWorker.totalHours || 0)} em ${topWorker.entryCount || 0} lançamentos, incluindo ${formatHours(topWorker.regularHours || 0)} regulares e ${formatHours(topWorker.overtimeHours || 0)} extras.`, `Total logged hours: ${formatHours(topWorker.totalHours || 0)} across ${topWorker.entryCount || 0} entries, including ${formatHours(topWorker.regularHours || 0)} regular and ${formatHours(topWorker.overtimeHours || 0)} overtime.`),
+        textFor(question, `Principal projeto: ${topWorker.topProjectAddress || topWorker.topProjectName || "Não disponível"} para ${topWorker.topProjectClientName || "o cliente registrado"}.`, `Main project: ${topWorker.topProjectAddress || topWorker.topProjectName || "Not available"} for ${topWorker.topProjectClientName || "the client on record"}.`),
+        textFor(question, `Este ranking usa custo de mão de obra dos time cards, não salário de RH.`, `This ranking is based on time-card labor pay/cost, not HR salary records.`),
       ],
-      followUp: "I can break this worker down by project or by specific date.",
+      followUp: textFor(question, "Posso quebrar esse trabalhador por projeto ou por data específica.", "I can break this worker down by project or by specific date."),
       report: buildReportFromTool(latestTool),
     };
   }
 
   if (latestTool?.tool === "worker_timecard_details" && base?.entries?.length) {
     return {
-      content: `${base.workerName} has ${base.totalEntries || 0} time card entries for ${base.periodLabel || "the selected period"}.`,
+      content: textFor(question, `${base.workerName} tem ${base.totalEntries || 0} lançamentos de time card para ${base.periodLabel || "o período selecionado"}.`, `${base.workerName} has ${base.totalEntries || 0} time card entries for ${base.periodLabel || "the selected period"}.`),
       bullets: [
-        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
-        `Total labor cost: ${formatCurrency(base.totalCost || 0)} based on SmartBuild time cards.`,
-        `Total hours: ${formatHours(base.totalHours || 0)}.`,
-        `Most recent project: ${base.entries[0].projectAddress || base.entries[0].projectName || "Not available"} for ${base.entries[0].clientName || "the recorded client"}.`,
-        `Each entry includes check-in, check-out, service, category and calculated labor pay.`,
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "o período selecionado"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`),
+        textFor(question, `Custo total de mão de obra: ${formatCurrency(base.totalCost || 0)} com base nos time cards do SmartBuild.`, `Total labor cost: ${formatCurrency(base.totalCost || 0)} based on SmartBuild time cards.`),
+        textFor(question, `Total de horas: ${formatHours(base.totalHours || 0)}.`, `Total hours: ${formatHours(base.totalHours || 0)}.`),
+        textFor(question, `Projeto mais recente: ${base.entries[0].projectAddress || base.entries[0].projectName || "Não disponível"} para ${base.entries[0].clientName || "o cliente registrado"}.`, `Most recent project: ${base.entries[0].projectAddress || base.entries[0].projectName || "Not available"} for ${base.entries[0].clientName || "the recorded client"}.`),
+        textFor(question, `Cada lançamento inclui check-in, check-out, serviço, categoria e custo calculado de mão de obra.`, `Each entry includes check-in, check-out, service, category and calculated labor pay.`),
       ],
-      followUp: "I can also compare this worker against the rest of the team for the same week.",
+      followUp: textFor(question, "Também posso comparar esse trabalhador com o restante da equipe na mesma semana.", "I can also compare this worker against the rest of the team for the same week."),
       report: buildReportFromTool(latestTool),
     };
   }
@@ -368,14 +399,14 @@ export function buildToolSummaryResponse(
   if (latestTool?.tool === "timecards_by_project" && base?.items?.length) {
     const topProject = base.items[0];
     return {
-      content: `${topProject.projectAddress || topProject.projectName} currently has the highest labor cost for ${base.periodLabel || "the selected period"}.`,
+      content: textFor(question, `${topProject.projectAddress || topProject.projectName} é atualmente o projeto com maior custo de mão de obra em ${base.periodLabel || "o período selecionado"}.`, `${topProject.projectAddress || topProject.projectName} currently has the highest labor cost for ${base.periodLabel || "the selected period"}.`),
       bullets: [
-        `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`,
-        `Client: ${topProject.clientName || "Not available"}.`,
-        `Labor cost: ${formatCurrency(topProject.totalCost || 0)}.`,
-        `Total hours: ${formatHours(topProject.totalHours || 0)} across ${topProject.entryCount || 0} entries.`,
+        textFor(question, `Filtro de data usado: ${base.dateRangeLabel || base.periodLabel || "o período selecionado"}.`, `Date filter used: ${base.dateRangeLabel || base.periodLabel || "the selected period"}.`),
+        textFor(question, `Cliente: ${topProject.clientName || "Não disponível"}.`, `Client: ${topProject.clientName || "Not available"}.`),
+        textFor(question, `Custo de mão de obra: ${formatCurrency(topProject.totalCost || 0)}.`, `Labor cost: ${formatCurrency(topProject.totalCost || 0)}.`),
+        textFor(question, `Total de horas: ${formatHours(topProject.totalHours || 0)} em ${topProject.entryCount || 0} lançamentos.`, `Total hours: ${formatHours(topProject.totalHours || 0)} across ${topProject.entryCount || 0} entries.`),
       ],
-      followUp: "I can show which workers are driving the labor cost on this project.",
+      followUp: textFor(question, "Posso mostrar quais trabalhadores estão puxando o custo de mão de obra desse projeto.", "I can show which workers are driving the labor cost on this project."),
       report: buildReportFromTool(latestTool),
     };
   }
@@ -404,6 +435,39 @@ export function buildToolSummaryResponse(
         `Combined project coverage: ${base.totals.projectCount || 0} active projects.`,
       ],
       followUp: "I can break this down by project, by worker, by subcontractor, or show the detailed tables behind each side.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "financial_period_comparison" && base?.rows?.length) {
+    const totalCostRow = base.rows.find((row: any) => row.label === "Total Cost");
+    const topVarianceRow = [...base.rows].sort((a: any, b: any) => Math.abs(b.variance || 0) - Math.abs(a.variance || 0))[0];
+
+    return {
+      content: textFor(
+        question,
+        `Comparei ${base.current?.dateRangeLabel || "o período atual"} com ${base.previous?.dateRangeLabel || "o período anterior"} e o custo total ficou em ${formatCurrency(base.current?.totalCost || 0)}.`,
+        `I compared ${base.current?.dateRangeLabel || "the current period"} against ${base.previous?.dateRangeLabel || "the previous period"} and the total cost is ${formatCurrency(base.current?.totalCost || 0)}.`
+      ),
+      bullets: [
+        textFor(question, `Período atual: ${base.current?.dateRangeLabel || "não informado"}.`, `Current period: ${base.current?.dateRangeLabel || "not provided"}.`),
+        textFor(question, `Período anterior: ${base.previous?.dateRangeLabel || "não informado"}.`, `Previous period: ${base.previous?.dateRangeLabel || "not provided"}.`),
+        totalCostRow
+          ? textFor(
+              question,
+              `Variação do custo total: ${totalCostRow.variance >= 0 ? "+" : "-"}${formatCurrency(Math.abs(totalCostRow.variance || 0))} (${((totalCostRow.variancePct || 0) * 100).toFixed(1)}%).`,
+              `Total cost variance: ${totalCostRow.variance >= 0 ? "+" : "-"}${formatCurrency(Math.abs(totalCostRow.variance || 0))} (${((totalCostRow.variancePct || 0) * 100).toFixed(1)}%).`
+            )
+          : null,
+        topVarianceRow
+          ? textFor(
+              question,
+              `Maior mudança observada: ${topVarianceRow.label}.`,
+              `Largest observed change: ${topVarianceRow.label}.`
+            )
+          : null,
+      ].filter(Boolean) as string[],
+      followUp: textFor(question, "Posso isolar só materiais, só mão de obra, só invoices ou comparar esse recorte por projeto.", "I can isolate just materials, just labor, just invoices, or compare this view by project."),
       report: buildReportFromTool(latestTool),
     };
   }

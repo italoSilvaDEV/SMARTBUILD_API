@@ -404,7 +404,8 @@ export class ProjectController {
                       workEndTime: true,
                       user: {
                         select: {
-                          hourly_price: true
+                          hourly_price: true,
+                          defaultBreakMinutes: true
                         }
                       }
                     }
@@ -599,6 +600,7 @@ export class ProjectController {
                   attendance.check_out_time.toISOString(),
                   attendance.workStartTime,
                   attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
                 );
                 regularHours = convertHHMMToDecimal(hours.normais);
                 overtimeHours = convertHHMMToDecimal(hours.extras);
@@ -614,8 +616,15 @@ export class ProjectController {
           const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
             const costSub = userService.user_attendances.reduce((sub, attendance) => {
               let hoursWorked = 0;
-              if (attendance.check_out_time) {
-                hoursWorked = dayjs(attendance.check_out_time).diff(dayjs(attendance.check_in_time), 'hour', true);
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
               }
               return sub + parseFloat(hoursWorked.toFixed(2))
             }, 0)
@@ -853,40 +862,67 @@ export class ProjectController {
         );
         const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
 
-        let costofwork = project.invoiceCostProject.reduce(
-          (total, invoice) => {
-            const costSum = invoice.costProject.reduce((subtotal, cost) => {
-              if (cost.transaction_type === "Cost") {
-                return subtotal + Number(cost.price) * Number(cost.amout);
-              } else if (cost.transaction_type === "Credit") {
-                return subtotal - Number(cost.price) * Number(cost.amout);
-              }
-              return subtotal;
-            }, 0);
-            return total + costSum;
-          },
-          0
-        );
+        const costofwork = flatCostProjects.reduce((total, cost) => {
+          const lineTotal = Number(cost.price) * Number(cost.amout);
 
-        const projectAttendances = project.serviceProject.flatMap((service) =>
-          service.UserServiceProject.flatMap((usp) =>
-            (usp.user_attendances ?? []).map((a) => ({
-              user_id: (a as any).user_id,
-              check_in_time: (a as any).check_in_time,
-              check_out_time: (a as any).check_out_time,
-              workStartTime: (a as any).workStartTime,
-              workEndTime: (a as any).workEndTime,
-              isOvertime: (a as any).isOvertime,
-              user: {
-                hourly_price: (a as any).user?.hourly_price ?? null,
-                defaultBreakMinutes: (a as any).user?.defaultBreakMinutes ?? null,
-              },
-            }))
-          )
-        );
-        const attendanceTotals = calculateProjectAttendanceWithOvertime(projectAttendances);
-        const userAttendance = attendanceTotals.totalPrice;
-        const userAttendanceHours = attendanceTotals.totalHours;
+          if (cost.transaction_type === "Cost") {
+            return total + lineTotal;
+          }
+
+          if (cost.transaction_type === "Credit") {
+            return total - lineTotal;
+          }
+
+          return total;
+        }, 0);
+
+        const userAttendance = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let hoursWorked = 0;
+              let regularHours = 0;
+              let overtimeHours = 0;
+
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                regularHours = convertHHMMToDecimal(hours.normais);
+                overtimeHours = convertHHMMToDecimal(hours.extras);
+              }
+              return sub + ((regularHours * (attendance.user.hourly_price || 0)) + (overtimeHours * (attendance.user.hourly_price || 0) * 1.5))
+
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0)
+
+        const userAttendanceHours = project.serviceProject.reduce((total, service) => {
+          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
+            const costSub = userService.user_attendances.reduce((sub, attendance) => {
+              let hoursWorked = 0;
+              if (attendance.check_out_time && attendance.check_in_time) {
+                const hours = calcularHorasTrabalhadas(
+                  attendance.check_in_time.toISOString(),
+                  attendance.check_out_time.toISOString(),
+                  attendance.workStartTime,
+                  attendance.workEndTime,
+                  attendance.user.defaultBreakMinutes || 0,
+                );
+                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+              }
+              return sub + parseFloat(hoursWorked.toFixed(2))
+
+            }, 0)
+            return subTotal + costSub
+          }, 0);
+          return total + costTotal
+        }, 0)
 
         let totalCostOfServiceHours = 0;
         let totalSubcontractorCost = 0;
@@ -2038,6 +2074,7 @@ export class ProjectController {
               name: true,
               avatar: true,
               hourly_price: true,
+              defaultBreakMinutes: true,
             },
           },
         },
@@ -2050,13 +2087,6 @@ export class ProjectController {
       const processedResult = await Promise.all(
         result.map(async (attendance) => {
           let hoursWorked = 0;
-          if (attendance.check_out_time) {
-            hoursWorked = dayjs(attendance.check_out_time).diff(
-              dayjs(attendance.check_in_time),
-              "hour",
-              true
-            );
-          }
           let regularHours = 0;
           let overtimeHours = 0;
 
@@ -2066,9 +2096,11 @@ export class ProjectController {
               attendance.check_out_time.toISOString(),
               attendance.workStartTime,
               attendance.workEndTime,
+              attendance.user.defaultBreakMinutes || 0,
             );
             regularHours = convertHHMMToDecimal(hours.normais);
             overtimeHours = convertHHMMToDecimal(hours.extras);
+            hoursWorked = regularHours + overtimeHours;
           }
           return {
             ...attendance,

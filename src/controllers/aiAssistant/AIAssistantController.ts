@@ -16,6 +16,7 @@ import {
   endOfDay,
   formatCurrency,
   formatHours,
+  getComparisonDateRanges,
   getActiveProjectStatusFilter,
   getActiveProjectStatuses,
   getRequestedDateRange,
@@ -55,6 +56,7 @@ const DATE_FILTER_TOOL_NAMES = new Set([
   "timecard_summary",
   "timecards_by_worker",
   "employee_vs_subcontractor_spend",
+  "financial_period_comparison",
   "worker_timecard_details",
   "timecards_by_project",
   "timecards_daily_breakdown",
@@ -112,6 +114,12 @@ function isDateWithinRange(value: unknown, rangeStart: Date | null, rangeEnd: Da
   if (rangeStart && date < rangeStart) return false;
   if (rangeEnd && date > rangeEnd) return false;
   return true;
+}
+
+function getCostProjectLineTotal(cost: any) {
+  const lineTotal = decimalToNumber(cost?.price) * Number(cost?.amout || 0);
+  if (cost?.transaction_type === "Credit") return -lineTotal;
+  return lineTotal;
 }
 
 function buildProjectStatusWhere(input: Record<string, unknown>) {
@@ -192,6 +200,70 @@ function getProjectReference(project: {
     clientName: project.client?.name || null,
   };
 }
+
+type ProjectFinancialProject = {
+  id: string;
+  contract_number?: number | string | null;
+  location?: string | null;
+  price?: unknown;
+  amountPaid?: unknown;
+  balanceDue?: unknown;
+  client?: { id?: string; name?: string | null; email?: string | null } | null;
+  serviceProject?: Array<{
+    id?: string;
+    name?: string | null;
+    hours?: unknown;
+    price?: unknown;
+    costProject?: Array<{
+      material_name?: string | null;
+      price?: unknown;
+      amout?: unknown;
+      transaction_type?: string | null;
+      cost_date?: unknown;
+    }>;
+    UserServiceProject?: Array<{
+      user_attendances?: Array<{
+        date?: unknown;
+        check_in_time?: unknown;
+        check_out_time?: unknown;
+        workStartTime?: string | null;
+        workEndTime?: string | null;
+        user?: {
+          id?: string | null;
+          name?: string | null;
+          hourly_price?: unknown;
+          defaultBreakMinutes?: number | null;
+        } | null;
+      }>;
+    }>;
+  }>;
+  workedHours?: Array<{
+    subcontractor_id?: string | null;
+    name_user?: string | null;
+    amount_of_hours?: unknown;
+    hourly_price?: unknown;
+    fixed_price?: unknown;
+    type_price?: string | null;
+    payment_date?: unknown;
+    date_creation?: unknown;
+    subcontractor?: { id?: string | null; name?: string | null } | null;
+  }>;
+};
+
+type ProjectFinancialSnapshot = {
+  materialCost: number;
+  employeeCost: number;
+  subcontractorCost: number;
+  laborCost: number;
+  totalCost: number;
+  totalHoursWorked: number;
+  soldValue: number;
+  amountPaid: number;
+  balanceDue: number;
+  invoicedAmount: number;
+  byMaterial: Record<string, number>;
+  byLaborContributor: Record<string, number>;
+};
 
 function summarizeTitle(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim();
@@ -369,6 +441,32 @@ async function insertMessage(params: {
 }
 
 export class AIAssistantController {
+  private async resolveProjectIdentifier(companyId: string, rawValue: unknown) {
+    const value = String(rawValue || "").trim();
+    if (!value) return null;
+
+    const directProject = await prisma.project.findFirst({
+      where: {
+        company_id: companyId,
+        OR: [
+          { id: value },
+          ...(Number.isFinite(Number(value)) ? [{ contract_number: { equals: Number(value) } } as any] : []),
+          { location: { contains: value } },
+          { client: { name: { contains: value } } },
+        ],
+      } as any,
+      orderBy: [
+        { status_project: "asc" },
+        { date_creation: "desc" },
+      ],
+      select: {
+        id: true,
+      },
+    } as any);
+
+    return directProject?.id || null;
+  }
+
   private async createWelcomeMessage(threadId: string) {
     return insertMessage({
       threadId,
@@ -411,6 +509,13 @@ export class AIAssistantController {
       ].includes(toolName)
     ) {
       resolvedInput.projectId = contextualProjectId;
+    }
+
+    if (resolvedInput.projectId) {
+      const resolvedProjectId = await this.resolveProjectIdentifier(companyId, resolvedInput.projectId);
+      if (resolvedProjectId) {
+        resolvedInput.projectId = resolvedProjectId;
+      }
     }
 
     if (
@@ -623,6 +728,12 @@ export class AIAssistantController {
           tool: toolName,
           input: resolvedInput,
           output: await this.employeeVsSubcontractorSpend(companyId, resolvedInput),
+        };
+      case "financial_period_comparison":
+        return {
+          tool: toolName,
+          input: resolvedInput,
+          output: await this.financialPeriodComparison(companyId, resolvedInput),
         };
       case "worker_timecard_details":
         return {
@@ -1153,6 +1264,28 @@ export class AIAssistantController {
       {
         type: "function" as const,
         function: {
+          name: "financial_period_comparison",
+          description: "Compare financial and cost KPIs between a selected period and the previous equivalent period, including materials, labor, total cost, invoice count, invoice value, paid value and overdue exposure.",
+          parameters: {
+            type: "object",
+            properties: {
+              projectId: { type: "string" },
+              period: {
+                type: "string",
+                enum: ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"],
+              },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              date: { type: "string" },
+              compareStartDate: { type: "string" },
+              compareEndDate: { type: "string" },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "worker_timecard_details",
           description: "Return detailed internal employee SmartBuild time card entries for a specific worker, including check-in, check-out, project, service, category, hours and labor pay/cost, with optional exact date or date range filters.",
           parameters: {
@@ -1437,7 +1570,6 @@ export class AIAssistantController {
                 model: "gpt-5-mini",
                 instructions: PLANNING_SYSTEM_PROMPT,
                 input: messages.filter((message: any) => message.role !== "system"),
-                previous_response_id: lastResponseId || undefined,
                 tools: this.getTools() as any,
               } as any),
               OPENAI_TOOL_TIMEOUT_MS,
@@ -1458,7 +1590,6 @@ export class AIAssistantController {
                 model: "gpt-5-mini",
                 instructions: PLANNING_SYSTEM_PROMPT,
                 input: minimalMessages.filter((message: any) => message.role !== "system"),
-                previous_response_id: lastResponseId || undefined,
                 tools: this.getTools() as any,
               } as any),
               OPENAI_TOOL_TIMEOUT_MS,
@@ -1468,10 +1599,14 @@ export class AIAssistantController {
           }
 
           lastResponseId = completion?.id || lastResponseId;
-          const responseOutput = Array.isArray(completion?.output) ? completion.output : [];
-          const toolCalls = responseOutput.filter((item: any) => item?.type === "function_call");
+          while (true) {
+            const responseOutput = Array.isArray(completion?.output) ? completion.output : [];
+            const toolCalls = responseOutput.filter((item: any) => item?.type === "function_call");
 
-          if (toolCalls.length) {
+            if (!toolCalls.length) {
+              break;
+            }
+
             const toolOutputs: any[] = [];
 
             for (const toolCall of toolCalls) {
@@ -1503,13 +1638,6 @@ export class AIAssistantController {
               "assistant tool planning"
             );
             lastResponseId = completion?.id || lastResponseId;
-            const followUpToolCalls = Array.isArray(completion?.output)
-              ? completion.output.filter((item: any) => item?.type === "function_call")
-              : [];
-
-            if (followUpToolCalls.length) {
-              continue;
-            }
           }
 
           const assistantText = this.getResponseText(completion);
@@ -1545,7 +1673,7 @@ export class AIAssistantController {
           };
         }
 
-        const fallback = buildToolSummaryResponse(executedTools, buildReportFromTool);
+        const fallback = buildToolSummaryResponse(executedTools, buildReportFromTool, question);
         const fallbackWithReport = {
           ...fallback,
           report: fallback.report || buildReportFromTool(executedTools[0]) || null,
@@ -1564,7 +1692,6 @@ export class AIAssistantController {
           const synthesisCompletion: any = await withTimeout(openai.responses.create({
             model: "gpt-5-mini",
             instructions: SYNTHESIS_PROMPT,
-            previous_response_id: lastResponseId || undefined,
             input: JSON.stringify({
               question,
               tools: compactTools,
@@ -1873,6 +2000,27 @@ export class AIAssistantController {
                 id: true,
               },
             },
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             photos: {
               select: {
                 id: true,
@@ -1884,10 +2032,19 @@ export class AIAssistantController {
           select: {
             subcontractor_id: true,
             id: true,
+            name_user: true,
             amount_of_hours: true,
             hourly_price: true,
             fixed_price: true,
             type_price: true,
+            payment_date: true,
+            date_creation: true,
+            subcontractor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         invoices: {
@@ -1945,24 +2102,9 @@ export class AIAssistantController {
       return { error: "Project not found" };
     }
 
-    const employeeRows = await this.getEmployeeWorkedHours(companyId, { projectId });
-
-    const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
-      return (
-        acc +
-        service.costProject.reduce((serviceAcc: number, cost: any) => {
-          return serviceAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
-        }, 0)
-      );
-    }, 0);
-
-    const employeeLaborCost = employeeRows.reduce((acc: number, item: any) => acc + getWorkedHourEffectiveCost(item).totalCost, 0);
-    const subcontractorLaborCost = project.workedHours
-      .filter((item: any) => Boolean(item.subcontractor_id))
-      .reduce((acc: number, item: any) => acc + this.getSubcontractorEntryCost(item).totalCost, 0);
-    const laborCost = employeeLaborCost + subcontractorLaborCost;
-
     const invoicedAmount = project.invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
+    const financials = this.calculateProjectFinancials(project);
+    financials.invoicedAmount = invoicedAmount;
     const taskStatusCounts = {
       open: project.tasks.filter((task: any) => task.status === "OPEN").length,
       inProgress: project.tasks.filter((task: any) => task.status === "IN_PROGRESS").length,
@@ -2013,11 +2155,13 @@ export class AIAssistantController {
         activities: service.Activities.length,
       })),
       financials: {
-        materialCost,
-        laborCost,
-        totalCost: materialCost + laborCost,
+        materialCost: financials.materialCost,
+        employeeCost: financials.employeeCost,
+        subcontractorCost: financials.subcontractorCost,
+        laborCost: financials.laborCost,
+        totalCost: financials.totalCost,
         invoicedAmount,
-        soldVsCost: decimalToNumber(project.price) - (materialCost + laborCost),
+        soldVsCost: decimalToNumber(project.price) - financials.totalCost,
       },
       invoices: project.invoices.map((invoice: any) => ({
         id: invoice.id,
@@ -2043,75 +2187,95 @@ export class AIAssistantController {
 
   private async topSpendingProjects(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 5) || 5, 100);
-    const { rangeStart, rangeEnd } = getRequestedDateRange(input);
-    const [projects, employeeRows, subcontractorRows] = await Promise.all([
-      prisma.project.findMany({
-        where: {
-          company_id: companyId,
-          status_project: getActiveProjectStatusFilter(),
-        },
-        select: {
-          id: true,
-          contract_number: true,
-          location: true,
-          client: {
-            select: {
-              name: true,
-            },
+    const dateContext = describeRequestedDateRange(input);
+    const { rangeStart, rangeEnd } = dateContext;
+    const projects = await prisma.project.findMany({
+      where: {
+        company_id: companyId,
+        status_project: getActiveProjectStatusFilter(),
+      },
+      select: {
+        id: true,
+        contract_number: true,
+        location: true,
+        price: true,
+        amountPaid: true,
+        balanceDue: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
           },
-          serviceProject: {
-            select: {
-              name: true,
-              costProject: {
-                select: {
-                  price: true,
-                  amout: true,
-                  cost_date: true,
+        },
+        serviceProject: {
+          select: {
+            costProject: {
+              select: {
+                material_name: true,
+                price: true,
+                amout: true,
+                transaction_type: true,
+                cost_date: true,
+              },
+            },
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
                 },
               },
             },
           },
         },
-      }),
-      this.getEmployeeWorkedHours(companyId, input),
-      this.getSubcontractorWorkedHours(companyId, input),
-    ]);
-
-    const employeeLaborByProject = new Map<string, number>();
-    for (const row of employeeRows) {
-      const projectKey = row.project?.id;
-      if (!projectKey) continue;
-      employeeLaborByProject.set(projectKey, (employeeLaborByProject.get(projectKey) || 0) + getWorkedHourEffectiveCost(row).totalCost);
-    }
-
-    const subcontractorLaborByProject = new Map<string, number>();
-    for (const row of subcontractorRows) {
-      const projectKey = row.project?.id;
-      if (!projectKey) continue;
-      subcontractorLaborByProject.set(projectKey, (subcontractorLaborByProject.get(projectKey) || 0) + this.getSubcontractorEntryCost(row).totalCost);
-    }
+        workedHours: {
+          select: {
+            subcontractor_id: true,
+            name_user: true,
+            amount_of_hours: true,
+            hourly_price: true,
+            fixed_price: true,
+            type_price: true,
+            payment_date: true,
+            date_creation: true,
+            subcontractor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     const items = projects
       .map((project: any) => {
-        const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
-          return (
-            acc +
-            service.costProject.reduce((costAcc: number, cost: any) => {
-              if (!isDateWithinRange(cost.cost_date, rangeStart, rangeEnd)) return costAcc;
-              return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
-            }, 0)
-          );
-        }, 0);
-
-        const laborCost = (employeeLaborByProject.get(project.id) || 0) + (subcontractorLaborByProject.get(project.id) || 0);
+        const financials = this.calculateProjectFinancials(project, rangeStart, rangeEnd);
 
         return {
           projectId: project.id,
           ...getProjectReference(project),
           contractNumber: project.contract_number,
-          materialCost,
-          laborCost,
-          totalCost: materialCost + laborCost,
+          materialCost: financials.materialCost,
+          employeeCost: financials.employeeCost,
+          subcontractorCost: financials.subcontractorCost,
+          laborCost: financials.laborCost,
+          totalCost: financials.totalCost,
         };
       })
       .sort((a: any, b: any) => b.totalCost - a.totalCost)
@@ -2119,6 +2283,8 @@ export class AIAssistantController {
 
     return {
       total: items.length,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       period: {
         start: rangeStart || null,
         end: rangeEnd || null,
@@ -2129,69 +2295,87 @@ export class AIAssistantController {
 
   private async topProfitableProjects(companyId: string, input: Record<string, unknown>) {
     const limit = Math.min(Number(input.limit || 8) || 8, 100);
-    const { rangeStart, rangeEnd } = getRequestedDateRange(input);
-    const [projects, employeeRows, subcontractorRows] = await Promise.all([
-      prisma.project.findMany({
-        where: {
-          company_id: companyId,
-          status_project: getActiveProjectStatusFilter(),
-        },
-        select: {
-          id: true,
-          contract_number: true,
-          location: true,
-          price: true,
-          client: {
-            select: {
-              id: true,
-              name: true,
-            },
+    const dateContext = describeRequestedDateRange(input);
+    const { rangeStart, rangeEnd } = dateContext;
+    const projects = await prisma.project.findMany({
+      where: {
+        company_id: companyId,
+        status_project: getActiveProjectStatusFilter(),
+      },
+      select: {
+        id: true,
+        contract_number: true,
+        location: true,
+        price: true,
+        amountPaid: true,
+        balanceDue: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
           },
-          serviceProject: {
-            select: {
-              costProject: {
-                select: {
-                  price: true,
-                  amout: true,
-                  cost_date: true,
+        },
+        serviceProject: {
+          select: {
+            costProject: {
+              select: {
+                material_name: true,
+                price: true,
+                amout: true,
+                transaction_type: true,
+                cost_date: true,
+              },
+            },
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
                 },
               },
             },
           },
         },
-      }),
-      this.getEmployeeWorkedHours(companyId, input),
-      this.getSubcontractorWorkedHours(companyId, input),
-    ]);
-
-    const employeeLaborByProject = new Map<string, number>();
-    for (const row of employeeRows) {
-      const projectKey = row.project?.id;
-      if (!projectKey) continue;
-      employeeLaborByProject.set(projectKey, (employeeLaborByProject.get(projectKey) || 0) + getWorkedHourEffectiveCost(row).totalCost);
-    }
-
-    const subcontractorLaborByProject = new Map<string, number>();
-    for (const row of subcontractorRows) {
-      const projectKey = row.project?.id;
-      if (!projectKey) continue;
-      subcontractorLaborByProject.set(projectKey, (subcontractorLaborByProject.get(projectKey) || 0) + this.getSubcontractorEntryCost(row).totalCost);
-    }
+        workedHours: {
+          select: {
+            subcontractor_id: true,
+            name_user: true,
+            amount_of_hours: true,
+            hourly_price: true,
+            fixed_price: true,
+            type_price: true,
+            payment_date: true,
+            date_creation: true,
+            subcontractor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     const items = projects
       .map((project: any) => {
-        const soldValue = decimalToNumber(project.price);
-        const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
-          return acc + service.costProject.reduce((costAcc: number, cost: any) => {
-            if (!isDateWithinRange(cost.cost_date, rangeStart, rangeEnd)) return costAcc;
-            return costAcc + decimalToNumber(cost.price) * Number(cost.amout || 0);
-          }, 0);
-        }, 0);
-
-        const laborCost = (employeeLaborByProject.get(project.id) || 0) + (subcontractorLaborByProject.get(project.id) || 0);
-
-        const totalCost = materialCost + laborCost;
-        const profitValue = soldValue - totalCost;
+        const financials = this.calculateProjectFinancials(project, rangeStart, rangeEnd);
+        const profitValue = financials.soldValue - financials.totalCost;
+        const soldValue = financials.soldValue;
         const profitPct = soldValue > 0 ? profitValue / soldValue : 0;
 
         return {
@@ -2199,9 +2383,11 @@ export class AIAssistantController {
           ...getProjectReference(project),
           contractNumber: project.contract_number,
           soldValue,
-          materialCost,
-          laborCost,
-          totalCost,
+          materialCost: financials.materialCost,
+          employeeCost: financials.employeeCost,
+          subcontractorCost: financials.subcontractorCost,
+          laborCost: financials.laborCost,
+          totalCost: financials.totalCost,
           profitValue,
           profitPct,
         };
@@ -2213,6 +2399,8 @@ export class AIAssistantController {
       total: Math.min(items.length, limit),
       profitableCount: items.filter((item) => item.profitValue > 0).length,
       unprofitableCount: items.filter((item) => item.profitValue <= 0).length,
+      periodLabel: dateContext.periodLabel,
+      dateRangeLabel: dateContext.dateRangeLabel,
       period: {
         start: rangeStart || null,
         end: rangeEnd || null,
@@ -2231,6 +2419,27 @@ export class AIAssistantController {
         client: { select: { name: true } },
         serviceProject: {
           select: {
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             costProject: {
               select: {
                 material_name: true,
@@ -2248,6 +2457,8 @@ export class AIAssistantController {
             hourly_price: true,
             fixed_price: true,
             type_price: true,
+            payment_date: true,
+            date_creation: true,
             subcontractor: { select: { id: true, name: true } },
           },
         },
@@ -2255,53 +2466,23 @@ export class AIAssistantController {
     });
 
     if (!project) return { error: "Project not found" };
-
-    const employeeRows = await this.getEmployeeWorkedHours(companyId, { projectId });
-
-    let materialCost = 0;
-    let laborCost = employeeRows.reduce((acc: number, item: any) => acc + getWorkedHourEffectiveCost(item).totalCost, 0);
-    let subcontractorCost = 0;
-    const byMaterial: Record<string, number> = {};
-    const byLaborContributor: Record<string, number> = {};
-
-    for (const service of project.serviceProject) {
-      for (const cost of service.costProject) {
-        const total = decimalToNumber(cost.price) * Number(cost.amout || 0);
-        materialCost += total;
-        byMaterial[cost.material_name || "Uncategorized"] = (byMaterial[cost.material_name || "Uncategorized"] || 0) + total;
-      }
-    }
-
-    for (const item of project.workedHours) {
-      if (!item.subcontractor) continue;
-      const total = this.getSubcontractorEntryCost(item).totalCost;
-      laborCost += total;
-      subcontractorCost += total;
-      const contributor = item.subcontractor?.name || item.name_user || "Unknown worker";
-      byLaborContributor[contributor] = (byLaborContributor[contributor] || 0) + total;
-    }
-
-    for (const item of employeeRows) {
-      const total = getWorkedHourEffectiveCost(item).totalCost;
-      const contributor = getWorkedHourWorkerName(item);
-      byLaborContributor[contributor] = (byLaborContributor[contributor] || 0) + total;
-    }
+    const financials = this.calculateProjectFinancials(project);
 
     return {
       projectId: project.id,
       ...getProjectReference(project),
       totals: {
-        materialCost,
-        laborCost,
-        subcontractorCost,
-        internalLaborCost: laborCost - subcontractorCost,
-        totalCost: materialCost + laborCost,
+        materialCost: financials.materialCost,
+        laborCost: financials.laborCost,
+        subcontractorCost: financials.subcontractorCost,
+        internalLaborCost: financials.employeeCost,
+        totalCost: financials.totalCost,
       },
-      topMaterials: Object.entries(byMaterial)
+      topMaterials: Object.entries(financials.byMaterial)
         .map(([label, value]) => ({ label, value }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 8),
-      topLaborContributors: Object.entries(byLaborContributor)
+      topLaborContributors: Object.entries(financials.byLaborContributor)
         .map(([label, value]) => ({ label, value }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 8),
@@ -2322,37 +2503,51 @@ export class AIAssistantController {
         invoices: { select: { totalAmount: true, status: true } },
         serviceProject: {
           select: {
-            costProject: { select: { price: true, amout: true } },
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            costProject: { select: { price: true, amout: true, transaction_type: true } },
           },
         },
         workedHours: {
           select: {
             subcontractor_id: true,
+            name_user: true,
             amount_of_hours: true,
             hourly_price: true,
             fixed_price: true,
             type_price: true,
+            payment_date: true,
+            date_creation: true,
+            subcontractor: { select: { id: true, name: true } },
           },
         },
       },
     });
 
     if (!project) return { error: "Project not found" };
-
-    const employeeRows = await this.getEmployeeWorkedHours(companyId, { projectId });
-
-    const soldValue = decimalToNumber(project.price);
-    const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
-      return acc + service.costProject.reduce((inner: number, cost: any) => inner + decimalToNumber(cost.price) * Number(cost.amout || 0), 0);
-    }, 0);
-    const employeeLaborCost = employeeRows.reduce((acc: number, item: any) => acc + getWorkedHourEffectiveCost(item).totalCost, 0);
-    const subcontractorLaborCost = project.workedHours.reduce((acc: number, item: any) => {
-      return acc + (item.subcontractor_id ? this.getSubcontractorEntryCost(item).totalCost : 0);
-    }, 0);
-    const laborCost = employeeLaborCost + subcontractorLaborCost;
-    const totalCost = materialCost + laborCost;
+    const financials = this.calculateProjectFinancials(project);
+    const soldValue = financials.soldValue;
     const invoiced = project.invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
-    const marginValue = soldValue - totalCost;
+    const marginValue = soldValue - financials.totalCost;
     const marginPct = soldValue > 0 ? marginValue / soldValue : 0;
 
     return {
@@ -2363,9 +2558,11 @@ export class AIAssistantController {
       amountPaid: decimalToNumber(project.amountPaid),
       balanceDue: decimalToNumber(project.balanceDue),
       costs: {
-        materialCost,
-        laborCost,
-        totalCost,
+        materialCost: financials.materialCost,
+        employeeCost: financials.employeeCost,
+        subcontractorCost: financials.subcontractorCost,
+        laborCost: financials.laborCost,
+        totalCost: financials.totalCost,
       },
       margin: {
         value: marginValue,
@@ -2533,7 +2730,7 @@ export class AIAssistantController {
 
     const services = project.serviceProject.map((service: any) => {
       const materialCost = service.costProject.reduce((acc: number, item: any) => {
-        return acc + decimalToNumber(item.price) * Number(item.amout || 0);
+        return acc + getCostProjectLineTotal(item);
       }, 0);
       const stageCompleted = service.stages.filter((stage: any) => stage.check).length;
       const stageTotal = service.stages.length;
@@ -2584,7 +2781,7 @@ export class AIAssistantController {
           materialName: item.material_name,
           unitPrice: decimalToNumber(item.price),
           quantity: Number(item.amout || 0),
-          totalPrice: decimalToNumber(item.price) * Number(item.amout || 0),
+          totalPrice: getCostProjectLineTotal(item),
           transactionType: item.transaction_type,
           costDate: item.cost_date,
         })),
@@ -3085,7 +3282,7 @@ export class AIAssistantController {
 
   private async listClients(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
 
     const clients = await prisma.client.findMany({
       where: {
@@ -3735,7 +3932,7 @@ export class AIAssistantController {
         workedHours: { select: { subcontractor_id: true, amount_of_hours: true, hourly_price: true, fixed_price: true, type_price: true } },
         serviceProject: {
           select: {
-            costProject: { select: { price: true, amout: true } },
+            costProject: { select: { price: true, amout: true, transaction_type: true } },
           },
         },
         estimates: {
@@ -3759,7 +3956,7 @@ export class AIAssistantController {
     const estimateValue = latestEstimate ? decimalToNumber(latestEstimate.totalAmount) : 0;
     const invoiced = project.invoices.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
     const materialCost = project.serviceProject.reduce((acc: number, service: any) => {
-      return acc + service.costProject.reduce((inner: number, cost: any) => inner + decimalToNumber(cost.price) * Number(cost.amout || 0), 0);
+      return acc + service.costProject.reduce((inner: number, cost: any) => inner + getCostProjectLineTotal(cost), 0);
     }, 0);
     const employeeLaborCost = employeeRows.reduce((acc: number, item: any) => acc + getWorkedHourEffectiveCost(item).totalCost, 0);
     const subcontractorLaborCost = project.workedHours.reduce((acc: number, item: any) => {
@@ -4016,6 +4213,105 @@ export class AIAssistantController {
       row.description ||
       "General cost"
     );
+  }
+
+  private calculateAttendanceEntry(attendance: any, rangeStart: Date | null, rangeEnd: Date | null) {
+    const anchorDate = parseDateValue(attendance?.date) || parseDateValue(attendance?.check_in_time);
+    if (!isDateWithinRange(anchorDate, rangeStart, rangeEnd)) {
+      return { totalCost: 0, totalHours: 0 };
+    }
+
+    if (!attendance?.check_in_time || !attendance?.check_out_time) {
+      return { totalCost: 0, totalHours: 0 };
+    }
+
+    const hours = calcularHorasTrabalhadas(
+      new Date(attendance.check_in_time).toISOString(),
+      new Date(attendance.check_out_time).toISOString(),
+      attendance.workStartTime,
+      attendance.workEndTime,
+      attendance.user?.defaultBreakMinutes || 0
+    );
+
+    const regularHours = convertHHMMToDecimal(hours.normais);
+    const overtimeHours = convertHHMMToDecimal(hours.extras);
+    const hourlyRate = decimalToNumber(attendance.user?.hourly_price);
+
+    return {
+      totalHours: regularHours + overtimeHours,
+      totalCost: regularHours * hourlyRate + overtimeHours * hourlyRate * 1.5,
+    };
+  }
+
+  private calculateProjectFinancials(project: ProjectFinancialProject, rangeStart: Date | null = null, rangeEnd: Date | null = null): ProjectFinancialSnapshot {
+    let materialCost = 0;
+    let attendanceEmployeeCost = 0;
+    let attendanceHours = 0;
+    let internalWorkedHoursCost = 0;
+    let internalWorkedHoursTotal = 0;
+    let subcontractorCost = 0;
+    let subcontractorHours = 0;
+    const byMaterial: Record<string, number> = {};
+    const byLaborContributor: Record<string, number> = {};
+
+    for (const service of project.serviceProject || []) {
+      for (const cost of service.costProject || []) {
+        if (!isDateWithinRange(cost.cost_date, rangeStart, rangeEnd)) continue;
+        const lineTotal = getCostProjectLineTotal(cost);
+        materialCost += lineTotal;
+        const materialLabel = cost.material_name || "Uncategorized";
+        byMaterial[materialLabel] = (byMaterial[materialLabel] || 0) + lineTotal;
+      }
+
+      for (const userService of service.UserServiceProject || []) {
+        for (const attendance of userService.user_attendances || []) {
+          const { totalCost, totalHours } = this.calculateAttendanceEntry(attendance, rangeStart, rangeEnd);
+          if (!totalCost && !totalHours) continue;
+          attendanceEmployeeCost += totalCost;
+          attendanceHours += totalHours;
+          const contributor = attendance.user?.name || "Unknown worker";
+          byLaborContributor[contributor] = (byLaborContributor[contributor] || 0) + totalCost;
+        }
+      }
+    }
+
+    for (const row of project.workedHours || []) {
+      const paymentDate = (row as any).payment_date || (row as any).date_creation || null;
+      if (!isDateWithinRange(paymentDate, rangeStart, rangeEnd)) continue;
+      const contributor = row.subcontractor?.name || row.name_user || "Unknown worker";
+      if (row.subcontractor_id) {
+        const { totalCost, totalHours } = this.getSubcontractorEntryCost(row);
+        subcontractorCost += totalCost;
+        subcontractorHours += totalHours;
+        byLaborContributor[contributor] = (byLaborContributor[contributor] || 0) + totalCost;
+      } else {
+        const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
+        internalWorkedHoursCost += totalCost;
+        internalWorkedHoursTotal += totalHours;
+        byLaborContributor[contributor] = (byLaborContributor[contributor] || 0) + totalCost;
+      }
+    }
+
+    const employeeCost = attendanceEmployeeCost + internalWorkedHoursCost;
+    const laborCost = employeeCost + subcontractorCost;
+    const soldValue = decimalToNumber(project.price);
+    const amountPaid = decimalToNumber(project.amountPaid);
+    const balanceDue = decimalToNumber(project.balanceDue);
+
+    return {
+      materialCost,
+      employeeCost,
+      subcontractorCost,
+      laborCost,
+      totalCost: materialCost + laborCost,
+      totalHoursWorked: attendanceHours + internalWorkedHoursTotal + subcontractorHours,
+      soldValue,
+      amountPaid,
+      balanceDue,
+      invoicedAmount: 0,
+      byMaterial,
+      byLaborContributor,
+    };
   }
 
   private buildMonthlyCostSeries(rows: any[], input: Record<string, unknown>) {
@@ -4613,8 +4909,195 @@ export class AIAssistantController {
     };
   }
 
+  private async financialPeriodComparison(companyId: string, input: Record<string, unknown>) {
+    const comparison = getComparisonDateRanges(input);
+    const scopedProjectId = String(input.projectId || "").trim() || null;
+
+    const projectWhere: any = scopedProjectId
+      ? { company_id: companyId, id: scopedProjectId }
+      : { company_id: companyId, status_project: getActiveProjectStatusFilter() };
+
+    const sharedProjects: any[] = await prisma.project.findMany({
+      where: projectWhere,
+      select: {
+        id: true,
+        location: true,
+        contract_number: true,
+        price: true,
+        amountPaid: true,
+        balanceDue: true,
+        client: { select: { name: true } },
+        serviceProject: {
+          select: {
+            costProject: {
+              select: {
+                material_name: true,
+                price: true,
+                amout: true,
+                transaction_type: true,
+                cost_date: true,
+              },
+            },
+            UserServiceProject: {
+              select: {
+                user_attendances: {
+                  select: {
+                    date: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                    workStartTime: true,
+                    workEndTime: true,
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        hourly_price: true,
+                        defaultBreakMinutes: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        workedHours: {
+          select: {
+            subcontractor_id: true,
+            name_user: true,
+            amount_of_hours: true,
+            hourly_price: true,
+            fixed_price: true,
+            type_price: true,
+            payment_date: true,
+            date_creation: true,
+            subcontractor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        companyId,
+        ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
+      },
+      select: {
+        id: true,
+        projectId: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        dueDate: true,
+      },
+    });
+
+    const buildSnapshot = (
+      label: string,
+      dateRangeLabel: string,
+      rangeStart: Date | null,
+      rangeEnd: Date | null
+    ) => {
+      const projectIds = new Set<string>();
+      let materialCost = 0;
+      let employeeCost = 0;
+      let subcontractorCost = 0;
+
+      for (const project of sharedProjects) {
+        const financials = this.calculateProjectFinancials(project, rangeStart, rangeEnd);
+        if ((financials.totalCost > 0 || financials.totalHoursWorked > 0) && project.id) {
+          projectIds.add(project.id);
+        }
+        materialCost += financials.materialCost;
+        employeeCost += financials.employeeCost;
+        subcontractorCost += financials.subcontractorCost;
+      }
+
+      const invoicesInRange = invoices.filter((invoice: any) => {
+        if (!isDateWithinRange(invoice.createdAt, rangeStart, rangeEnd)) return false;
+        if (scopedProjectId) return true;
+        return !invoice.projectId || sharedProjects.some((project) => project.id === invoice.projectId);
+      });
+
+      const invoiceValue = invoicesInRange.reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
+      const paidValue = invoicesInRange
+        .filter((invoice: any) => String(invoice.status).toLowerCase() === "paid")
+        .reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
+      const overdueValue = invoicesInRange
+        .filter((invoice: any) => String(invoice.status).toLowerCase() === "overdue")
+        .reduce((acc: number, invoice: any) => acc + decimalToNumber(invoice.totalAmount), 0);
+
+      return {
+        label,
+        dateRangeLabel,
+        projectCount: projectIds.size,
+        materialCost,
+        employeeCost,
+        subcontractorCost,
+        laborCost: employeeCost + subcontractorCost,
+        totalCost: materialCost + employeeCost + subcontractorCost,
+        invoiceCount: invoicesInRange.length,
+        invoiceValue,
+        paidValue,
+        overdueValue,
+      };
+    };
+
+    const current = buildSnapshot(
+      comparison.current.periodLabel,
+      comparison.current.dateRangeLabel,
+      comparison.current.rangeStart,
+      comparison.current.rangeEnd
+    );
+    const previous = buildSnapshot(
+      comparison.previous.periodLabel,
+      comparison.previous.dateRangeLabel,
+      comparison.previous.rangeStart,
+      comparison.previous.rangeEnd
+    );
+
+    const buildComparisonRow = (label: string, currentValue: number, previousValue: number, format: "currency" | "number" = "currency") => {
+      const variance = currentValue - previousValue;
+      const variancePct = previousValue !== 0 ? variance / previousValue : currentValue === 0 ? 0 : 1;
+      return {
+        label,
+        format,
+        currentValue,
+        previousValue,
+        variance,
+        variancePct,
+      };
+    };
+
+    const rows = [
+      buildComparisonRow("Material Cost", current.materialCost, previous.materialCost),
+      buildComparisonRow("Employee Labor", current.employeeCost, previous.employeeCost),
+      buildComparisonRow("Subcontractor Labor", current.subcontractorCost, previous.subcontractorCost),
+      buildComparisonRow("Total Labor", current.laborCost, previous.laborCost),
+      buildComparisonRow("Total Cost", current.totalCost, previous.totalCost),
+      buildComparisonRow("Invoices", current.invoiceCount, previous.invoiceCount, "number"),
+      buildComparisonRow("Invoice Value", current.invoiceValue, previous.invoiceValue),
+      buildComparisonRow("Paid Value", current.paidValue, previous.paidValue),
+      buildComparisonRow("Overdue Exposure", current.overdueValue, previous.overdueValue),
+      buildComparisonRow("Projects With Activity", current.projectCount, previous.projectCount, "number"),
+    ];
+
+    return {
+      scope: scopedProjectId ? "project" : "company",
+      projectId: scopedProjectId,
+      current,
+      previous,
+      rows,
+    };
+  }
+
   private async timecardsByWorker(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
     const dateContext = describeRequestedDateRange(input);
 
@@ -4630,6 +5113,7 @@ export class AIAssistantController {
       topProjectAddress: string | null;
       topProjectClientName: string | null;
       topProjectCost: number;
+      projectTotals: Map<string, { totalCost: number; projectName: string | null; projectAddress: string | null; clientName: string | null }>;
     }>();
 
     for (const row of workedHours) {
@@ -4647,6 +5131,7 @@ export class AIAssistantController {
         topProjectAddress: null,
         topProjectClientName: null,
         topProjectCost: 0,
+        projectTotals: new Map(),
       };
 
       current.totalHours += totalHours;
@@ -4654,11 +5139,21 @@ export class AIAssistantController {
       current.entryCount += 1;
       current.regularHours += decimalToNumber(row.regular_hours);
       current.overtimeHours += decimalToNumber(row.overtime_hours);
-      if (totalCost >= current.topProjectCost) {
-        current.topProjectCost = totalCost;
-        current.topProjectName = row.project ? getProjectDisplayName(row.project) : null;
-        current.topProjectAddress = row.project?.location || null;
-        current.topProjectClientName = row.project?.client?.name || null;
+      const projectKey = row.project?.id || row.project?.location || row.project?.contract_number || "unknown";
+      const projectCurrent = current.projectTotals.get(String(projectKey)) || {
+        totalCost: 0,
+        projectName: row.project ? getProjectDisplayName(row.project) : null,
+        projectAddress: row.project?.location || null,
+        clientName: row.project?.client?.name || null,
+      };
+      projectCurrent.totalCost += totalCost;
+      current.projectTotals.set(String(projectKey), projectCurrent);
+
+      if (projectCurrent.totalCost >= current.topProjectCost) {
+        current.topProjectCost = projectCurrent.totalCost;
+        current.topProjectName = projectCurrent.projectName;
+        current.topProjectAddress = projectCurrent.projectAddress;
+        current.topProjectClientName = projectCurrent.clientName;
       }
       byWorker.set(workerName, current);
     }
@@ -4670,18 +5165,25 @@ export class AIAssistantController {
       totalWorkers: byWorker.size,
       totalEntries: workedHours.length,
       items: Array.from(byWorker.values())
+        .map(({ projectTotals, ...item }) => item)
         .sort((a, b) => b.totalCost - a.totalCost)
         .slice(0, limit),
     };
   }
 
   private async workerTimecardDetails(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 25) || 25, 60);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workerName = String(input.workerName || "").trim();
     const workedHours = await this.getEmployeeWorkedHours(companyId, { ...input, workerName });
     const dateContext = describeRequestedDateRange(input);
 
-    const entries = workedHours.slice(0, limit).map((row: any) => {
+    const sortedRows = [...workedHours].sort((a: any, b: any) => {
+      const aDate = new Date(a.payment_date || a.date_creation || 0).getTime();
+      const bDate = new Date(b.payment_date || b.date_creation || 0).getTime();
+      return bDate - aDate;
+    });
+
+    const entries = sortedRows.slice(0, limit).map((row: any) => {
       const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
       const workDate = row.payment_date || row.date_creation;
 
@@ -4720,7 +5222,7 @@ export class AIAssistantController {
   }
 
   private async timecardsByProject(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
     const dateContext = describeRequestedDateRange(input);
     const byProject = new Map<string, {
@@ -4733,6 +5235,7 @@ export class AIAssistantController {
       entryCount: number;
       topWorkerName: string | null;
       topWorkerCost: number;
+      workerTotals: Map<string, number>;
     }>();
 
     for (const row of workedHours) {
@@ -4748,14 +5251,18 @@ export class AIAssistantController {
         entryCount: 0,
         topWorkerName: null,
         topWorkerCost: 0,
+        workerTotals: new Map(),
       };
 
       current.totalHours += totalHours;
       current.totalCost += totalCost;
       current.entryCount += 1;
-      if (totalCost >= current.topWorkerCost) {
-        current.topWorkerCost = totalCost;
-        current.topWorkerName = getWorkedHourWorkerName(row);
+      const workerName = getWorkedHourWorkerName(row);
+      const workerTotal = (current.workerTotals.get(workerName) || 0) + totalCost;
+      current.workerTotals.set(workerName, workerTotal);
+      if (workerTotal >= current.topWorkerCost) {
+        current.topWorkerCost = workerTotal;
+        current.topWorkerName = workerName;
       }
       byProject.set(key, current);
     }
@@ -4767,6 +5274,7 @@ export class AIAssistantController {
       totalProjects: byProject.size,
       totalEntries: workedHours.length,
       items: Array.from(byProject.values())
+        .map(({ workerTotals, ...item }) => item)
         .sort((a, b) => b.totalCost - a.totalCost)
         .slice(0, limit),
     };
