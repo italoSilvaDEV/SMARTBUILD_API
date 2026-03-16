@@ -205,8 +205,8 @@ export class TimeController {
                         address: att.check_in_address,
                         status: att.check_out_time ? 'Out' : 'In',
                         check_in_time: att.check_in_time,
-                        check_out_time: att.check_out_time,
                         user_service_project_id: att.user_service_project_id,
+                        check_out_time: att.check_out_time,
                         client: {
                             clientName: att.UserServiceProject?.service_project?.Project?.client?.name,
                             clientAddress: att.UserServiceProject?.service_project?.Project?.location
