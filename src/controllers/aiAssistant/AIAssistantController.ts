@@ -369,6 +369,32 @@ async function insertMessage(params: {
 }
 
 export class AIAssistantController {
+  private async resolveProjectIdentifier(companyId: string, rawValue: unknown) {
+    const value = String(rawValue || "").trim();
+    if (!value) return null;
+
+    const directProject = await prisma.project.findFirst({
+      where: {
+        company_id: companyId,
+        OR: [
+          { id: value },
+          ...(Number.isFinite(Number(value)) ? [{ contract_number: { equals: Number(value) } } as any] : []),
+          { location: { contains: value } },
+          { client: { name: { contains: value } } },
+        ],
+      } as any,
+      orderBy: [
+        { status_project: "asc" },
+        { date_creation: "desc" },
+      ],
+      select: {
+        id: true,
+      },
+    } as any);
+
+    return directProject?.id || null;
+  }
+
   private async createWelcomeMessage(threadId: string) {
     return insertMessage({
       threadId,
@@ -411,6 +437,13 @@ export class AIAssistantController {
       ].includes(toolName)
     ) {
       resolvedInput.projectId = contextualProjectId;
+    }
+
+    if (resolvedInput.projectId) {
+      const resolvedProjectId = await this.resolveProjectIdentifier(companyId, resolvedInput.projectId);
+      if (resolvedProjectId) {
+        resolvedInput.projectId = resolvedProjectId;
+      }
     }
 
     if (
