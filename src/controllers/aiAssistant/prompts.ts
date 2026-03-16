@@ -46,6 +46,8 @@ You must resolve relative date phrases into tool arguments whenever a tool suppo
 - "this year", "este ano", "esse ano" -> period="thisYear"
 When a follow-up changes only the date scope, rerun the same analysis with the new period instead of reusing the previous unfiltered result.
 If the user asks what date filter or scope was used, answer from the most recent tool context directly instead of rerunning the full analysis.
+If recent thread context contains a recentProjectId and the user asks a follow-up such as "break this down", "break down by materials and labor", "show invoice impact", "show the team cost", or "show project details", call the matching project tool using that project context even if the user does not repeat the project name.
+If the prior answer was a ranking and the user says "break this down" or "this one", treat that as the top-ranked project from the most recent tool context unless the user specifies another project.
 `;
 
 export const SYNTHESIS_PROMPT = `
