@@ -38,6 +38,7 @@ const DIRECT_SUMMARY_TOOL_SET = new Set([
   "subcontractor_summary",
   "subcontractor_projects",
   "subcontractor_cost_entries",
+  "financial_period_comparison",
 ]);
 
 export function shouldPreferDirectToolSummary(tools: ExecutedTool[], buildReportFromTool: BuildReportFromTool) {
@@ -430,6 +431,39 @@ export function buildToolSummaryResponse(
         `Combined project coverage: ${base.totals.projectCount || 0} active projects.`,
       ],
       followUp: "I can break this down by project, by worker, by subcontractor, or show the detailed tables behind each side.",
+      report: buildReportFromTool(latestTool),
+    };
+  }
+
+  if (latestTool?.tool === "financial_period_comparison" && base?.rows?.length) {
+    const totalCostRow = base.rows.find((row: any) => row.label === "Total Cost");
+    const topVarianceRow = [...base.rows].sort((a: any, b: any) => Math.abs(b.variance || 0) - Math.abs(a.variance || 0))[0];
+
+    return {
+      content: textFor(
+        question,
+        `Comparei ${base.current?.dateRangeLabel || "o período atual"} com ${base.previous?.dateRangeLabel || "o período anterior"} e o custo total ficou em ${formatCurrency(base.current?.totalCost || 0)}.`,
+        `I compared ${base.current?.dateRangeLabel || "the current period"} against ${base.previous?.dateRangeLabel || "the previous period"} and the total cost is ${formatCurrency(base.current?.totalCost || 0)}.`
+      ),
+      bullets: [
+        textFor(question, `Período atual: ${base.current?.dateRangeLabel || "não informado"}.`, `Current period: ${base.current?.dateRangeLabel || "not provided"}.`),
+        textFor(question, `Período anterior: ${base.previous?.dateRangeLabel || "não informado"}.`, `Previous period: ${base.previous?.dateRangeLabel || "not provided"}.`),
+        totalCostRow
+          ? textFor(
+              question,
+              `Variação do custo total: ${totalCostRow.variance >= 0 ? "+" : "-"}${formatCurrency(Math.abs(totalCostRow.variance || 0))} (${((totalCostRow.variancePct || 0) * 100).toFixed(1)}%).`,
+              `Total cost variance: ${totalCostRow.variance >= 0 ? "+" : "-"}${formatCurrency(Math.abs(totalCostRow.variance || 0))} (${((totalCostRow.variancePct || 0) * 100).toFixed(1)}%).`
+            )
+          : null,
+        topVarianceRow
+          ? textFor(
+              question,
+              `Maior mudança observada: ${topVarianceRow.label}.`,
+              `Largest observed change: ${topVarianceRow.label}.`
+            )
+          : null,
+      ].filter(Boolean) as string[],
+      followUp: textFor(question, "Posso isolar só materiais, só mão de obra, só invoices ou comparar esse recorte por projeto.", "I can isolate just materials, just labor, just invoices, or compare this view by project."),
       report: buildReportFromTool(latestTool),
     };
   }

@@ -163,6 +163,77 @@ export function describeRequestedDateRange(input: Record<string, unknown>) {
   };
 }
 
+export function getComparisonDateRanges(input: Record<string, unknown>) {
+  const current = describeRequestedDateRange(input);
+  if (!current.rangeStart || !current.rangeEnd) {
+    return {
+      current,
+      previous: {
+        period: null,
+        periodLabel: "the previous period",
+        dateRangeLabel: "No comparison period",
+        rangeStart: null,
+        rangeEnd: null,
+      },
+    };
+  }
+
+  const compareStartDate = parseDateValue(input.compareStartDate);
+  const compareEndDate = parseDateValue(input.compareEndDate);
+
+  if (compareStartDate || compareEndDate) {
+    const previousStart = compareStartDate ? startOfDay(compareStartDate) : null;
+    const previousEnd = compareEndDate ? endOfDay(compareEndDate) : null;
+
+    const formatDate = (value: Date | null) =>
+      value
+        ? new Intl.DateTimeFormat("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }).format(value)
+        : null;
+
+    return {
+      current,
+      previous: {
+        period: "custom",
+        periodLabel: "the comparison period",
+        dateRangeLabel:
+          previousStart && previousEnd
+            ? `${formatDate(previousStart)} to ${formatDate(previousEnd)}`
+            : formatDate(previousStart) || formatDate(previousEnd) || "No comparison period",
+        rangeStart: previousStart,
+        rangeEnd: previousEnd,
+      },
+    };
+  }
+
+  const durationMs = current.rangeEnd.getTime() - current.rangeStart.getTime();
+  const previousEnd = new Date(current.rangeStart.getTime() - 1);
+  const previousStart = new Date(previousEnd.getTime() - durationMs);
+
+  const formatDate = (value: Date | null) =>
+    value
+      ? new Intl.DateTimeFormat("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }).format(value)
+      : null;
+
+  return {
+    current,
+    previous: {
+      period: "previousPeriod",
+      periodLabel: "the previous period",
+      dateRangeLabel: `${formatDate(previousStart)} to ${formatDate(previousEnd)}`,
+      rangeStart: previousStart,
+      rangeEnd: previousEnd,
+    },
+  };
+}
+
 export function inferRelativePeriodFromQuestion(question: string): string | null {
   const normalized = question
     .normalize("NFD")
