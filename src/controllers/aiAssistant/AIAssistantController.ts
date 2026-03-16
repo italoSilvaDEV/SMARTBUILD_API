@@ -1543,7 +1543,7 @@ export class AIAssistantController {
           };
         }
 
-        const fallback = buildToolSummaryResponse(executedTools, buildReportFromTool);
+        const fallback = buildToolSummaryResponse(executedTools, buildReportFromTool, question);
         const fallbackWithReport = {
           ...fallback,
           report: fallback.report || buildReportFromTool(executedTools[0]) || null,
@@ -3083,7 +3083,7 @@ export class AIAssistantController {
 
   private async listClients(companyId: string, input: Record<string, unknown>) {
     const search = String(input.search || "").trim();
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
 
     const clients = await prisma.client.findMany({
       where: {
@@ -4612,7 +4612,7 @@ export class AIAssistantController {
   }
 
   private async timecardsByWorker(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
     const dateContext = describeRequestedDateRange(input);
 
@@ -4628,6 +4628,7 @@ export class AIAssistantController {
       topProjectAddress: string | null;
       topProjectClientName: string | null;
       topProjectCost: number;
+      projectTotals: Map<string, { totalCost: number; projectName: string | null; projectAddress: string | null; clientName: string | null }>;
     }>();
 
     for (const row of workedHours) {
@@ -4645,6 +4646,7 @@ export class AIAssistantController {
         topProjectAddress: null,
         topProjectClientName: null,
         topProjectCost: 0,
+        projectTotals: new Map(),
       };
 
       current.totalHours += totalHours;
@@ -4652,11 +4654,21 @@ export class AIAssistantController {
       current.entryCount += 1;
       current.regularHours += decimalToNumber(row.regular_hours);
       current.overtimeHours += decimalToNumber(row.overtime_hours);
-      if (totalCost >= current.topProjectCost) {
-        current.topProjectCost = totalCost;
-        current.topProjectName = row.project ? getProjectDisplayName(row.project) : null;
-        current.topProjectAddress = row.project?.location || null;
-        current.topProjectClientName = row.project?.client?.name || null;
+      const projectKey = row.project?.id || row.project?.location || row.project?.contract_number || "unknown";
+      const projectCurrent = current.projectTotals.get(String(projectKey)) || {
+        totalCost: 0,
+        projectName: row.project ? getProjectDisplayName(row.project) : null,
+        projectAddress: row.project?.location || null,
+        clientName: row.project?.client?.name || null,
+      };
+      projectCurrent.totalCost += totalCost;
+      current.projectTotals.set(String(projectKey), projectCurrent);
+
+      if (projectCurrent.totalCost >= current.topProjectCost) {
+        current.topProjectCost = projectCurrent.totalCost;
+        current.topProjectName = projectCurrent.projectName;
+        current.topProjectAddress = projectCurrent.projectAddress;
+        current.topProjectClientName = projectCurrent.clientName;
       }
       byWorker.set(workerName, current);
     }
@@ -4668,18 +4680,25 @@ export class AIAssistantController {
       totalWorkers: byWorker.size,
       totalEntries: workedHours.length,
       items: Array.from(byWorker.values())
+        .map(({ projectTotals, ...item }) => item)
         .sort((a, b) => b.totalCost - a.totalCost)
         .slice(0, limit),
     };
   }
 
   private async workerTimecardDetails(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 25) || 25, 60);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workerName = String(input.workerName || "").trim();
     const workedHours = await this.getEmployeeWorkedHours(companyId, { ...input, workerName });
     const dateContext = describeRequestedDateRange(input);
 
-    const entries = workedHours.slice(0, limit).map((row: any) => {
+    const sortedRows = [...workedHours].sort((a: any, b: any) => {
+      const aDate = new Date(a.payment_date || a.date_creation || 0).getTime();
+      const bDate = new Date(b.payment_date || b.date_creation || 0).getTime();
+      return bDate - aDate;
+    });
+
+    const entries = sortedRows.slice(0, limit).map((row: any) => {
       const { totalCost, totalHours } = getWorkedHourEffectiveCost(row);
       const workDate = row.payment_date || row.date_creation;
 
@@ -4718,7 +4737,7 @@ export class AIAssistantController {
   }
 
   private async timecardsByProject(companyId: string, input: Record<string, unknown>) {
-    const limit = Math.min(Number(input.limit || 8) || 8, 20);
+    const limit = Math.min(Number(input.limit || 25) || 25, 100);
     const workedHours = await this.getEmployeeWorkedHours(companyId, input);
     const dateContext = describeRequestedDateRange(input);
     const byProject = new Map<string, {
@@ -4731,6 +4750,7 @@ export class AIAssistantController {
       entryCount: number;
       topWorkerName: string | null;
       topWorkerCost: number;
+      workerTotals: Map<string, number>;
     }>();
 
     for (const row of workedHours) {
@@ -4746,14 +4766,18 @@ export class AIAssistantController {
         entryCount: 0,
         topWorkerName: null,
         topWorkerCost: 0,
+        workerTotals: new Map(),
       };
 
       current.totalHours += totalHours;
       current.totalCost += totalCost;
       current.entryCount += 1;
-      if (totalCost >= current.topWorkerCost) {
-        current.topWorkerCost = totalCost;
-        current.topWorkerName = getWorkedHourWorkerName(row);
+      const workerName = getWorkedHourWorkerName(row);
+      const workerTotal = (current.workerTotals.get(workerName) || 0) + totalCost;
+      current.workerTotals.set(workerName, workerTotal);
+      if (workerTotal >= current.topWorkerCost) {
+        current.topWorkerCost = workerTotal;
+        current.topWorkerName = workerName;
       }
       byProject.set(key, current);
     }
@@ -4765,6 +4789,7 @@ export class AIAssistantController {
       totalProjects: byProject.size,
       totalEntries: workedHours.length,
       items: Array.from(byProject.values())
+        .map(({ workerTotals, ...item }) => item)
         .sort((a, b) => b.totalCost - a.totalCost)
         .slice(0, limit),
     };
