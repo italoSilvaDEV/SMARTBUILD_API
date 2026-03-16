@@ -97,6 +97,7 @@ export function buildToolSummaryResponse(
       bullets: [
         textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
         textFor(question, `Custo total estimado: ${formatCurrency(topProject.totalCost || 0)}.`, `Estimated total cost: ${formatCurrency(topProject.totalCost || 0)}.`),
+        textFor(question, `Neste ranking, mão de obra = employee cost + subcontractor cost; custo total da obra = materiais + employee cost + subcontractor cost.`, `In this ranking, labor cost = employee cost + subcontractor cost; total project cost = materials + employee cost + subcontractor cost.`),
         textFor(question, `${base.items.length} projetos foram avaliados neste ranking.`, `${base.items.length} projects were evaluated for this ranking.`),
       ],
       followUp: textFor(question, "Posso quebrar isso por materiais, mão de obra e impacto de invoices, ou mostrar o ranking completo em tabela.", "I can break this down by materials, labor and invoice impact, or show the full ranked list in a table."),
@@ -128,7 +129,7 @@ export function buildToolSummaryResponse(
       bullets: [
         textFor(question, `Endereço do projeto: ${topProject.projectAddress || topProject.projectName}.`, `Project address: ${topProject.projectAddress || topProject.projectName}.`),
         textFor(question, `Valor vendido: ${formatCurrency(topProject.soldValue || 0)}.`, `Sold value: ${formatCurrency(topProject.soldValue || 0)}.`),
-        textFor(question, `Custo de material: ${formatCurrency(topProject.materialCost || 0)} e custo de mão de obra: ${formatCurrency(topProject.laborCost || 0)}.`, `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}.`),
+        textFor(question, `Custo de material: ${formatCurrency(topProject.materialCost || 0)} e custo de mão de obra: ${formatCurrency(topProject.laborCost || 0)}. Aqui, mão de obra = employee cost + subcontractor cost.`, `Material cost: ${formatCurrency(topProject.materialCost || 0)} and labor cost: ${formatCurrency(topProject.laborCost || 0)}. Here, labor cost = employee cost + subcontractor cost.`),
         textFor(question, `Lucro: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`, `Profit: ${formatCurrency(topProject.profitValue || 0)} (${((topProject.profitPct || 0) * 100).toFixed(1)}%).`),
       ],
       followUp: textFor(question, "Posso detalhar por que esse projeto está performando melhor que os outros, ou mostrar o ranking completo em tabela.", "I can break down why this project is outperforming the rest, or show the full ranked list in a table."),
@@ -140,7 +141,7 @@ export function buildToolSummaryResponse(
     return {
       content: `${base.projectAddress || base.projectName} for ${base.clientName || "this client"} is ${String(base.status || "active").toLowerCase()} with ${formatCurrency(base.price || 0)} in sold value.`,
       bullets: [
-        `Total cost: ${formatCurrency(base.financials?.totalCost || 0)} with ${formatCurrency(base.financials?.materialCost || 0)} in materials and ${formatCurrency(base.financials?.laborCost || 0)} in labor.`,
+        `Total project cost: ${formatCurrency(base.financials?.totalCost || 0)} with ${formatCurrency(base.financials?.materialCost || 0)} in materials and ${formatCurrency(base.financials?.laborCost || 0)} in labor (employee + subcontractor).`,
         `Invoices: ${base.invoices?.length || 0} totaling ${formatCurrency(base.financials?.invoicedAmount || 0)}.`,
         `Scope: ${base.services?.length || 0} services, ${base.counts?.tasks || 0} tasks, ${base.counts?.changeOrders || 0} change orders and ${base.counts?.files || 0} files.`,
       ],
@@ -168,7 +169,8 @@ export function buildToolSummaryResponse(
       content: `${base.projectAddress || base.projectName} is currently carrying ${formatCurrency(base.totals.totalCost || 0)} in total cost.`,
       bullets: [
         `Material cost: ${formatCurrency(base.totals.materialCost || 0)}.`,
-        `Internal labor: ${formatCurrency(base.totals.internalLaborCost || 0)} and subcontractors: ${formatCurrency(base.totals.subcontractorCost || 0)}.`,
+        `Labor cost: ${formatCurrency(base.totals.laborCost || 0)} = employee cost ${formatCurrency(base.totals.internalLaborCost || 0)} + subcontractor cost ${formatCurrency(base.totals.subcontractorCost || 0)}.`,
+        `Total project cost: ${formatCurrency(base.totals.totalCost || 0)} = materials + employee cost + subcontractor cost.`,
         `${base.topMaterials?.length || 0} top material groups are available in this breakdown.`,
       ],
       followUp: "I can go line by line through materials, labor contributors, or subcontractor entries.",
