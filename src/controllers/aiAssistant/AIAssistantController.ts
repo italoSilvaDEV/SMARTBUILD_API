@@ -1466,10 +1466,14 @@ export class AIAssistantController {
           }
 
           lastResponseId = completion?.id || lastResponseId;
-          const responseOutput = Array.isArray(completion?.output) ? completion.output : [];
-          const toolCalls = responseOutput.filter((item: any) => item?.type === "function_call");
+          while (true) {
+            const responseOutput = Array.isArray(completion?.output) ? completion.output : [];
+            const toolCalls = responseOutput.filter((item: any) => item?.type === "function_call");
 
-          if (toolCalls.length) {
+            if (!toolCalls.length) {
+              break;
+            }
+
             const toolOutputs: any[] = [];
 
             for (const toolCall of toolCalls) {
@@ -1501,13 +1505,6 @@ export class AIAssistantController {
               "assistant tool planning"
             );
             lastResponseId = completion?.id || lastResponseId;
-            const followUpToolCalls = Array.isArray(completion?.output)
-              ? completion.output.filter((item: any) => item?.type === "function_call")
-              : [];
-
-            if (followUpToolCalls.length) {
-              continue;
-            }
           }
 
           const assistantText = this.getResponseText(completion);
@@ -1562,7 +1559,6 @@ export class AIAssistantController {
           const synthesisCompletion: any = await withTimeout(openai.responses.create({
             model: "gpt-5-mini",
             instructions: SYNTHESIS_PROMPT,
-            previous_response_id: lastResponseId || undefined,
             input: JSON.stringify({
               question,
               tools: compactTools,
