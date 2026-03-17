@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { DateTime } from "luxon";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
@@ -11,7 +12,51 @@ import { createPreviewContract } from "../../templateEmail/createPreviewContract
 import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+
+function projectAttendanceTotals(attendances: Array<{
+  user_id: string;
+  check_in_time: Date;
+  check_out_time: Date | null;
+  workStartTime: string | null;
+  workEndTime: string | null;
+  isOvertime: boolean | null;
+  user: { hourly_price: number | null; defaultBreakMinutes: number | null };
+}>): { totalPrice: number; totalHours: number } {
+  const weeklyByUser = new Map<string, Map<string, { attendances: any[] }>>();
+
+  for (const a of attendances) {
+    if (!a.check_in_time || !a.user) continue;
+    const userId = a.user_id;
+    const attendanceDate = DateTime.fromJSDate(new Date(a.check_in_time));
+    const weekStart = attendanceDate.startOf("week").plus({ days: 1 });
+    const weekKey = weekStart.toISODate() ?? "";
+
+    if (!weeklyByUser.has(userId)) {
+      weeklyByUser.set(userId, new Map());
+    }
+    const userWeeks = weeklyByUser.get(userId)!;
+    if (!userWeeks.has(weekKey)) {
+      userWeeks.set(weekKey, { attendances: [] });
+    }
+    userWeeks.get(weekKey)!.attendances.push(a);
+  }
+
+  let totalPrice = 0;
+  let totalHours = 0;
+
+  weeklyByUser.forEach((userWeeks) => {
+    const ot = calculateWeeklyOvertime(userWeeks);
+    totalPrice += ot.totalPrice;
+    totalHours += ot.totalHours;
+  });
+
+  return {
+    totalPrice: parseFloat(totalPrice.toFixed(2)),
+    totalHours: parseFloat(totalHours.toFixed(2)),
+  };
+}
 
 function getDateRange(periodType: string) {
   const now = new Date();
@@ -316,10 +361,12 @@ export class ProjectController {
                   user_attendances: {
                     select: {
                       id: true,
+                      user_id: true,
                       check_in_time: true,
                       check_out_time: true,
                       workStartTime: true,
                       workEndTime: true,
+                      isOvertime: true,
                       user: {
                         select: {
                           hourly_price: true,
@@ -506,50 +553,25 @@ export class ProjectController {
         const totalNumberOfHoursWorked = workedHoursData?.totalNumberOfHoursWorked || 0;
         const workersOnThisProject = workedHoursData?.uniqueUsers?.size || 0;
 
-        const userAttendance = project.serviceProject.reduce((total, service) => {
-          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
-            const costSub = userService.user_attendances.reduce((sub, attendance) => {
-              let regularHours = 0;
-              let overtimeHours = 0;
-
-              if (attendance.check_out_time && attendance.check_in_time) {
-                const hours = calcularHorasTrabalhadas(
-                  attendance.check_in_time.toISOString(),
-                  attendance.check_out_time.toISOString(),
-                  attendance.workStartTime,
-                  attendance.workEndTime,
-                  attendance.user.defaultBreakMinutes || 0,
-                );
-                regularHours = convertHHMMToDecimal(hours.normais);
-                overtimeHours = convertHHMMToDecimal(hours.extras);
-              }
-              return sub + ((regularHours * (attendance.user.hourly_price || 0)) + (overtimeHours * (attendance.user.hourly_price || 0) * 1.5))
-            }, 0)
-            return subTotal + costSub
-          }, 0);
-          return total + costTotal
-        }, 0);
-
-        const userAttendanceHours = project.serviceProject.reduce((total, service) => {
-          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
-            const costSub = userService.user_attendances.reduce((sub, attendance) => {
-              let hoursWorked = 0;
-              if (attendance.check_out_time && attendance.check_in_time) {
-                const hours = calcularHorasTrabalhadas(
-                  attendance.check_in_time.toISOString(),
-                  attendance.check_out_time.toISOString(),
-                  attendance.workStartTime,
-                  attendance.workEndTime,
-                  attendance.user.defaultBreakMinutes || 0,
-                );
-                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-              }
-              return sub + parseFloat(hoursWorked.toFixed(2))
-            }, 0)
-            return subTotal + costSub
-          }, 0);
-          return total + costTotal
-        }, 0);
+        const projectAttendances = project.serviceProject.flatMap((service) =>
+          (service.UserServiceProject ?? []).flatMap((usp: any) =>
+            (usp.user_attendances ?? []).map((a: any) => ({
+              user_id: a.user_id,
+              check_in_time: a.check_in_time,
+              check_out_time: a.check_out_time,
+              workStartTime: a.workStartTime,
+              workEndTime: a.workEndTime,
+              isOvertime: a.isOvertime,
+              user: {
+                hourly_price: a.user?.hourly_price ?? null,
+                defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+              },
+            }))
+          )
+        );
+        const attendanceTotals = projectAttendanceTotals(projectAttendances);
+        const userAttendance = attendanceTotals.totalPrice;
+        const userAttendanceHours = attendanceTotals.totalHours;
 
         // Cálculo do preço do projeto (mais eficiente)
         const priceProject = project.serviceProject.reduce((total, service) => {
@@ -794,53 +816,25 @@ export class ProjectController {
           return total;
         }, 0);
 
-        const userAttendance = project.serviceProject.reduce((total, service) => {
-          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
-            const costSub = userService.user_attendances.reduce((sub, attendance) => {
-              let hoursWorked = 0;
-              let regularHours = 0;
-              let overtimeHours = 0;
-
-              if (attendance.check_out_time && attendance.check_in_time) {
-                const hours = calcularHorasTrabalhadas(
-                  attendance.check_in_time.toISOString(),
-                  attendance.check_out_time.toISOString(),
-                  attendance.workStartTime,
-                  attendance.workEndTime,
-                  attendance.user.defaultBreakMinutes || 0,
-                );
-                regularHours = convertHHMMToDecimal(hours.normais);
-                overtimeHours = convertHHMMToDecimal(hours.extras);
-              }
-              return sub + ((regularHours * (attendance.user.hourly_price || 0)) + (overtimeHours * (attendance.user.hourly_price || 0) * 1.5))
-
-            }, 0)
-            return subTotal + costSub
-          }, 0);
-          return total + costTotal
-        }, 0)
-
-        const userAttendanceHours = project.serviceProject.reduce((total, service) => {
-          const costTotal = service.UserServiceProject.reduce((subTotal, userService) => {
-            const costSub = userService.user_attendances.reduce((sub, attendance) => {
-              let hoursWorked = 0;
-              if (attendance.check_out_time && attendance.check_in_time) {
-                const hours = calcularHorasTrabalhadas(
-                  attendance.check_in_time.toISOString(),
-                  attendance.check_out_time.toISOString(),
-                  attendance.workStartTime,
-                  attendance.workEndTime,
-                  attendance.user.defaultBreakMinutes || 0,
-                );
-                hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
-              }
-              return sub + parseFloat(hoursWorked.toFixed(2))
-
-            }, 0)
-            return subTotal + costSub
-          }, 0);
-          return total + costTotal
-        }, 0)
+        const projectAttendances = project.serviceProject.flatMap((service) =>
+          (service.UserServiceProject ?? []).flatMap((usp: any) =>
+            (usp.user_attendances ?? []).map((a: any) => ({
+              user_id: a.user_id,
+              check_in_time: a.check_in_time,
+              check_out_time: a.check_out_time,
+              workStartTime: a.workStartTime,
+              workEndTime: a.workEndTime,
+              isOvertime: a.isOvertime,
+              user: {
+                hourly_price: a.user?.hourly_price ?? null,
+                defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+              },
+            }))
+          )
+        );
+        const attendanceTotals = projectAttendanceTotals(projectAttendances);
+        const userAttendance = attendanceTotals.totalPrice;
+        const userAttendanceHours = attendanceTotals.totalHours;
 
         let totalCostOfServiceHours = 0;
         let totalSubcontractorCost = 0;
@@ -1671,7 +1665,8 @@ export class ProjectController {
         where: { id },
         data: {
           status_project: status,
-        },
+          status_changed_at: new Date(),
+        } as any,
       });
       return res.json(project);
     } catch (error) {

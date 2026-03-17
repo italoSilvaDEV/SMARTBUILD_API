@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -322,33 +323,36 @@ export class FindWorkedHoursProjectController {
                     price
                 }
             })
-            // Calcular as horas trabalhadas
-            const formattedAttendance = resultAttendance.map((attendance) => {
-                
-                let regularHours = 0;
-                let overtimeHours = 0;
+            const overtimePerAttendance = calculateWeeklyOvertimePerAttendance(
+                resultAttendance.map((a) => ({
+                    id: a.id,
+                    user_id: a.user_id,
+                    check_in_time: a.check_in_time,
+                    check_out_time: a.check_out_time,
+                    workStartTime: a.workStartTime,
+                    workEndTime: a.workEndTime,
+                    isOvertime: a.isOvertime,
+                    user: {
+                        hourly_price: a.user?.hourly_price ?? null,
+                        defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+                    },
+                }))
+            );
 
-                if (attendance.check_out_time && attendance.check_in_time) {
-                    const hours = calcularHorasTrabalhadas(
-                        attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
-                        attendance.workStartTime,
-                        attendance.workEndTime,
-                        attendance.user.defaultBreakMinutes || 0,
-                    );
-                    regularHours = convertHHMMToDecimal(hours.normais);
-                    overtimeHours = convertHHMMToDecimal(hours.extras);
-                }
+            const formattedAttendance = resultAttendance.map((attendance) => {
+                const ot = overtimePerAttendance.get(attendance.id) ?? {
+                    regularHours: 0,
+                    overtimeHours: 0,
+                    price: 0,
+                };
                 return {
                     id: '',
                     project_id: '',
                     name_user: attendance.user.name,
                     hourly_price: String(attendance.user.hourly_price),
-                    amount_of_hours: regularHours,
-                    overtime_hours: overtimeHours ? overtimeHours : null,
-                    price:
-                        (regularHours * (attendance.user.hourly_price || 0)) +
-                        (overtimeHours * (attendance.user.hourly_price || 0) * 1.5),
+                    amount_of_hours: ot.regularHours,
+                    overtime_hours: ot.overtimeHours > 0 ? ot.overtimeHours : null,
+                    price: ot.price,
                     data_creation: attendance.check_in_time,
                     start_date: attendance.check_in_time,
                     end_date: attendance.check_out_time
