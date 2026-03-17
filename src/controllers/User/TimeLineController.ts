@@ -4,6 +4,7 @@ import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 import { AuditController } from '../Audit/AuditController';
 import { logAudit } from '../../utils/auditLogger';
 import { returnPayLoad } from '../../config/returnPayLoad';
+import { SocketService } from '../../services/SocketService';
 
 const prisma = new PrismaClient();
 
@@ -125,6 +126,57 @@ AND index_name = ${indexName}
         this.cache.set(key, {
             data,
             timestamp: Date.now()
+        });
+    }
+
+    private calculateInsideMinutesFromPoints(
+        points: Array<{ check_in_time: Date; is_local_work: boolean }>,
+        referenceEnd: Date
+    ): number {
+        if (!points.length) return 0;
+
+        let totalMs = 0;
+        for (let index = 0; index < points.length; index += 1) {
+            const current = points[index];
+            const next = points[index + 1];
+            const end = next?.check_in_time || referenceEnd;
+            if (!current.is_local_work) continue;
+            totalMs += Math.max(0, end.getTime() - current.check_in_time.getTime());
+        }
+
+        return Math.round(totalMs / 60000);
+    }
+
+    private buildFallbackPresence(
+        attendance: any,
+        projectSite: { lat: number | null; lng: number | null; radiusMeters: number | null }
+    ): boolean {
+        if (
+            typeof attendance?.check_in_latitude !== 'number' ||
+            typeof attendance?.check_in_longitude !== 'number' ||
+            typeof projectSite.lat !== 'number' ||
+            typeof projectSite.lng !== 'number' ||
+            typeof projectSite.radiusMeters !== 'number'
+        ) {
+            return false;
+        }
+
+        const distanceInKm = this.calculateDistance(
+            attendance.check_in_latitude,
+            attendance.check_in_longitude,
+            projectSite.lat,
+            projectSite.lng
+        );
+
+        return distanceInKm <= projectSite.radiusMeters / 1000;
+    }
+
+    private async emitLiveTrackingUpdate(companyId: string | null | undefined, payload: Record<string, any>) {
+        if (!companyId) return;
+        SocketService.emitToAll('live_tracking_updated', {
+            companyId,
+            ...payload,
+            emittedAt: new Date().toISOString(),
         });
     }
 
@@ -283,6 +335,13 @@ AND index_name = ${indexName}
                     is_local_work: isLocalWork,
                 },
             });
+            await this.emitLiveTrackingUpdate(serviceProject.Project?.company_id, {
+                userId: user_id,
+                userServiceProjectId: user_service_project_id,
+                serviceProjectId: service_project_id,
+                timelineId: attendance.id,
+                source: 'timeline_check_in',
+            });
             res.status(201).json(attendance);
         } catch (error) {
             console.log('error', error)
@@ -380,6 +439,14 @@ AND index_name = ${indexName}
                     check_in_longitude,
                     is_local_work,
                 },
+            });
+
+            await this.emitLiveTrackingUpdate(serviceProject.Project?.company_id, {
+                userId: user_id,
+                userServiceProjectId: user_service_project_id,
+                serviceProjectId: service_project_id,
+                timelineId: attendance.id,
+                source: 'timeline_check_in_client',
             });
 
             res.status(201).json(attendance);
@@ -509,6 +576,217 @@ AND index_name = ${indexName}
         } catch (error) {
             console.error("Error fetching timeline by worker:", error);
             return res.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    handleLiveTrackingByCompany = async (req: Request, res: Response): Promise<Response> => {
+        try {
+            const { companyId } = req.params;
+            const staleMinutesParam = Number(req.query.staleMinutes ?? 15);
+            const staleMinutes = Number.isFinite(staleMinutesParam) && staleMinutesParam > 0
+                ? staleMinutesParam
+                : 15;
+
+            if (!companyId) {
+                return res.status(400).json({ error: 'companyId is required' });
+            }
+
+            const now = new Date();
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+
+            const activeAttendances = await prisma.userAttendance.findMany({
+                where: {
+                    company_id: companyId,
+                    check_out_time: null,
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true,
+                        },
+                    },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: {
+                                    Project: {
+                                        select: {
+                                            id: true,
+                                            location: true,
+                                            lat: true,
+                                            log: true,
+                                            radius: true,
+                                            contract_number: true,
+                                            company_id: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                orderBy: {
+                    check_in_time: 'desc',
+                },
+            });
+
+            const userServiceProjectIds = activeAttendances
+                .map((attendance) => attendance.user_service_project_id)
+                .filter((value): value is string => Boolean(value));
+
+            const timelineRows = userServiceProjectIds.length
+                ? await prisma.timeLine.findMany({
+                    where: {
+                        userServiceProjectId: { in: userServiceProjectIds },
+                        check_in_time: { gte: startOfDay },
+                    },
+                    select: {
+                        id: true,
+                        userServiceProjectId: true,
+                        check_in_time: true,
+                        check_in_latitude: true,
+                        check_in_longitude: true,
+                        check_in_address: true,
+                        is_local_work: true,
+                    },
+                    orderBy: {
+                        check_in_time: 'asc',
+                    },
+                })
+                : [];
+
+            const timelinesByUserServiceProject = new Map<string, typeof timelineRows>();
+            for (const row of timelineRows) {
+                const current = timelinesByUserServiceProject.get(row.userServiceProjectId) || [];
+                current.push(row);
+                timelinesByUserServiceProject.set(row.userServiceProjectId, current);
+            }
+
+            const sessions = await Promise.all(activeAttendances.map(async (attendance) => {
+                const project = attendance.UserServiceProject?.service_project?.Project || null;
+                const workerAvatarUrl = attendance.user?.avatar
+                    ? await getPresignedUrl(attendance.user.avatar)
+                    : undefined;
+
+                const projectSite = {
+                    id: project?.id || attendance.pending_project_id || attendance.id,
+                    name:
+                        project?.location ||
+                        attendance.pending_project_name ||
+                        attendance.pending_project_address ||
+                        'Unknown project',
+                    lat:
+                        project?.lat != null
+                            ? Number(project.lat)
+                            : attendance.pending_project_latitude != null
+                                ? Number(attendance.pending_project_latitude)
+                                : Number(attendance.check_in_latitude),
+                    lng:
+                        project?.log != null
+                            ? Number(project.log)
+                            : attendance.pending_project_longitude != null
+                                ? Number(attendance.pending_project_longitude)
+                                : Number(attendance.check_in_longitude),
+                    radiusMeters:
+                        project?.radius != null
+                            ? Number(project.radius)
+                            : attendance.pending_project_radius != null
+                                ? Number(attendance.pending_project_radius)
+                                : 100,
+                };
+
+                const rawTrackPoints = attendance.user_service_project_id
+                    ? timelinesByUserServiceProject.get(attendance.user_service_project_id) || []
+                    : [];
+
+                const trackPoints = rawTrackPoints.length
+                    ? rawTrackPoints.map((row) => ({
+                        id: row.id,
+                        lat: row.check_in_latitude,
+                        lng: row.check_in_longitude,
+                        timestamp: row.check_in_time.toISOString(),
+                        address: row.check_in_address || '',
+                        presence: row.is_local_work ? 'inside-site' : 'outside-site',
+                    }))
+                    : [{
+                        id: `${attendance.id}-fallback`,
+                        lat: attendance.check_in_latitude,
+                        lng: attendance.check_in_longitude,
+                        timestamp: attendance.check_in_time.toISOString(),
+                        address: attendance.check_in_address || '',
+                        presence: this.buildFallbackPresence(attendance, projectSite)
+                            ? 'inside-site'
+                            : 'outside-site',
+                    }];
+
+                const latestPoint = trackPoints[trackPoints.length - 1];
+                const latestUpdateAt = latestPoint?.timestamp || attendance.check_in_time.toISOString();
+                const latestUpdateMs = new Date(latestUpdateAt).getTime();
+                const isStale = now.getTime() - latestUpdateMs > staleMinutes * 60 * 1000;
+                const latestPresence = latestPoint?.presence || 'outside-site';
+
+                const status = !attendance.user_service_project_id
+                    ? 'pending-service'
+                    : isStale
+                        ? 'stale'
+                        : latestPresence === 'inside-site'
+                            ? 'on-site'
+                            : 'off-site';
+
+                const insideMinutes = this.calculateInsideMinutesFromPoints(
+                    rawTrackPoints.length
+                        ? rawTrackPoints.map((row) => ({
+                            check_in_time: row.check_in_time,
+                            is_local_work: row.is_local_work,
+                        }))
+                        : [{
+                            check_in_time: attendance.check_in_time,
+                            is_local_work: latestPresence === 'inside-site',
+                        }],
+                    now
+                );
+
+                return {
+                    id: attendance.id,
+                    attendanceId: attendance.id,
+                    userServiceProjectId: attendance.user_service_project_id,
+                    workerId: attendance.user?.id || null,
+                    workerName: attendance.user?.name || 'Unknown worker',
+                    workerAvatarUrl,
+                    serviceTitle:
+                        attendance.UserServiceProject?.service_project?.name ||
+                        attendance.pending_project_name ||
+                        'Pending service selection',
+                    projectSite,
+                    status,
+                    latestUpdateAt,
+                    checkInAt: attendance.check_in_time.toISOString(),
+                    checkOutAt: attendance.check_out_time?.toISOString() || null,
+                    trackPoints,
+                    summary: {
+                        insideMinutes,
+                        outsideMinutes: Math.max(
+                            0,
+                            Math.round((now.getTime() - attendance.check_in_time.getTime()) / 60000) - insideMinutes
+                        ),
+                        pointCount: trackPoints.length,
+                        contractNumber: project?.contract_number || null,
+                    },
+                };
+            }));
+
+            return res.status(200).json({
+                companyId,
+                generatedAt: now.toISOString(),
+                totalActiveWorkers: sessions.length,
+                sessions,
+            });
+        } catch (error) {
+            console.error('Error fetching live tracking by company:', error);
+            return res.status(500).json({ error: 'Internal server error' });
         }
     }
 

@@ -21,6 +21,7 @@ import { UpdateCustomServiceController } from "../controllers/jobSchedule/Custom
 import { DeleteCustomServiceController } from "../controllers/jobSchedule/CustomServices/deleteCustomServiceController";
 import { ProjectScheduleController } from "../controllers/jobSchedule/projectScheduleController";
 import { GetAllProjectServicesController } from "../controllers/jobSchedule/GetAllProjectServicesController";
+import { GetLiveTrackingByCompanyController } from "../controllers/jobSchedule/GetLiveTrackingByCompanyController";
 
 const jobScheduleRoutes = Router();
 
@@ -45,6 +46,7 @@ const deleteSubserviceController = new DeleteSubserviceController();
 const updateCustomServiceController = new UpdateCustomServiceController();
 const deleteCustomServiceController = new DeleteCustomServiceController();
 const getAllProjectServicesController = new GetAllProjectServicesController();
+const getLiveTrackingByCompanyController = new GetLiveTrackingByCompanyController();
 
 jobScheduleRoutes.get("/jobs/details/:projectId", checkToken, getJobsByProjectController.handle)
 jobScheduleRoutes.get("/jobs/details/users/:projectId/:companyId", checkToken, getUsersByProjectController.handle)
@@ -74,6 +76,7 @@ jobScheduleRoutes.post("/jobs/details/resend/customservice/:id", checkToken, res
 
 jobScheduleRoutes.get("/jobs/main/jobs/:companyId", checkToken, getJobsByCompanyController.handle)
 jobScheduleRoutes.get("/jobs/main/projects/:companyId", checkToken, getProjectsByCompanyController.handle)
+jobScheduleRoutes.get("/jobs/main/live-tracking/:companyId", checkToken, getLiveTrackingByCompanyController.handle.bind(getLiveTrackingByCompanyController))
 jobScheduleRoutes.post("/jobs/main/create", checkToken, createJobCompanyController.handle)
 
 // Project Level Schedule Routes
