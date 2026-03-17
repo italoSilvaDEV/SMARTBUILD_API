@@ -4,6 +4,25 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
 type TrackingPeriod = "today" | "week" | "month" | "all";
 
+function parseRequestedDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0);
+
+  if (
+    parsed.getFullYear() !== Number(year) ||
+    parsed.getMonth() !== Number(month) - 1 ||
+    parsed.getDate() !== Number(day)
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
 function startOfDay(date: Date) {
   const value = new Date(date);
   value.setHours(0, 0, 0, 0);
@@ -47,6 +66,13 @@ function getPeriodRange(period: TrackingPeriod) {
   start.setDate(now.getDate() - 90);
   start.setHours(0, 0, 0, 0);
   return { start, end: endOfDay(now) };
+}
+
+function toDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function toNumber(value: string | number | null | undefined): number | null {
@@ -93,6 +119,7 @@ function buildPresence(
 export class GetLiveTrackingByCompanyController {
   async handle(req: Request, res: Response) {
     const { companyId } = req.params;
+    const requestedDate = parseRequestedDate(req.query.date);
     const requestedPeriod = String(req.query.period || "today").toLowerCase();
     const period: TrackingPeriod =
       requestedPeriod === "week" ||
@@ -115,7 +142,10 @@ export class GetLiveTrackingByCompanyController {
         return res.status(404).json({ error: "Company not found" });
       }
 
-      const { start, end } = getPeriodRange(period);
+      const effectiveDate = requestedDate || new Date();
+      const { start, end } = requestedDate
+        ? { start: startOfDay(effectiveDate), end: endOfDay(effectiveDate) }
+        : getPeriodRange(period);
 
       const attendances = await prisma.userAttendance.findMany({
         where: {
@@ -383,7 +413,8 @@ export class GetLiveTrackingByCompanyController {
         message: "Live tracking fetched successfully",
         data: sessions,
         meta: {
-          period,
+          period: requestedDate ? "date" : period,
+          selectedDate: toDateString(effectiveDate),
           start: start.toISOString(),
           end: end.toISOString(),
           total: sessions.length,
