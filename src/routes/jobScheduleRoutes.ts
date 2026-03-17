@@ -76,6 +76,7 @@ jobScheduleRoutes.post("/jobs/details/resend/customservice/:id", checkToken, res
 
 jobScheduleRoutes.get("/jobs/main/jobs/:companyId", checkToken, getJobsByCompanyController.handle)
 jobScheduleRoutes.get("/jobs/main/projects/:companyId", checkToken, getProjectsByCompanyController.handle)
+jobScheduleRoutes.get("/jobs/main/live-tracking/current/:companyId", checkToken, getLiveTrackingByCompanyController.handle.bind(getLiveTrackingByCompanyController))
 jobScheduleRoutes.get("/jobs/main/live-tracking/:companyId", checkToken, getLiveTrackingByCompanyController.handle.bind(getLiveTrackingByCompanyController))
 jobScheduleRoutes.post("/jobs/main/create", checkToken, createJobCompanyController.handle)
 
