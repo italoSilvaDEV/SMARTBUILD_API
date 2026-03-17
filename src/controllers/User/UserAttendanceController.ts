@@ -259,39 +259,9 @@ export class UserAttendanceController {
                 return;
             }
 
-            const attendance = await prisma.userAttendance.findUnique({
-                where: { id },
-                select: {
-                    id: true,
-                    user_id: true,
-                    user: {
-                        select: {
-                            isOverTime: true,
-                            company: {
-                                select: {
-                                    workStartTime: true,
-                                    workEndTime: true
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            if (!attendance) {
-                res.status(404).json({ error: 'Attendance record not found.' });
-                return;
-            }
-
             const updated = await prisma.userAttendance.update({
                 where: { id },
-                data: {
-                    check_in_time: checkInDate,
-                    check_out_time: checkOutDate,
-                    isOvertime: attendance.user?.isOverTime ?? false,
-                    workStartTime: attendance.user?.isOverTime ? attendance.user.company?.workStartTime ?? null : null,
-                    workEndTime: attendance.user?.isOverTime ? attendance.user.company?.workEndTime ?? null : null,
-                },
+                data: { check_in_time: checkInDate, check_out_time: checkOutDate },
             });
 
             res.status(200).json(updated);
