@@ -2,36 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
-
-function calculateManualWorkedHoursOvertime(workedHours: {
-    type_price?: string | null;
-    amount_of_hours?: unknown;
-    hourly_price?: unknown;
-    fixed_price?: unknown;
-}) {
-    const totalHours = Number(workedHours.amount_of_hours ?? 0);
-    const hourlyRate = Number(workedHours.hourly_price ?? 0);
-    const fixedPrice = Number(workedHours.fixed_price ?? 0);
-
-    if (workedHours.type_price === "fixed") {
-        return {
-            regularHours: null,
-            overtimeHours: null,
-            price: fixedPrice || null,
-        };
-    }
-
-    const safeHours = Number.isFinite(totalHours) ? totalHours : 0;
-    const regularHours = Math.min(safeHours, 40);
-    const overtimeHours = Math.max(safeHours - 40, 0);
-    const price = (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5);
-
-    return {
-        regularHours,
-        overtimeHours: overtimeHours > 0 ? overtimeHours : null,
-        price,
-    };
-}
+import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -340,41 +311,48 @@ export class FindWorkedHoursProjectController {
                 }
             });
             const formattedResult = result.map((workedHours) => {
-                const manualHours = calculateManualWorkedHoursOvertime(workedHours);
+                let price = null;
+                if (workedHours.type_price === "fixed") {
+                    price = workedHours.fixed_price ? Number(workedHours.fixed_price) : null;
+                } else {
+                    price = workedHours.amount_of_hours && workedHours.hourly_price ? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price) : null;
+                }
                 return {
                     ...workedHours,
-                    amount_of_hours: manualHours.regularHours,
-                    overtime_hours: manualHours.overtimeHours,
-                    price: manualHours.price
+                    overtime_hours: null,
+                    price
                 }
             })
-            // Calcular as horas trabalhadas
-            const formattedAttendance = resultAttendance.map((attendance) => {
-                
-                let regularHours = 0;
-                let overtimeHours = 0;
+            const overtimePerAttendance = calculateWeeklyOvertimePerAttendance(
+                resultAttendance.map((a) => ({
+                    id: a.id,
+                    user_id: a.user_id,
+                    check_in_time: a.check_in_time,
+                    check_out_time: a.check_out_time,
+                    workStartTime: a.workStartTime,
+                    workEndTime: a.workEndTime,
+                    isOvertime: a.isOvertime,
+                    user: {
+                        hourly_price: a.user?.hourly_price ?? null,
+                        defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+                    },
+                }))
+            );
 
-                if (attendance.check_out_time && attendance.check_in_time) {
-                    const hours = calcularHorasTrabalhadas(
-                        attendance.check_in_time.toISOString(),
-                        attendance.check_out_time.toISOString(),
-                        attendance.workStartTime,
-                        attendance.workEndTime,
-                        attendance.user.defaultBreakMinutes || 0,
-                    );
-                    regularHours = convertHHMMToDecimal(hours.normais);
-                    overtimeHours = convertHHMMToDecimal(hours.extras);
-                }
+            const formattedAttendance = resultAttendance.map((attendance) => {
+                const ot = overtimePerAttendance.get(attendance.id) ?? {
+                    regularHours: 0,
+                    overtimeHours: 0,
+                    price: 0,
+                };
                 return {
                     id: '',
                     project_id: '',
                     name_user: attendance.user.name,
                     hourly_price: String(attendance.user.hourly_price),
-                    amount_of_hours: regularHours,
-                    overtime_hours: overtimeHours ? overtimeHours : null,
-                    price:
-                        (regularHours * (attendance.user.hourly_price || 0)) +
-                        (overtimeHours * (attendance.user.hourly_price || 0) * 1.5),
+                    amount_of_hours: ot.regularHours,
+                    overtime_hours: ot.overtimeHours > 0 ? ot.overtimeHours : null,
+                    price: ot.price,
                     data_creation: attendance.check_in_time,
                     start_date: attendance.check_in_time,
                     end_date: attendance.check_out_time
