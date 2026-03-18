@@ -3,7 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { jobScheduleGlobalTemplate, ScheduleChange } from "../../templateEmail/jobScheduleGlobalTemplate";
 import { sendEmail } from "../../utils/sendEmail";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
-import { normalizeToDateOnly, formatDateForEmail } from "../../utils/dateUtils";
+import { normalizeScheduleDateValue, formatDateForEmail } from "../../utils/dateUtils";
 
 interface UserInput {
     id: string;
@@ -19,6 +19,8 @@ interface UpdateJobProject {
     serviceProjectId: string;
     startDate?: string;
     deadline?: string;
+    startDateTime?: string;
+    deadlineDateTime?: string;
     description?: string;
     users?: UserInput[];
     subcontractors?: SubcontractorInput[];
@@ -82,8 +84,8 @@ export class UpdateJobProjectController {
                 error: "Service project not found"
             });
 
-            const startDateOnly = body.startDate != null ? normalizeToDateOnly(body.startDate) : undefined;
-            const deadlineOnly = body.deadline != null ? normalizeToDateOnly(body.deadline) : undefined;
+            const startDateOnly = body.startDate != null ? normalizeScheduleDateValue(body.startDate, body.startDateTime) : undefined;
+            const deadlineOnly = body.deadline != null ? normalizeScheduleDateValue(body.deadline, body.deadlineDateTime) : undefined;
 
             const changes: ScheduleChange[] = [];
 
@@ -264,3 +266,5 @@ export class UpdateJobProjectController {
         }
     }
 }
+
+

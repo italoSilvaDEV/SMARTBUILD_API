@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
-import { normalizeToDateOnly } from "../../../utils/dateUtils";
+import { normalizeScheduleDateValue } from "../../../utils/dateUtils";
 
 interface User {
     id: string
@@ -17,6 +17,8 @@ interface CreateCustomService {
     description?: string
     start_date: string
     deadline: string
+    startDateTime?: string
+    deadlineDateTime?: string
     users?: User[]
     subcontractors?: Subcontractor[]
     projectId: string
@@ -58,8 +60,8 @@ export class CreateCustomServiceController {
             const workerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
             const subcontractorIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
 
-            const startDateOnly = normalizeToDateOnly(body.start_date);
-            const deadlineOnly = normalizeToDateOnly(body.deadline);
+            const startDateOnly = normalizeScheduleDateValue(body.start_date, body.startDateTime);
+            const deadlineOnly = normalizeScheduleDateValue(body.deadline, body.deadlineDateTime);
 
             const customService = await prisma.$transaction(async (tx) => {
                 const service = await tx.customServiceSchedule.create({
@@ -135,3 +137,5 @@ export class CreateCustomServiceController {
         }
     }
 }
+
+

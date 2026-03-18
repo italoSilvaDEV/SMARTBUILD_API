@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
-import { normalizeToDateOnly } from "../../utils/dateUtils";
+import { normalizeScheduleDateValue } from "../../utils/dateUtils";
 
 interface User {
     id: string
@@ -19,6 +19,8 @@ interface CreateJobProject {
     subcontractors?: Subcontractor[]
     startDate: string
     deadline: string
+    startDateTime?: string
+    deadlineDateTime?: string
     skipEmail?: boolean
     description?: string
     categoryId?: string
@@ -178,8 +180,8 @@ export class CreateJobProjectController {
                 }
             }
 
-            const startDateOnly = normalizeToDateOnly(body.startDate);
-            const deadlineOnly = normalizeToDateOnly(body.deadline);
+            const startDateValue = normalizeScheduleDateValue(body.startDate, body.startDateTime);
+            const deadlineValue = normalizeScheduleDateValue(body.deadline, body.deadlineDateTime);
 
             await prisma.serviceProject.update({
                 where: {
@@ -187,8 +189,8 @@ export class CreateJobProjectController {
                     projectId: project.id
                 },
                 data: {
-                    start_date: startDateOnly,
-                    deadline: deadlineOnly
+                    start_date: startDateValue,
+                    deadline: deadlineValue
                 }
             })
 
@@ -231,3 +233,5 @@ export class CreateJobProjectController {
         }
     }
 }
+
+
