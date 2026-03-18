@@ -2,12 +2,16 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
+function getProjectLocation(project: any) {
+  return project?.location || project?.client?.location || null;
+}
+
 function getProjectName(project: any) {
   return (
     project?.workContext?.Name ||
     project?.client?.name ||
     (project?.contract_number ? `#${project.contract_number}` : null) ||
-    project?.location ||
+    getProjectLocation(project) ||
     "Project"
   );
 }
@@ -176,6 +180,7 @@ export class GetDispatchJobsByCompanyController {
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: service.Project?.id || null,
             projectName: getProjectName(service.Project),
+            projectLocation: getProjectLocation(service.Project),
             contractNumber: service.Project?.contract_number || null,
             serviceProjectId: service.id,
             customServiceId: null,
@@ -202,6 +207,7 @@ export class GetDispatchJobsByCompanyController {
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: service.project?.id || null,
             projectName: getProjectName(service.project),
+            projectLocation: getProjectLocation(service.project),
             contractNumber: service.project?.contract_number || null,
             serviceProjectId: null,
             customServiceId: service.id,
@@ -229,6 +235,7 @@ export class GetDispatchJobsByCompanyController {
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: project?.id || null,
             projectName: getProjectName(project),
+            projectLocation: getProjectLocation(project),
             contractNumber: project?.contract_number || null,
             serviceProjectId: service.serviceProjectId || null,
             customServiceId: service.custom_service_schedule_id || null,
