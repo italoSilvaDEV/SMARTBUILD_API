@@ -20,16 +20,20 @@ function parseRequestedDate(value: unknown): Date | null {
   return parsed;
 }
 
-function startOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+function parseTimezoneOffsetMinutes(value: unknown): number | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
 }
 
-function endOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
+function getUtcRangeForLocalDate(date: Date, timezoneOffsetMinutes = 0) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  const startUtc = new Date(Date.UTC(year, month, day, 0, 0, 0, 0) + timezoneOffsetMinutes * 60000);
+  const endUtc = new Date(Date.UTC(year, month, day, 23, 59, 59, 999) + timezoneOffsetMinutes * 60000);
+  return { startUtc, endUtc };
 }
 
 export class WorkerTrackingController {
@@ -155,6 +159,7 @@ export class WorkerTrackingController {
       const { workerId } = req.params;
       const requestedDate = parseRequestedDate(req.query.date);
       const requestedCompanyId = typeof req.query.companyId === "string" ? req.query.companyId : null;
+      const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(req.query.timezoneOffsetMinutes) ?? 0;
       const authUserId = (req as any).userId as string | undefined;
 
       if (!workerId) {
@@ -174,8 +179,10 @@ export class WorkerTrackingController {
       }
 
       const effectiveDate = requestedDate || new Date();
-      const start = startOfDay(effectiveDate);
-      const end = endOfDay(effectiveDate);
+      const { startUtc: start, endUtc: end } = getUtcRangeForLocalDate(
+        effectiveDate,
+        timezoneOffsetMinutes
+      );
 
       const pings = await prisma.workerLocationPing.findMany({
         where: {
