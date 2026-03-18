@@ -2,43 +2,38 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 
-function getProjectName(project: {
-  contract_number?: string | number | null;
-  workContext?: { Name?: string | null } | null;
-  client?: { name?: string | null } | null;
-  location?: string | null;
-}) {
+function getProjectName(project: any) {
   return (
-    project.workContext?.Name ||
-    project.client?.name ||
-    (project.contract_number ? `#${project.contract_number}` : null) ||
-    project.location ||
+    project?.workContext?.Name ||
+    project?.client?.name ||
+    (project?.contract_number ? `#${project.contract_number}` : null) ||
+    project?.location ||
     "Project"
   );
 }
 
-async function mapUserAssignees(
-  items: Array<{ user: { id: string; name: string; avatar: string | null } }>
-) {
+async function mapUserAssignees(items: any[] = []) {
   return Promise.all(
-    items.map(async ({ user }) => ({
-      id: user.id,
-      type: "worker" as const,
-      name: user.name,
-      avatarUrl: user.avatar ? await getPresignedUrl(user.avatar) : null,
-    }))
+    items
+      .filter((item) => item?.user?.id)
+      .map(async (item) => ({
+        id: item.user.id,
+        type: "worker" as const,
+        name: item.user.name,
+        avatarUrl: item.user.avatar ? await getPresignedUrl(item.user.avatar) : null,
+      }))
   );
 }
 
-function mapSubcontractorAssignees(
-  items: Array<{ subcontractor: { id: string; name: string } }>
-) {
-  return items.map(({ subcontractor }) => ({
-    id: subcontractor.id,
-    type: "subcontractor" as const,
-    name: subcontractor.name,
-    avatarUrl: null,
-  }));
+function mapSubcontractorAssignees(items: any[] = []) {
+  return items
+    .filter((item) => item?.subcontractor?.id)
+    .map((item) => ({
+      id: item.subcontractor.id,
+      type: "subcontractor" as const,
+      name: item.subcontractor.name,
+      avatarUrl: null,
+    }));
 }
 
 function dedupeAssignees<T extends { id: string; type: string }>(items: T[]) {
@@ -84,19 +79,17 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             UserServiceProject: {
-              where: { user_id: { not: null }, sub_service_project_id: null, custom_service_schedule_id: null },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
-              where: { subcontractor_id: { not: null }, sub_service_project_id: null, custom_service_schedule_id: null },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },
             },
           },
-        }),
+        }) as Promise<any[]>,
         prisma.customServiceSchedule.findMany({
           where: {
             project: { company_id: company.id },
@@ -111,19 +104,17 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             userServiceProjects: {
-              where: { user_id: { not: null }, sub_service_project_id: null, service_project_id: null },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
-              where: { subcontractor_id: { not: null }, sub_service_project_id: null, service_project_id: null },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },
             },
           },
-        }),
+        }) as Promise<any[]>,
         prisma.subServicesProject.findMany({
           where: {
             OR: [
@@ -155,26 +146,24 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             userServiceProject: {
-              where: { user_id: { not: null } },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
-              where: { subcontractor_id: { not: null } },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },
             },
           },
-        }),
+        }) as Promise<any[]>,
       ]);
 
       const serviceJobs = await Promise.all(
         serviceProjects.map(async (service) => {
           const assignees = dedupeAssignees([
-            ...(await mapUserAssignees(service.UserServiceProject)),
-            ...mapSubcontractorAssignees(service.subContractorServiceProjects),
+            ...(await mapUserAssignees((service.UserServiceProject || []).filter((item: any) => !item?.sub_service_project_id && !item?.custom_service_schedule_id))),
+            ...mapSubcontractorAssignees((service.subContractorServiceProjects || []).filter((item: any) => !item?.sub_service_project_id && !item?.custom_service_schedule_id)),
           ]);
 
           return {
@@ -186,7 +175,7 @@ export class GetDispatchJobsByCompanyController {
             deadline: service.deadline,
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: service.Project?.id || null,
-            projectName: getProjectName(service.Project || {}),
+            projectName: getProjectName(service.Project),
             contractNumber: service.Project?.contract_number || null,
             serviceProjectId: service.id,
             customServiceId: null,
@@ -199,8 +188,8 @@ export class GetDispatchJobsByCompanyController {
       const customJobs = await Promise.all(
         customServices.map(async (service) => {
           const assignees = dedupeAssignees([
-            ...(await mapUserAssignees(service.userServiceProjects)),
-            ...mapSubcontractorAssignees(service.subContractorServiceProjects),
+            ...(await mapUserAssignees((service.userServiceProjects || []).filter((item: any) => !item?.sub_service_project_id && !item?.service_project_id))),
+            ...mapSubcontractorAssignees((service.subContractorServiceProjects || []).filter((item: any) => !item?.sub_service_project_id && !item?.service_project_id)),
           ]);
 
           return {
@@ -212,7 +201,7 @@ export class GetDispatchJobsByCompanyController {
             deadline: service.deadline,
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: service.project?.id || null,
-            projectName: getProjectName(service.project || {}),
+            projectName: getProjectName(service.project),
             contractNumber: service.project?.contract_number || null,
             serviceProjectId: null,
             customServiceId: service.id,
@@ -226,8 +215,8 @@ export class GetDispatchJobsByCompanyController {
         subServices.map(async (service) => {
           const project = service.serviceProject?.Project || service.custom_service_schedule?.project;
           const assignees = dedupeAssignees([
-            ...(await mapUserAssignees(service.userServiceProject)),
-            ...mapSubcontractorAssignees(service.subContractorServiceProjects),
+            ...(await mapUserAssignees(service.userServiceProject || [])),
+            ...mapSubcontractorAssignees(service.subContractorServiceProjects || []),
           ]);
 
           return {
@@ -239,7 +228,7 @@ export class GetDispatchJobsByCompanyController {
             deadline: service.deadline,
             scheduleCompleted: Boolean(service.scheduleCompleted),
             projectId: project?.id || null,
-            projectName: getProjectName(project || {}),
+            projectName: getProjectName(project),
             contractNumber: project?.contract_number || null,
             serviceProjectId: service.serviceProjectId || null,
             customServiceId: service.custom_service_schedule_id || null,
