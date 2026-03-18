@@ -7,6 +7,7 @@
     "dev:worker": "nodemon --exec ts-node src/workers/quickbooks/quickbooksWorker.ts",
     "dev": "npm-run-all -p dev:api dev:worker",
     "build": "tsc",
+    "tracking:prune": "ts-node src/scripts/pruneWorkerTracking.ts",
     "start:worker": "node dist/workers/quickbooks/quickbooksWorker.js",
     "start": "node dist/server.js",
     "test": "jest",
