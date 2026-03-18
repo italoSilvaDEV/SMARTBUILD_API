@@ -288,19 +288,7 @@ export class GetLiveTrackingByCompanyController {
               | "outside-site",
           };
           const latestUpdateAt = latestRow.recordedAt.toISOString();
-          const staleThresholdMs = 15 * 60 * 1000;
-          const isStale = Date.now() - latestRow.recordedAt.getTime() > staleThresholdMs;
-          let status: "on-site" | "off-site" | "stale" | "pending-service";
-
-          if (!latestRow.serviceProjectId && !resolvedProjectId) {
-            status = "pending-service";
-          } else if (isStale) {
-            status = "stale";
-          } else if (latestRow.isInsideSite) {
-            status = "on-site";
-          } else {
-            status = "off-site";
-          }
+          const status: "on-site" | "off-site" = latestRow.isInsideSite ? "on-site" : "off-site";
 
           return {
             id: workerId,
