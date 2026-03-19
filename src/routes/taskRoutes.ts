@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { TaskController } from "../controllers/tasks/TaskController";
+import { TaskDispatchController } from "../controllers/tasks/TaskDispatchController";
 import { TaskCommentController } from "../controllers/tasks/TaskCommentController";
 import { TaskNotificationController } from "../controllers/tasks/TaskNotificationController";
 import { checkToken } from "../middlewares/checkToken";
@@ -8,14 +9,17 @@ import uploadConfig from "../config/upload";
 
 const taskRoutes = Router();
 const taskController = new TaskController();
+const taskDispatchController = new TaskDispatchController();
 const taskCommentController = new TaskCommentController();
 const taskNotificationController = new TaskNotificationController();
 const upload = multer(uploadConfig.upload("./public/tmp/task-files"));
 
 // CRUD de Tasks
 taskRoutes.post("/", checkToken, (req, res) => taskController.create(req, res));
+taskRoutes.get("/company/:companyId", checkToken, (req, res) => taskDispatchController.listByCompany(req, res));
 taskRoutes.get("/project/:projectId", checkToken, (req, res) => taskController.listByProject(req, res));
 taskRoutes.get("/user/:userId", checkToken, (req, res) => taskController.listByUser(req, res));
+taskRoutes.get("/:id", checkToken, (req, res) => taskDispatchController.getById(req, res));
 taskRoutes.put("/:id", checkToken, (req, res) => taskController.update(req, res));
 taskRoutes.delete("/:id", checkToken, (req, res) => taskController.delete(req, res));
 

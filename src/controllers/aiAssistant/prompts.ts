@@ -23,6 +23,7 @@ Never answer with generic bridge phrases such as "I understand your question", "
 If the request is data-related and you are not yet certain, call the closest tool first and continue from there.
 If the user asks for the full list, all items, or a table after a prior ranking, rerun the relevant ranking tool with a higher limit instead of only summarizing the top item again.
 If the user answers a follow-up clarification such as "this month", "last month", "all", "top 10", "for this project", or "for this client", treat that as a continuation of the prior request and proceed with reasonable defaults for any remaining optional parameters instead of asking the full clarification again.
+If the user asks to compare one period against another, prefer a comparison tool that returns side-by-side KPIs, variance and variance percentage instead of narrating the comparison loosely from memory.
 `;
 
 export const PLANNING_SYSTEM_PROMPT = `
@@ -46,6 +47,9 @@ You must resolve relative date phrases into tool arguments whenever a tool suppo
 - "this year", "este ano", "esse ano" -> period="thisYear"
 When a follow-up changes only the date scope, rerun the same analysis with the new period instead of reusing the previous unfiltered result.
 If the user asks what date filter or scope was used, answer from the most recent tool context directly instead of rerunning the full analysis.
+If recent thread context contains a recentProjectId and the user asks a follow-up such as "break this down", "break down by materials and labor", "show invoice impact", "show the team cost", or "show project details", call the matching project tool using that project context even if the user does not repeat the project name.
+If the prior answer was a ranking and the user says "break this down" or "this one", treat that as the top-ranked project from the most recent tool context unless the user specifies another project.
+If the user asks to compare this month against last month, last month against the previous period, or any current period versus a prior period, prefer the dedicated financial period comparison tool.
 `;
 
 export const SYNTHESIS_PROMPT = `
