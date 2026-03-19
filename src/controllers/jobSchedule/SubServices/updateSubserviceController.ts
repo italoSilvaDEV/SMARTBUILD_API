@@ -3,7 +3,7 @@ import { prisma } from "../../../utils/prisma";
 import { sendEmail } from "../../../utils/sendEmail";
 import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
-import { normalizeToDateOnly, formatDateForEmail } from "../../../utils/dateUtils";
+import { normalizeScheduleDateValue, formatDateForEmail } from "../../../utils/dateUtils";
 
 interface UserInput {
     id: string;
@@ -20,6 +20,8 @@ interface UpdateSubservice {
     description?: string;
     startDate?: string;
     deadline?: string;
+    startDateTime?: string;
+    deadlineDateTime?: string;
     users?: UserInput[];
     subcontractors?: SubcontractorInput[];
     categoryId?: string | null;
@@ -64,8 +66,8 @@ export class UpdateSubserviceController {
             const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
             if (!project) return res.status(404).json({ error: "Project context not found" });
 
-            const startDateOnly = body.startDate != null ? normalizeToDateOnly(body.startDate) : undefined;
-            const deadlineOnly = body.deadline != null ? normalizeToDateOnly(body.deadline) : undefined;
+            const startDateOnly = body.startDate != null ? normalizeScheduleDateValue(body.startDate, body.startDateTime) : undefined;
+            const deadlineOnly = body.deadline != null ? normalizeScheduleDateValue(body.deadline, body.deadlineDateTime) : undefined;
 
             const changes: ScheduleChange[] = [];
 
@@ -251,3 +253,5 @@ export class UpdateSubserviceController {
         }
     }
 }
+
+

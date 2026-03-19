@@ -36,6 +36,22 @@ export function normalizeToDateOnly(s: string): string {
   return trimmed.includes('T') ? trimmed.split('T')[0]! : trimmed.slice(0, 10);
 }
 
+export function normalizeScheduleDateValue(
+  dateOnly?: string | null,
+  dateTime?: string | null
+): string | undefined {
+  const preferred = dateTime?.trim() || dateOnly?.trim();
+  if (!preferred) return undefined;
+
+  if (!preferred.includes('T')) {
+    return normalizeToDateOnly(preferred);
+  }
+
+  return preferred
+    .replace(/\.\d+$/, '')
+    .replace(/Z$/, '')
+    .trim();
+}
 export function toLocalDateForDisplay(dateStr?: string | Date): Date | undefined {
   if (dateStr == null) return undefined;
   if (dateStr instanceof Date) return dateStr;
@@ -59,3 +75,4 @@ export function formatDateForEmail(date?: string | Date): string {
     hour12: true
   }) + ')';
 }
+

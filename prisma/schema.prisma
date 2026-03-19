@@ -88,6 +88,8 @@ model User {
 
   Invoice  Invoice[]
   TimeLine TimeLine[]
+  WorkerLiveLocation WorkerLiveLocation[]
+  WorkerLocationPing WorkerLocationPing[]
 
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
@@ -330,6 +332,8 @@ model Company {
 
   offices Office[]
   chats   Chat[]
+  workerLiveLocations WorkerLiveLocation[]
+  workerLocationPings WorkerLocationPing[]
 }
 
 model ContractNotes {
@@ -1257,6 +1261,73 @@ model TimeLine {
   service_project_id   String
   UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id], onDelete: Cascade)
   userServiceProjectId String
+}
+
+model WorkerLiveLocation {
+  id                   String   @id @default(uuid())
+  companyId            String
+  userId               String
+  attendanceId         String?
+  userServiceProjectId String?
+  serviceProjectId     String?
+  projectId            String?
+  projectName          String?
+  serviceTitle         String?
+  projectLatitude      Float?
+  projectLongitude     Float?
+  projectRadiusMeters  Float?
+  latitude             Float
+  longitude            Float
+  accuracyMeters       Float?
+  speedMetersPerSecond Float?
+  headingDegrees       Float?
+  batteryLevel         Float?
+  isInsideSite         Boolean?
+  source               String   @default("mobile")
+  recordedAt           DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("worker_live_locations")
+}
+
+model WorkerLocationPing {
+  id                   String   @id @default(uuid())
+  companyId            String
+  userId               String
+  attendanceId         String?
+  userServiceProjectId String?
+  serviceProjectId     String?
+  projectId            String?
+  projectName          String?
+  serviceTitle         String?
+  projectLatitude      Float?
+  projectLongitude     Float?
+  projectRadiusMeters  Float?
+  latitude             Float
+  longitude            Float
+  accuracyMeters       Float?
+  speedMetersPerSecond Float?
+  headingDegrees       Float?
+  batteryLevel         Float?
+  isInsideSite         Boolean?
+  source               String   @default("mobile")
+  recordedAt           DateTime
+  createdAt            DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, recordedAt])
+  @@index([companyId, userId, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("worker_location_pings")
 }
 
 enum TypeInvoiceBase {

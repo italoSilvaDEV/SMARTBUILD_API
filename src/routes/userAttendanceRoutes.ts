@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { UserAttendanceController } from '../controllers/User/UserAttendanceController';
 import { checkToken } from '../middlewares/checkToken';
 import { TimeLineController } from '../controllers/User/TimeLineController';
+import { WorkerTrackingController } from '../controllers/tracking/WorkerTrackingController';
 const userAttendanceControlller = new UserAttendanceController()
 const timeLineController = new TimeLineController()
+const workerTrackingController = new WorkerTrackingController()
 const userAttendanceRoutes = Router();
 
 userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn.bind(userAttendanceControlller));
@@ -32,6 +34,7 @@ userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceCont
 userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine.bind(timeLineController));
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient.bind(timeLineController));
 userAttendanceRoutes.get('/time-line/by-worker/:user_service_project_id/:date', checkToken, timeLineController.handleTimeLineByWorker.bind(timeLineController));
+userAttendanceRoutes.get('/time-line/live/company/:companyId', checkToken, timeLineController.handleLiveTrackingByCompany.bind(timeLineController));
 userAttendanceRoutes.delete('/time-line/:id', checkToken,  timeLineController.deleteTimeline.bind(timeLineController));
 
 // Nova rota para mudança de projeto
@@ -46,6 +49,8 @@ userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceCont
 
 // Nova rota para salvar lote de timeline
 userAttendanceRoutes.post('/timeline/batch', checkToken, userAttendanceControlller.saveTimelineBatch.bind(userAttendanceControlller));
+userAttendanceRoutes.post('/tracking/ping', checkToken, workerTrackingController.handlePing.bind(workerTrackingController));
+userAttendanceRoutes.get('/tracking/history/worker/:workerId', checkToken, workerTrackingController.handleHistoryByWorker.bind(workerTrackingController));
 
 // Nova rota para resumo de tempo dentro/fora
 userAttendanceRoutes.get('/user-attendance/:id/summary', checkToken, userAttendanceControlller.getAttendanceSummary.bind(userAttendanceControlller));

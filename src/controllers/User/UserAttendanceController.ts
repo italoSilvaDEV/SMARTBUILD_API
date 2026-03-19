@@ -2,9 +2,19 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AttendanceService } from '../../services/AttendanceService';
 import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
+import { SocketService } from '../../services/SocketService';
 
 const prisma = new PrismaClient();
 const attendanceService = new AttendanceService();
+
+const emitLiveTrackingUpdate = (companyId: string | null | undefined, payload: Record<string, any>) => {
+    if (!companyId) return;
+    SocketService.emitToAll('live_tracking_updated', {
+        companyId,
+        ...payload,
+        emittedAt: new Date().toISOString(),
+    });
+};
 
 const formatActiveAttendance = (att: any) => {
     const serviceProject = att.UserServiceProject?.service_project;
@@ -53,6 +63,11 @@ export class UserAttendanceController {
                 projectCoordinates: attendanceService.getProjectCoordinates(result.attendance),
                 message: 'Check-in realizado com sucesso.'
             });
+            emitLiveTrackingUpdate(result.attendance?.company_id || result.attendance?.UserServiceProject?.service_project?.Project?.company_id, {
+                attendanceId: result.attendance?.id,
+                userId: user_id,
+                source: 'attendance_check_in',
+            });
         } catch (error: any) {
             console.error('[AttendanceController] Error in checkInByServiceProject:', error);
             const status = this.mapErrorToStatus(error.message);
@@ -94,6 +109,11 @@ export class UserAttendanceController {
                 projectCoordinates: attendanceService.getProjectCoordinates(result.attendance),
                 message: 'Pending attendance created successfully.'
             });
+            emitLiveTrackingUpdate(result.attendance?.company_id, {
+                attendanceId: result.attendance?.id,
+                userId: user_id,
+                source: 'attendance_pending_check_in',
+            });
         } catch (error: any) {
             console.error('[AttendanceController] Error in checkInPendingServiceSelection:', error);
             const status = this.mapErrorToStatus(error.message);
@@ -117,6 +137,11 @@ export class UserAttendanceController {
                 longitude
             });
 
+            emitLiveTrackingUpdate(updatedAttendance?.company_id, {
+                attendanceId: updatedAttendance?.id,
+                userId: updatedAttendance?.user_id,
+                source: 'attendance_check_out',
+            });
             res.status(200).json(updatedAttendance);
         } catch (error: any) {
             console.error('[AttendanceController] Error in checkOut:', error);

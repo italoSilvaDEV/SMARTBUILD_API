@@ -29,7 +29,7 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "top_spending_projects" && output?.items?.length) {
     return {
       title: "Top Spending Projects",
-      description: "Projects ranked by highest accumulated cost.",
+      description: "Projects ranked by highest total project cost, where labor cost = employee cost + subcontractor cost and total project cost = materials + employee cost + subcontractor cost.",
       chartMode: "bar",
       chartData: output.items.slice(0, 6).map((item: any) => ({
         label: item.projectAddress || item.projectName,
@@ -48,8 +48,10 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
           { key: "clientName", label: "Client" },
           { key: "contractNumber", label: "Contract" },
           { key: "materialCost", label: "Materials" },
-          { key: "laborCost", label: "Labor" },
-          { key: "totalCost", label: "Total Cost" },
+          { key: "employeeCost", label: "Employee Cost" },
+          { key: "subcontractorCost", label: "Subcontractor Cost" },
+          { key: "laborCost", label: "Labor Cost" },
+          { key: "totalCost", label: "Total Project Cost" },
         ],
         output.items.map((item: any, index: number) => ({
           rank: index + 1,
@@ -57,6 +59,8 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
           clientName: item.clientName || null,
           contractNumber: item.contractNumber ?? null,
           materialCost: formatCurrency(item.materialCost || 0),
+          employeeCost: formatCurrency(item.employeeCost || 0),
+          subcontractorCost: formatCurrency(item.subcontractorCost || 0),
           laborCost: formatCurrency(item.laborCost || 0),
           totalCost: formatCurrency(item.totalCost || 0),
         }))
@@ -67,7 +71,7 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "top_profitable_projects" && output?.items?.length) {
     return {
       title: "Top Projects By Profit",
-      description: "Profitability ranked using sold value minus material and labor cost.",
+      description: "Profitability ranked using sold value minus total project cost, where labor cost = employee cost + subcontractor cost and total project cost = materials + employee cost + subcontractor cost.",
       chartMode: "bar",
       chartData: output.items.slice(0, 6).map((item: any) => ({
         label: item.projectAddress || item.projectName,
@@ -86,7 +90,9 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
           { key: "contractNumber", label: "Contract" },
           { key: "soldValue", label: "Sold Value" },
           { key: "materialCost", label: "Materials" },
-          { key: "laborCost", label: "Labor" },
+          { key: "employeeCost", label: "Employee Cost" },
+          { key: "subcontractorCost", label: "Subcontractor Cost" },
+          { key: "laborCost", label: "Labor Cost" },
           { key: "profitValue", label: "Profit" },
           { key: "profitPct", label: "Margin %" },
         ],
@@ -97,6 +103,8 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
           contractNumber: item.contractNumber ?? null,
           soldValue: formatCurrency(item.soldValue || 0),
           materialCost: formatCurrency(item.materialCost || 0),
+          employeeCost: formatCurrency(item.employeeCost || 0),
+          subcontractorCost: formatCurrency(item.subcontractorCost || 0),
           laborCost: formatCurrency(item.laborCost || 0),
           profitValue: formatCurrency(item.profitValue || 0),
           profitPct: `${((item.profitPct || 0) * 100).toFixed(1)}%`,
@@ -150,7 +158,7 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
   if (tool.tool === "project_cost_breakdown" && output?.totals) {
     return {
       title: "Project Cost Breakdown",
-      description: "Material, internal labor and subcontractor cost exposure for the selected project.",
+      description: "Project cost structure where labor cost = employee cost + subcontractor cost and total project cost = materials + employee cost + subcontractor cost.",
       chartMode: "bar",
       chartData: [
         { label: "Materials", value: output.totals.materialCost || 0 },
@@ -159,9 +167,11 @@ export function buildProjectReport(tool: ExecutedTool): AssistantReport | null {
       ],
       metrics: [
         { label: "Project", value: output.projectAddress || output.projectName, tone: "warning" },
-        { label: "Total cost", value: formatCurrency(output.totals.totalCost || 0) },
+        { label: "Total project cost", value: formatCurrency(output.totals.totalCost || 0) },
         { label: "Materials", value: formatCurrency(output.totals.materialCost || 0) },
-        { label: "Labor", value: formatCurrency(output.totals.laborCost || 0), tone: "success" },
+        { label: "Labor Cost", value: formatCurrency(output.totals.laborCost || 0), tone: "success" },
+        { label: "Employee cost", value: formatCurrency(output.totals.internalLaborCost || 0) },
+        { label: "Subcontractor cost", value: formatCurrency(output.totals.subcontractorCost || 0) },
       ],
     };
   }
