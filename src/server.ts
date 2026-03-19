@@ -12,8 +12,8 @@ import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
 import { setupInvoiceAutoEmailJob } from './jobs/invoiceAutoEmailJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
 import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
+import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeService';
 const cors = require('cors');
-
 
 dotenv.config();
 
@@ -62,8 +62,9 @@ app.use('/api/audits', auditRoutes);
 app.use(express.static('public'));
 
 (async () => {
-  await setupWebhook(); 
+  await setupWebhook();
   await setupConnectWebhook();
+  // Note: Extra Employee config is created on-demand when first accessed
   // setupAttendanceJobs();
   setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
 })();

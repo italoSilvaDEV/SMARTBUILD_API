@@ -93,7 +93,9 @@ export class FindClientById {
                     id: company.id,
                     name: company.name,
                     avatar: companyAvatarUrl,
-                    date_creation: company.date_creation
+                    date_creation: company.date_creation,
+                    allowedEmployees: company.allowedEmployees ?? 0,
+                    extraEmployees: company.extraEmployees ?? 0
                 },
                 clientDetails: {
                     name: ownerUser.user.name,

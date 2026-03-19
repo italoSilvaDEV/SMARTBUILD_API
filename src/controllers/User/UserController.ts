@@ -200,6 +200,24 @@ export class UserController {
         hashedPassword = bcrypt.hashSync(pass, 10);
       }
 
+      // Determinar se o usuário deve ser marcado como extra paid
+      // Os primeiros allowedEmployees usuários são do plano, os seguintes são extras
+      const companyForExtraCheck = await prisma.company.findUnique({
+        where: { id: company_id },
+        select: { allowedEmployees: true }
+      });
+      const allowedEmployees = companyForExtraCheck?.allowedEmployees ?? 0;
+      
+      const whereCountForExtra = isMultiCompany
+        ? { companies: { some: { companyId: company_id } } }
+        : { company_id };
+      const currentEmployeesCountForExtra = await prisma.user.count({ where: whereCountForExtra });
+      
+      // Se currentEmployeesCount >= allowedEmployees, este usuário é extra
+      const isExtraPaidUser = currentEmployeesCountForExtra >= allowedEmployees;
+      
+      console.log(`[create] isExtraPaidUser determination: currentCount=${currentEmployeesCountForExtra}, allowed=${allowedEmployees}, isExtra=${isExtraPaidUser}`);
+
       // Criação do usuário
       const user = await prisma.user.create({
         data: {
@@ -223,6 +241,7 @@ export class UserController {
           invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
           projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
           estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
+          isExtraPaidUser: isExtraPaidUser,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
@@ -1108,7 +1127,8 @@ export class UserController {
         document: true,
         isDisabled: true,
         city_and_state: true,
-        hourly_price: true
+        hourly_price: true,
+        isExtraPaidUser: true
       },
     });
 
