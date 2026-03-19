@@ -22,24 +22,37 @@ export async function setupWebhook() {
   ];
 
   try {
-    // console.log("Verificando webhooks existentes na base de dados...");
-    
-    for (const { event, name } of EVENTS) {
-      // Verificar se já existe webhook para este evento (sem filtrar por nome)
-      const existing = await prisma.webhooks.findFirst({
-        where: { 
-          name, 
-          status: "enabled"
-        },
-      });
+    console.log("===========================================");
+    console.log("INICIANDO RECONFIGURAÇÃO DE WEBHOOKS...");
+    console.log("===========================================");
 
-      if (existing) {
-        console.log(`Webhook já existe na base: ${event} (ID: ${existing.id})`);
-        continue;
+    // Passo 1: Buscar todos os webhooks existentes no Stripe
+    console.log("\n[1] Buscando webhooks existentes no Stripe...");
+    const existingStripeWebhooks = await stripe.webhookEndpoints.list();
+    console.log(`    Encontrados ${existingStripeWebhooks.data.length} webhook(s) no Stripe`);
+
+    // Passo 2: Remover todos os webhooks do Stripe
+    if (existingStripeWebhooks.data.length > 0) {
+      console.log("\n[2] Removendo webhooks existentes do Stripe...");
+      for (const webhook of existingStripeWebhooks.data) {
+        console.log(`    Removendo webhook: ${webhook.id} (url: ${webhook.url})`);
+        await (stripe.webhookEndpoints as any).delete(webhook.id);
       }
+      console.log("    Todos os webhooks removidos do Stripe");
+    } else {
+      console.log("\n[2] Nenhum webhook encontrado no Stripe para remover");
+    }
 
-      // console.log(`Criando novo webhook para ${event}...`);
-      // Opções base para criar webhook
+    // Passo 3: Limpar a tabela de webhooks no banco de dados
+    console.log("\n[3] Limpando webhooks do banco de dados...");
+    const deletedDbWebhooks = await prisma.webhooks.deleteMany({});
+    console.log(`    Removidos ${deletedDbWebhooks.count} registro(s) da tabela webhooks`);
+
+    // Passo 4: Criar novos webhooks no Stripe e salvar no banco
+    console.log("\n[4] Criando novos webhooks...");
+    for (const { event, name } of EVENTS) {
+      console.log(`    Criando webhook para evento: ${event}`);
+
       const webhookOptions: Stripe.WebhookEndpointCreateParams = {
         url: webhookUrl,
         enabled_events: [event as Stripe.WebhookEndpointCreateParams.EnabledEvent],
@@ -58,8 +71,12 @@ export async function setupWebhook() {
         },
       });
 
-      console.log(`Webhook criado para ${event}: ${stripeWebhook.id}`);
+      console.log(`    ✓ Webhook criado: ${stripeWebhook.id} para evento ${event}`);
     }
+
+    console.log("\n===========================================");
+    console.log("WEBHOOKS RECONFIGURADOS COM SUCESSO!");
+    console.log("===========================================");
   } catch (err) {
     console.error("Erro ao configurar webhooks:", err);
   }
