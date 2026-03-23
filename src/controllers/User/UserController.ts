@@ -650,6 +650,51 @@ export class UserController {
         return response.status(404).json({ error: "User not found!" });
       }
 
+      // Validation for enabling extra paid users
+      // Only validate if: user is extra paid AND we're trying to enable them (isDisabled = false)
+      // AND user is currently disabled
+      if (user.isExtraPaidUser && isDisabled === false && user.isDisabled === true) {
+        // Get the company using UserCompany model (N:N relationship)
+        // User may not have company_id directly, so we must use UserCompany
+        const userCompany = await prisma.userCompany.findFirst({
+          where: { userId: id },
+          select: { companyId: true },
+        });
+
+        if (userCompany) {
+          const company = await prisma.company.findUnique({
+            where: { id: userCompany.companyId },
+            select: { extraEmployees: true },
+          });
+
+          // Get the extra employees limit (default to 0 if not set)
+          const extraEmployeesLimit = company?.extraEmployees ?? 0;
+
+          // Count active extra paid users using UserCompany model
+          // Active = isExtraPaidUser = true AND isDisabled = false
+          const companyUsers = await prisma.userCompany.findMany({
+            where: { companyId: userCompany.companyId },
+            select: {
+              user: {
+                select: { isExtraPaidUser: true, isDisabled: true },
+              },
+            },
+          });
+
+          const activeExtraPaidCount = companyUsers.filter(
+            uc => uc.user?.isExtraPaidUser && !uc.user?.isDisabled
+          ).length;
+
+          // Check if there's room for one more active extra paid user
+          // The user being enabled will add 1 to the active count
+          if (activeExtraPaidCount >= extraEmployeesLimit) {
+            return response.status(400).json({
+              error: "Cannot enable user: no available extra employee seats. Please purchase more seats or disable other extra paid users first."
+            });
+          }
+        }
+      }
+
       if (password && password !== confirm_password) {
         return response.status(400).json({ error: "Passwords do not match" });
       }
