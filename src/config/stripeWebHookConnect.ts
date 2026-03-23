@@ -42,7 +42,7 @@ export async function setupConnectWebhook() {
       console.log("\n[2] Removendo webhooks existentes do Stripe...");
       for (const webhook of existingStripeWebhooks.data) {
         console.log(`    Removendo webhook: ${webhook.id} (url: ${webhook.url})`);
-        await (stripe.webhookEndpoints as any).delete(webhook.id);
+        await (stripe.webhookEndpoints as any).del(webhook.id);
       }
       console.log("    Todos os webhooks removidos do Stripe");
     } else {
