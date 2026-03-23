@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { setupWebhook } from './config/stripeWebHook';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
-import { setupConnectWebhook } from './config/stripeWebHookConnect';
+// setupConnectWebhook is now deprecated - setupWebhook() handles all webhooks
 import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
 import { setupInvoiceAutoEmailJob } from './jobs/invoiceAutoEmailJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
@@ -63,7 +63,6 @@ app.use(express.static('public'));
 
 (async () => {
   await setupWebhook();
-  await setupConnectWebhook();
   // Note: Extra Employee config is created on-demand when first accessed
   // setupAttendanceJobs();
   setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
