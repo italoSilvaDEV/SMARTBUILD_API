@@ -20,7 +20,7 @@ interface ReduceExtraEmployeesResult {
   success: boolean;
   extraEmployees: number;
   removedQuantity: number;
-  convertedUsers: string[];
+  disabledUsers: string[];
   message: string;
 }
 
@@ -141,17 +141,22 @@ export class StripeSubscriptionItemService {
 
   /**
    * Removes extra employee seats from a company's subscription
-   * 
+   *
    * @param companyId - The company ID
    * @param quantityToRemove - Number of extra seats to remove
    * @param prorationBehavior - How to handle proration (default: 'create_prorations')
+   * @param userIds - Optional array of specific user IDs to disable
    */
   static async reduceExtraEmployees(
     companyId: string,
     quantityToRemove: number,
-    prorationBehavior: 'create_prorations' | 'always_invoice' | 'none' = 'create_prorations'
+    prorationBehavior: 'create_prorations' | 'always_invoice' | 'none' = 'create_prorations',
+    userIds?: string[]
   ): Promise<ReduceExtraEmployeesResult> {
     console.log(`[ExtraEmployee] Removing ${quantityToRemove} extra seats for company ${companyId}`);
+    if (userIds && userIds.length > 0) {
+      console.log(`[ExtraEmployee] Users to disable: ${userIds.join(', ')}`);
+    }
 
     // 1. Get company with subscription info
     const company = await prisma.company.findUnique({
@@ -217,8 +222,11 @@ export class StripeSubscriptionItemService {
       console.log(`[ExtraEmployee] Reduced item ${existingItem.id} to quantity ${newQuantity}`);
     }
 
-    // 6. Convert users from isExtraPaidUser to regular
-    const convertedUsers = await this.convertExtraUsersToRegular(companyId, quantityToRemove);
+    // 6. Disable specific users if provided, otherwise disable oldest extra paid users
+    let disabledUsers: string[] = [];
+    if (userIds && userIds.length > 0) {
+      disabledUsers = await this.disableExtraUsers(companyId, userIds);
+    }
 
     // 7. Update company in database
     await prisma.company.update({
@@ -232,22 +240,22 @@ export class StripeSubscriptionItemService {
       success: true,
       extraEmployees: newQuantity,
       removedQuantity: quantityToRemove,
-      convertedUsers,
-      message: `${quantityToRemove} extra employee seat(s) removed. ${convertedUsers.length} user(s) converted to regular seats.`,
+      disabledUsers,
+      message: `${quantityToRemove} extra employee seat(s) removed. ${disabledUsers.length} user(s) disabled.`,
     };
   }
 
   /**
    * Removes a specific user from extra employee status
-   * 
+   *
    * @param companyId - The company ID
-   * @param userId - The user ID to convert
+   * @param userId - The user ID to disable
    */
   static async removeExtraEmployeeUser(
     companyId: string,
     userId: string
   ): Promise<ReduceExtraEmployeesResult> {
-    console.log(`[ExtraEmployee] Converting user ${userId} from extra to regular`);
+    console.log(`[ExtraEmployee] Disabling user ${userId}`);
 
     // 1. Verify user belongs to company and is extra paid
     const user = await prisma.user.findFirst({
@@ -263,13 +271,10 @@ export class StripeSubscriptionItemService {
       throw new Error("User not found or is not an extra paid user");
     }
 
-    // 2. Remove one extra seat
-    const result = await this.reduceExtraEmployees(companyId, 1);
+    // 2. Remove one extra seat and disable the user
+    const result = await this.reduceExtraEmployees(companyId, 1, 'create_prorations', [userId]);
 
-    return {
-      ...result,
-      convertedUsers: [userId],
-    };
+    return result;
   }
 
   /**
@@ -302,7 +307,7 @@ export class StripeSubscriptionItemService {
       // Remove all extras
       if (oldExtra > 0) {
         await this.removeAllExtraEmployees(companyId);
-        await this.convertExtraUsersToRegular(companyId, oldExtra);
+        // await this.convertExtraUsersToRegular(companyId, oldExtra);
       }
       return;
     }
@@ -359,43 +364,44 @@ export class StripeSubscriptionItemService {
   }
 
   /**
-   * Converts extra paid users to regular users
-   * Selects the oldest extra users first
+   * Disables extra paid users
+   * Sets isDisabled = true (keeps isExtraPaidUser = true)
+   *
+   * @param companyId - The company ID
+   * @param userIds - Specific user IDs to disable
    */
-  private static async convertExtraUsersToRegular(
+  private static async disableExtraUsers(
     companyId: string,
-    count: number
+    userIds: string[]
   ): Promise<string[]> {
-    if (count <= 0) return [];
+    if (!userIds || userIds.length === 0) return [];
 
-    // Get the oldest extra paid users
-    const usersToConvert = await prisma.user.findMany({
+    // Verify users belong to this company using UserCompany model (N:N relationship)
+    const userCompanies = await prisma.userCompany.findMany({
       where: {
-        company_id: companyId,
-        isExtraPaidUser: true,
+        companyId,
+        userId: { in: userIds },
       },
-      orderBy: {
-        date_creation: 'asc', // Oldest first
-      },
-      take: count,
-      select: { id: true },
+      select: { userId: true },
     });
 
-    if (usersToConvert.length === 0) return [];
+    if (userCompanies.length === 0) return [];
 
-    const userIds = usersToConvert.map(u => u.id);
+    const validUserIds = userCompanies.map(uc => uc.userId);
 
+    // Disable users (set isDisabled = true, keep isExtraPaidUser = true)
     await prisma.user.updateMany({
       where: {
-        id: { in: userIds },
+        id: { in: validUserIds },
       },
       data: {
-        isExtraPaidUser: false,
+        isDisabled: true,
+        // Keep isExtraPaidUser = true - the user is still an extra paid user, just disabled
       },
     });
 
-    console.log(`[ExtraEmployee] Converted ${userIds.length} users from extra to regular`);
-    return userIds;
+    console.log(`[ExtraEmployee] Disabled ${validUserIds.length} users`);
+    return validUserIds;
   }
 
   /**
