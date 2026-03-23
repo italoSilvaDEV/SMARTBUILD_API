@@ -17,6 +17,9 @@ extraEmployeeRoutes.put("/price", ExtraEmployeeSubscriptionController.updatePric
 // Get extra employee status for a company
 extraEmployeeRoutes.get("/company/:companyId", ExtraEmployeeSubscriptionController.getExtraEmployeesStatus);
 
+// Get extra paid users for a company
+extraEmployeeRoutes.get("/company/:companyId/users", ExtraEmployeeSubscriptionController.getExtraPaidUsers);
+
 // Add extra employee seats to a company's subscription
 extraEmployeeRoutes.post("/company/:companyId", ExtraEmployeeSubscriptionController.addExtraEmployees);
 
