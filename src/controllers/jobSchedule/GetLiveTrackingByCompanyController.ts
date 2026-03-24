@@ -29,7 +29,6 @@ type OpenAttendanceRow = {
   check_in_time: Date;
   UserServiceProject?: {
     id: string;
-    project_id: string | null;
     service_project_id: string | null;
     service_project?: {
       id: string;
@@ -222,7 +221,6 @@ export class GetLiveTrackingByCompanyController {
               UserServiceProject: {
                 select: {
                   id: true,
-                  project_id: true,
                   service_project_id: true,
                   service_project: {
                     select: {
@@ -329,7 +327,6 @@ export class GetLiveTrackingByCompanyController {
               const lastPingAt = snapshot.lastPingAt?.toISOString() || null;
               const resolvedProjectId =
                 latestRow?.projectId ||
-                attendance.UserServiceProject?.project_id ||
                 attendanceProject?.id ||
                 latestRow?.serviceProjectId ||
                 attendance.UserServiceProject?.service_project_id ||

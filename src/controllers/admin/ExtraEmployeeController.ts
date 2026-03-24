@@ -15,15 +15,10 @@ export class ExtraEmployeeController {
         return res.status(404).json({ error: "Extra Employee config not found" });
       }
 
-      // Return formatted response
       res.json({
         id: config.id,
-        price: config.price.toNumber(),
-        stripeProductId: config.stripeProductId,
-        stripePriceId: config.stripePriceId,
+        price: config.price,
         isActive: config.isActive,
-        createdAt: config.createdAt,
-        updatedAt: config.updatedAt,
       });
     } catch (error) {
       console.error("[ExtraEmployeeController] Error getting config:", error);
@@ -48,15 +43,16 @@ export class ExtraEmployeeController {
       // Round to 2 decimal places
       const roundedPrice = Math.round(price * 100) / 100;
 
-      const config = await StripeExtraEmployeeService.updatePriceByAdmin(roundedPrice);
+      const result = await StripeExtraEmployeeService.updatePriceAndSyncStripe(roundedPrice);
+      const config = result.config;
 
       res.json({
         id: config.id,
-        price: config.price.toNumber(),
-        stripeProductId: config.stripeProductId,
-        stripePriceId: config.stripePriceId,
+        price: config.price,
         isActive: config.isActive,
-        updatedAt: config.updatedAt,
+        updatedCount: result.updatedCount,
+        failedCount: result.failedCount,
+        errors: result.errors,
       });
     } catch (error) {
       console.error("[ExtraEmployeeController] Error updating price:", error);
