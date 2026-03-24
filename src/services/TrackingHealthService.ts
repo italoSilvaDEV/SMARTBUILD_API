@@ -32,6 +32,103 @@ type TrackingReminderRecord = {
   restoredAt: Date | null;
 };
 
+const TRACKING_REMINDER_VARIANTS = [
+  {
+    firstTitle: "Hey {firstName}, just checking in",
+    firstFallbackTitle: "Just checking in",
+    firstBody: "Tap here to do a quick check in the app and confirm everything is okay.",
+    secondTitle: "{firstName}, just following up",
+    secondFallbackTitle: "Just following up",
+    secondBody: "We still haven't seen a recent check. Tap here to open the app and confirm you're okay.",
+  },
+  {
+    firstTitle: "Hi {firstName}, everything okay?",
+    firstFallbackTitle: "Everything okay?",
+    firstBody: "Please tap here for a quick check in so we know all is well.",
+    secondTitle: "{firstName}, quick follow-up",
+    secondFallbackTitle: "Quick follow-up",
+    secondBody: "When you have a second, tap here and open the app for a quick confirmation.",
+  },
+  {
+    firstTitle: "Hey {firstName}, just making sure you're good",
+    firstFallbackTitle: "Just making sure you're good",
+    firstBody: "Tap here for a fast check in and let us know everything is okay.",
+    secondTitle: "{firstName}, can you confirm you're okay?",
+    secondFallbackTitle: "Can you confirm you're okay?",
+    secondBody: "Please tap here to open the app and do a quick confirmation.",
+  },
+  {
+    firstTitle: "Quick check, {firstName}",
+    firstFallbackTitle: "Quick check",
+    firstBody: "Tap here to open the app and do a quick all-good check.",
+    secondTitle: "Checking back in, {firstName}",
+    secondFallbackTitle: "Checking back in",
+    secondBody: "We'd like one more quick confirmation. Tap here when you can.",
+  },
+  {
+    firstTitle: "Hi {firstName}, just a quick check",
+    firstFallbackTitle: "Just a quick check",
+    firstBody: "Tap here to confirm everything is okay on your end.",
+    secondTitle: "{firstName}, still okay over there?",
+    secondFallbackTitle: "Still okay over there?",
+    secondBody: "Tap here to open the app and send a quick confirmation.",
+  },
+  {
+    firstTitle: "Hey {firstName}, give us a quick check in",
+    firstFallbackTitle: "Give us a quick check in",
+    firstBody: "A quick tap here lets us know everything is still okay.",
+    secondTitle: "{firstName}, one more quick check",
+    secondFallbackTitle: "One more quick check",
+    secondBody: "If you can, tap here and open the app for a quick all-good confirmation.",
+  },
+  {
+    firstTitle: "Just checking that you're okay, {firstName}",
+    firstFallbackTitle: "Just checking that you're okay",
+    firstBody: "Tap here for a quick check in on the app.",
+    secondTitle: "{firstName}, please check in when you can",
+    secondFallbackTitle: "Please check in when you can",
+    secondBody: "Tap here to open the app and let us know everything is alright.",
+  },
+] as const;
+
+function formatReminderTitle(template: string, firstName: string | null) {
+  return template.replace("{firstName}", firstName || "");
+}
+
+function getReminderVariantIndex(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return hash % TRACKING_REMINDER_VARIANTS.length;
+}
+
+function getTrackingReminderMessage(
+  reminderNumber: 1 | 2,
+  workerName?: string | null,
+  attendanceId?: string
+) {
+  const firstName = workerName?.trim()?.split(" ")?.[0] || null;
+  const seed = `${attendanceId || "attendance"}:${workerName || "worker"}:${reminderNumber}`;
+  const variant = TRACKING_REMINDER_VARIANTS[getReminderVariantIndex(seed)];
+
+  if (reminderNumber === 1) {
+    return {
+      title: firstName
+        ? formatReminderTitle(variant.firstTitle, firstName)
+        : variant.firstFallbackTitle,
+      body: variant.firstBody,
+    };
+  }
+
+  return {
+    title: firstName
+      ? formatReminderTitle(variant.secondTitle, firstName)
+      : variant.secondFallbackTitle,
+    body: variant.secondBody,
+  };
+}
+
 export function getTrackingSilentReferenceTime(
   attendance: Pick<OpenAttendanceRecord, "check_in_time">,
   liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null
@@ -243,8 +340,11 @@ export async function runTrackingHealthCheckJob() {
       await PushNotificationService.sendPushNotifications([
         {
           to: expoPushToken,
-          title: "Tracking check",
-          body: "We haven’t received your location for a while. Open the app to keep tracking active.",
+          ...getTrackingReminderMessage(
+            reminderNumberToSend,
+            attendance.user?.name,
+            attendance.id
+          ),
           data: {
             type: "tracking_health_check",
             attendanceId: attendance.id,
