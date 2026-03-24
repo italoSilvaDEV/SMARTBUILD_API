@@ -358,6 +358,7 @@ export class WorkerTrackingController {
         projectSites,
         rawTrackPoints: replay.rawTrackPoints,
         matchedGeometry: replay.matchedGeometry,
+        displayGeometry: replay.displayGeometry,
         matchedSegments: replay.matchedSegments,
         tracepoints: replay.tracepoints,
         matchingMeta: replay.matchingMeta,

@@ -818,48 +818,10 @@ export async function buildReplayMatchingResult(input: {
   const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN || "";
   const rawTrackPoints = input.segments.flatMap((segment) => segment.trackPoints);
   const fallbackReasons = new Set<string>();
-  let chunkCount = 0;
-  let pointsUsedCount = 0;
-  let discardedPointCount = 0;
-  let matchedPointCount = 0;
-  let fallbackUsed = false;
-
-  const matchedSegments: ReplayMatchedSegment[] = [];
-
-  for (const segment of input.segments) {
-    if (!token) {
-      fallbackUsed = true;
-      fallbackReasons.add("missing-mapbox-token");
-      matchedSegments.push(buildRawSegment(segment, "missing-mapbox-token"));
-      continue;
-    }
-
-    const result = await matchSegmentWithMapbox(token, profile, segment);
-    chunkCount += result.chunkCount;
-    pointsUsedCount += result.pointsUsedCount;
-    discardedPointCount += result.discardedPointCount;
-    matchedPointCount += result.matchedPointCount;
-
-    if (result.usedFallback) {
-      fallbackUsed = true;
-      if (result.fallbackReason) {
-        fallbackReasons.add(result.fallbackReason);
-      }
-    }
-
-    matchedSegments.push(result.segment);
-  }
-
-  const matchedGeometry = token
-    ? await connectMatchedGeometrySegments({
-        matchedSegments,
-        token,
-        profile,
-      })
-    : matchedSegments
-        .filter((segment) => segment.source === "mapbox")
-        .map((segment) => segment.routeGeometry)
-        .filter((coordinates) => coordinates.length >= 2);
+  const matchedSegments: ReplayMatchedSegment[] = input.segments.map((segment) =>
+    buildRawSegment(segment, token ? "directions-display-geometry" : "missing-mapbox-token")
+  );
+  const matchedGeometry: number[][][] = [];
   const displayGeometry = token
     ? await buildDisplayGeometry({
         token,
@@ -867,22 +829,37 @@ export async function buildReplayMatchingResult(input: {
         rawTrackPoints,
       })
     : [];
+  const fallbackUsed = displayGeometry.length < 2;
+  if (!token) {
+    fallbackReasons.add("missing-mapbox-token");
+  } else if (fallbackUsed) {
+    fallbackReasons.add("directions-empty-geometry");
+  }
+  const pointsUsedCount = rawTrackPoints.length;
+  const discardedPointCount = 0;
+  const matchedPointCount = 0;
+  const chunkCount = Math.max(0, chunkDirectionsPoints(dedupeConsecutivePoints(rawTrackPoints).points).length);
   const tracepoints = matchedSegments.flatMap((segment) => segment.matchedTracePoints);
   const rawDistanceMeters = input.segments.reduce(
     (total, segment) => total + computeTrackDistanceMeters(segment.trackPoints),
     0
   );
-  const matchedDistanceMeters = matchedGeometry.reduce(
-    (total, segmentCoordinates) =>
-      total +
-      computeTrackDistanceMeters(
-        segmentCoordinates.map((coordinate) => ({
-          lng: coordinate[0],
-          lat: coordinate[1],
-        }))
-      ),
-    0
+  const matchedDistanceMeters = computeTrackDistanceMeters(
+    displayGeometry.map((coordinate) => ({
+      lng: coordinate[0],
+      lat: coordinate[1],
+    }))
   );
+
+  console.log("[MapboxReplayMatchingService] display geometry built", {
+    profile,
+    rawPointCount: rawTrackPoints.length,
+    displayGeometryPoints: displayGeometry.length,
+    firstCoordinate: displayGeometry[0] || null,
+    lastCoordinate: displayGeometry[displayGeometry.length - 1] || null,
+    fallbackUsed,
+    fallbackReasons: Array.from(fallbackReasons),
+  });
 
   return {
     rawTrackPoints,
