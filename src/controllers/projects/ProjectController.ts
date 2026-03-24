@@ -3209,7 +3209,12 @@ export class ProjectController {
       })
     }
 
-    if (!name && !description && !price && !hours) {
+    if (
+      name === undefined &&
+      description === undefined &&
+      price === undefined &&
+      hours === undefined
+    ) {
       return res.status(400).json({
         error: "at least one field is required"
       })
