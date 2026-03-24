@@ -5,6 +5,11 @@ import {
   acknowledgeTrackingReminderForAttendance,
   markTrackingReminderRestored,
 } from "../../services/TrackingHealthService";
+import {
+  buildReplayMatchingResult,
+  mapPingToReplayTrackPoint,
+  ReplaySegmentBreakReason,
+} from "../../services/MapboxReplayMatchingService";
 
 function parseRequestedDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
@@ -39,6 +44,30 @@ function getUtcRangeForLocalDate(date: Date, timezoneOffsetMinutes = 0) {
   const endUtc = new Date(Date.UTC(year, month, day, 23, 59, 59, 999) + timezoneOffsetMinutes * 60000);
   return { startUtc, endUtc };
 }
+
+function toRadians(degrees: number) {
+  return (degrees * Math.PI) / 180;
+}
+
+function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const earthRadiusMeters = 6371000;
+  const deltaLat = toRadians(lat2 - lat1);
+  const deltaLng = toRadians(lng2 - lng1);
+  const originLat = toRadians(lat1);
+  const destinationLat = toRadians(lat2);
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(originLat) *
+      Math.cos(destinationLat) *
+      Math.sin(deltaLng / 2) *
+      Math.sin(deltaLng / 2);
+
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const REPLAY_SEGMENT_BREAK_MINUTES = 30;
+const REPLAY_SEGMENT_BREAK_DISTANCE_METERS = 5000;
 
 export class WorkerTrackingController {
   async handlePing(req: Request, res: Response): Promise<Response> {
@@ -204,6 +233,84 @@ export class WorkerTrackingController {
         },
       });
 
+      const attendanceIds = Array.from(
+        new Set(pings.map((ping) => ping.attendanceId).filter((value): value is string => !!value))
+      );
+      const attendanceMap = new Map(
+        (
+          await prisma.userAttendance.findMany({
+            where: {
+              id: { in: attendanceIds },
+            },
+            select: {
+              id: true,
+              check_in_time: true,
+              check_out_time: true,
+            },
+          })
+        ).map((attendance) => [attendance.id, attendance])
+      );
+
+      const segments = pings.reduce<
+        Array<{
+          attendanceId?: string | null;
+          checkInAt?: string | null;
+          checkOutAt?: string | null;
+          breakReason?: ReplaySegmentBreakReason | null;
+          trackPoints: typeof pings;
+        }>
+      >((acc, ping) => {
+        const previous = acc[acc.length - 1];
+        const previousPoint = previous?.trackPoints[previous.trackPoints.length - 1];
+        const gapMinutes = previousPoint
+          ? (new Date(ping.recordedAt).getTime() - new Date(previousPoint.recordedAt).getTime()) /
+            60000
+          : 0;
+        const distanceMeters = previousPoint
+          ? getDistanceMeters(
+              previousPoint.latitude,
+              previousPoint.longitude,
+              ping.latitude,
+              ping.longitude
+            )
+          : 0;
+        const shouldStartNewSegment =
+          !previous ||
+          (previous.attendanceId || null) !== (ping.attendanceId || null) ||
+          gapMinutes >= REPLAY_SEGMENT_BREAK_MINUTES ||
+          distanceMeters >= REPLAY_SEGMENT_BREAK_DISTANCE_METERS;
+
+        if (shouldStartNewSegment) {
+          if (previous) {
+            if ((previous.attendanceId || null) !== (ping.attendanceId || null)) {
+              previous.breakReason = "attendance-change";
+            } else if (
+              gapMinutes >= REPLAY_SEGMENT_BREAK_MINUTES &&
+              distanceMeters >= REPLAY_SEGMENT_BREAK_DISTANCE_METERS
+            ) {
+              previous.breakReason = "time-and-distance-gap";
+            } else if (gapMinutes >= REPLAY_SEGMENT_BREAK_MINUTES) {
+              previous.breakReason = "time-gap";
+            } else if (distanceMeters >= REPLAY_SEGMENT_BREAK_DISTANCE_METERS) {
+              previous.breakReason = "distance-gap";
+            }
+          }
+          const attendance = ping.attendanceId ? attendanceMap.get(ping.attendanceId) : null;
+          acc.push({
+            attendanceId: ping.attendanceId || null,
+            checkInAt: attendance?.check_in_time?.toISOString() || null,
+            checkOutAt: attendance?.check_out_time?.toISOString() || null,
+            breakReason: null,
+            trackPoints: [ping],
+          });
+          return acc;
+        }
+
+        previous.trackPoints.push(ping);
+        return acc;
+      }, []);
+      const replaySegments = segments.filter((segment) => !!segment.attendanceId);
+
       const projectSites = Array.from(
         pings.reduce((map, ping) => {
           const siteId = ping.projectId || ping.serviceProjectId;
@@ -231,12 +338,31 @@ export class WorkerTrackingController {
         }, new Map<string, { id: string; name: string; lat: number; lng: number; radiusMeters: number }>())
       ).map(([, site]) => site);
 
+      const replayInputSegments = replaySegments.map((segment) => ({
+        attendanceId: segment.attendanceId || null,
+        checkInAt: segment.checkInAt || null,
+        checkOutAt: segment.checkOutAt || null,
+        breakReason: segment.breakReason || null,
+        trackPoints: segment.trackPoints.map(mapPingToReplayTrackPoint),
+      }));
+      const replay = await buildReplayMatchingResult({
+        segments: replayInputSegments,
+      });
+
       return res.status(200).json({
         companyId,
         workerId,
         date: effectiveDate.toISOString().split("T")[0],
         total: pings.length,
+        segments: replay.matchedSegments,
         projectSites,
+        rawTrackPoints: replay.rawTrackPoints,
+        matchedGeometry: replay.matchedGeometry,
+        matchedSegments: replay.matchedSegments,
+        tracepoints: replay.tracepoints,
+        matchingMeta: replay.matchingMeta,
+        replay,
+        summary: replay.summary,
         pings,
       });
     } catch (error) {

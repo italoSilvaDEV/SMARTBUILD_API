@@ -3,8 +3,8 @@ import { PushNotificationService } from "./PushNotificationService";
 
 const prismaAny = prisma as any;
 
-export const TRACKING_SILENT_AFTER_MINUTES = 30;
-export const TRACKING_SECOND_REMINDER_AFTER_MINUTES = 60;
+export const TRACKING_SILENT_AFTER_MINUTES = 25;
+export const TRACKING_REMINDER_INTERVAL_MINUTES = 25;
 
 type OpenAttendanceRecord = {
   id: string;
@@ -104,7 +104,7 @@ function getReminderVariantIndex(seed: string) {
 }
 
 function getTrackingReminderMessage(
-  reminderNumber: 1 | 2,
+  reminderNumber: number,
   workerName?: string | null,
   attendanceId?: string
 ) {
@@ -308,29 +308,24 @@ export async function runTrackingHealthCheckJob() {
       }
 
       const reminderChain = remindersByAttendance[attendance.id] || [];
-      const hasAcknowledged = reminderChain.some((reminder) => !!reminder.acknowledgedAt);
-      const hasRestored = reminderChain.some((reminder) => !!reminder.restoredAt);
-      if (hasAcknowledged || hasRestored) {
+      const activeReminderChain = reminderChain.filter((reminder) => !reminder.restoredAt);
+      const lastActiveReminder = activeReminderChain
+        .slice()
+        .sort((left, right) => right.triggeredAt.getTime() - left.triggeredAt.getTime())[0];
+
+      const shouldSendInitialReminder =
+        activeReminderChain.length === 0 && snapshot.ageMinutes >= TRACKING_SILENT_AFTER_MINUTES;
+      const shouldSendRecurringReminder =
+        !!lastActiveReminder &&
+        now.getTime() - lastActiveReminder.triggeredAt.getTime() >=
+          TRACKING_REMINDER_INTERVAL_MINUTES * 60000;
+
+      if (!shouldSendInitialReminder && !shouldSendRecurringReminder) {
         continue;
       }
 
-      const reminderOne = reminderChain.find((reminder) => reminder.reminderNumber === 1);
-      const reminderTwo = reminderChain.find((reminder) => reminder.reminderNumber === 2);
-
-      let reminderNumberToSend: 1 | 2 | null = null;
-      if (!reminderOne && snapshot.ageMinutes >= TRACKING_SILENT_AFTER_MINUTES) {
-        reminderNumberToSend = 1;
-      } else if (
-        reminderOne &&
-        !reminderTwo &&
-        snapshot.ageMinutes >= TRACKING_SECOND_REMINDER_AFTER_MINUTES
-      ) {
-        reminderNumberToSend = 2;
-      }
-
-      if (!reminderNumberToSend) {
-        continue;
-      }
+      const reminderNumberToSend =
+        reminderChain.reduce((max, reminder) => Math.max(max, reminder.reminderNumber), 0) + 1;
 
       const expoPushToken = attendance.user?.expoPushToken || null;
       if (!expoPushToken) {
