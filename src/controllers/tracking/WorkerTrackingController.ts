@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
+import {
+  acknowledgeTrackingReminderForAttendance,
+  markTrackingReminderRestored,
+} from "../../services/TrackingHealthService";
 
 function parseRequestedDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
@@ -136,6 +140,8 @@ export class WorkerTrackingController {
         }),
       ]);
 
+      await markTrackingReminderRestored(authUserId, attendanceId || null);
+
       SocketService.emitToAll("live_tracking_updated", {
         companyId: resolvedCompanyId,
         workerId: authUserId,
@@ -207,6 +213,28 @@ export class WorkerTrackingController {
       });
     } catch (error) {
       console.error("[WorkerTrackingController.handleHistoryByWorker] Error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async acknowledgeReminder(req: Request, res: Response): Promise<Response> {
+    try {
+      const authUserId = (req as any).userId as string | undefined;
+      const { attendanceId } = req.body || {};
+
+      if (!authUserId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (!attendanceId || typeof attendanceId !== "string") {
+        return res.status(400).json({ error: "attendanceId is required" });
+      }
+
+      await acknowledgeTrackingReminderForAttendance(authUserId, attendanceId);
+
+      return res.status(200).json({ message: "Tracking reminder acknowledged" });
+    } catch (error) {
+      console.error("[WorkerTrackingController.acknowledgeReminder] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

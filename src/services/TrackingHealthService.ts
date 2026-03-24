@@ -1,0 +1,275 @@
+import { prisma } from "../utils/prisma";
+import { PushNotificationService } from "./PushNotificationService";
+
+const prismaAny = prisma as any;
+
+export const TRACKING_SILENT_AFTER_MINUTES = 30;
+export const TRACKING_SECOND_REMINDER_AFTER_MINUTES = 60;
+
+type OpenAttendanceRecord = {
+  id: string;
+  company_id: string | null;
+  user_id: string;
+  check_in_time: Date;
+  user?: {
+    id: string;
+    name: string;
+    expoPushToken?: string | null;
+  } | null;
+};
+
+type LiveLocationRecord = {
+  companyId: string;
+  userId: string;
+  recordedAt: Date;
+};
+
+type TrackingReminderRecord = {
+  attendanceId: string;
+  reminderNumber: number;
+  triggeredAt: Date;
+  acknowledgedAt: Date | null;
+  restoredAt: Date | null;
+};
+
+export function getTrackingSilentReferenceTime(
+  attendance: Pick<OpenAttendanceRecord, "check_in_time">,
+  liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null
+) {
+  return liveLocation?.recordedAt || attendance.check_in_time;
+}
+
+export function getTrackingHealthSnapshot(
+  attendance: Pick<OpenAttendanceRecord, "check_in_time">,
+  liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null,
+  now = new Date()
+) {
+  const lastPingAt = liveLocation?.recordedAt || null;
+  const referenceTime = getTrackingSilentReferenceTime(attendance, liveLocation);
+  const ageMs = Math.max(0, now.getTime() - referenceTime.getTime());
+  const ageMinutes = Math.floor(ageMs / 60000);
+  const isSilent = ageMinutes >= TRACKING_SILENT_AFTER_MINUTES;
+  const silentSince = isSilent
+    ? new Date(referenceTime.getTime() + TRACKING_SILENT_AFTER_MINUTES * 60000)
+    : null;
+
+  return {
+    lastPingAt,
+    lastPingAgeMinutes: liveLocation ? ageMinutes : null,
+    trackingHealth: (isSilent ? "silent" : "healthy") as "healthy" | "silent",
+    silentSince,
+    ageMinutes,
+  };
+}
+
+export async function acknowledgeTrackingReminderForAttendance(
+  userId: string,
+  attendanceId: string
+) {
+  const now = new Date();
+  await prismaAny.workerTrackingReminder.updateMany({
+    where: {
+      userId,
+      attendanceId,
+      acknowledgedAt: null,
+      restoredAt: null,
+    },
+    data: {
+      acknowledgedAt: now,
+    },
+  });
+}
+
+export async function markTrackingReminderRestored(
+  userId: string,
+  attendanceId?: string | null
+) {
+  const now = new Date();
+
+  let resolvedAttendanceId = attendanceId || null;
+  if (!resolvedAttendanceId) {
+    const openAttendance = await prisma.userAttendance.findFirst({
+      where: {
+        user_id: userId,
+        check_out_time: null,
+      },
+      orderBy: {
+        check_in_time: "desc",
+      },
+      select: { id: true },
+    });
+    resolvedAttendanceId = openAttendance?.id || null;
+  }
+
+  if (!resolvedAttendanceId) return;
+
+  await prismaAny.workerTrackingReminder.updateMany({
+    where: {
+      userId,
+      attendanceId: resolvedAttendanceId,
+      acknowledgedAt: null,
+      restoredAt: null,
+    },
+    data: {
+      restoredAt: now,
+    },
+  });
+}
+
+export async function runTrackingHealthCheckJob() {
+  const batchSize = 200;
+  let cursorId: string | undefined;
+  const now = new Date();
+
+  while (true) {
+    const attendances = (await prisma.userAttendance.findMany({
+      where: {
+        check_out_time: null,
+        company_id: { not: null },
+      },
+      select: {
+        id: true,
+        company_id: true,
+        user_id: true,
+        check_in_time: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            expoPushToken: true,
+          },
+        },
+      },
+      orderBy: { id: "asc" },
+      take: batchSize,
+      ...(cursorId
+        ? {
+            skip: 1,
+            cursor: { id: cursorId },
+          }
+        : {}),
+    })) as OpenAttendanceRecord[];
+
+    if (!attendances.length) break;
+    cursorId = attendances[attendances.length - 1]?.id;
+
+    const companyIds = Array.from(
+      new Set(attendances.map((attendance) => attendance.company_id).filter(Boolean) as string[])
+    );
+    const userIds = Array.from(new Set(attendances.map((attendance) => attendance.user_id)));
+    const attendanceIds = attendances.map((attendance) => attendance.id);
+
+    const [liveLocations, reminders] = await Promise.all([
+      prisma.workerLiveLocation.findMany({
+        where: {
+          companyId: { in: companyIds },
+          userId: { in: userIds },
+        },
+        select: {
+          companyId: true,
+          userId: true,
+          recordedAt: true,
+        },
+      }) as Promise<LiveLocationRecord[]>,
+      prismaAny.workerTrackingReminder.findMany({
+        where: {
+          attendanceId: { in: attendanceIds },
+        },
+        select: {
+          attendanceId: true,
+          reminderNumber: true,
+          triggeredAt: true,
+          acknowledgedAt: true,
+          restoredAt: true,
+        },
+      }) as Promise<TrackingReminderRecord[]>,
+    ]);
+
+    const liveLocationMap = new Map(
+      liveLocations.map((location) => [`${location.companyId}:${location.userId}`, location])
+    );
+    const remindersByAttendance = reminders.reduce<Record<string, TrackingReminderRecord[]>>(
+      (acc, reminder) => {
+        if (!acc[reminder.attendanceId]) {
+          acc[reminder.attendanceId] = [];
+        }
+        acc[reminder.attendanceId].push(reminder);
+        return acc;
+      },
+      {}
+    );
+
+    for (const attendance of attendances) {
+      if (!attendance.company_id) continue;
+
+      const liveLocation =
+        liveLocationMap.get(`${attendance.company_id}:${attendance.user_id}`) || null;
+      const snapshot = getTrackingHealthSnapshot(attendance, liveLocation, now);
+
+      if (snapshot.trackingHealth !== "silent") {
+        continue;
+      }
+
+      const reminderChain = remindersByAttendance[attendance.id] || [];
+      const hasAcknowledged = reminderChain.some((reminder) => !!reminder.acknowledgedAt);
+      const hasRestored = reminderChain.some((reminder) => !!reminder.restoredAt);
+      if (hasAcknowledged || hasRestored) {
+        continue;
+      }
+
+      const reminderOne = reminderChain.find((reminder) => reminder.reminderNumber === 1);
+      const reminderTwo = reminderChain.find((reminder) => reminder.reminderNumber === 2);
+
+      let reminderNumberToSend: 1 | 2 | null = null;
+      if (!reminderOne && snapshot.ageMinutes >= TRACKING_SILENT_AFTER_MINUTES) {
+        reminderNumberToSend = 1;
+      } else if (
+        reminderOne &&
+        !reminderTwo &&
+        snapshot.ageMinutes >= TRACKING_SECOND_REMINDER_AFTER_MINUTES
+      ) {
+        reminderNumberToSend = 2;
+      }
+
+      if (!reminderNumberToSend) {
+        continue;
+      }
+
+      const expoPushToken = attendance.user?.expoPushToken || null;
+      if (!expoPushToken) {
+        continue;
+      }
+
+      await PushNotificationService.sendPushNotifications([
+        {
+          to: expoPushToken,
+          title: "Tracking check",
+          body: "We haven’t received your location for a while. Open the app to keep tracking active.",
+          data: {
+            type: "tracking_health_check",
+            attendanceId: attendance.id,
+          },
+          sound: "default",
+          channelId: "default",
+        },
+      ]);
+
+      try {
+        await prismaAny.workerTrackingReminder.create({
+          data: {
+            companyId: attendance.company_id,
+            userId: attendance.user_id,
+            attendanceId: attendance.id,
+            reminderNumber: reminderNumberToSend,
+            triggeredAt: now,
+          },
+        });
+      } catch (error: any) {
+        const code = error?.code || error?.meta?.cause;
+        if (code !== "P2002") {
+          throw error;
+        }
+      }
+    }
+  }
+}

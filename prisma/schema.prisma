@@ -1330,6 +1330,24 @@ model WorkerLocationPing {
   @@map("worker_location_pings")
 }
 
+model WorkerTrackingReminder {
+  id             String   @id @default(uuid())
+  companyId      String
+  userId         String
+  attendanceId   String
+  reminderNumber Int
+  triggeredAt    DateTime @default(now())
+  acknowledgedAt DateTime?
+  restoredAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([attendanceId, reminderNumber])
+  @@index([companyId, userId, attendanceId])
+  @@index([attendanceId, triggeredAt])
+  @@map("worker_tracking_reminders")
+}
+
 enum TypeInvoiceBase {
   project
   estimate

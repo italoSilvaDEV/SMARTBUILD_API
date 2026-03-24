@@ -51,6 +51,7 @@ userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceCont
 userAttendanceRoutes.post('/timeline/batch', checkToken, userAttendanceControlller.saveTimelineBatch.bind(userAttendanceControlller));
 userAttendanceRoutes.post('/tracking/ping', checkToken, workerTrackingController.handlePing.bind(workerTrackingController));
 userAttendanceRoutes.get('/tracking/history/worker/:workerId', checkToken, workerTrackingController.handleHistoryByWorker.bind(workerTrackingController));
+userAttendanceRoutes.post('/tracking/reminder/ack', checkToken, workerTrackingController.acknowledgeReminder.bind(workerTrackingController));
 
 // Nova rota para resumo de tempo dentro/fora
 userAttendanceRoutes.get('/user-attendance/:id/summary', checkToken, userAttendanceControlller.getAttendanceSummary.bind(userAttendanceControlller));
