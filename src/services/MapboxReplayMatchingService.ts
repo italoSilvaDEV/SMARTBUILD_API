@@ -13,6 +13,10 @@ const MAPBOX_MATCHING_RADIUS_RETRY_STEPS = [15, 35, 50];
 const MAPBOX_MATCHING_TARGET_SAMPLE_SECONDS = 5;
 const MAPBOX_DIRECTIONS_API_BASE = "https://api.mapbox.com/directions/v5";
 const MAPBOX_DIRECTIONS_MAX_COORDINATES = 25;
+const MAPBOX_DIRECTIONS_TARGET_SAMPLE_SECONDS = 5 * 60;
+const MAPBOX_DIRECTIONS_MIN_STEP_DISTANCE_METERS = 40;
+const MAPBOX_STOP_CLUSTER_RADIUS_METERS = 60;
+const MAPBOX_STOP_CLUSTER_MIN_DURATION_MS = 60 * 1000;
 
 export type ReplaySegmentBreakReason =
   | "attendance-change"
@@ -196,7 +200,10 @@ function dedupeConsecutivePoints(points: ReplayTrackPoint[]) {
   };
 }
 
-function downsamplePreparedPoints(points: PreparedReplayPoint[]) {
+function downsamplePreparedPoints(
+  points: PreparedReplayPoint[],
+  targetSampleSeconds = MAPBOX_MATCHING_TARGET_SAMPLE_SECONDS
+) {
   if (points.length <= 2) {
     return {
       points,
@@ -217,7 +224,7 @@ function downsamplePreparedPoints(points: PreparedReplayPoint[]) {
       continue;
     }
 
-    if (currentTimestamp - lastKeptTimestamp < MAPBOX_MATCHING_TARGET_SAMPLE_SECONDS * 1000) {
+    if (currentTimestamp - lastKeptTimestamp < targetSampleSeconds * 1000) {
       discardedPointCount += 1;
       continue;
     }
@@ -230,6 +237,125 @@ function downsamplePreparedPoints(points: PreparedReplayPoint[]) {
 
   return {
     points: sampled,
+    discardedPointCount,
+  };
+}
+
+function thinSpatialNoise(
+  points: PreparedReplayPoint[],
+  minimumStepDistanceMeters = MAPBOX_DIRECTIONS_MIN_STEP_DISTANCE_METERS
+) {
+  if (points.length <= 2) {
+    return {
+      points,
+      discardedPointCount: 0,
+    };
+  }
+
+  const filtered: PreparedReplayPoint[] = [points[0]];
+  let discardedPointCount = 0;
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const point = points[index];
+    const previousKept = filtered[filtered.length - 1];
+    const distanceFromPreviousKept = getDistanceMeters(
+      previousKept.lat,
+      previousKept.lng,
+      point.lat,
+      point.lng
+    );
+
+    if (distanceFromPreviousKept < minimumStepDistanceMeters) {
+      discardedPointCount += 1;
+      continue;
+    }
+
+    filtered.push(point);
+  }
+
+  const lastPoint = points[points.length - 1];
+  const previousKept = filtered[filtered.length - 1];
+  if (!previousKept || previousKept.id !== lastPoint.id) {
+    filtered.push(lastPoint);
+  }
+
+  return {
+    points: filtered,
+    discardedPointCount,
+  };
+}
+
+function collapseStationaryClusters(points: PreparedReplayPoint[]) {
+  if (points.length <= 2) {
+    return {
+      points,
+      discardedPointCount: 0,
+    };
+  }
+
+  const collapsed: PreparedReplayPoint[] = [];
+  let discardedPointCount = 0;
+  let index = 0;
+
+  while (index < points.length) {
+    const clusterStart = points[index];
+    const clusterPoints: PreparedReplayPoint[] = [clusterStart];
+    let nextIndex = index + 1;
+    let centroidLat = clusterStart.lat;
+    let centroidLng = clusterStart.lng;
+
+    while (nextIndex < points.length) {
+      const candidate = points[nextIndex];
+      const distanceFromCentroid = getDistanceMeters(
+        centroidLat,
+        centroidLng,
+        candidate.lat,
+        candidate.lng
+      );
+
+      if (distanceFromCentroid > MAPBOX_STOP_CLUSTER_RADIUS_METERS) {
+        break;
+      }
+
+      clusterPoints.push(candidate);
+      centroidLat =
+        clusterPoints.reduce((sum, point) => sum + point.lat, 0) / clusterPoints.length;
+      centroidLng =
+        clusterPoints.reduce((sum, point) => sum + point.lng, 0) / clusterPoints.length;
+      nextIndex += 1;
+    }
+
+    if (clusterPoints.length === 1) {
+      collapsed.push(clusterStart);
+      index = nextIndex;
+      continue;
+    }
+
+    const clusterDurationMs =
+      new Date(clusterPoints[clusterPoints.length - 1].timestamp).getTime() -
+      new Date(clusterPoints[0].timestamp).getTime();
+
+    if (clusterDurationMs >= MAPBOX_STOP_CLUSTER_MIN_DURATION_MS) {
+      const lat =
+        clusterPoints.reduce((sum, point) => sum + point.lat, 0) / clusterPoints.length;
+      const lng =
+        clusterPoints.reduce((sum, point) => sum + point.lng, 0) / clusterPoints.length;
+
+      collapsed.push({
+        ...clusterPoints[Math.floor(clusterPoints.length / 2)],
+        lat,
+        lng,
+      });
+      discardedPointCount += clusterPoints.length - 1;
+    } else {
+      collapsed.push(...clusterPoints);
+    }
+
+    index = nextIndex;
+  }
+
+  return {
+    points: collapsed,
     discardedPointCount,
   };
 }
@@ -783,8 +909,13 @@ async function buildDisplayGeometry(input: {
   rawTrackPoints: ReplayTrackPoint[];
 }): Promise<number[][]> {
   const prepared = dedupeConsecutivePoints(input.rawTrackPoints);
-  const downsampled = downsamplePreparedPoints(prepared.points);
-  const chunks = chunkDirectionsPoints(downsampled.points);
+  const downsampled = downsamplePreparedPoints(
+    prepared.points,
+    MAPBOX_DIRECTIONS_TARGET_SAMPLE_SECONDS
+  );
+  const spatiallyFiltered = thinSpatialNoise(downsampled.points);
+  const collapsedStops = collapseStationaryClusters(spatiallyFiltered.points);
+  const chunks = chunkDirectionsPoints(collapsedStops.points);
   let displayGeometry: number[][] = [];
 
   for (let index = 0; index < chunks.length; index += 1) {
