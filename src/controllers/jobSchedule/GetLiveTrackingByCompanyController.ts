@@ -44,6 +44,14 @@ type OpenAttendanceRow = {
   } | null;
 };
 
+type ProjectSiteRow = {
+  id: string;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+  radiusMeters: number | null;
+};
+
 function parseRequestedDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -312,6 +320,40 @@ export class GetLiveTrackingByCompanyController {
       const { serviceProjectMap, projectMap } = await buildProjectContext(
         useLiveLocations ? liveRows : historyRows
       );
+      const projectSites: ProjectSiteRow[] = (
+        await prisma.project.findMany({
+          where: {
+            company_id: companyId,
+            status_project: {
+              in: ["In Progress", "Pre-Start", "Final walkthrough"],
+            },
+          },
+          select: {
+            id: true,
+            location: true,
+            lat: true,
+            log: true,
+            radius: true,
+          },
+          orderBy: {
+            location: "asc",
+          },
+        })
+      )
+        .map((project) => ({
+          id: project.id,
+          name: project.location || "Project site",
+          lat: project.lat != null ? Number(project.lat) : null,
+          lng: project.log != null ? Number(project.log) : null,
+          radiusMeters: project.radius != null ? Number(project.radius) : null,
+        }))
+        .filter(
+          (project) =>
+            project.lat != null &&
+            project.lng != null &&
+            project.radiusMeters != null &&
+            project.radiusMeters > 0
+        );
 
       const sessions = useLiveLocations
         ? openAttendances
@@ -498,6 +540,7 @@ export class GetLiveTrackingByCompanyController {
           total: sessions.length,
           source: useLiveLocations ? "worker-live-location" : "worker-tracking-history",
         },
+        projectSites,
       });
     } catch (error) {
       console.error("[GetLiveTrackingByCompanyController] Error:", error);
