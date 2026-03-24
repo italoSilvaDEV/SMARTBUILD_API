@@ -2190,9 +2190,21 @@ export class UserController {
         return response.status(400).json({ error: "Invalid Expo Push Token format" });
       }
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { expoPushToken },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.updateMany({
+          where: {
+            expoPushToken,
+            id: { not: userId },
+          },
+          data: {
+            expoPushToken: null,
+          },
+        });
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { expoPushToken },
+        });
       });
 
       console.log(`[UserController] Push token updated for user ${userId}`);

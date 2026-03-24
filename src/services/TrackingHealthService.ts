@@ -136,6 +136,17 @@ export function getTrackingSilentReferenceTime(
   return liveLocation?.recordedAt || attendance.check_in_time;
 }
 
+function hasTrackingSessionForAttendance(
+  attendance: Pick<OpenAttendanceRecord, "check_in_time">,
+  liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null
+) {
+  if (!liveLocation?.recordedAt) {
+    return false;
+  }
+
+  return liveLocation.recordedAt.getTime() >= attendance.check_in_time.getTime();
+}
+
 export function getTrackingHealthSnapshot(
   attendance: Pick<OpenAttendanceRecord, "check_in_time">,
   liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null,
@@ -301,6 +312,11 @@ export async function runTrackingHealthCheckJob() {
 
       const liveLocation =
         liveLocationMap.get(`${attendance.company_id}:${attendance.user_id}`) || null;
+
+      if (!hasTrackingSessionForAttendance(attendance, liveLocation)) {
+        continue;
+      }
+
       const snapshot = getTrackingHealthSnapshot(attendance, liveLocation, now);
 
       if (snapshot.trackingHealth !== "silent") {
