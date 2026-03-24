@@ -787,7 +787,8 @@ async function buildDisplayGeometry(input: {
   const chunks = chunkDirectionsPoints(downsampled.points);
   let displayGeometry: number[][] = [];
 
-  for (const chunk of chunks) {
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
     const coordinates = chunk.map((point) => `${point.lng},${point.lat}`).join(";");
     const url = `${MAPBOX_DIRECTIONS_API_BASE}/${input.profile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(input.token)}`;
 
@@ -797,6 +798,7 @@ async function buildDisplayGeometry(input: {
       if (!response.ok) {
         console.warn("[MapboxReplayMatchingService] directions display chunk failed", {
           profile: input.profile,
+          chunkIndex: index,
           status: response.status,
           code: payload?.code,
           message: payload?.message,
@@ -814,12 +816,23 @@ async function buildDisplayGeometry(input: {
           ? decodePolyline(route.geometry)
           : [];
 
+      console.log("[MapboxReplayMatchingService] directions display chunk result", {
+        profile: input.profile,
+        chunkIndex: index,
+        coordinatesCount: chunk.length,
+        routesCount: Array.isArray(payload?.routes) ? payload.routes.length : 0,
+        geometryPoints: geometry.length,
+        firstCoordinate: geometry[0] || null,
+        lastCoordinate: geometry[geometry.length - 1] || null,
+      });
+
       if (geometry.length >= 2) {
         displayGeometry = mergeCoordinates(displayGeometry, geometry);
       }
     } catch (error) {
       console.warn("[MapboxReplayMatchingService] directions display chunk request failed", {
         profile: input.profile,
+        chunkIndex: index,
         message: error instanceof Error ? error.message : String(error),
         coordinatesCount: chunk.length,
       });
