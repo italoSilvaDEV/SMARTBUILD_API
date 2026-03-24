@@ -12,6 +12,7 @@ const MAPBOX_MATCHING_GET_URL_SOFT_LIMIT = 7800;
 const MAPBOX_MATCHING_RADIUS_RETRY_STEPS = [15, 35, 50];
 const MAPBOX_MATCHING_TARGET_SAMPLE_SECONDS = 5;
 const MAPBOX_DIRECTIONS_API_BASE = "https://api.mapbox.com/directions/v5";
+const MAPBOX_DIRECTIONS_MAX_COORDINATES = 25;
 
 export type ReplaySegmentBreakReason =
   | "attendance-change"
@@ -60,6 +61,7 @@ export interface ReplayMatchedSegment {
 export interface ReplayMatchingResult {
   rawTrackPoints: ReplayTrackPoint[];
   matchedGeometry: number[][][];
+  displayGeometry: number[][];
   matchedSegments: ReplayMatchedSegment[];
   tracepoints: ReplayTracePoint[];
   matchingMeta: {
@@ -248,6 +250,27 @@ function chunkPreparedPoints(points: PreparedReplayPoint[]) {
     }
     if (end === points.length) break;
     cursor = end - MAPBOX_MATCHING_OVERLAP;
+  }
+
+  return chunks;
+}
+
+function chunkDirectionsPoints(points: PreparedReplayPoint[]) {
+  if (points.length <= MAPBOX_DIRECTIONS_MAX_COORDINATES) {
+    return [points];
+  }
+
+  const chunks: PreparedReplayPoint[][] = [];
+  let cursor = 0;
+
+  while (cursor < points.length) {
+    const end = Math.min(cursor + MAPBOX_DIRECTIONS_MAX_COORDINATES, points.length);
+    const chunk = points.slice(cursor, end);
+    if (chunk.length >= 2) {
+      chunks.push(chunk);
+    }
+    if (end === points.length) break;
+    cursor = end - 1;
   }
 
   return chunks;
@@ -745,6 +768,48 @@ async function fetchDirectionsBridge(
   }
 }
 
+async function buildDisplayGeometry(input: {
+  token: string;
+  profile: string;
+  rawTrackPoints: ReplayTrackPoint[];
+}): Promise<number[][]> {
+  const prepared = dedupeConsecutivePoints(input.rawTrackPoints);
+  const downsampled = downsamplePreparedPoints(prepared.points);
+  const chunks = chunkDirectionsPoints(downsampled.points);
+  let displayGeometry: number[][] = [];
+
+  for (const chunk of chunks) {
+    const coordinates = chunk.map((point) => `${point.lng},${point.lat}`).join(";");
+    const normalizedProfile = input.profile.replace("mapbox/", "");
+    const url = `${MAPBOX_DIRECTIONS_API_BASE}/${normalizedProfile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(input.token)}`;
+
+    try {
+      const response = await fetch(url);
+      const payload = await response.json();
+      if (!response.ok) {
+        continue;
+      }
+
+      const route = Array.isArray(payload?.routes)
+        ? (payload.routes[0] as DirectionsApiRoute | undefined)
+        : undefined;
+      const geometry = Array.isArray((route?.geometry as any)?.coordinates)
+        ? ((route?.geometry as any).coordinates as number[][])
+        : typeof route?.geometry === "string"
+          ? decodePolyline(route.geometry)
+          : [];
+
+      if (geometry.length >= 2) {
+        displayGeometry = mergeCoordinates(displayGeometry, geometry);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return displayGeometry;
+}
+
 export async function buildReplayMatchingResult(input: {
   segments: ReplaySegmentInput[];
   profile?: string;
@@ -795,6 +860,13 @@ export async function buildReplayMatchingResult(input: {
         .filter((segment) => segment.source === "mapbox")
         .map((segment) => segment.routeGeometry)
         .filter((coordinates) => coordinates.length >= 2);
+  const displayGeometry = token
+    ? await buildDisplayGeometry({
+        token,
+        profile,
+        rawTrackPoints,
+      })
+    : [];
   const tracepoints = matchedSegments.flatMap((segment) => segment.matchedTracePoints);
   const rawDistanceMeters = input.segments.reduce(
     (total, segment) => total + computeTrackDistanceMeters(segment.trackPoints),
@@ -815,6 +887,7 @@ export async function buildReplayMatchingResult(input: {
   return {
     rawTrackPoints,
     matchedGeometry,
+    displayGeometry,
     matchedSegments,
     tracepoints,
     matchingMeta: {
