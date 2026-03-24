@@ -744,14 +744,19 @@ async function fetchDirectionsBridge(
   start: number[],
   end: number[]
 ): Promise<number[][] | null> {
-  const normalizedProfile = profile.replace("mapbox/", "");
   const coordinates = `${start[0]},${start[1]};${end[0]},${end[1]}`;
-  const url = `${MAPBOX_DIRECTIONS_API_BASE}/${normalizedProfile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(token)}`;
+  const url = `${MAPBOX_DIRECTIONS_API_BASE}/${profile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(token)}`;
 
   try {
     const response = await fetch(url);
     const payload = await response.json();
     if (!response.ok) {
+      console.warn("[MapboxReplayMatchingService] directions bridge failed", {
+        profile,
+        status: response.status,
+        code: payload?.code,
+        message: payload?.message,
+      });
       return null;
     }
 
@@ -763,7 +768,11 @@ async function fetchDirectionsBridge(
         : [];
 
     return geometry.length >= 2 ? geometry : null;
-  } catch {
+  } catch (error) {
+    console.warn("[MapboxReplayMatchingService] directions bridge request failed", {
+      profile,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -780,13 +789,19 @@ async function buildDisplayGeometry(input: {
 
   for (const chunk of chunks) {
     const coordinates = chunk.map((point) => `${point.lng},${point.lat}`).join(";");
-    const normalizedProfile = input.profile.replace("mapbox/", "");
-    const url = `${MAPBOX_DIRECTIONS_API_BASE}/${normalizedProfile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(input.token)}`;
+    const url = `${MAPBOX_DIRECTIONS_API_BASE}/${input.profile}/${coordinates}?geometries=geojson&overview=full&access_token=${encodeURIComponent(input.token)}`;
 
     try {
       const response = await fetch(url);
       const payload = await response.json();
       if (!response.ok) {
+        console.warn("[MapboxReplayMatchingService] directions display chunk failed", {
+          profile: input.profile,
+          status: response.status,
+          code: payload?.code,
+          message: payload?.message,
+          coordinatesCount: chunk.length,
+        });
         continue;
       }
 
@@ -802,7 +817,12 @@ async function buildDisplayGeometry(input: {
       if (geometry.length >= 2) {
         displayGeometry = mergeCoordinates(displayGeometry, geometry);
       }
-    } catch {
+    } catch (error) {
+      console.warn("[MapboxReplayMatchingService] directions display chunk request failed", {
+        profile: input.profile,
+        message: error instanceof Error ? error.message : String(error),
+        coordinatesCount: chunk.length,
+      });
       continue;
     }
   }
