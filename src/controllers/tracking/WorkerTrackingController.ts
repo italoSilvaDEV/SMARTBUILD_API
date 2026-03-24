@@ -204,11 +204,39 @@ export class WorkerTrackingController {
         },
       });
 
+      const projectSites = Array.from(
+        pings.reduce((map, ping) => {
+          const siteId = ping.projectId || ping.serviceProjectId;
+          if (
+            !siteId ||
+            ping.projectLatitude == null ||
+            ping.projectLongitude == null ||
+            ping.projectRadiusMeters == null ||
+            ping.projectRadiusMeters <= 0
+          ) {
+            return map;
+          }
+
+          if (!map.has(siteId)) {
+            map.set(siteId, {
+              id: siteId,
+              name: ping.projectName || ping.serviceTitle || "Project site",
+              lat: ping.projectLatitude,
+              lng: ping.projectLongitude,
+              radiusMeters: ping.projectRadiusMeters,
+            });
+          }
+
+          return map;
+        }, new Map<string, { id: string; name: string; lat: number; lng: number; radiusMeters: number }>())
+      ).map(([, site]) => site);
+
       return res.status(200).json({
         companyId,
         workerId,
         date: effectiveDate.toISOString().split("T")[0],
         total: pings.length,
+        projectSites,
         pings,
       });
     } catch (error) {
