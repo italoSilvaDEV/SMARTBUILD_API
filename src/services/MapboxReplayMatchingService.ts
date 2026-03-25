@@ -17,6 +17,7 @@ const MAPBOX_DIRECTIONS_TARGET_SAMPLE_SECONDS = 5 * 60;
 const MAPBOX_DIRECTIONS_MIN_STEP_DISTANCE_METERS = 40;
 const MAPBOX_STOP_CLUSTER_RADIUS_METERS = 60;
 const MAPBOX_STOP_CLUSTER_MIN_DURATION_MS = 60 * 1000;
+const MAPBOX_DISPLAY_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 
 export type ReplaySegmentBreakReason =
   | "attendance-change"
@@ -66,6 +67,8 @@ export interface ReplayMatchingResult {
   rawTrackPoints: ReplayTrackPoint[];
   matchedGeometry: number[][][];
   displayGeometry: number[][];
+  displayGeometrySegments: number[][][];
+  displayGaps: ReplayDisplayGap[];
   matchedSegments: ReplayMatchedSegment[];
   tracepoints: ReplayTracePoint[];
   matchingMeta: {
@@ -86,6 +89,13 @@ export interface ReplayMatchingResult {
     rawDistanceMeters: number;
     matchedDistanceMeters: number;
   };
+}
+
+export interface ReplayDisplayGap {
+  coordinate: number[];
+  startedAt: string;
+  resumedAt: string;
+  durationMinutes: number;
 }
 
 interface PreparedReplayPoint extends ReplayTrackPoint {
@@ -400,6 +410,49 @@ function chunkDirectionsPoints(points: PreparedReplayPoint[]) {
   }
 
   return chunks;
+}
+
+function splitTrackPointsByTimeGap(
+  points: ReplayTrackPoint[],
+  thresholdMs = MAPBOX_DISPLAY_GAP_THRESHOLD_MS
+) {
+  const chunks: ReplayTrackPoint[][] = [];
+  const gaps: ReplayDisplayGap[] = [];
+  let currentChunk: ReplayTrackPoint[] = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const previousPoint = currentChunk[currentChunk.length - 1];
+
+    if (previousPoint) {
+      const previousTimestamp = new Date(previousPoint.timestamp).getTime();
+      const currentTimestamp = new Date(point.timestamp).getTime();
+      const deltaMs = currentTimestamp - previousTimestamp;
+
+      if (Number.isFinite(deltaMs) && deltaMs > thresholdMs) {
+        chunks.push(currentChunk);
+        gaps.push({
+          coordinate: [previousPoint.lng, previousPoint.lat],
+          startedAt: previousPoint.timestamp,
+          resumedAt: point.timestamp,
+          durationMinutes: Math.round(deltaMs / 60000),
+        });
+        currentChunk = [point];
+        continue;
+      }
+    }
+
+    currentChunk.push(point);
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return {
+    chunks,
+    gaps,
+  };
 }
 
 function mergeCoordinates(current: number[][], incoming: number[][]) {
@@ -981,19 +1034,30 @@ export async function buildReplayMatchingResult(input: {
   const profile = input.profile || process.env.MAPBOX_MAP_MATCHING_PROFILE || MAPBOX_MATCHING_DEFAULT_PROFILE;
   const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN || "";
   const rawTrackPoints = input.segments.flatMap((segment) => segment.trackPoints);
+  const displayGapResult = splitTrackPointsByTimeGap(rawTrackPoints);
   const fallbackReasons = new Set<string>();
   const matchedSegments: ReplayMatchedSegment[] = input.segments.map((segment) =>
     buildRawSegment(segment, token ? "directions-display-geometry" : "missing-mapbox-token")
   );
   const matchedGeometry: number[][][] = [];
-  const displayGeometry = token
-    ? await buildDisplayGeometry({
-        token,
-        profile,
-        rawTrackPoints,
-      })
+  const displayGeometrySegments = token
+    ? (
+        await Promise.all(
+          displayGapResult.chunks.map((trackPointChunk) =>
+            buildDisplayGeometry({
+              token,
+              profile,
+              rawTrackPoints: trackPointChunk,
+            })
+          )
+        )
+      ).filter((segment) => segment.length >= 2)
     : [];
-  const fallbackUsed = displayGeometry.length < 2;
+  const displayGeometry = displayGeometrySegments.reduce(
+    (coordinates, segment) => mergeCoordinates(coordinates, segment),
+    [] as number[][]
+  );
+  const fallbackUsed = displayGeometrySegments.length === 0;
   if (!token) {
     fallbackReasons.add("missing-mapbox-token");
   } else if (fallbackUsed) {
@@ -1008,17 +1072,24 @@ export async function buildReplayMatchingResult(input: {
     (total, segment) => total + computeTrackDistanceMeters(segment.trackPoints),
     0
   );
-  const matchedDistanceMeters = computeTrackDistanceMeters(
-    displayGeometry.map((coordinate) => ({
-      lng: coordinate[0],
-      lat: coordinate[1],
-    }))
+  const matchedDistanceMeters = displayGeometrySegments.reduce(
+    (total, segment) =>
+      total +
+      computeTrackDistanceMeters(
+        segment.map((coordinate) => ({
+          lng: coordinate[0],
+          lat: coordinate[1],
+        }))
+      ),
+    0
   );
 
   console.log("[MapboxReplayMatchingService] display geometry built", {
     profile,
     rawPointCount: rawTrackPoints.length,
     displayGeometryPoints: displayGeometry.length,
+    displayGeometrySegments: displayGeometrySegments.length,
+    displayGaps: displayGapResult.gaps.length,
     firstCoordinate: displayGeometry[0] || null,
     lastCoordinate: displayGeometry[displayGeometry.length - 1] || null,
     fallbackUsed,
@@ -1029,6 +1100,8 @@ export async function buildReplayMatchingResult(input: {
     rawTrackPoints,
     matchedGeometry,
     displayGeometry,
+    displayGeometrySegments,
+    displayGaps: displayGapResult.gaps,
     matchedSegments,
     tracepoints,
     matchingMeta: {
