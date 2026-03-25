@@ -37,25 +37,25 @@ export class UpdateServiceController {
     try {
       let newData = {} as ServiceData
 
-      if (data.service_name) {
+      if (data.service_name !== undefined) {
         newData.service_name = data.service_name
       }
-      if (data.type_variable) {
+      if (data.type_variable !== undefined) {
         newData.type_variable = data.type_variable
       }
-      if (data.price_type) {
+      if (data.price_type !== undefined) {
         newData.price_type = data.price_type
       }
-      if (data.price_fixe) {
+      if (data.price_fixe !== undefined) {
         newData.price_fixe = data.price_fixe
       }
-      if (data.price_minimum) {
+      if (data.price_minimum !== undefined) {
         newData.price_minimum = data.price_minimum
       }
-      if (data.price_maximum) {
+      if (data.price_maximum !== undefined) {
         newData.price_maximum = data.price_maximum
       }
-      if (data.description) {
+      if (data.description !== undefined) {
         newData.description = data.description
       }
 

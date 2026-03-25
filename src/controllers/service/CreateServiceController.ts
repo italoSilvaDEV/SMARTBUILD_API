@@ -35,8 +35,8 @@ export class CreateServiceController {
             }
 
             if (String(price_type).toLocaleUpperCase() === "FIXE") {
-                if (price_fixe <= 0) {
-                    return response.status(400).json({ error: "Fixed price must be greater than 0" });
+                if (price_fixe === undefined || price_fixe === null || Number.isNaN(Number(price_fixe))) {
+                    return response.status(400).json({ error: "Fixed price is required" });
                 }
                 await prisma.service.create({
                     data: {
@@ -50,6 +50,16 @@ export class CreateServiceController {
                     },
                 });
             } else if (String(price_type).toLocaleUpperCase() === "VARIABLE") {
+                if (
+                    price_minimum === undefined ||
+                    price_minimum === null ||
+                    price_maximum === undefined ||
+                    price_maximum === null ||
+                    Number.isNaN(Number(price_minimum)) ||
+                    Number.isNaN(Number(price_maximum))
+                ) {
+                    return response.status(400).json({ error: "Minimum and maximum prices are required" });
+                }
                 if (price_maximum <= price_minimum) {
                     return response.status(400).json({ error: "The maximum price must be greater than the minimum price" });
                 }

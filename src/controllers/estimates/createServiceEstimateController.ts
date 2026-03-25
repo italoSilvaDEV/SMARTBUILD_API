@@ -74,7 +74,15 @@ export class CreateServiceEstimateController {
             })
         }
 
-        if (!name || !quantity || !unitPrice || !lineTotal) {
+        if (
+            !name ||
+            quantity === undefined ||
+            quantity === null ||
+            unitPrice === undefined ||
+            unitPrice === null ||
+            lineTotal === undefined ||
+            lineTotal === null
+        ) {
             return res.status(400).json({
                 error: "Name, quantity, unitPrice and lineTotal are required"
             })

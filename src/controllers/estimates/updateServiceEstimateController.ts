@@ -54,7 +54,19 @@ export class UpdateServiceEstimateController {
             })
         }
 
-        if (!name && description === null && !quantity && !unitPrice && !lineTotal && notes === null && !hours && !price && !start_date && !deadline) {
+        const hasAnyField =
+            name !== undefined ||
+            description !== undefined ||
+            quantity !== undefined ||
+            unitPrice !== undefined ||
+            lineTotal !== undefined ||
+            notes !== undefined ||
+            hours !== undefined ||
+            price !== undefined ||
+            start_date !== undefined ||
+            deadline !== undefined
+
+        if (!hasAnyField) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -63,34 +75,34 @@ export class UpdateServiceEstimateController {
         try {
             const campos: Fields = {}
 
-            if (name) {
+            if (name !== undefined) {
                 campos.name = name
             }
             if (description !== undefined) {
                 campos.description = description
             }
-            if (quantity) {
+            if (quantity !== undefined) {
                 campos.quantity = quantity
             }
-            if (unitPrice) {
+            if (unitPrice !== undefined) {
                 campos.unitPrice = unitPrice
             }
-            if (lineTotal && serviceEstimate) {
+            if (lineTotal !== undefined && serviceEstimate) {
                 campos.lineTotal = lineTotal
             }
             if (notes !== undefined) {
                 campos.notes = notes
             }
-            if (hours) {
+            if (hours !== undefined) {
                 campos.hours = hours
             }
-            if (price) {
+            if (price !== undefined) {
                 campos.price = price
             }
-            if (start_date) {
+            if (start_date !== undefined) {
                 campos.start_date = start_date
             }
-            if (deadline) {
+            if (deadline !== undefined) {
                 campos.deadline = deadline
             }
 

@@ -31,7 +31,8 @@ export class CreateNewEstimateController {
         if (!payloadCreateEstimate.projectId ||
             !payloadCreateEstimate.idPdfProject ||
             !payloadCreateEstimate.preGeneratedNumber ||
-            !payloadCreateEstimate.totalAmount ||
+            payloadCreateEstimate.totalAmount === undefined ||
+            payloadCreateEstimate.totalAmount === null ||
             !payloadCreateEstimate.type_estimate) {
 
             return res.status(400).json({
