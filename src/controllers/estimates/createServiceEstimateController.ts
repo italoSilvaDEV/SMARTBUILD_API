@@ -45,6 +45,7 @@ export class CreateServiceEstimateController {
             },
             select: {
                 id: true,
+                status: true,
                 type_estimate: true,
                 projectId: true,
                 project: {
@@ -89,8 +90,10 @@ export class CreateServiceEstimateController {
         }
 
         try {
+            let newService: Awaited<ReturnType<typeof prisma.estimateServiceProject.create>> | null = null
+
             await prisma.$transaction(async (smartbuild) => {
-                const newService = await smartbuild.estimateServiceProject.create({
+                newService = await smartbuild.estimateServiceProject.create({
                     data: {
                         estimateId: estimate.id,
                         name,
@@ -107,28 +110,43 @@ export class CreateServiceEstimateController {
                     }
                 })
 
-                {/*if (estimate.type_estimate === "estimateProject") {
-                    await smartbuild.serviceProject.create({
-                        data: {
-                            projectId: estimate.projectId,
-                            company_id: estimate.project.company_id,
-                            name,
-                            description: description || "",
-                            id_service: id_service || null,
-                            hours: hours || 0,
-                            price: price || 0,
-                            start_date,
-                            deadline
+                const shouldSyncToProject =
+                    estimate.status === "approved" &&
+                    estimate.type_estimate === "estimateProject" &&
+                    !!estimate.projectId
+
+                if (shouldSyncToProject && newService) {
+                    const siblingProject = await smartbuild.serviceProject.findFirst({
+                        where: {
+                            estimateServiceId: newService.id
                         }
                     })
-                }*/}
 
-                return res.status(201).json({
-                    message: "Service created successfully",
-                    data: newService
-                })
+                    if (!siblingProject) {
+                        await smartbuild.serviceProject.create({
+                            data: {
+                                projectId: estimate.projectId,
+                                company_id: estimate.project?.company_id || null,
+                                estimateServiceId: newService.id,
+                                name,
+                                description: description || "",
+                                id_service: id_service || null,
+                                hours: hours ?? quantity ?? 1,
+                                price: price ?? unitPrice ?? 0,
+                                start_date,
+                                deadline
+                            }
+                        })
+                    }
+                }
+            })
+
+            return res.status(201).json({
+                message: "Service created successfully",
+                data: newService
             })
         } catch (error) {
+            console.error("Error creating service estimate:", error)
             return res.status(500).json({
                 error: "Internal server error while creating service estimate"
             })
