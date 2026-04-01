@@ -31,7 +31,6 @@ type payloadCreateEstimate = {
 const DISCOUNT_ERRORS = new Set([
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
-    "Discount cannot be greater than the remaining balance",
 ]);
 
 export class CreateNewEstimateController {
@@ -264,3 +263,4 @@ export class CreateNewEstimateController {
         }
     }
 }
+

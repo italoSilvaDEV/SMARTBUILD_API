@@ -16,7 +16,6 @@ type Fields = {
 const DISCOUNT_ERRORS = new Set([
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
-    "Discount cannot be greater than the remaining balance",
 ]);
 
 export class UpdateEstimateFieldsController {
@@ -168,3 +167,4 @@ export class UpdateEstimateFieldsController {
         }
     }
 }
+

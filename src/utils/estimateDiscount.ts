@@ -121,9 +121,7 @@ export const calculateEstimateDiscountTotals = ({
 
   const discountedTotal = round2(Math.max(0, normalizedSubtotal - computedDiscountAmount));
 
-  if (discountedTotal < normalizedAmountPaid) {
-    throw new Error("Discount cannot be greater than the remaining balance");
-  }
+
 
   return {
     subtotal: normalizedSubtotal,
@@ -259,6 +257,7 @@ export const getEstimateEffectiveTotal = (estimate: {
 
   return toNumber(finalAmount);
 };
+
 
 
 

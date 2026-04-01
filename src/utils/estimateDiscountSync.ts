@@ -1,4 +1,25 @@
-import { buildEstimateFinancialFields, distributeEstimateDiscountAcrossServices, getEstimateServiceQuantity } from "./estimateDiscount";
+import {
+  buildEstimateFinancialFields,
+  distributeEstimateDiscountAcrossServices,
+  getEstimateServiceQuantity,
+} from "./estimateDiscount";
+
+type SyncEstimateService = {
+  id: string;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unitPrice: any;
+  lineTotal: any;
+  originalUnitPrice: any;
+  originalLineTotal: any;
+  notes: string | null;
+  id_service: string | null;
+  hours: any;
+  price: any;
+  start_date: string | null;
+  deadline: string | null;
+};
 
 export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId: string) => {
   const estimate = await smartbuild.estimate.findUnique({
@@ -41,38 +62,42 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
     throw new Error("Estimate not found");
   }
 
+  const services = estimate.serviceProjects as SyncEstimateService[];
+
   const shouldSyncToProject =
     estimate.status === "approved" &&
     estimate.type_estimate === "estimateProject" &&
     !!estimate.projectId;
 
-  const distributed = distributeEstimateDiscountAcrossServices({
-    services: estimate.serviceProjects,
+  const distributed = distributeEstimateDiscountAcrossServices<SyncEstimateService>({
+    services,
     discountType: estimate.discountType,
     discountValue: estimate.discountValue,
     amountPaid: estimate.amountPaid,
   });
 
-  for (const service of distributed.services) {
-    const hours = service.hours ?? getEstimateServiceQuantity(service);
-    const price = service.discountedPrice;
+  for (let index = 0; index < services.length; index += 1) {
+    const originalService = services[index];
+    const discountedService = distributed.services[index];
+    const hours = originalService.hours ?? getEstimateServiceQuantity(originalService);
+    const price = discountedService.discountedPrice;
 
     await smartbuild.estimateServiceProject.update({
-      where: { id: service.id },
+      where: { id: originalService.id },
       data: {
-        name: service.name,
-        description: service.description ?? "",
-        quantity: service.quantity,
-        unitPrice: service.discountedUnitPrice,
-        lineTotal: service.discountedLineTotal,
-        originalUnitPrice: service.originalUnitPrice,
-        originalLineTotal: service.originalLineTotal,
-        notes: service.notes ?? null,
-        id_service: service.id_service ?? null,
+        name: originalService.name,
+        description: originalService.description ?? "",
+        quantity: originalService.quantity,
+        unitPrice: discountedService.discountedUnitPrice,
+        lineTotal: discountedService.discountedLineTotal,
+        originalUnitPrice: discountedService.originalUnitPrice,
+        originalLineTotal: discountedService.originalLineTotal,
+        notes: originalService.notes ?? null,
+        id_service: originalService.id_service ?? null,
         hours,
         price,
-        start_date: service.start_date ?? null,
-        deadline: service.deadline ?? null,
+        start_date: originalService.start_date ?? null,
+        deadline: originalService.deadline ?? null,
       },
     });
 
@@ -80,19 +105,19 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
       const siblingData = {
         projectId: estimate.projectId,
         company_id: estimate.project?.company_id ?? null,
-        estimateServiceId: service.id,
-        name: service.name,
-        description: service.description ?? "",
-        id_service: service.id_service ?? null,
+        estimateServiceId: originalService.id,
+        name: originalService.name,
+        description: originalService.description ?? "",
+        id_service: originalService.id_service ?? null,
         hours,
         price,
-        start_date: service.start_date ?? null,
-        deadline: service.deadline ?? null,
+        start_date: originalService.start_date ?? null,
+        deadline: originalService.deadline ?? null,
       };
 
       const siblingProject = await smartbuild.serviceProject.findFirst({
         where: {
-          estimateServiceId: service.id,
+          estimateServiceId: originalService.id,
         },
       });
 
@@ -109,9 +134,8 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
     }
   }
 
-  const subtotal = distributed.services.reduce((sum, service) => sum + Number(service.originalLineTotal ?? 0), 0);
   const financialFields = buildEstimateFinancialFields({
-    subtotal,
+    subtotal: distributed.totals.subtotal,
     amountPaid: estimate.amountPaid,
     discountType: estimate.discountType,
     discountValue: estimate.discountValue,
@@ -134,3 +158,4 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
     totals: distributed.totals,
   };
 };
+
