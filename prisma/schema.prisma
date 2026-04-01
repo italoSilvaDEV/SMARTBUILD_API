@@ -1577,6 +1577,11 @@ enum TypeEstimate {
   estimate
   estimateProject
 }
+enum EstimateDiscountType {
+  fixed
+  percentage
+}
+
 
 model Estimate {
   id              String   @id @default(uuid())
@@ -1584,6 +1589,10 @@ model Estimate {
   approvedAt      DateTime @default(now())
   clientSignature String?  @db.Text
   totalAmount     Decimal
+  discountType    EstimateDiscountType?
+  discountValue   Decimal?
+  discountAmount  Decimal?
+  finalAmount     Decimal?
   description     String?  @db.Text
   terms           String?  @db.Text
   status          String   @default("pending")
@@ -1647,6 +1656,8 @@ model EstimateServiceProject {
   quantity    Int     @default(1)
   unitPrice   Decimal
   lineTotal   Decimal
+  originalUnitPrice Decimal?
+  originalLineTotal Decimal?
   notes       String? @db.Text
 
   id_service String?

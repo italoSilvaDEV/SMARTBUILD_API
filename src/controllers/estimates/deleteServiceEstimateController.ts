@@ -1,5 +1,12 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+    "Discount cannot be greater than the remaining balance",
+]);
 
 export class DeleteServiceEstimateController {
     async handle(req: Request, res: Response) {
@@ -40,28 +47,6 @@ export class DeleteServiceEstimateController {
         try {
             if (serviceEstimate) {
                 await prisma.$transaction(async (smartbuild) => {
-                    const siblingProject = await smartbuild.serviceProject.findFirst({
-                        where: {
-                            estimateServiceId: serviceId
-                        }
-                    })
-
-                    if (siblingProject) {
-                        await smartbuild.serviceProject.update({
-                            where: { id: siblingProject.id },
-                            data: {
-                                projectId: null,
-                                estimateServiceId: null
-                            }
-                        })
-                    }
-
-                    await smartbuild.estimateServiceProject.delete({
-                        where: {
-                            id: serviceId
-                        }
-                    })
-
                     const estimate = await smartbuild.estimate.findUnique({
                         where: {
                             id: serviceEstimate.estimateId
@@ -71,6 +56,26 @@ export class DeleteServiceEstimateController {
                             type_estimate: true
                         }
                     })
+
+                    const siblingProject = await smartbuild.serviceProject.findFirst({
+                        where: {
+                            estimateServiceId: serviceId
+                        }
+                    })
+
+                    if (siblingProject) {
+                        await smartbuild.serviceProject.delete({
+                            where: { id: siblingProject.id }
+                        })
+                    }
+
+                    await smartbuild.estimateServiceProject.delete({
+                        where: {
+                            id: serviceId
+                        }
+                    })
+
+                    await syncEstimateDiscountedServices(smartbuild, serviceEstimate.estimateId)
 
                     if (estimate?.status === "approved" && estimate?.type_estimate === "estimateProject") {
                         await smartbuild.estimate.update({
@@ -100,7 +105,11 @@ export class DeleteServiceEstimateController {
                     message: "Service project deleted successfully"
                 })
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
             return res.status(500).json({
                 error: "Internal server error while deleting service estimate"
             })

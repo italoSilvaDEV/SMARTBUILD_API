@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { getEstimateEffectiveTotal } from "../../utils/estimateDiscount";
 
 export class GetEstimateByProjectIdController {
     async handle(req: Request, res: Response) {
@@ -35,6 +36,12 @@ export class GetEstimateByProjectIdController {
                     id: true,
                     number: true,
                     totalAmount: true,
+                    balanceDue: true,
+                    amountPaid: true,
+                    discountType: true,
+                    discountValue: true,
+                    discountAmount: true,
+                    finalAmount: true,
                     status: true,
                     description: true,
                     canceledAt: true,
@@ -111,6 +118,8 @@ export class GetEstimateByProjectIdController {
                             quantity: true,
                             unitPrice: true,
                             lineTotal: true,
+                            originalUnitPrice: true,
+                            originalLineTotal: true,
                             notes: true,
                             date_creation: true,
                             date_update: true,
@@ -151,18 +160,6 @@ export class GetEstimateByProjectIdController {
                 })
             }
 
-            const services = await prisma.estimateServiceProject.findMany({
-                where: {
-                    estimateId: estimate.id
-                },
-                select: {
-                    quantity: true,
-                    unitPrice: true
-                }
-            })
-
-            const totalAmount = services.reduce((acc, service) => acc + Number(service.quantity) * Number(service.unitPrice), 0)
-
             const invoices = await prisma.invoice.findMany({
                 where: {
                     estimateId: estimate.id,
@@ -174,6 +171,11 @@ export class GetEstimateByProjectIdController {
             })
 
             const totalAmountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
+            const effectiveTotal = getEstimateEffectiveTotal({
+                totalAmount: estimate.totalAmount,
+                finalAmount: estimate.finalAmount,
+                discountAmount: estimate.discountAmount,
+            })
 
             let imagesAttachmentsData: any[] = [];
             if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
@@ -208,10 +210,22 @@ export class GetEstimateByProjectIdController {
             return res.status(200).json({
                 data: {
                     ...estimate,
-                    balanceDue: totalAmount - Number(totalAmountPaid),
+                    totalAmount: Number(estimate.totalAmount),
+                    balanceDue: estimate.balanceDue !== null && estimate.balanceDue !== undefined ? Number(estimate.balanceDue) : Number((effectiveTotal - Number(totalAmountPaid)).toFixed(2)),
                     amountPaid: Number(totalAmountPaid),
+                    discountValue: estimate.discountValue !== null && estimate.discountValue !== undefined ? Number(estimate.discountValue) : null,
+                    discountAmount: estimate.discountAmount !== null && estimate.discountAmount !== undefined ? Number(estimate.discountAmount) : null,
+                    finalAmount: estimate.finalAmount !== null && estimate.finalAmount !== undefined ? Number(estimate.finalAmount) : null,
                     PdfProject: pdfProjectData,
                     imagesAttachments: imagesAttachmentsData,
+                    serviceProjects: estimate.serviceProjects.map((service) => ({
+                        ...service,
+                        quantity: Number(service.quantity),
+                        unitPrice: Number(service.unitPrice),
+                        lineTotal: Number(service.lineTotal),
+                        originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
+                        originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+                    })),
                     project: {
                         ...estimate.project,
                         user: {

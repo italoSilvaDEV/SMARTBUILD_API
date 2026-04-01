@@ -2,6 +2,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import dayjs from "dayjs";
+import { getEstimateEffectiveTotal } from "../../utils/estimateDiscount";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -148,13 +149,18 @@ export class GetAllEstimatesByCompanyController {
                     id: true,
                     number: true,
                     totalAmount: true,
+                    balanceDue: true,
+                    amountPaid: true,
+                    discountType: true,
+                    discountValue: true,
+                    discountAmount: true,
+                    finalAmount: true,
                     status: true,
                     description: true,
                     canceledAt: true,
                     canceledById: true,
                     terms: true,
                     date_creation: true,
-                    balanceDue: true,
                     type_estimate: true,
                     multi_emails: true,
                     isStandaloneEstimate: true,
@@ -251,6 +257,8 @@ export class GetAllEstimatesByCompanyController {
                             quantity: true,
                             unitPrice: true,
                             lineTotal: true,
+                            originalUnitPrice: true,
+                            originalLineTotal: true,
                             notes: true,
                             date_creation: true,
                             date_update: true,
@@ -299,20 +307,17 @@ export class GetAllEstimatesByCompanyController {
                     }
                 })
 
-                const services = await prisma.estimateServiceProject.findMany({
-                    where: {
-                        estimateId: estimate.id
-                    },
-                    select: {
-                        quantity: true,
-                        unitPrice: true
-                    }
+                const totalInvoices = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
+                const effectiveTotal = getEstimateEffectiveTotal({
+                    totalAmount: estimate.totalAmount,
+                    finalAmount: estimate.finalAmount,
+                    discountAmount: estimate.discountAmount,
                 })
 
-                const totalInvoices = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0)
-                const totalAmount = services.reduce((acc, service) => acc + Number(service.quantity) * Number(service.unitPrice), 0)
+                const balanceDue = estimate.balanceDue !== null && estimate.balanceDue !== undefined
+                    ? Number(estimate.balanceDue)
+                    : Number((effectiveTotal - totalInvoices).toFixed(2))
 
-                const balanceDue = Number(totalAmount) - Number(totalInvoices) || 0
                 let pdfProjectData = null;
                 if (estimate.PdfProject && estimate.PdfProject.length > 0) {
                     const pdf = estimate.PdfProject[0];
@@ -353,8 +358,12 @@ export class GetAllEstimatesByCompanyController {
 
                 return {
                     ...estimate,
+                    totalAmount: Number(estimate.totalAmount),
                     balanceDue: balanceDue,
                     amountPaid: Number(totalInvoices),
+                    discountValue: estimate.discountValue !== null && estimate.discountValue !== undefined ? Number(estimate.discountValue) : null,
+                    discountAmount: estimate.discountAmount !== null && estimate.discountAmount !== undefined ? Number(estimate.discountAmount) : null,
+                    finalAmount: estimate.finalAmount !== null && estimate.finalAmount !== undefined ? Number(estimate.finalAmount) : null,
                     project: {
                         ...estimate.project,
                         client: estimate.project.client ? {
@@ -377,7 +386,9 @@ export class GetAllEstimatesByCompanyController {
                             ...service,
                             lineTotal: Number(service.lineTotal),
                             unitPrice: Number(service.unitPrice),
-                            quantity: Number(service.quantity)
+                            quantity: Number(service.quantity),
+                            originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
+                            originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
                         }
                     }),
                 }

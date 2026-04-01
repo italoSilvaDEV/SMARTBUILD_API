@@ -5,6 +5,8 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { addCompanySignatureToPdfBuffer, addCompanySignatureImageToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
+import { buildEstimateFinancialFields, EstimateDiscountType } from "../../utils/estimateDiscount";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
@@ -22,7 +24,15 @@ type payloadCreateEstimate = {
     cancelEstimates?: boolean;
     isProjectFlow?: boolean;
     isStandaloneEstimate?: boolean;
+    discountType?: EstimateDiscountType;
+    discountValue?: number | null;
 }
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+    "Discount cannot be greater than the remaining balance",
+]);
 
 export class CreateNewEstimateController {
     async handle(req: Request, res: Response) {
@@ -44,6 +54,10 @@ export class CreateNewEstimateController {
             where: {
                 id: payloadCreateEstimate.projectId
             },
+            select: {
+                id: true,
+                company_id: true,
+            }
         })
 
         if (!project) {
@@ -54,13 +68,24 @@ export class CreateNewEstimateController {
 
         try {
             const result = await prisma.$transaction(async (smartbuild) => {
+                const financialFields = buildEstimateFinancialFields({
+                    subtotal: Number(payloadCreateEstimate.totalAmount),
+                    amountPaid: 0,
+                    discountType: payloadCreateEstimate.discountType,
+                    discountValue: payloadCreateEstimate.discountValue,
+                });
+
                 const createEstimate = await smartbuild.estimate.create({
                     data: {
                         number: payloadCreateEstimate.preGeneratedNumber,
                         approvedAt: payloadCreateEstimate.approvedAt,
-                        totalAmount: Number(payloadCreateEstimate.totalAmount),
-                        balanceDue: Number(payloadCreateEstimate.totalAmount),
+                        totalAmount: Number(financialFields.totalAmount),
+                        balanceDue: Number(financialFields.balanceDue),
                         amountPaid: 0,
+                        discountType: financialFields.discountType,
+                        discountValue: financialFields.discountValue,
+                        discountAmount: financialFields.discountAmount,
+                        finalAmount: financialFields.finalAmount,
                         description: payloadCreateEstimate.description,
                         terms: payloadCreateEstimate.terms,
                         status: payloadCreateEstimate.status,
@@ -84,33 +109,52 @@ export class CreateNewEstimateController {
                         updateData.workContextId = payloadCreateEstimate.workContextId;
                     }
 
-                    await smartbuild.project.update({
-                        where: {
-                            id: payloadCreateEstimate.projectId
-                        },
-                        data: updateData,
-                    })
+                    if (Object.keys(updateData).length > 0) {
+                        await smartbuild.project.update({
+                            where: {
+                                id: payloadCreateEstimate.projectId
+                            },
+                            data: updateData,
+                        })
+                    }
 
                     if (payloadCreateEstimate.isProjectFlow) {
                         const projectServices = await smartbuild.serviceProject.findMany({
                             where: {
                                 projectId: payloadCreateEstimate.projectId
                             },
+                            select: {
+                                id: true,
+                                name: true,
+                                description: true,
+                                hours: true,
+                                price: true,
+                                id_service: true,
+                                start_date: true,
+                                deadline: true,
+                            }
                         })
 
                         for (const projectService of projectServices) {
+                            const originalUnitPrice = Number(projectService.price ?? 0)
+                            const quantity = Number(projectService.hours ?? 1)
+                            const originalLineTotal = Number((originalUnitPrice * quantity).toFixed(2))
+
                             await smartbuild.estimateServiceProject.create({
                                 data: {
                                     name: projectService.name,
                                     description: projectService.description,
-                                    hours: projectService.hours,
-                                    price: projectService.price,
+                                    quantity,
+                                    unitPrice: originalUnitPrice,
+                                    lineTotal: originalLineTotal,
+                                    originalUnitPrice,
+                                    originalLineTotal,
                                     estimateId: createEstimate.id,
                                     id_service: projectService.id_service,
+                                    hours: projectService.hours,
+                                    price: projectService.price,
                                     start_date: projectService.start_date,
                                     deadline: projectService.deadline,
-                                    unitPrice: projectService.price,
-                                    lineTotal: Number(projectService.price) * Number(projectService.hours),
                                     serviceProject: {
                                         connect: {
                                             id: projectService.id
@@ -119,11 +163,13 @@ export class CreateNewEstimateController {
                                 }
                             })
                         }
+
+                        await syncEstimateDiscountedServices(smartbuild, createEstimate.id)
                     }
                 } else {
                     const updateData: any = {
-                        price: Number(payloadCreateEstimate.totalAmount),
-                        balanceDue: Number(payloadCreateEstimate.totalAmount) || 0
+                        price: Number(financialFields.totalAmount),
+                        balanceDue: Number(financialFields.balanceDue) || 0
                     };
 
                     if (payloadCreateEstimate.workContextId) {
@@ -143,20 +189,16 @@ export class CreateNewEstimateController {
                         id: payloadCreateEstimate.idPdfProject
                     },
                     data: {
-                        project_id: payloadCreateEstimate.projectId
+                        project_id: payloadCreateEstimate.projectId,
+                        estimate_id: createEstimate.id,
                     }
                 })
 
-                await smartbuild.pdfProject.update({
-                    where: {
-                        id: payloadCreateEstimate.idPdfProject
-                    },
-                    data: {
-                        estimate_id: createEstimate.id
-                    }
+                const finalEstimate = await smartbuild.estimate.findUnique({
+                    where: { id: createEstimate.id }
                 })
 
-                return { createEstimate, idPdfProject: payloadCreateEstimate.idPdfProject };
+                return { createEstimate: finalEstimate ?? createEstimate, idPdfProject: payloadCreateEstimate.idPdfProject };
             });
 
             const { createEstimate, idPdfProject } = result;
@@ -209,12 +251,13 @@ export class CreateNewEstimateController {
 
             return res.status(201).json({
                 message: "Estimate created successfully",
-                data: {
-                    ...createEstimate,
-                    totalAmount: Number(payloadCreateEstimate.totalAmount)
-                }
+                data: createEstimate
             });
-        } catch (error) {
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
             return res.status(500).json({
                 error: "Internal server error while creating new estimate"
             })

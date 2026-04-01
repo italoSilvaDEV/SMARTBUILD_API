@@ -1,5 +1,6 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 
 type Fields = {
     name?: string
@@ -7,12 +8,20 @@ type Fields = {
     quantity?: number
     unitPrice?: number
     lineTotal?: number
+    originalUnitPrice?: number
+    originalLineTotal?: number
     notes?: string
     hours?: number
     price?: number
     start_date?: string
     deadline?: string
 }
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+    "Discount cannot be greater than the remaining balance",
+]);
 
 export class UpdateServiceEstimateController {
     async handle(req: Request, res: Response) {
@@ -82,22 +91,24 @@ export class UpdateServiceEstimateController {
                 campos.description = description
             }
             if (quantity !== undefined) {
-                campos.quantity = quantity
+                campos.quantity = Number(quantity)
             }
             if (unitPrice !== undefined) {
-                campos.unitPrice = unitPrice
+                campos.unitPrice = Number(unitPrice)
+                campos.originalUnitPrice = Number(unitPrice)
             }
             if (lineTotal !== undefined && serviceEstimate) {
-                campos.lineTotal = lineTotal
+                campos.lineTotal = Number(lineTotal)
+                campos.originalLineTotal = Number(lineTotal)
             }
             if (notes !== undefined) {
                 campos.notes = notes
             }
             if (hours !== undefined) {
-                campos.hours = hours
+                campos.hours = Number(hours)
             }
             if (price !== undefined) {
-                campos.price = price
+                campos.price = Number(price)
             }
             if (start_date !== undefined) {
                 campos.start_date = start_date
@@ -107,30 +118,17 @@ export class UpdateServiceEstimateController {
             }
 
             if (serviceEstimate) {
-                const siblingProject = await prisma.serviceProject.findFirst({
-                    where: { estimateServiceId: serviceId }
-                })
-
-                const dataSync: Partial<{ name: string; description: string; hours: number; price: number; start_date: string; deadline: string }> = {}
-                if (campos.name !== undefined) dataSync.name = campos.name
-                if (campos.description !== undefined && campos.description !== null) dataSync.description = campos.description
-                if (campos.hours !== undefined) dataSync.hours = campos.hours
-                if (campos.price !== undefined) dataSync.price = campos.price
-                if (campos.start_date !== undefined) dataSync.start_date = campos.start_date
-                if (campos.deadline !== undefined) dataSync.deadline = campos.deadline
-
                 const updatedServiceEstimate = await prisma.$transaction(async (tx) => {
-                    const updated = await tx.estimateServiceProject.update({
+                    await tx.estimateServiceProject.update({
                         where: { id: serviceId },
                         data: campos,
                     })
-                    if (siblingProject && Object.keys(dataSync).length > 0) {
-                        await tx.serviceProject.update({
-                            where: { id: siblingProject.id },
-                            data: dataSync,
-                        })
-                    }
-                    return updated
+
+                    await syncEstimateDiscountedServices(tx, serviceEstimate.estimateId)
+
+                    return tx.estimateServiceProject.findUnique({
+                        where: { id: serviceId }
+                    })
                 })
 
                 return res.status(200).json({
@@ -152,7 +150,11 @@ export class UpdateServiceEstimateController {
                     data: updatedServiceProject
                 })
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
             return res.status(500).json({
                 error: "Internal server error while updating service estimate"
             })
