@@ -1,6 +1,8 @@
 export type EstimateDiscountType = "fixed" | "percentage" | null | undefined;
 
-type NumericLike = number | string | null | undefined;
+type DecimalLike = { toString(): string; valueOf?: () => string | number; toNumber?: () => number };
+
+type NumericLike = number | string | DecimalLike | null | undefined;
 
 type EstimateServiceLike = {
   quantity?: NumericLike;
@@ -12,7 +14,25 @@ type EstimateServiceLike = {
 };
 
 const toNumber = (value: NumericLike, fallback = 0): number => {
-  if (value === null || value === undefined || value === "") return fallback;
+  if (value === null || value === undefined || value === '') return fallback;
+
+  if (typeof value === 'object') {
+    if (typeof value.toNumber === 'function') {
+      const numericValue = Number(value.toNumber());
+      return Number.isFinite(numericValue) ? numericValue : fallback;
+    }
+
+    if (typeof value.valueOf === 'function') {
+      const primitiveValue = value.valueOf();
+      const numericValue = Number(primitiveValue);
+      if (Number.isFinite(numericValue)) return numericValue;
+    }
+
+    const stringValue = value.toString();
+    const numericFromString = Number(stringValue);
+    return Number.isFinite(numericFromString) ? numericFromString : fallback;
+  }
+
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : fallback;
 };
@@ -140,13 +160,13 @@ export const buildEstimateFinancialFields = ({
   };
 };
 
-export const distributeEstimateDiscountAcrossServices = ({
+export const distributeEstimateDiscountAcrossServices = <T extends EstimateServiceLike>({
   services,
   discountType,
   discountValue,
   amountPaid,
 }: {
-  services: EstimateServiceLike[];
+  services: T[];
   discountType?: EstimateDiscountType;
   discountValue?: NumericLike;
   amountPaid?: NumericLike;
@@ -239,3 +259,7 @@ export const getEstimateEffectiveTotal = (estimate: {
 
   return toNumber(finalAmount);
 };
+
+
+
+
