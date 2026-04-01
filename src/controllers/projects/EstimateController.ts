@@ -441,6 +441,28 @@ export class EstimateController {
         where: { id },
         include: {
           serviceProjects: true,
+          imagesAttachments: {
+            select: {
+              id: true,
+              url: true,
+              original_filename: true,
+              title: true,
+              date_creation: true,
+              date_update: true
+            }
+          },
+          fildsPdfProjects: {
+            select: {
+              id: true,
+              sections: true,
+              description: true,
+              date_creation: true,
+              date_update: true
+            },
+            orderBy: {
+              date_creation: 'asc'
+            }
+          },
           canceledBy: {
             select: {
               id: true,
@@ -456,7 +478,9 @@ export class EstimateController {
                   name: true,
                   avatar: true,
                   email: true,
-                  phone: true
+                  phone: true,
+                  address: true,
+                  webSiteUrl: true
                 }
               },
               client: {
@@ -464,6 +488,7 @@ export class EstimateController {
                   id: true,
                   name: true,
                   email: true,
+                  phone: true,
                 }
               }
             }
@@ -502,6 +527,22 @@ export class EstimateController {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
       }
 
+      let imagesAttachmentsData: any[] = [];
+      if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+        imagesAttachmentsData = await Promise.all(
+          estimate.imagesAttachments.map(async (image: any) => {
+            return {
+              id: image.id,
+              url: image.url ? await getPresignedUrl(image.url) : null,
+              original_filename: image.original_filename,
+              title: image.title,
+              date_creation: image.date_creation,
+              date_update: image.date_update
+            }
+          })
+        );
+      }
+
       if (estimate.PdfProject && estimate.PdfProject.length > 0) {
         const pdf = estimate.PdfProject[0];
 
@@ -519,6 +560,7 @@ export class EstimateController {
       (estimate as any).finalAmount = (estimate as any).finalAmount !== null && (estimate as any).finalAmount !== undefined ? Number((estimate as any).finalAmount) : null;
       (estimate as any).balanceDue = (estimate as any).balanceDue !== null && (estimate as any).balanceDue !== undefined ? Number((estimate as any).balanceDue) : Number((effectiveTotal - amountPaid).toFixed(2));
       (estimate as any).amountPaid = amountPaid;
+      (estimate as any).imagesAttachments = imagesAttachmentsData;
       (estimate as any).serviceProjects = estimate.serviceProjects.map((service: any) => ({
         ...service,
         quantity: Number(service.quantity),
@@ -1627,4 +1669,6 @@ export class EstimateController {
     }
   }
 } 
+
+
 
