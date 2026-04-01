@@ -261,6 +261,12 @@ export class EstimateController {
               status_project: true,
               autorId: true,
               location: true,
+              workContext: {
+                select: {
+                  id: true,
+                  Name: true
+                }
+              },
               client: {
                 select: {
                   id: true,
@@ -480,7 +486,14 @@ export class EstimateController {
                   email: true,
                   phone: true,
                   address: true,
-                  webSiteUrl: true
+                  webSiteUrl: true,
+                  signature: true,
+                }
+              },
+              workContext: {
+                select: {
+                  id: true,
+                  Name: true
                 }
               },
               client: {
@@ -1669,6 +1682,8 @@ export class EstimateController {
     }
   }
 } 
+
+
 
 
 
