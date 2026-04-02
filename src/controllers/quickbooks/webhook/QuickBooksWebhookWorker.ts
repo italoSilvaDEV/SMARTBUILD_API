@@ -8,6 +8,8 @@ import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { jsonSafe } from "../customer/quickbooksHelpers";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
+import { mapQBOProjectToSmartBuild } from "../project/projectMapper";
+import { mapQBOEstimateToSmartBuild, mapQBOEstimateLineToSBServiceProject } from "../estimate/estimateMapper";
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 
@@ -213,6 +215,54 @@ export class QuickBooksWebhookWorker {
           console.error("[QBO Webhook] erro ao processar Payment:", id, e?.message || e);
           await createSyncLog({
             entity: "payments",
+            action: "WebhookError",
+            entityId: id,
+            companyId,
+            details: jsonSafe({ message: e?.message || String(e), op }),
+          });
+        }
+      }
+
+      // Processar Project events
+      const projectEvents = entities.filter((e: any) => e.name?.toLowerCase() === "project");
+      for (const evt of projectEvents) {
+        const id = evt.id;
+        const op = (evt.operation || "").toLowerCase();
+
+        try {
+          console.log(`[QBO Webhook] Processando Project event: ${op} - ID: ${id}`);
+
+          // Processar o projeto
+          await this.handleProjectEvent(companyId, account.user_id, id, op, qb);
+
+        } catch (e: any) {
+          console.error("[QBO Webhook] erro ao processar Project:", id, e?.message || e);
+          await createSyncLog({
+            entity: "projects",
+            action: "WebhookError",
+            entityId: id,
+            companyId,
+            details: jsonSafe({ message: e?.message || String(e), op }),
+          });
+        }
+      }
+
+      // Processar Estimate events
+      const estimateEvents = entities.filter((e: any) => e.name?.toLowerCase() === "estimate");
+      for (const evt of estimateEvents) {
+        const id = evt.id;
+        const op = (evt.operation || "").toLowerCase();
+
+        try {
+          console.log(`[QBO Webhook] Processando Estimate event: ${op} - ID: ${id}`);
+
+          // Processar o estimate
+          await this.handleEstimateEvent(companyId, account.user_id, id, op, qb);
+
+        } catch (e: any) {
+          console.error("[QBO Webhook] erro ao processar Estimate:", id, e?.message || e);
+          await createSyncLog({
+            entity: "estimates",
             action: "WebhookError",
             entityId: id,
             companyId,
@@ -1206,6 +1256,369 @@ ${company?.name || ''}
     } catch (error: any) {
       console.error("[QBO Webhook] Erro ao enviar email com PDF:", error.message);
       // Não fazer throw para não interromper o fluxo principal
+    }
+  }
+
+  /**
+   * Processar evento de Project (criação, atualização, deleção)
+   * Projects usam GraphQL API, não REST API
+   */
+  private static async handleProjectEvent(
+    companyId: string,
+    userId: string,
+    projectId: string,
+    operation: string,
+    qb: any
+  ) {
+    try {
+      console.log(`[QBO Webhook] Processando Project ${projectId} - Operation: ${operation}`);
+
+      // Para Projects, precisamos usar GraphQL API já que REST não suporta Projects
+      // Mas o webhook nos dá apenas o ID, então precisamos buscar via GraphQL
+      const { qboGraphQLClientForAccount } = await import("../util/http/qboGraphQLClientFactory");
+      
+      // Carregar conta para obter accountId
+      const account = await prisma.quickBooksAccount.findFirst({
+        where: { company_id: companyId }
+      });
+
+      if (!account) {
+        console.warn("[QBO Webhook] Conta QuickBooks não encontrada para companyId:", companyId);
+        return;
+      }
+
+      const graphqlClient = qboGraphQLClientForAccount(account.id);
+
+      // Buscar projeto via GraphQL
+      const query = `
+        query GetProject($id: ID!) {
+          project(id: $id) {
+            id
+            name
+            status
+            customer {
+              id
+              name
+            }
+            metadata {
+              createTime
+              lastUpdatedTime
+            }
+          }
+        }
+      `;
+
+      const response = await graphqlClient.post('', {
+        query,
+        variables: { id: projectId }
+      });
+
+      const qbProject = response.data?.data?.project;
+
+      if (!qbProject) {
+        console.warn("[QBO Webhook] Project não encontrado no GraphQL:", projectId);
+        return;
+      }
+
+      // Buscar projeto local pelo ID do QuickBooks
+      const localProject = await prisma.project.findFirst({
+        where: {
+          idQuickbooks: projectId
+        }
+      });
+
+      if (operation === "delete") {
+        // Marcar projeto como arquivado (status_project não pode ser 'archived')
+        if (localProject) {
+          await prisma.project.update({
+            where: { id: localProject.id },
+            data: {
+              idQuickbooks: null // Desconectar do QBO
+            }
+          });
+          
+          await createSyncLog({
+            entity: "projects",
+            action: "DeletedFromWebhook",
+            entityId: localProject.id,
+            companyId,
+            details: jsonSafe({ qbProjectId: projectId })
+          });
+        }
+        return;
+      }
+
+      // Processar create/update
+      const mappedData = mapQBOProjectToSmartBuild(qbProject);
+
+      // Buscar client_id baseado no customer do QBO
+      let clientId: string | null = null;
+      if (qbProject.customer?.id) {
+        const client = await prisma.client.findFirst({
+          where: {
+            idQuickbooks: qbProject.customer.id
+          }
+        });
+        clientId = client?.id || null;
+      }
+
+      if (!clientId) {
+        console.log(`[QBO Webhook] Project ${projectId} não tem cliente vinculado, ignorando`);
+        await createSyncLog({
+          entity: "projects",
+          action: "WebhookSkipped",
+          entityId: projectId,
+          companyId,
+          details: jsonSafe({ reason: "No client found" })
+        });
+        return;
+      }
+
+      if (localProject) {
+        // Atualizar projeto existente
+        await prisma.project.update({
+          where: { id: localProject.id },
+          data: {
+            status_project: mappedData.status_project,
+            idQuickbooks: projectId,
+            quickbooksUpdatedAt: qbProject.metadata?.lastUpdatedTime
+              ? new Date(qbProject.metadata.lastUpdatedTime)
+              : new Date()
+          }
+        });
+
+        await createSyncLog({
+          entity: "projects",
+          action: "UpdatedFromWebhook",
+          entityId: localProject.id,
+          companyId,
+          details: jsonSafe({ qbProjectId: projectId, operation })
+        });
+      } else {
+        // Criar novo projeto
+        const created = await prisma.project.create({
+          data: {
+            status_project: mappedData.status_project || 'pending',
+            idQuickbooks: projectId,
+            quickbooksUpdatedAt: qbProject.metadata?.lastUpdatedTime
+              ? new Date(qbProject.metadata.lastUpdatedTime)
+              : new Date(),
+            client_id: clientId,
+            price: 0,
+            date_creation: new Date(),
+            date_update: new Date()
+          }
+        });
+
+        await createSyncLog({
+          entity: "projects",
+          action: "InsertedFromWebhook",
+          entityId: created.id,
+          companyId,
+          details: jsonSafe({ qbProjectId: projectId })
+        });
+      }
+
+    } catch (error: any) {
+      console.error("[QBO Webhook] Erro ao processar evento de Project:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Processar evento de Estimate (criação, atualização, deleção)
+   * Estimates usam REST API
+   */
+  private static async handleEstimateEvent(
+    companyId: string,
+    userId: string,
+    estimateId: string,
+    operation: string,
+    qb: any
+  ) {
+    try {
+      console.log(`[QBO Webhook] Processando Estimate ${estimateId} - Operation: ${operation}`);
+
+      // Buscar estimate completo do QuickBooks via REST
+      const estimateData: any = await limiter.schedule(
+        () =>
+          new Promise((resolve, reject) => {
+            qb.getEstimate(estimateId, (err: any, data: any) => (err ? reject(err) : resolve(data)));
+          })
+      );
+
+      const qbEstimate = estimateData?.Estimate || estimateData;
+
+      if (!qbEstimate || !qbEstimate.Id) {
+        console.warn("[QBO Webhook] Estimate não encontrado:", estimateId);
+        return;
+      }
+
+      // Buscar estimate local pelo ID do QuickBooks
+      const localEstimate = await prisma.estimate.findFirst({
+        where: {
+          idQuickbooks: estimateId
+        }
+      });
+
+      if (operation === "delete") {
+        // Marcar estimate como inativo ou deletado
+        if (localEstimate) {
+          await prisma.estimate.update({
+            where: { id: localEstimate.id },
+            data: {
+              status: 'closed',
+              idQuickbooks: null // Desconectar do QBO
+            }
+          });
+          
+          await createSyncLog({
+            entity: "estimates",
+            action: "DeletedFromWebhook",
+            entityId: localEstimate.id,
+            companyId,
+            details: jsonSafe({ qbEstimateId: estimateId })
+          });
+        }
+        return;
+      }
+
+      // Mapear dados do QBO
+      const mappedEstimate = mapQBOEstimateToSmartBuild(qbEstimate);
+
+      // Buscar projeto pelo ProjectRef se existir
+      let projectId: string | null = null;
+      if (qbEstimate.ProjectRef?.value) {
+        const project = await prisma.project.findFirst({
+          where: {
+            idQuickbooks: qbEstimate.ProjectRef.value
+          }
+        });
+        projectId = project?.id || null;
+      }
+
+      if (!projectId) {
+        console.log(`[QBO Webhook] Estimate ${estimateId} não tem projeto vinculado, ignorando`);
+        await createSyncLog({
+          entity: "estimates",
+          action: "WebhookSkipped",
+          entityId: estimateId,
+          companyId,
+          details: jsonSafe({ reason: "No project found" })
+        });
+        return;
+      }
+
+      if (localEstimate) {
+        // Atualizar estimate existente
+        await prisma.estimate.update({
+          where: { id: localEstimate.id },
+          data: {
+            number: mappedEstimate.number,
+            approvedAt: mappedEstimate.approvedAt,
+            totalAmount: mappedEstimate.totalAmount,
+            description: mappedEstimate.description,
+            terms: mappedEstimate.terms,
+            status: mappedEstimate.status,
+            date_update: new Date(),
+            idQuickbooks: estimateId,
+            quickbooksUpdatedAt: qbEstimate.MetaData?.LastUpdatedTime 
+              ? new Date(qbEstimate.MetaData.LastUpdatedTime) 
+              : new Date()
+          }
+        });
+
+        // Atualizar line items
+        if (qbEstimate.Line && qbEstimate.Line.length > 0) {
+          // Deletar linhas existentes
+          await prisma.estimateServiceProject.deleteMany({
+            where: { estimateId: localEstimate.id }
+          });
+
+          // Criar novas linhas
+          for (const qbLine of qbEstimate.Line) {
+            const mappedLine = mapQBOEstimateLineToSBServiceProject(qbLine, localEstimate.id);
+            await prisma.estimateServiceProject.create({
+              data: {
+                name: mappedLine.name || 'Service',
+                description: mappedLine.description,
+                quantity: mappedLine.quantity || 1,
+                unitPrice: mappedLine.unitPrice || 0,
+                lineTotal: mappedLine.lineTotal || 0,
+                idQuickbooksLine: mappedLine.idQuickbooksLine,
+                estimateId: localEstimate.id
+              }
+            });
+          }
+        }
+
+        await createSyncLog({
+          entity: "estimates",
+          action: "UpdatedFromWebhook",
+          entityId: localEstimate.id,
+          companyId,
+          details: jsonSafe({ qbEstimateId: estimateId, operation })
+        });
+      } else {
+        // Criar novo estimate
+        const created = await prisma.estimate.create({
+          data: {
+            number: mappedEstimate.number || `QB-${estimateId}`,
+            approvedAt: new Date(qbEstimate.MetaData?.CreateTime || new Date()),
+            totalAmount: mappedEstimate.totalAmount || 0,
+            description: mappedEstimate.description,
+            terms: mappedEstimate.terms,
+            status: mappedEstimate.status || 'pending',
+            assignatureRequired: false,
+            amountPaid: 0,
+            balanceDue: null,
+            pdf_needs_update: false,
+            type_estimate: 'estimateProject',
+            multi_emails: null,
+            isStandaloneEstimate: false,
+            canceledAt: null,
+            canceledById: null,
+            cancellationReason: null,
+            projectId,
+            date_creation: new Date(qbEstimate.MetaData?.CreateTime || new Date()),
+            date_update: new Date(),
+            idQuickbooks: estimateId,
+            quickbooksUpdatedAt: qbEstimate.MetaData?.LastUpdatedTime 
+              ? new Date(qbEstimate.MetaData.LastUpdatedTime) 
+              : new Date()
+          }
+        });
+
+        // Criar line items
+        if (qbEstimate.Line && qbEstimate.Line.length > 0) {
+          for (const qbLine of qbEstimate.Line) {
+            const mappedLine = mapQBOEstimateLineToSBServiceProject(qbLine, created.id);
+            await prisma.estimateServiceProject.create({
+              data: {
+                name: mappedLine.name || 'Service',
+                description: mappedLine.description,
+                quantity: mappedLine.quantity || 1,
+                unitPrice: mappedLine.unitPrice || 0,
+                lineTotal: mappedLine.lineTotal || 0,
+                idQuickbooksLine: mappedLine.idQuickbooksLine,
+                estimateId: created.id
+              }
+            });
+          }
+        }
+
+        await createSyncLog({
+          entity: "estimates",
+          action: "InsertedFromWebhook",
+          entityId: created.id,
+          companyId,
+          details: jsonSafe({ qbEstimateId: estimateId })
+        });
+      }
+
+    } catch (error: any) {
+      console.error("[QBO Webhook] Erro ao processar evento de Estimate:", error.message);
+      throw error;
     }
   }
 }

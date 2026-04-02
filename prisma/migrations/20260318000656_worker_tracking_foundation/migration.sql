@@ -10,55 +10,55 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `project_feed` DROP FOREIGN KEY `project_feed_authorId_fkey`;
+-- ALTER TABLE `project_feed` DROP FOREIGN KEY `project_feed_authorId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed` DROP FOREIGN KEY `project_feed_projectId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed` DROP FOREIGN KEY `project_feed_projectId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_comment` DROP FOREIGN KEY `project_feed_comment_authorId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_comment` DROP FOREIGN KEY `project_feed_comment_authorId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_comment` DROP FOREIGN KEY `project_feed_comment_projectFeedId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_comment` DROP FOREIGN KEY `project_feed_comment_projectFeedId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_reaction` DROP FOREIGN KEY `project_feed_reaction_projectFeedId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_reaction` DROP FOREIGN KEY `project_feed_reaction_projectFeedId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_reaction` DROP FOREIGN KEY `project_feed_reaction_userId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_reaction` DROP FOREIGN KEY `project_feed_reaction_userId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_share` DROP FOREIGN KEY `project_feed_share_createdById_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_share` DROP FOREIGN KEY `project_feed_share_createdById_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_feed_share` DROP FOREIGN KEY `project_feed_share_projectId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_feed_share` DROP FOREIGN KEY `project_feed_share_projectId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_media` DROP FOREIGN KEY `project_media_projectFeedId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_media` DROP FOREIGN KEY `project_media_projectFeedId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_qr_code` DROP FOREIGN KEY `project_qr_code_createdById_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_qr_code` DROP FOREIGN KEY `project_qr_code_createdById_fkey`;
 
--- DropForeignKey
-ALTER TABLE `project_qr_code` DROP FOREIGN KEY `project_qr_code_projectId_fkey`;
+-- -- DropForeignKey
+-- ALTER TABLE `project_qr_code` DROP FOREIGN KEY `project_qr_code_projectId_fkey`;
 
--- DropTable
-DROP TABLE `project_feed`;
+-- -- DropTable
+-- DROP TABLE `project_feed`;
 
--- DropTable
-DROP TABLE `project_feed_comment`;
+-- -- DropTable
+-- DROP TABLE `project_feed_comment`;
 
--- DropTable
-DROP TABLE `project_feed_reaction`;
+-- -- DropTable
+-- DROP TABLE `project_feed_reaction`;
 
--- DropTable
-DROP TABLE `project_feed_share`;
+-- -- DropTable
+-- DROP TABLE `project_feed_share`;
 
--- DropTable
-DROP TABLE `project_media`;
+-- -- DropTable
+-- DROP TABLE `project_media`;
 
--- DropTable
-DROP TABLE `project_qr_code`;
+-- -- DropTable
+-- DROP TABLE `project_qr_code`;
 
 -- CreateTable
 CREATE TABLE `worker_live_locations` (

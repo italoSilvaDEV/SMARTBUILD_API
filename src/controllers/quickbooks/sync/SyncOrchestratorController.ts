@@ -5,17 +5,25 @@ import { QuickBooksClientController } from "../customer/QuickBooksCustomerContro
 import { SyncStatus, SyncPreferences } from "@prisma/client";
 import { QuickBooksCustomerOutboundController } from "../customer/QuickbooksCustomerOutboundController";
 import { quickbooksQueue } from "../../../queue/quickbooksQueue";
+import { QuickBooksProjectController } from "../project/QuickBooksProjectController";
+import { quickbooksProjectOutboundController } from "../project/QuickbooksProjectOutboundController";
+import { quickBooksEstimateController } from "../estimate/QuickBooksEstimateController";
+import { quickbooksEstimateOutboundController } from "../estimate/QuickbooksEstimateOutboundController";
 
 
 export class SyncOrchestratorController {
     private syncPreferencesController: SyncPreferencesController;
     private quickBooksClientController: QuickBooksClientController;
     private quickBooksCustomerOutboundController: QuickBooksCustomerOutboundController;
+    private quickBooksProjectController: QuickBooksProjectController;
+    private quickBooksEstimateController: any;
 
     constructor() {
         this.syncPreferencesController = new SyncPreferencesController();
         this.quickBooksClientController = new QuickBooksClientController();
         this.quickBooksCustomerOutboundController = new QuickBooksCustomerOutboundController();
+        this.quickBooksProjectController = new QuickBooksProjectController();
+        this.quickBooksEstimateController = quickBooksEstimateController;
 
         // Bind methods to preserve 'this' context
         this.orchestrateSync = this.orchestrateSync.bind(this);
@@ -473,6 +481,10 @@ export class SyncOrchestratorController {
                     } else {
                         throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
                     }
+                } else if (typesEntity === 'projects') {
+                    syncResult = await this.executeProjectSync(companyId, userId, syncExecution.id, typeSync);
+                } else if (typesEntity === 'estimates') {
+                    syncResult = await this.executeEstimateSync(companyId, userId, syncExecution.id, typeSync);
                 } else {
                     throw new Error(`Entidade não implementada: ${typesEntity}`);
                 }
@@ -487,9 +499,7 @@ export class SyncOrchestratorController {
                         status: 'COMPLETED',
                         completedAt: new Date(),
                         duration,
-                        successRecords:
-                            (syncResult?.inbound?.synced || 0) +
-                            (syncResult?.exported?.created || 0),
+                        successRecords: this.calculateSuccessRecords(syncResult),
                         errorRecords: 0,
                         details: syncResult
                     }
@@ -710,5 +720,174 @@ export class SyncOrchestratorController {
 
         await this.quickBooksCustomerOutboundController.pushLocalUpdatesToQBO(mockRequest, mockResponse);
         return result; // { message, updated }
+    }
+
+    /**
+     * Executa sincronização de projetos
+     */
+    private async executeProjectSync(
+        companyId: string,
+        userId: string,
+        syncExecutionId: string,
+        typeSync: string
+    ) {
+        const mockRequest = {
+            params: { companyId, userId },
+            syncExecutionId
+        } as unknown as Request;
+
+        let syncResult: any = { steps: [] };
+
+        if (typeSync === 'QuickBooksToSmartBuild') {
+            // INBOUND somente
+            const mockResponse = this.createMockResponse();
+            await this.quickBooksProjectController.syncProjects(mockRequest, mockResponse);
+            syncResult = { direction: 'QBO->Local', steps: [{ action: 'syncProjects' }] };
+        } else if (typeSync === 'SmartBuildToQuickBooks') {
+            // OUTBOUND somente (export + updates)
+            const exportResponse = this.createMockResponse();
+            await quickbooksProjectOutboundController.exportMissingProjectsToQBO(mockRequest, exportResponse);
+            
+            const pushResponse = this.createMockResponse();
+            await quickbooksProjectOutboundController.pushProjectUpdatesToQBO(mockRequest, pushResponse);
+            
+            syncResult = {
+                direction: 'Local->QBO',
+                steps: [
+                    { action: 'exportMissingProjects', result: exportResponse },
+                    { action: 'pushProjectUpdates', result: pushResponse }
+                ]
+            };
+        } else if (typeSync === 'bidirectional') {
+            // OUTBOUND (export + updates) -> INBOUND
+            const exportResponse = this.createMockResponse();
+            await quickbooksProjectOutboundController.exportMissingProjectsToQBO(mockRequest, exportResponse);
+            
+            const pushResponse = this.createMockResponse();
+            await quickbooksProjectOutboundController.pushProjectUpdatesToQBO(mockRequest, pushResponse);
+            
+            const syncResponse = this.createMockResponse();
+            await this.quickBooksProjectController.syncProjects(mockRequest, syncResponse);
+            
+            syncResult = {
+                direction: 'Both',
+                steps: [
+                    { action: 'exportMissingProjects', result: exportResponse },
+                    { action: 'pushProjectUpdates', result: pushResponse },
+                    { action: 'syncProjects', result: syncResponse }
+                ]
+            };
+        } else {
+            throw new Error(`Tipo de sincronização não implementado: projects - ${typeSync}`);
+        }
+
+        return syncResult;
+    }
+
+    /**
+     * Executa sincronização de orçamentos
+     */
+    private async executeEstimateSync(
+        companyId: string,
+        userId: string,
+        syncExecutionId: string,
+        typeSync: string
+    ) {
+        const mockRequest = {
+            params: { companyId, userId },
+            syncExecutionId
+        } as unknown as Request;
+
+        let syncResult: any = { steps: [] };
+
+        if (typeSync === 'QuickBooksToSmartBuild') {
+            // INBOUND somente
+            const mockResponse = this.createMockResponse();
+            await this.quickBooksEstimateController.syncEstimates(mockRequest, mockResponse);
+            syncResult = { direction: 'QBO->Local', steps: [{ action: 'syncEstimates' }] };
+        } else if (typeSync === 'SmartBuildToQuickBooks') {
+            // OUTBOUND somente (export + updates)
+            const exportResponse = this.createMockResponse();
+            await quickbooksEstimateOutboundController.exportMissingEstimatesToQBO(mockRequest, exportResponse);
+            
+            const pushResponse = this.createMockResponse();
+            await quickbooksEstimateOutboundController.pushEstimateUpdatesToQBO(mockRequest, pushResponse);
+            
+            syncResult = {
+                direction: 'Local->QBO',
+                steps: [
+                    { action: 'exportMissingEstimates', result: exportResponse },
+                    { action: 'pushEstimateUpdates', result: pushResponse }
+                ]
+            };
+        } else if (typeSync === 'bidirectional') {
+            // OUTBOUND (export + updates) -> INBOUND
+            const exportResponse = this.createMockResponse();
+            await quickbooksEstimateOutboundController.exportMissingEstimatesToQBO(mockRequest, exportResponse);
+            
+            const pushResponse = this.createMockResponse();
+            await quickbooksEstimateOutboundController.pushEstimateUpdatesToQBO(mockRequest, pushResponse);
+            
+            const syncResponse = this.createMockResponse();
+            await this.quickBooksEstimateController.syncEstimates(mockRequest, syncResponse);
+            
+            syncResult = {
+                direction: 'Both',
+                steps: [
+                    { action: 'exportMissingEstimates', result: exportResponse },
+                    { action: 'pushEstimateUpdates', result: pushResponse },
+                    { action: 'syncEstimates', result: syncResponse }
+                ]
+            };
+        } else {
+            throw new Error(`Tipo de sincronização não implementado: estimates - ${typeSync}`);
+        }
+
+        return syncResult;
+    }
+
+    /**
+     * Helper method to create mock response objects
+     */
+    private createMockResponse() {
+        let result: any = {};
+        return {
+            status: (code: number) => ({
+                json: (data: any) => {
+                    if (code === 200) {
+                        result = data;
+                    } else {
+                        const error = new Error(data.error || 'Erro na operação');
+                        (error as any).details = data.details;
+                        (error as any).statusCode = code;
+                        throw error;
+                    }
+                }
+            })
+        } as unknown as Response;
+    }
+
+    /**
+     * Calcula o número de records processados com sucesso
+     * Suporta tanto o formato antigo (inbound/exported) quanto o novo (steps)
+     */
+    private calculateSuccessRecords(syncResult: any): number {
+        // Formato antigo (customers)
+        if (syncResult?.inbound?.synced !== undefined || syncResult?.exported?.created !== undefined) {
+            return (syncResult?.inbound?.synced || 0) + (syncResult?.exported?.created || 0);
+        }
+
+        // Formato novo (projects/estimates com steps)
+        if (syncResult?.steps && Array.isArray(syncResult.steps)) {
+            let total = 0;
+            for (const step of syncResult.steps) {
+                if (step.result) {
+                    total += (step.result.created || 0) + (step.result.updated || 0);
+                }
+            }
+            return total;
+        }
+
+        return 0;
     }
 } 

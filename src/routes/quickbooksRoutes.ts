@@ -6,6 +6,10 @@ import { SyncPreferencesController } from "../controllers/quickbooks/syncPrefere
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
+import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
+import { quickbooksProjectOutboundController } from "../controllers/quickbooks/project/QuickbooksProjectOutboundController";
+import { quickBooksEstimateController } from "../controllers/quickbooks/estimate/QuickBooksEstimateController";
+import { quickbooksEstimateOutboundController } from "../controllers/quickbooks/estimate/QuickbooksEstimateOutboundController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -14,6 +18,7 @@ const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
+const quickbooksProjectController = new QuickBooksProjectController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
@@ -49,6 +54,24 @@ quickbooksRoutes.delete("/quickbooks/sync-preferences/:id", checkToken, quickboo
 
 // rotas de sincronizar customers
 quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksClientController.syncClients);
+
+// rotas de sincronizar projects
+quickbooksRoutes.get("/projects/sync/:companyId/:userId", checkToken, quickbooksProjectController.syncProjects.bind(quickbooksProjectController));
+
+// rotas de sincronizar estimates
+quickbooksRoutes.get("/estimates/sync/:companyId/:userId", checkToken, quickBooksEstimateController.syncEstimates.bind(quickBooksEstimateController));
+
+// Exportação inicial (Local -> QBO) — cria Project no QBO p/ quem não tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/projects/export/:companyId/:userId", checkToken, quickbooksProjectOutboundController.exportMissingProjectsToQBO);
+
+// Push de updates (Local -> QBO) — atualiza no QBO quem já tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/projects/push-updates/:companyId/:userId", checkToken, quickbooksProjectOutboundController.pushProjectUpdatesToQBO);
+
+// Exportação inicial (Local -> QBO) — cria Estimate no QBO p/ quem não tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/estimates/export/:companyId/:userId", checkToken, quickbooksEstimateOutboundController.exportMissingEstimatesToQBO);
+
+// Push de updates (Local -> QBO) — atualiza no QBO quem já tem idQuickbooks
+quickbooksRoutes.post("/quickbooks/estimates/push-updates/:companyId/:userId", checkToken, quickbooksEstimateOutboundController.pushEstimateUpdatesToQBO);
 
 // Rotas do orquestrador de sincronização
 quickbooksRoutes.post("/quickbooks/orchestrate-sync/:companyId/:userId", checkToken, syncOrchestratorController.orchestrateSync);

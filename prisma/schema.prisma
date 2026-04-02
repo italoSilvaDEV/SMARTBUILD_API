@@ -720,6 +720,11 @@ model Project {
   deadline           String?
   date_creation      DateTime             @default(now())
   date_update        DateTime             @updatedAt
+
+  // QuickBooks sync fields
+  idQuickbooks        String?              @unique
+  quickbooksUpdatedAt DateTime?
+
   invoiceCostProject InvoiceCostProject[]
   serviceProject     ServiceProject[]
   workedHours        Workedhours[]
@@ -1614,6 +1619,10 @@ model Estimate {
   date_creation   DateTime                 @default(now())
   date_update     DateTime                 @updatedAt
 
+  // QuickBooks sync fields
+  idQuickbooks        String?              @unique
+  quickbooksUpdatedAt DateTime?
+
   emailLogs  EstimateEmailLog[]
   PdfProject PdfProject[]
 
@@ -1659,6 +1668,10 @@ model EstimateServiceProject {
 
   date_creation  DateTime        @default(now())
   date_update    DateTime        @updatedAt
+
+  // QuickBooks sync fields
+  idQuickbooksLine String?
+
   serviceProject ServiceProject?
 }
 
@@ -1961,6 +1974,8 @@ enum TypesEntity {
   customers
   invoices
   payments
+  projects
+  estimates
 }
 
 enum SyncType {

@@ -6,6 +6,19 @@ import { prisma } from "../../../utils/prisma";
 
 const outbound = new QuickBooksCustomerOutboundController();
 
+// Buffer em memória para logs de sincronização
+interface SyncLogEntry {
+  entity: string;
+  action: string;
+  entityId: string;
+  companyId: string;
+  details: any;
+  syncExecutionId?: string | null;
+}
+
+const syncLogBuffer: Map<string, SyncLogEntry> = new Map();
+const SYNC_LOG_FLUSH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+
 // Função helper para verificar se a sincronização está habilitada
 async function isSyncEnabled(companyId: string, userId: string): Promise<boolean> {
   try {
@@ -42,6 +55,7 @@ async function isQuickBooksAccountActive(companyId: string, userId: string): Pro
 }
 
 // Função helper para criar log de sincronização (pode ser vinculado a uma execução ou avulso)
+// Usa buffer em memória para reduzir carga no banco de dados
 export async function createSyncLog(data: {
   entity: string;
   action: string;
@@ -51,20 +65,85 @@ export async function createSyncLog(data: {
   syncExecutionId?: string;
 }) {
   try {
-    await prisma.syncLog.create({
-      data: {
-        entity: data.entity,
-        action: data.action,
-        entityId: data.entityId,
-        companyId: data.companyId,
-        details: data.details,
-        syncExecutionId: data.syncExecutionId || null
-      }
+    // Criar chave única para evitar duplicatas
+    const logKey = `${data.entity}:${data.action}:${data.entityId}`;
+    
+    // Adicionar ao buffer
+    syncLogBuffer.set(logKey, {
+      entity: data.entity,
+      action: data.action,
+      entityId: data.entityId,
+      companyId: data.companyId,
+      details: data.details,
+      syncExecutionId: data.syncExecutionId || null
     });
+
+    console.log(`[createSyncLog] Log adicionado ao buffer (total: ${syncLogBuffer.size})`);
   } catch (error) {
-    console.error("[createSyncLog] Erro ao criar log:", error);
+    console.error("[createSyncLog] Erro ao adicionar log ao buffer:", error);
   }
 }
+
+// Função para fazer batch insert dos logs do buffer
+async function flushSyncLogBuffer() {
+  const bufferSize = syncLogBuffer.size;  
+  if (bufferSize === 0) {
+    console.log("[flushSyncLogBuffer] Buffer vazio, nada para inserir");
+    return;
+  }
+
+  try {
+    // Converter Map para array
+    const logs = Array.from(syncLogBuffer.values());
+    
+    console.log(`[flushSyncLogBuffer] Inserindo ${bufferSize} logs no banco...`);
+    
+    // Batch insert com Prisma
+    await prisma.syncLog.createMany({
+      data: logs,
+      skipDuplicates: true
+    });
+    
+    // Limpar buffer após inserção bem-sucedida
+    syncLogBuffer.clear();
+    
+    console.log(`[flushSyncLogBuffer] ${bufferSize} logs inseridos com sucesso`);
+  } catch (error) {
+    console.error("[flushSyncLogBuffer] Erro ao inserir logs:", error);
+    // Não limpa o buffer em caso de erro para não perder dados
+  }
+}
+
+// Iniciar intervalo de flush automático
+let flushInterval: NodeJS.Timeout | null = null;
+
+function startSyncLogFlushInterval() {
+  if (flushInterval) {
+    console.log("[startSyncLogFlushInterval] Intervalo já está rodando");
+    return;
+  }
+
+  flushInterval = setInterval(() => {
+    flushSyncLogBuffer();
+  }, SYNC_LOG_FLUSH_INTERVAL_MS);
+
+  console.log(`[startSyncLogFlushInterval] Intervalo de flush iniciado (${SYNC_LOG_FLUSH_INTERVAL_MS}ms)`);
+}
+
+// Função para parar o intervalo (útil para testes ou shutdown)
+function stopSyncLogFlushInterval() {
+  if (flushInterval) {
+    clearInterval(flushInterval);
+    flushInterval = null;
+    console.log("[stopSyncLogFlushInterval] Intervalo de flush parado");
+    
+    // Fazer flush final antes de parar
+    flushSyncLogBuffer();
+  }
+}
+
+// Iniciar o intervalo automaticamente quando o módulo é carregado
+startSyncLogFlushInterval();
 
 // chame sem await; erros são tratados internamente
 export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clientId: string) {
@@ -124,3 +203,6 @@ export function fireAndForgetUpsertToQBO(companyId: string, userId: string, clie
     return null;
   });
 }
+
+// Exportar funções de controle para uso externo (útil em testes)
+export { flushSyncLogBuffer, stopSyncLogFlushInterval };
