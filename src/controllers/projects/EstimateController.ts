@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { returnPayLoad } from "../../config/returnPayLoad";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { getEstimateEffectiveTotal } from "../../utils/estimateDiscount";
 import { estimateEmail, estimateNotificationEmail } from "../../templateEmail/estimate";
 import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -260,6 +261,12 @@ export class EstimateController {
               status_project: true,
               autorId: true,
               location: true,
+              workContext: {
+                select: {
+                  id: true,
+                  Name: true
+                }
+              },
               client: {
                 select: {
                   id: true,
@@ -353,8 +360,23 @@ export class EstimateController {
         }
       });
 
-      // Generate presigned URLs for PDFs in all estimates and convert array to single object
-      for (const estimate of estimates) {
+      for (const estimate of estimates as any[]) {
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            estimateId: estimate.id,
+            status: 'paid'
+          },
+          select: {
+            totalAmount: true
+          }
+        });
+
+        const amountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0);
+        const effectiveTotal = getEstimateEffectiveTotal({
+          totalAmount: estimate.totalAmount,
+          finalAmount: estimate.finalAmount,
+          discountAmount: estimate.discountAmount,
+        });
 
         if (estimate.PdfProject && estimate.PdfProject.length > 0) {
           const pdf = estimate.PdfProject[0];
@@ -362,17 +384,15 @@ export class EstimateController {
           if (pdf.uri) {
             pdf.uri = await getPresignedUrl(pdf.uri);
           }
-          // Convert array to single object
           (estimate as any).PdfProject = pdf;
         } else {
-          // Set to null if no PDF found
           (estimate as any).PdfProject = null;
         }
 
         let imagesAttachmentsData: any[] = [];
         if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
           imagesAttachmentsData = await Promise.all(
-            estimate.imagesAttachments.map(async (image) => {
+            estimate.imagesAttachments.map(async (image: any) => {
               return {
                 id: image.id,
                 url: image.url ? await getPresignedUrl(image.url) : null,
@@ -395,6 +415,21 @@ export class EstimateController {
         if (estimate.project.client?.avatar) {
           estimate.project.client.avatar = await getPresignedUrl(estimate.project.client.avatar);
         }
+
+        estimate.totalAmount = Number(estimate.totalAmount);
+        estimate.discountValue = estimate.discountValue !== null && estimate.discountValue !== undefined ? Number(estimate.discountValue) : null;
+        estimate.discountAmount = estimate.discountAmount !== null && estimate.discountAmount !== undefined ? Number(estimate.discountAmount) : null;
+        estimate.finalAmount = estimate.finalAmount !== null && estimate.finalAmount !== undefined ? Number(estimate.finalAmount) : null;
+        estimate.balanceDue = estimate.balanceDue !== null && estimate.balanceDue !== undefined ? Number(estimate.balanceDue) : Number((effectiveTotal - amountPaid).toFixed(2));
+        estimate.amountPaid = amountPaid;
+        estimate.serviceProjects = estimate.serviceProjects.map((service: any) => ({
+          ...service,
+          quantity: Number(service.quantity),
+          unitPrice: Number(service.unitPrice),
+          lineTotal: Number(service.lineTotal),
+          originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
+          originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+        }));
       }
 
       return res.json(estimates);
@@ -412,6 +447,28 @@ export class EstimateController {
         where: { id },
         include: {
           serviceProjects: true,
+          imagesAttachments: {
+            select: {
+              id: true,
+              url: true,
+              original_filename: true,
+              title: true,
+              date_creation: true,
+              date_update: true
+            }
+          },
+          fildsPdfProjects: {
+            select: {
+              id: true,
+              sections: true,
+              description: true,
+              date_creation: true,
+              date_update: true
+            },
+            orderBy: {
+              date_creation: 'asc'
+            }
+          },
           canceledBy: {
             select: {
               id: true,
@@ -427,7 +484,16 @@ export class EstimateController {
                   name: true,
                   avatar: true,
                   email: true,
-                  phone: true
+                  phone: true,
+                  address: true,
+                  webSiteUrl: true,
+                  signature: true,
+                }
+              },
+              workContext: {
+                select: {
+                  id: true,
+                  Name: true
                 }
               },
               client: {
@@ -435,6 +501,7 @@ export class EstimateController {
                   id: true,
                   name: true,
                   email: true,
+                  phone: true,
                 }
               }
             }
@@ -452,9 +519,41 @@ export class EstimateController {
         return res.status(404).json({ error: "Estimate not found" });
       }
 
-      // Generate presigned URL for company avatar if it exists
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          estimateId: estimate.id,
+          status: 'paid'
+        },
+        select: {
+          totalAmount: true
+        }
+      });
+
+      const amountPaid = invoices.reduce((acc, invoice) => acc + Number(invoice.totalAmount), 0);
+      const effectiveTotal = getEstimateEffectiveTotal({
+        totalAmount: estimate.totalAmount,
+        finalAmount: estimate.finalAmount,
+        discountAmount: estimate.discountAmount,
+      });
+
       if (estimate.project?.company?.avatar) {
         estimate.project.company.avatar = await getPresignedUrl(estimate.project.company.avatar);
+      }
+
+      let imagesAttachmentsData: any[] = [];
+      if (estimate.imagesAttachments && estimate.imagesAttachments.length > 0) {
+        imagesAttachmentsData = await Promise.all(
+          estimate.imagesAttachments.map(async (image: any) => {
+            return {
+              id: image.id,
+              url: image.url ? await getPresignedUrl(image.url) : null,
+              original_filename: image.original_filename,
+              title: image.title,
+              date_creation: image.date_creation,
+              date_update: image.date_update
+            }
+          })
+        );
       }
 
       if (estimate.PdfProject && estimate.PdfProject.length > 0) {
@@ -468,7 +567,22 @@ export class EstimateController {
         (estimate as any).PdfProject = null;
       }
 
-      // Usar a função utilitária
+      (estimate as any).totalAmount = Number(estimate.totalAmount);
+      (estimate as any).discountValue = (estimate as any).discountValue !== null && (estimate as any).discountValue !== undefined ? Number((estimate as any).discountValue) : null;
+      (estimate as any).discountAmount = (estimate as any).discountAmount !== null && (estimate as any).discountAmount !== undefined ? Number((estimate as any).discountAmount) : null;
+      (estimate as any).finalAmount = (estimate as any).finalAmount !== null && (estimate as any).finalAmount !== undefined ? Number((estimate as any).finalAmount) : null;
+      (estimate as any).balanceDue = (estimate as any).balanceDue !== null && (estimate as any).balanceDue !== undefined ? Number((estimate as any).balanceDue) : Number((effectiveTotal - amountPaid).toFixed(2));
+      (estimate as any).amountPaid = amountPaid;
+      (estimate as any).imagesAttachments = imagesAttachmentsData;
+      (estimate as any).serviceProjects = estimate.serviceProjects.map((service: any) => ({
+        ...service,
+        quantity: Number(service.quantity),
+        unitPrice: Number(service.unitPrice),
+        lineTotal: Number(service.lineTotal),
+        originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
+        originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+      }));
+
       await EstimateController.addTimelineEvent(id, "Viewed");
 
       return res.json(estimate);
@@ -1568,3 +1682,8 @@ export class EstimateController {
     }
   }
 } 
+
+
+
+
+

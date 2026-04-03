@@ -1,10 +1,11 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 
 interface ServicePayload {
     estimateId: string
     name: string
-    description?: string // INTRODUCTION LATTER
+    description?: string
     quantity: number
     unitPrice: number
     lineTotal: number
@@ -15,6 +16,11 @@ interface ServicePayload {
     start_date?: string
     deadline?: string
 }
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+]);
 
 export class CreateServiceEstimateController {
     async handle(req: Request, res: Response) {
@@ -45,26 +51,6 @@ export class CreateServiceEstimateController {
             },
             select: {
                 id: true,
-                type_estimate: true,
-                projectId: true,
-                project: {
-                    select: {
-                        id: true,
-                        company_id: true,
-                        serviceProject: {
-                            select: {
-                                hours: true,
-                                price: true
-                            }
-                        }
-                    }
-                },
-                serviceProjects: {
-                    select: {
-                        quantity: true,
-                        unitPrice: true
-                    }
-                }
             }
         })
 
@@ -89,15 +75,19 @@ export class CreateServiceEstimateController {
         }
 
         try {
+            let newServiceId = ""
+
             await prisma.$transaction(async (smartbuild) => {
                 const newService = await smartbuild.estimateServiceProject.create({
                     data: {
                         estimateId: estimate.id,
                         name,
                         description: description || "",
-                        quantity,
-                        unitPrice,
-                        lineTotal,
+                        quantity: Number(quantity),
+                        unitPrice: Number(unitPrice),
+                        lineTotal: Number(lineTotal),
+                        originalUnitPrice: Number(unitPrice),
+                        originalLineTotal: Number(lineTotal),
                         notes,
                         id_service: id_service || null,
                         hours: hours,
@@ -107,31 +97,29 @@ export class CreateServiceEstimateController {
                     }
                 })
 
-                {/*if (estimate.type_estimate === "estimateProject") {
-                    await smartbuild.serviceProject.create({
-                        data: {
-                            projectId: estimate.projectId,
-                            company_id: estimate.project.company_id,
-                            name,
-                            description: description || "",
-                            id_service: id_service || null,
-                            hours: hours || 0,
-                            price: price || 0,
-                            start_date,
-                            deadline
-                        }
-                    })
-                }*/}
+                newServiceId = newService.id
 
-                return res.status(201).json({
-                    message: "Service created successfully",
-                    data: newService
-                })
+                await syncEstimateDiscountedServices(smartbuild, estimate.id)
             })
-        } catch (error) {
+
+            const createdService = await prisma.estimateServiceProject.findUnique({
+                where: { id: newServiceId }
+            })
+
+            return res.status(201).json({
+                message: "Service created successfully",
+                data: createdService
+            })
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
+            console.error("Error creating service estimate:", error)
             return res.status(500).json({
                 error: "Internal server error while creating service estimate"
             })
         }
     }
 }
+
