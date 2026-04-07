@@ -2,8 +2,10 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { TimeService } from "../../services/TimeService";
+import { getByWorkerIdController } from "../TimeCards/getByWorkerIdController";
 
 const timeService = new TimeService();
+const timeCardsWorkerController = new getByWorkerIdController();
 
 export class TimeController {
     async findMany(req: Request, res: Response) {
@@ -82,6 +84,26 @@ export class TimeController {
 
     async findManyByIdWorker(req: Request, res: Response) {
         const { id, worker_id, start_date, deadline, page } = req.query;
+
+        if (id && worker_id) {
+            const delegatedRequest = {
+                ...req,
+                params: {
+                    ...req.params,
+                    companyId: String(id),
+                    workerId: String(worker_id)
+                },
+                query: {
+                    ...req.query,
+                    start_date,
+                    deadline,
+                    page
+                }
+            } as unknown as Request;
+
+            return timeCardsWorkerController.handle(delegatedRequest, res);
+        }
+
         const pageNumber = Number(page) || 0;
 
         try {
