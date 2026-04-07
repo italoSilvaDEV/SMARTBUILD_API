@@ -81,7 +81,7 @@ export class TimeController {
     }
 
     async findManyByIdWorker(req: Request, res: Response) {
-        const { worker_id, start_date, deadline, page } = req.query;
+        const { id, worker_id, start_date, deadline, page } = req.query;
         const pageNumber = Number(page) || 0;
 
         try {
@@ -96,13 +96,48 @@ export class TimeController {
                 where: {
                     user_id: String(worker_id),
                     check_in_time: { gte: startDate, lte: endDeadline },
-                    UserServiceProject: {
-                        service_project: {
-                            Project: {
-                                status_project: { in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"] }
+                    AND: [
+                        {
+                            OR: [
+                                { check_out_time: { lte: endDeadline } },
+                                { check_out_time: null }
+                            ]
+                        },
+                        id ? {
+                            OR: [
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            Project: {
+                                                company_id: String(id),
+                                                status_project: {
+                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    UserServiceProject: {
+                                        service_project: {
+                                            projectId: null,
+                                            company_id: String(id)
+                                        }
+                                    }
+                                }
+                            ]
+                        } : {
+                            UserServiceProject: {
+                                service_project: {
+                                    Project: {
+                                        status_project: {
+                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
+                    ]
                 },
                 include: {
                     user: true,
