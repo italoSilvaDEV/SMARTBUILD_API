@@ -147,40 +147,6 @@ export interface IputServiceData extends IServicesData {
 }
 
 export class ProjectController {
-  // Cache simples em memória para consultas frequentes
-  private static cache = new Map<string, { data: any; timestamp: number }>();
-  private static CACHE_TTL = 30000; // 30 segundos
-
-  private static getCacheKey(query: any, page: number): string {
-    return JSON.stringify({ query, page });
-  }
-
-  private static getFromCache(key: string) {
-    const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.data;
-    }
-    this.cache.delete(key);
-    return null;
-  }
-
-  private static setCache(key: string, data: any) {
-    // Limpar cache antigo periodicamente
-    if (this.cache.size > 100) {
-      const now = Date.now();
-      for (const [k, v] of this.cache.entries()) {
-        if (now - v.timestamp > this.CACHE_TTL) {
-          this.cache.delete(k);
-        }
-      }
-    }
-    this.cache.set(key, { data, timestamp: Date.now() });
-  }
-
-  private static clearCache() {
-    this.cache.clear();
-  }
-
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate } = req.query;
     const query: any = {};
@@ -296,13 +262,6 @@ export class ProjectController {
     const pageNumber = Number(page);
     const skip = pageNumber * take;
 
-    // Verificar cache
-    const cacheKey = ProjectController.getCacheKey(query, pageNumber);
-    const cached = ProjectController.getFromCache(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
-
     try {
       const projects = await prisma.project.findMany({
         where: {
@@ -393,11 +352,8 @@ export class ProjectController {
           date_creation: "desc",
         },
       });
-
       if (projects.length === 0) {
-        const result = { projects: [], total: 0, amount: 0 };
-        ProjectController.setCache(cacheKey, result);
-        return res.json(result);
+        return res.json({ projects: [], total: 0, amount: 0 });
       }
 
       // Buscar todos os dados pesados em uma única consulta batch
@@ -658,13 +614,7 @@ export class ProjectController {
       if (amount > total) {
         amount = total;
       }
-
-      const result = { projects: projectsWithCalculations, total, amount };
-
-      // Cachear resultado
-      ProjectController.setCache(cacheKey, result);
-
-      return res.json(result);
+      return res.json({ projects: projectsWithCalculations, total, amount });
     } catch (error) {
       if (error instanceof Error) {
         return res.json({ error: error.message });
@@ -1410,9 +1360,6 @@ export class ProjectController {
         }
       }
 
-      // Limpar cache para que getAllProjects retorne dados atualizados
-      ProjectController.clearCache();
-
       return res.json({
         success: true,
         project,
@@ -1781,9 +1728,6 @@ export class ProjectController {
           radius: radiusFloat,
         },
       });
-
-      // Limpar cache para que getAllProjects retorne dados atualizados
-      ProjectController.clearCache();
 
       return res.json(project);
     } catch (error) {
@@ -3442,3 +3386,7 @@ export class ProjectController {
     }
   }
 }
+
+
+
+
