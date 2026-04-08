@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { parseDateRange, getDefaultWeekRange } from "../../utils/dateUtils";
+import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
 
 function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
     let totalPrice = 0;
@@ -85,6 +85,9 @@ export class getAllController {
             start_date = defaultRange.start_date;
             deadline = defaultRange.deadline;
         }
+
+        start_date = normalizeToDateOnly(String(start_date));
+        deadline = normalizeToDateOnly(String(deadline));
 
         const company = await prisma.company.findUnique({
             where: {
