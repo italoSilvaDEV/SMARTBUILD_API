@@ -1,5 +1,6 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 
 type Fields = {
     name?: string
@@ -7,12 +8,19 @@ type Fields = {
     quantity?: number
     unitPrice?: number
     lineTotal?: number
+    originalUnitPrice?: number
+    originalLineTotal?: number
     notes?: string
     hours?: number
     price?: number
     start_date?: string
     deadline?: string
 }
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+]);
 
 export class UpdateServiceEstimateController {
     async handle(req: Request, res: Response) {
@@ -54,7 +62,19 @@ export class UpdateServiceEstimateController {
             })
         }
 
-        if (!name && description === null && !quantity && !unitPrice && !lineTotal && notes === null && !hours && !price && !start_date && !deadline) {
+        const hasAnyField =
+            name !== undefined ||
+            description !== undefined ||
+            quantity !== undefined ||
+            unitPrice !== undefined ||
+            lineTotal !== undefined ||
+            notes !== undefined ||
+            hours !== undefined ||
+            price !== undefined ||
+            start_date !== undefined ||
+            deadline !== undefined
+
+        if (!hasAnyField) {
             return res.status(400).json({
                 error: "At least one field must be provided"
             })
@@ -63,62 +83,51 @@ export class UpdateServiceEstimateController {
         try {
             const campos: Fields = {}
 
-            if (name) {
+            if (name !== undefined) {
                 campos.name = name
             }
             if (description !== undefined) {
                 campos.description = description
             }
-            if (quantity) {
-                campos.quantity = quantity
+            if (quantity !== undefined) {
+                campos.quantity = Number(quantity)
             }
-            if (unitPrice) {
-                campos.unitPrice = unitPrice
+            if (unitPrice !== undefined) {
+                campos.unitPrice = Number(unitPrice)
+                campos.originalUnitPrice = Number(unitPrice)
             }
-            if (lineTotal && serviceEstimate) {
-                campos.lineTotal = lineTotal
+            if (lineTotal !== undefined && serviceEstimate) {
+                campos.lineTotal = Number(lineTotal)
+                campos.originalLineTotal = Number(lineTotal)
             }
             if (notes !== undefined) {
                 campos.notes = notes
             }
-            if (hours) {
-                campos.hours = hours
+            if (hours !== undefined) {
+                campos.hours = Number(hours)
             }
-            if (price) {
-                campos.price = price
+            if (price !== undefined) {
+                campos.price = Number(price)
             }
-            if (start_date) {
+            if (start_date !== undefined) {
                 campos.start_date = start_date
             }
-            if (deadline) {
+            if (deadline !== undefined) {
                 campos.deadline = deadline
             }
 
             if (serviceEstimate) {
-                const siblingProject = await prisma.serviceProject.findFirst({
-                    where: { estimateServiceId: serviceId }
-                })
-
-                const dataSync: Partial<{ name: string; description: string; hours: number; price: number; start_date: string; deadline: string }> = {}
-                if (campos.name !== undefined) dataSync.name = campos.name
-                if (campos.description !== undefined && campos.description !== null) dataSync.description = campos.description
-                if (campos.hours !== undefined) dataSync.hours = campos.hours
-                if (campos.price !== undefined) dataSync.price = campos.price
-                if (campos.start_date !== undefined) dataSync.start_date = campos.start_date
-                if (campos.deadline !== undefined) dataSync.deadline = campos.deadline
-
                 const updatedServiceEstimate = await prisma.$transaction(async (tx) => {
-                    const updated = await tx.estimateServiceProject.update({
+                    await tx.estimateServiceProject.update({
                         where: { id: serviceId },
                         data: campos,
                     })
-                    if (siblingProject && Object.keys(dataSync).length > 0) {
-                        await tx.serviceProject.update({
-                            where: { id: siblingProject.id },
-                            data: dataSync,
-                        })
-                    }
-                    return updated
+
+                    await syncEstimateDiscountedServices(tx, serviceEstimate.estimateId)
+
+                    return tx.estimateServiceProject.findUnique({
+                        where: { id: serviceId }
+                    })
                 })
 
                 return res.status(200).json({
@@ -140,10 +149,15 @@ export class UpdateServiceEstimateController {
                     data: updatedServiceProject
                 })
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
             return res.status(500).json({
                 error: "Internal server error while updating service estimate"
             })
         }
     }
 }
+

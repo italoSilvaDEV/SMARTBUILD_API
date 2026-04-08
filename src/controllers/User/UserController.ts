@@ -200,6 +200,24 @@ export class UserController {
         hashedPassword = bcrypt.hashSync(pass, 10);
       }
 
+      // Determinar se o usuário deve ser marcado como extra paid
+      // Os primeiros allowedEmployees usuários são do plano, os seguintes são extras
+      const companyForExtraCheck = await prisma.company.findUnique({
+        where: { id: company_id },
+        select: { allowedEmployees: true }
+      });
+      const allowedEmployees = companyForExtraCheck?.allowedEmployees ?? 0;
+      
+      const whereCountForExtra = isMultiCompany
+        ? { companies: { some: { companyId: company_id } } }
+        : { company_id };
+      const currentEmployeesCountForExtra = await prisma.user.count({ where: whereCountForExtra });
+      
+      // Se currentEmployeesCount >= allowedEmployees, este usuário é extra
+      const isExtraPaidUser = currentEmployeesCountForExtra >= allowedEmployees;
+      
+      console.log(`[create] isExtraPaidUser determination: currentCount=${currentEmployeesCountForExtra}, allowed=${allowedEmployees}, isExtra=${isExtraPaidUser}`);
+
       // Criação do usuário
       const user = await prisma.user.create({
         data: {
@@ -223,6 +241,7 @@ export class UserController {
           invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
           projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
           estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
+          isExtraPaidUser: isExtraPaidUser,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
       });
@@ -629,6 +648,51 @@ export class UserController {
 
       if (!user) {
         return response.status(404).json({ error: "User not found!" });
+      }
+
+      // Validation for enabling extra paid users
+      // Only validate if: user is extra paid AND we're trying to enable them (isDisabled = false)
+      // AND user is currently disabled
+      if (user.isExtraPaidUser && isDisabled === false && user.isDisabled === true) {
+        // Get the company using UserCompany model (N:N relationship)
+        // User may not have company_id directly, so we must use UserCompany
+        const userCompany = await prisma.userCompany.findFirst({
+          where: { userId: id },
+          select: { companyId: true },
+        });
+
+        if (userCompany) {
+          const company = await prisma.company.findUnique({
+            where: { id: userCompany.companyId },
+            select: { extraEmployees: true },
+          });
+
+          // Get the extra employees limit (default to 0 if not set)
+          const extraEmployeesLimit = company?.extraEmployees ?? 0;
+
+          // Count active extra paid users using UserCompany model
+          // Active = isExtraPaidUser = true AND isDisabled = false
+          const companyUsers = await prisma.userCompany.findMany({
+            where: { companyId: userCompany.companyId },
+            select: {
+              user: {
+                select: { isExtraPaidUser: true, isDisabled: true },
+              },
+            },
+          });
+
+          const activeExtraPaidCount = companyUsers.filter(
+            uc => uc.user?.isExtraPaidUser && !uc.user?.isDisabled
+          ).length;
+
+          // Check if there's room for one more active extra paid user
+          // The user being enabled will add 1 to the active count
+          if (activeExtraPaidCount >= extraEmployeesLimit) {
+            return response.status(400).json({
+              error: "Cannot enable user: no available extra employee seats. Please purchase more seats or disable other extra paid users first."
+            });
+          }
+        }
       }
 
       if (password && password !== confirm_password) {
@@ -1108,7 +1172,8 @@ export class UserController {
         document: true,
         isDisabled: true,
         city_and_state: true,
-        hourly_price: true
+        hourly_price: true,
+        isExtraPaidUser: true
       },
     });
 
@@ -2125,9 +2190,21 @@ export class UserController {
         return response.status(400).json({ error: "Invalid Expo Push Token format" });
       }
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { expoPushToken },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.updateMany({
+          where: {
+            expoPushToken,
+            id: { not: userId },
+          },
+          data: {
+            expoPushToken: null,
+          },
+        });
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { expoPushToken },
+        });
       });
 
       console.log(`[UserController] Push token updated for user ${userId}`);

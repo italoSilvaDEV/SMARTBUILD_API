@@ -1,5 +1,11 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
+
+const DISCOUNT_ERRORS = new Set([
+    "Percentage discount cannot be greater than 100",
+    "Fixed discount cannot be greater than estimate subtotal",
+]);
 
 export class BalanceController {
     async updateBalanceDue(req: Request, res: Response) {
@@ -21,7 +27,12 @@ export class BalanceController {
                 serviceProjects: {
                     select: {
                         quantity: true,
-                        unitPrice: true
+                        unitPrice: true,
+                        lineTotal: true,
+                        originalUnitPrice: true,
+                        originalLineTotal: true,
+                        hours: true,
+                        price: true,
                     }
                 }
             }
@@ -34,20 +45,31 @@ export class BalanceController {
         }
 
         try {
-            const totalAmount = estimate.serviceProjects.reduce((total, service) => {
-                return total + Number(service.quantity) * Number(service.unitPrice)
-            }, 0)
+            const subtotal = estimate.serviceProjects.length > 0
+                ? estimate.serviceProjects.reduce((total, service) => {
+                    const lineTotal = service.originalLineTotal ?? service.lineTotal ?? (Number(service.quantity ?? service.hours ?? 1) * Number(service.originalUnitPrice ?? service.unitPrice ?? service.price ?? 0));
+                    return total + Number(lineTotal)
+                }, 0)
+                : Number(estimate.totalAmount)
 
-            const totalAmountPaid = Number(estimate.amountPaid) || 0
-
-            const balanceDue = totalAmount - totalAmountPaid
+            const financialFields = buildEstimateFinancialFields({
+                subtotal,
+                amountPaid: estimate.amountPaid,
+                discountType: (estimate as any).discountType,
+                discountValue: (estimate as any).discountValue,
+            })
 
             const balanceUpdate = await prisma.estimate.update({
                 where: {
                     id: estimateId
                 },
                 data: {
-                    balanceDue: balanceDue
+                    totalAmount: financialFields.totalAmount,
+                    balanceDue: financialFields.balanceDue,
+                    discountType: financialFields.discountType,
+                    discountValue: financialFields.discountValue,
+                    discountAmount: financialFields.discountAmount,
+                    finalAmount: financialFields.finalAmount,
                 }
             })
 
@@ -55,7 +77,11 @@ export class BalanceController {
                 message: "Balance updated successfully",
                 balanceUpdate
             })
-        } catch (error) {
+        } catch (error: any) {
+            if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
             res.status(500).json({
                 error: "Internal server error"
             })
@@ -110,4 +136,6 @@ export class BalanceController {
             })
         }
     }
-} 
+}
+
+

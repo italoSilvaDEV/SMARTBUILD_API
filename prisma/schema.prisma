@@ -12,6 +12,18 @@ model Config {
   multiCompanyEnabled Boolean @default(false)
 }
 
+// Configuration for Extra Employee pricing
+// Price is used when creating dynamic subscription items for each company
+model ExtraEmployeeConfig {
+  id        String   @id @default(uuid())
+  price     Decimal  @db.Decimal(10, 2) // Price in USD (e.g., 10.00) - can be changed by admin
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("extra_employee_config")
+}
+
 model User {
   id                    String   @id @default(uuid())
   avatar                String?
@@ -44,6 +56,7 @@ model User {
   invoiceEditAll  Boolean? @default(false)
   projectEditAll  Boolean? @default(false)
   estimateEditAll Boolean? @default(false)
+  isExtraPaidUser Boolean? @default(false)
 
   token_recover_password       String?               @unique
   autorId                      String?
@@ -75,6 +88,8 @@ model User {
 
   Invoice  Invoice[]
   TimeLine TimeLine[]
+  WorkerLiveLocation WorkerLiveLocation[]
+  WorkerLocationPing WorkerLocationPing[]
 
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
@@ -117,6 +132,7 @@ model User {
   deletedChatMessages ChatMessage[] @relation("DeletedChatMessages")
   chatMemberships     ChatMember[]
   createdChats        Chat[]        @relation("CreatedChats")
+  aiAssistantThreads  AIAssistantThread[]
 
   @@index([office_id], map: "User_office_id_fkey")
 }
@@ -184,6 +200,48 @@ model ChatMessage {
   @@index([senderId])
   @@index([deletedById])
   @@map("chat_messages")
+}
+
+enum AIAssistantMessageRole {
+  user
+  assistant
+  system
+}
+
+model AIAssistantThread {
+  id        String  @id @default(uuid())
+  title     String?
+  summary   String? @db.Text
+  companyId String
+  userId    String
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AIAssistantMessage[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId, userId, lastMessageAt])
+  @@map("ai_assistant_threads")
+}
+
+model AIAssistantMessage {
+  id        String                 @id @default(uuid())
+  threadId  String
+  role      AIAssistantMessageRole
+  content   String                 @db.Text
+  report    Json?
+  toolsUsed Json?
+  toolData  Json?
+
+  thread AIAssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([threadId, createdAt])
+  @@map("ai_assistant_messages")
 }
 
 model Audit {
@@ -255,6 +313,7 @@ model Company {
   ContractTerms          ContractTerms[]
   QuickBooksConfig       QuickBooksConfig[]
   InvoiceAutoEmailConfig InvoiceAutoEmailConfig?
+  aiAssistantThreads     AIAssistantThread[]
 
   workContexts WorkContext[]
 
@@ -273,6 +332,8 @@ model Company {
 
   offices Office[]
   chats   Chat[]
+  workerLiveLocations WorkerLiveLocation[]
+  workerLocationPings WorkerLocationPing[]
 }
 
 model ContractNotes {
@@ -653,6 +714,7 @@ model Project {
   contract_number    Int?
   price              Decimal
   status_project     String
+  status_changed_at  DateTime?
   autorId            String?
   start_date         String?
   deadline           String?
@@ -1201,6 +1263,91 @@ model TimeLine {
   userServiceProjectId String
 }
 
+model WorkerLiveLocation {
+  id                   String   @id @default(uuid())
+  companyId            String
+  userId               String
+  attendanceId         String?
+  userServiceProjectId String?
+  serviceProjectId     String?
+  projectId            String?
+  projectName          String?
+  serviceTitle         String?
+  projectLatitude      Float?
+  projectLongitude     Float?
+  projectRadiusMeters  Float?
+  latitude             Float
+  longitude            Float
+  accuracyMeters       Float?
+  speedMetersPerSecond Float?
+  headingDegrees       Float?
+  batteryLevel         Float?
+  isInsideSite         Boolean?
+  source               String   @default("mobile")
+  recordedAt           DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("worker_live_locations")
+}
+
+model WorkerLocationPing {
+  id                   String   @id @default(uuid())
+  companyId            String
+  userId               String
+  attendanceId         String?
+  userServiceProjectId String?
+  serviceProjectId     String?
+  projectId            String?
+  projectName          String?
+  serviceTitle         String?
+  projectLatitude      Float?
+  projectLongitude     Float?
+  projectRadiusMeters  Float?
+  latitude             Float
+  longitude            Float
+  accuracyMeters       Float?
+  speedMetersPerSecond Float?
+  headingDegrees       Float?
+  batteryLevel         Float?
+  isInsideSite         Boolean?
+  source               String   @default("mobile")
+  recordedAt           DateTime
+  createdAt            DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, recordedAt])
+  @@index([companyId, userId, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("worker_location_pings")
+}
+
+model WorkerTrackingReminder {
+  id             String   @id @default(uuid())
+  companyId      String
+  userId         String
+  attendanceId   String
+  reminderNumber Int
+  triggeredAt    DateTime @default(now())
+  acknowledgedAt DateTime?
+  restoredAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([attendanceId, reminderNumber])
+  @@index([companyId, userId, attendanceId])
+  @@index([attendanceId, triggeredAt])
+  @@map("worker_tracking_reminders")
+}
+
 enum TypeInvoiceBase {
   project
   estimate
@@ -1430,6 +1577,11 @@ enum TypeEstimate {
   estimate
   estimateProject
 }
+enum EstimateDiscountType {
+  fixed
+  percentage
+}
+
 
 model Estimate {
   id              String   @id @default(uuid())
@@ -1437,6 +1589,10 @@ model Estimate {
   approvedAt      DateTime @default(now())
   clientSignature String?  @db.Text
   totalAmount     Decimal
+  discountType    EstimateDiscountType?
+  discountValue   Decimal?
+  discountAmount  Decimal?
+  finalAmount     Decimal?
   description     String?  @db.Text
   terms           String?  @db.Text
   status          String   @default("pending")
@@ -1500,6 +1656,8 @@ model EstimateServiceProject {
   quantity    Int     @default(1)
   unitPrice   Decimal
   lineTotal   Decimal
+  originalUnitPrice Decimal?
+  originalLineTotal Decimal?
   notes       String? @db.Text
 
   id_service String?

@@ -2,12 +2,57 @@ import { Request, Response } from "express";
 import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
+import { StripeSubscriptionItemService } from "../../services/StripeSubscriptionItemService";
 
 const stripe = stripeConfig.getClient();
+
+/** Metadata type for identifying extra employee items in Stripe */
+const EXTRA_EMPLOYEE_METADATA_TYPE = "extra_employee";
 
 /** Só aplicar mudança de plano/permissões quando o pagamento foi confirmado (evita aplicar em cartão recusado, etc.). */
 function isSubscriptionPaid(status: string): boolean {
     return status === "active" || status === "trialing";
+}
+
+/**
+ * Finds the plan item in subscription items (identified by Plan.stripePriceId)
+ */
+async function findPlanItem(
+    items: Stripe.SubscriptionItem[]
+): Promise<{ item: Stripe.SubscriptionItem; plan: { id: string; name: string; allowedEmployees: number | null } } | null> {
+    for (const item of items) {
+        const plan = await prisma.plan.findFirst({
+            where: { stripePriceId: item.price.id },
+            select: { id: true, name: true, allowedEmployees: true },
+        });
+        if (plan) {
+            return { item, plan };
+        }
+    }
+    return null;
+}
+
+/**
+ * Finds the extra employee item in subscription items (identified by metadata.type)
+ */
+function findExtraEmployeeItem(items: Stripe.SubscriptionItem[]): Stripe.SubscriptionItem | undefined {
+    return items.find((item) => item.price.metadata?.type === EXTRA_EMPLOYEE_METADATA_TYPE);
+}
+
+/**
+ * Handles extra employee item updates from webhook
+ */
+async function handleExtraEmployeeItem(
+    companyId: string,
+    item: Stripe.SubscriptionItem
+): Promise<void> {
+    const quantity = item.quantity ?? 0;
+    console.log(`[ExtraEmployee] Webhook: Updating company ${companyId} extraEmployees to ${quantity}`);
+    
+    await prisma.company.update({
+        where: { id: companyId },
+        data: { extraEmployees: quantity === 0 ? null : quantity },
+    });
 }
 
 /**
@@ -135,6 +180,7 @@ export class StripeWebHooksController {
 
     async handleWebhook(req: Request, res: Response) {
         const sig = req.headers["stripe-signature"];
+        console.warn("INSIDE WEBHOOK")
 
         try {
             const webhooks = await prisma.webhooks.findMany({ where: { status: "enabled" } });
@@ -254,6 +300,9 @@ export class StripeWebHooksController {
                                 where: { companyId: companyIdFromMeta, isActive: true },
                                 data: { isActive: false }
                             });
+                            console.warn(`[START DATE] ${sub.current_period_start}`)
+                            console.warn(`[END DATE] ${sub.current_period_end}`)
+                            console.warn(`[OBJETO] ${sub}`)
                             const newSub = await prisma.subscription.create({
                                 data: {
                                     companyId: companyIdFromMeta,
@@ -334,48 +383,79 @@ export class StripeWebHooksController {
                     console.log("    Assinatura local atualizada.");
                 }
 
-                // Só aplicar mudança de plano/permissões quando a assinatura está paga (active/trialing)
-                const price = sub.items.data[0].price;
-
-                console.log("esse é o price", JSON.stringify(price, null, 2));
-                const plan = await prisma.plan.findFirst({
-                    where: { stripePriceId: price.id },
-                });
-
-                if (plan && isSubscriptionPaid(sub.status)) {
-                    console.log("   • Novo plano detectado:", plan.name, "(", plan.id, ")");
-
+                // Iterar sobre todos os items da assinatura para identificar plano e extras
+                // Só aplicar mudanças quando a assinatura está paga (active/trialing)
+                if (isSubscriptionPaid(sub.status)) {
+                    console.log("   • Processando items da assinatura:", sub.items.data.length, "items");
+                    
                     // Buscar o plano atual da empresa ANTES de atualizar (necessário para o diff de permissões)
                     const companyBeforeUpdate = await prisma.company.findUnique({
                         where: { id: localSub.companyId },
-                        select: { planId: true, allowedEmployees: true }
+                        select: { planId: true, allowedEmployees: true, extraEmployees: true }
                     });
                     const oldPlanId = companyBeforeUpdate?.planId ?? null;
+                    const oldAllowedEmployees = companyBeforeUpdate?.allowedEmployees ?? 0;
+                    const oldExtraEmployees = companyBeforeUpdate?.extraEmployees ?? 0;
+                    
+                    // Encontrar o item do plano (identificado por Plan.stripePriceId)
+                    const planItemResult = await findPlanItem(sub.items.data);
+                    
+                    if (planItemResult) {
+                        const { item: planItem, plan } = planItemResult;
+                        console.log("   • Plano detectado:", plan.id, "allowedEmployees:", plan.allowedEmployees);
+                        
+                        // Verificar se houve mudança de plano
+                        const planChanged = oldPlanId !== plan.id;
+                        const allowedEmployeesChanged = oldAllowedEmployees !== (plan.allowedEmployees ?? 0);
+                        
+                        // Atualizar a empresa com o novo plano e allowedEmployees
+                        await prisma.company.update({
+                            where: { id: localSub.companyId },
+                            data: {
+                                planId: plan.id,
+                                allowedEmployees: plan.allowedEmployees
+                            },
+                        });
 
-                    // console.log("esse é oallowedEmployeesFromPlan", plan.allowedEmployees);
+                        await prisma.subscription.update({
+                            where: { id: localSub.id },
+                            data: { planId: plan.id },
+                        });
+                        console.log("     company.planId atualizado para", plan.id);
+                        
+                        // Se o plano aumentou as vagas, ajustar extras automaticamente
+                        if (planChanged || allowedEmployeesChanged) {
+                            console.log(`   • Mudança de plano detectada. oldAllowed=${oldAllowedEmployees}, newAllowed=${plan.allowedEmployees}, oldExtra=${oldExtraEmployees}`);
+                            await StripeSubscriptionItemService.handlePlanUpgrade(
+                                localSub.companyId,
+                                oldAllowedEmployees,
+                                plan.allowedEmployees ?? 0
+                            );
+                        }
 
-                    // Atualizar a empresa com o novo plano e allowedEmployees
-                    await prisma.company.update({
-                        where: { id: localSub.companyId },
-                        data: { 
-                            planId: plan.id,
-                            allowedEmployees: plan.allowedEmployees
-                        },
-                    });
-
-                    await prisma.subscription.update({
-                        where: { id: localSub.id },
-                        data: { planId: plan.id },
-                    });
-                    console.log("     Assinatura local atualizada.");
-                    console.log("     company.planId atualizado para", plan.id);
-
-                    // Sincroniza permissões de todos os offices (exceto Worker) respeitando customizações por office
-                    await syncAllOfficePermissionsOnPlanChange(localSub.companyId, oldPlanId, plan.id);
-                } else if (plan && !isSubscriptionPaid(sub.status)) {
+                        // Sincroniza permissões de todos os offices (exceto Worker)
+                        await syncAllOfficePermissionsOnPlanChange(localSub.companyId, oldPlanId, plan.id);
+                    } else {
+                        console.log("    Nenhum plano correspondente encontrado nos items");
+                    }
+                    
+                    // Encontrar e processar item de extra employee (identificado por metadata.type)
+                    const extraEmployeeItem = findExtraEmployeeItem(sub.items.data);
+                    if (extraEmployeeItem) {
+                        console.log("   • Extra employee item encontrado, quantity:", extraEmployeeItem.quantity);
+                        await handleExtraEmployeeItem(localSub.companyId, extraEmployeeItem);
+                    } else {
+                        // Se não há item de extra employee mas a empresa tinha extras, zerar
+                        if (oldExtraEmployees > 0) {
+                            console.log("   • Nenhum extra employee item encontrado, zerando extras");
+                            await prisma.company.update({
+                                where: { id: localSub.companyId },
+                                data: { extraEmployees: null },
+                            });
+                        }
+                    }
+                } else {
                     console.log("     Assinatura não paga (status:", sub.status, "). Não atualizar plano nem permissões.");
-                } else if (!plan) {
-                    console.log("    Nenhum plano correspondente ao price.id", price.id);
                 }
             }
 
@@ -383,6 +463,8 @@ export class StripeWebHooksController {
             else if (event.type === "customer.subscription.created") {
                 console.log("processando pagamento customer.subscription.created");
                 const sub = event.data.object as Stripe.Subscription;
+
+                console.log(sub)
 
                 // console.log("  subscription.created recebido:");
                 // console.log("    Stripe subscription ID:", sub.id);
@@ -431,18 +513,15 @@ export class StripeWebHooksController {
                                 }
                             });
 
-                            // Acessando o planId corretamente a partir do price.id
-                            const priceId = sub.items.data[0].price.id;
+                            // Usar a nova função para encontrar o plano
+                            const planItemResult = await findPlanItem(sub.items.data);
 
-                            // Buscar o plano baseado no priceId
-                            const plan = await prisma.plan.findFirst({
-                                where: { stripePriceId: priceId },
-                            });
-
-                            if (!plan) {
-                                console.log("     Nenhum plano encontrado com o price.id:", priceId);
+                            if (!planItemResult) {
+                                console.log("     Nenhum plano encontrado nos items da assinatura");
                                 return res.json({ received: true });
                             }
+                            
+                            const { plan } = planItemResult;
 
                             if (!isSubscriptionPaid(sub.status)) {
                                 console.log("     Assinatura não paga (status:", sub.status, "). Não atualizar plano nem permissões. Aguardando pagamento ou subscription.updated.");
@@ -452,8 +531,8 @@ export class StripeWebHooksController {
                             console.log("    Novo plano detectado:", plan.name, "(", plan.id, ")");
 
                             // Salvar o stripeCustomerId na tabela Company
-                            const stripeCustomerId = typeof sub.customer === 'string' 
-                                ? sub.customer 
+                            const stripeCustomerId = typeof sub.customer === 'string'
+                                ? sub.customer
                                 : sub.customer.id;
                             
                             console.log("   Customer ID para salvar:", stripeCustomerId);
@@ -468,18 +547,23 @@ export class StripeWebHooksController {
                             // Atualizar o plano e o stripeCustomerId da empresa
                             await prisma.company.update({
                                 where: { id: companyIdFromSession },
-                                data: { 
+                                data: {
                                     planId: plan.id,
                                     stripeCustomerId: stripeCustomerId,
-                                    // Verificar se a sessão tem allowedEmployees no metadata
-                                    ...(relatedSession.metadata?.allowedEmployees && {
-                                        allowedEmployees: parseInt(relatedSession.metadata.allowedEmployees)
-                                    })
+                                    allowedEmployees: plan.allowedEmployees
                                 }
                             });
                             console.log("     company.planId atualizado para", plan.id);
-                            // console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
 
+                            // Processar extra employee item se existir
+                            const extraEmployeeItem = findExtraEmployeeItem(sub.items.data);
+                            if (extraEmployeeItem) {
+                                console.log("   • Extra employee item encontrado na criação, quantity:", extraEmployeeItem.quantity);
+                                await handleExtraEmployeeItem(companyIdFromSession, extraEmployeeItem);
+                            }
+
+                            console.warn(`[START_DATE] ${sub.current_period_start}`)
+                            console.warn(`[END_DATE] ${sub.current_period_end}`)
                             // Criar assinatura no banco
                             const newSubscription = await prisma.subscription.create({
                                 data: {
@@ -547,14 +631,11 @@ export class StripeWebHooksController {
                     
                     // console.log("   • Customer ID para salvar:", stripeCustomerId);
                     
-                    // Buscar o plano baseado no priceId
-                    const priceId = sub.items.data[0].price.id;
-                    const plan = await prisma.plan.findFirst({
-                        where: { stripePriceId: priceId },
-                    });
+                    // Usar a nova função para encontrar o plano
+                    const planItemResult = await findPlanItem(sub.items.data);
                     
-                    if (!plan) {
-                        console.log("     Nenhum plano encontrado com o price.id:", priceId);
+                    if (!planItemResult) {
+                        console.log("     Nenhum plano encontrado nos items da assinatura");
                         // Ainda assim, vamos atualizar o stripeCustomerId
                         await prisma.company.update({
                             where: { id: companyId },
@@ -563,6 +644,8 @@ export class StripeWebHooksController {
                         console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
                         return res.json({ received: true });
                     }
+                    
+                    const { plan } = planItemResult;
                     
                     // Capturar o planId atual antes de atualizar (para o diff de permissões)
                     const companyBeforeCreate = await prisma.company.findUnique({
@@ -574,7 +657,7 @@ export class StripeWebHooksController {
                     // Atualizar o plano e o stripeCustomerId da empresa
                     await prisma.company.update({
                         where: { id: companyId },
-                        data: { 
+                        data: {
                             planId: plan.id,
                             stripeCustomerId,
                             allowedEmployees: plan.allowedEmployees
@@ -582,6 +665,13 @@ export class StripeWebHooksController {
                     });
                     // console.log("     company.planId atualizado para", plan.id);
                     // console.log("     company.stripeCustomerId atualizado para", stripeCustomerId);
+                    
+                    // Processar extra employee item se existir
+                    const extraEmployeeItem = findExtraEmployeeItem(sub.items.data);
+                    if (extraEmployeeItem) {
+                        console.log("   • Extra employee item encontrado na criação, quantity:", extraEmployeeItem.quantity);
+                        await handleExtraEmployeeItem(companyId, extraEmployeeItem);
+                    }
                     
                     // Criar a nova assinatura local
                     const newSubscription = await prisma.subscription.create({

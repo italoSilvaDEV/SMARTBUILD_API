@@ -15,6 +15,7 @@ import { UpdatePdfChangeOrderController } from "../controllers/changeOrder/updat
 import { SendEmailChangeOrderController } from "../controllers/changeOrder/sendEmailChangeOrderController";
 import { ManualApprovalChangeOrderController } from "../controllers/changeOrder/manualApprovalChangeOrderController";
 import { RemoveManualSignatureChangeOrderController } from "../controllers/changeOrder/removeManualSignatureChangeOrderController";
+import { DeleteChangeOrderController } from "../controllers/changeOrder/deleteChangeOrderController";
 
 const changeOrderRoutes = Router();
 
@@ -29,6 +30,7 @@ const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
 const sendEmailChangeOrderController = new SendEmailChangeOrderController();
 const manualApprovalChangeOrderController = new ManualApprovalChangeOrderController();
 const removeManualSignatureChangeOrderController = new RemoveManualSignatureChangeOrderController();
+const deleteChangeOrderController = new DeleteChangeOrderController();
 
 const createChangeOrderServiceController = new CreateChangeOrderServiceController();
 const deleteChangeOrderServiceController = new DeleteChangeOrderServiceController();
@@ -73,6 +75,12 @@ changeOrderRoutes.put(
     "/update",
     checkToken,
     updateChangeOrderController.handle
+);
+
+changeOrderRoutes.delete(
+    "/:changeOrderId/company/:companyId",
+    checkToken,
+    deleteChangeOrderController.handle
 );
 
 

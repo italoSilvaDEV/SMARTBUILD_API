@@ -660,6 +660,17 @@ export class CompanyController {
                         orderBy: {
                             endDate: 'desc'
                         }
+                    },
+                    _count: {
+                        select: {
+                            userCompanies: {
+                                where: {
+                                    user: {
+                                        isExtraPaidUser: true
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             });
@@ -693,6 +704,9 @@ export class CompanyController {
                             case 'inactive':
                                 shouldInclude = !isActive;
                                 break;
+                            case 'extra':
+                                shouldInclude = (company._count?.userCompanies ?? 0) > 0;
+                                break;
                             case 'all':
                             default:
                                 shouldInclude = true;
@@ -715,7 +729,8 @@ export class CompanyController {
                             endDate: sub.endDate,
                             isActive: sub.isActive,
                             plan: sub.plan
-                        })) || []
+                        })) || [],
+                        extraEmployees: company._count?.userCompanies ?? 0
                     };
                 })
             );

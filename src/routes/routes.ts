@@ -57,6 +57,8 @@ import { taskRoutes } from './taskRoutes'
 import { officeRoutes } from './officeRoutes'
 import { chatRoutes } from './chatRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
+import { aiAssistantRoutes } from './aiAssistantRoutes'
+import { extraEmployeeRoutes } from './extraEmployeeRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -129,6 +131,7 @@ router.use("/tasks", taskRoutes)
 router.use("/chats", chatRoutes)
 router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
+router.use(aiAssistantRoutes)
+router.use("/extra-employees", extraEmployeeRoutes)
 
 export { router }
-

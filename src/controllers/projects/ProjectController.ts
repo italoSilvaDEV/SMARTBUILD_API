@@ -1612,7 +1612,7 @@ export class ProjectController {
         where: { id },
         data: {
           status_project: status,
-         // status_changed_at: new Date(),
+          status_changed_at: new Date(),
         } as any,
       });
       return res.json(project);
@@ -2371,7 +2371,9 @@ export class ProjectController {
           .json({ error: "No service projects found for this user." });
       }
 
-      // Filtrar e transformar os dados no formato necessário
+      const resolveAddress = (location?: string | null, clientLocation?: string | null) =>
+        location || clientLocation || "No address available";
+
       const events = userServiceProjects
         .map((userServiceProject) => {
           const service = userServiceProject.service_project;
@@ -2379,41 +2381,75 @@ export class ProjectController {
           const customService = userServiceProject.custom_service_schedule;
 
           if (service) {
+            const address = resolveAddress(
+              service.Project?.location,
+              service.Project?.client?.location
+            );
+
             return {
               id: service.id,
+              itemType: "service_project" as const,
               service: service.name,
               initial: service.start_date,
               end: service.deadline,
-              description: service.Project?.location || "No address available",
+              description: address,
+              address,
+              details: service.description || null,
+              status: service.status || null,
+              serviceProjectId: service.id,
+              projectId: service.Project?.id || service.projectId || null,
+              canOpenFullDetails: true,
             };
           }
 
           if (subservice) {
             const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
+            const address = resolveAddress(
+              project?.location,
+              project?.client?.location
+            );
+
             return {
               id: subservice.id,
+              itemType: "sub_service_project" as const,
               service: subservice.name,
               initial: subservice.start_date,
               end: subservice.deadline,
-              description: project?.location || "No address available",
+              description: address,
+              address,
+              details: subservice.description || null,
+              status: subservice.status || null,
+              serviceProjectId: null,
+              projectId: project?.id || null,
+              canOpenFullDetails: false,
             };
           }
 
           if (customService) {
+            const address = resolveAddress(
+              customService.project?.location,
+              customService.project?.client?.location
+            );
+
             return {
               id: customService.id,
+              itemType: "custom_service_schedule" as const,
               service: customService.name,
               initial: customService.start_date,
               end: customService.deadline,
-              description: customService.project?.location || "No address available",
+              description: address,
+              address,
+              details: customService.description || null,
+              status: null,
+              serviceProjectId: null,
+              projectId: customService.project?.id || customService.projectId || null,
+              canOpenFullDetails: false,
             };
           }
 
           return null;
         })
-        .filter((event): event is { id: string; service: string; initial: string | null; end: string | null; description: string } => {
-          return Boolean(event && event.initial && event.end);
-        });
+        .filter((event) => Boolean(event && event.initial && event.end));
 
       return res.json(events);
     } catch (error) {
@@ -3153,7 +3189,12 @@ export class ProjectController {
       })
     }
 
-    if (!name && !description && !price && !hours) {
+    if (
+      name === undefined &&
+      description === undefined &&
+      price === undefined &&
+      hours === undefined
+    ) {
       return res.status(400).json({
         error: "at least one field is required"
       })
