@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
-import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { TimeService } from "../../services/TimeService";
 import { getByWorkerIdController } from "../TimeCards/getByWorkerIdController";
 
@@ -85,12 +84,22 @@ export class TimeController {
     async findManyByIdWorker(req: Request, res: Response) {
         const { id, worker_id, start_date, deadline, page } = req.query;
 
-        if (id && worker_id) {
+        try {
+            if (!worker_id) {
+                return res.status(400).json({ error: "worker_id is required" });
+            }
+
+            const companyId = await this.resolveCompanyId(req, typeof id === "string" ? id : undefined);
+
+            if (!companyId) {
+                return res.status(400).json({ error: "Company Id could not be resolved" });
+            }
+
             const delegatedRequest = {
                 ...req,
                 params: {
                     ...req.params,
-                    companyId: String(id),
+                    companyId: String(companyId),
                     workerId: String(worker_id)
                 },
                 query: {
@@ -102,98 +111,9 @@ export class TimeController {
             } as unknown as Request;
 
             return timeCardsWorkerController.handle(delegatedRequest, res);
-        }
-
-        const pageNumber = Number(page) || 0;
-
-        try {
-            if (!worker_id || !start_date || !deadline) {
-                return res.status(400).json({ error: "Params invalid" });
-            }
-
-            const startDate = new Date(String(start_date));
-            const endDeadline = new Date(String(deadline));
-
-            const attendances = await prisma.userAttendance.findMany({
-                where: {
-                    user_id: String(worker_id),
-                    check_in_time: { gte: startDate, lte: endDeadline },
-                    AND: [
-                        {
-                            OR: [
-                                { check_out_time: { lte: endDeadline } },
-                                { check_out_time: null }
-                            ]
-                        },
-                        id ? {
-                            OR: [
-                                {
-                                    UserServiceProject: {
-                                        service_project: {
-                                            Project: {
-                                                company_id: String(id),
-                                                status_project: {
-                                                    in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                {
-                                    UserServiceProject: {
-                                        service_project: {
-                                            projectId: null,
-                                            company_id: String(id)
-                                        }
-                                    }
-                                }
-                            ]
-                        } : {
-                            UserServiceProject: {
-                                service_project: {
-                                    Project: {
-                                        status_project: {
-                                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                },
-                include: {
-                    user: true,
-                    UserServiceProject: {
-                        include: {
-                            service_project: {
-                                include: {
-                                    Project: { include: { client: true } }
-                                }
-                            }
-                        }
-                    }
-                },
-                orderBy: { check_in_time: 'desc' }
-            });
-
-            const processed = timeService.calculatePeriodTotals(attendances as any);
-            const indicators = this.calculateIndicators(processed);
-            const user = attendances[0]?.user;
-            const urlAvatar = user?.avatar ? await getPresignedUrl(String(user.avatar)) : null;
-
-            return res.json({
-                indicators,
-                userWorker: {
-                    id: user?.id,
-                    name: user?.name,
-                    avatar: urlAvatar,
-                },
-                workers: processed.slice(pageNumber * 10, (pageNumber + 1) * 10),
-                totalPages: Math.ceil(processed.length / 10)
-            });
-
         } catch (error: any) {
-            return res.status(500).json({ error: error.message });
+            const status = error?.status || 500;
+            return res.status(status).json({ error: error?.message || "Internal server error" });
         }
     }
 
@@ -288,6 +208,31 @@ export class TimeController {
         } catch (error: any) {
             return res.status(500).json({ error: error.message });
         }
+    }
+
+    private async resolveCompanyId(req: Request, explicitCompanyId?: string) {
+        if (explicitCompanyId) {
+            return explicitCompanyId;
+        }
+
+        const userId = (req as any).userId as string | undefined;
+        if (!userId) {
+            return null;
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                company_id: true,
+                companies: {
+                    select: { companyId: true },
+                    take: 1,
+                    orderBy: { createdAt: 'asc' }
+                }
+            }
+        });
+
+        return user?.company_id || user?.companies?.[0]?.companyId || null;
     }
 
     private calculateIndicators(processed: any[]) {

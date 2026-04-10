@@ -114,7 +114,7 @@ export class UserController {
           return res.status(400).json({ error: "Email has already been registered in the system" });
         }
 
-        // Verificar se o usuário já tem outras empresas
+        // Verificar se o usuário não tem outras empresas
         const existingUserCompanies = await prisma.userCompany.findMany({
           where: { userId: userExists.id }
         });
@@ -124,7 +124,7 @@ export class UserController {
         let pass: string | null = null;
         let shouldUpdatePassword = false;
 
-        // Se o usuário NÃO tem outras empresas, pode definir/atualizar senha
+        // Se o usuário não tem outras empresas, pode definir/atualizar senha
         if (!hasOtherCompanies) {
           if (data.password && data.password.trim() !== '') {
             pass = data.password;
@@ -133,7 +133,7 @@ export class UserController {
           }
           shouldUpdatePassword = true;
         }
-        // Se o usuário JÁ TEM outras empresas, NÃO resetar senha (manter a atual)
+        // Se o usuário já TEM outras empresas, não resetar senha (manter a atual)
 
         // Atualizar senha apenas se necessário
         if (shouldUpdatePassword && pass) {
@@ -213,7 +213,7 @@ export class UserController {
         : { company_id };
       const currentEmployeesCountForExtra = await prisma.user.count({ where: whereCountForExtra });
       
-      // Se currentEmployeesCount >= allowedEmployees, este usuário é extra
+      // Se currentEmployeesCount >= allowedEmployees, este usuário extra
       const isExtraPaidUser = currentEmployeesCountForExtra >= allowedEmployees;
       
       console.log(`[create] isExtraPaidUser determination: currentCount=${currentEmployeesCountForExtra}, allowed=${allowedEmployees}, isExtra=${isExtraPaidUser}`);
@@ -1089,7 +1089,6 @@ export class UserController {
       const { id } = request.params;
       console.log(`[getUserDetails] Buscando detalhes para o usuário: ${id}`);
 
-      // Consulta o usuário no banco de dados
       const result = await prisma.user.findUnique({
         where: { id },
         select: {
@@ -1107,29 +1106,89 @@ export class UserController {
           attendanceMode: true,
           clockOutMode: true,
           projectVisibilityMode: true,
-          id: true, // Adicionado ID explicitamente
+          id: true,
+          office: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
           company: {
             select: {
               attendanceMode: true,
-              id: true, // Adicionado ID da empresa
-              name: true
+              id: true,
+              name: true,
+              avatar: true,
+            }
+          },
+          companies: {
+            orderBy: {
+              createdAt: 'asc'
+            },
+            select: {
+              company: {
+                select: {
+                  attendanceMode: true,
+                  id: true,
+                  name: true,
+                  avatar: true,
+                }
+              },
+              office: {
+                select: {
+                  id: true,
+                  name: true,
+                }
+              }
             }
           }
         },
       });
 
-      // Verifica se o usuário foi encontrado
       if (!result) {
         console.log(`[getUserDetails] Usuário ${id} não encontrado`);
         throw new Error("User not found!");
       }
 
-      console.log(`[getUserDetails] Resultado: attendanceMode=${result.attendanceMode}, companyAttendanceMode=${result.company?.attendanceMode}`);
+      const formattedCompanies = await Promise.all(
+        result.companies.map(async (userCompany) => ({
+          ...userCompany,
+          company: {
+            ...userCompany.company,
+            avatar: userCompany.company.avatar && userCompany.company.avatar !== "null"
+              ? await getPresignedUrl(userCompany.company.avatar)
+              : null,
+          }
+        }))
+      );
 
-      // Formata o resultado e obtém o link do avatar (se houver)
+      const companyFromRelation = result.company
+        ? {
+            ...result.company,
+            avatar: result.company.avatar && result.company.avatar !== "null"
+              ? await getPresignedUrl(result.company.avatar)
+              : null,
+          }
+        : null;
+
+      const companies = [...formattedCompanies];
+
+      if (companyFromRelation && !companies.some((item) => item.company.id === companyFromRelation.id)) {
+        companies.unshift({
+          company: companyFromRelation,
+          office: result.office ?? null,
+        });
+      }
+
+      const selectedCompany = companyFromRelation ?? companies[0]?.company ?? null;
+
+      console.log(`[getUserDetails] Resultado: attendanceMode=${result.attendanceMode}, companyAttendanceMode=${selectedCompany?.attendanceMode}`);
+
       const formattedResult = {
         ...result,
         avatar: result.avatar && result.avatar !== "null" ? await getPresignedUrl(result.avatar) : null,
+        company: selectedCompany,
+        companies,
       };
 
       return response.json(formattedResult);
@@ -2011,7 +2070,7 @@ export class UserController {
       // Obter IDs das empresas do usuário
       const userCompanyIds = user.companies.map(uc => uc.companyId);
       
-      // CASO ESPECIAL: Se o usuário existe mas não tem vinculo com nenhuma empresa
+      // CASO ESPECIAL: Se o usuário existe mas não tem vínculo com nenhuma empresa
       // Tratar como disponível e permitir definir senha manual
       if (userCompanyIds.length === 0) {
         return res.status(200).json({
@@ -2562,3 +2621,4 @@ export class UserController {
     }
   }
 }
+
