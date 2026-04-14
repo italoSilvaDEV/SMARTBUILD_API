@@ -230,7 +230,7 @@ export class UserServiceProjectController {
             deadline: usp.service_project?.deadline,
           })),
         };
-      });
+      }));
 
       res.status(200).json(result);
     } catch (error) {
