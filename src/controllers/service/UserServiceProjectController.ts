@@ -210,14 +210,16 @@ export class UserServiceProjectController {
       });
 
       // Formatar o resultado
-      const result = employees.map((employee) => {
+      const result = await Promise.all(employees.map(async (employee) => {
         const isLinked = employee.UserServiceProject.some(
           (usp) => usp.service_project?.id === id
         );
 
         return {
           id: employee.id,
-          avatar: employee.avatar,
+          avatar: employee.avatar && employee.avatar !== "null"
+            ? await getPresignedUrl(employee.avatar)
+            : null,
           name: employee.name,
           isLinked, // Retorna true se o usuário estiver vinculado ao serviço
           office: employee.companies.find((c) => c.companyId === id_company)?.office.name,
@@ -228,7 +230,7 @@ export class UserServiceProjectController {
             deadline: usp.service_project?.deadline,
           })),
         };
-      });
+      }));
 
       res.status(200).json(result);
     } catch (error) {

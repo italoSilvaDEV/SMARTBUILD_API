@@ -7,6 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { sendEmail } from "../../utils/sendEmail";
 import { changeOrderApprovedEmail } from "../../templateEmail/changeOrderApproved";
 import { getSignaturePositionForChangeOrder } from "../../utils/pdfChangeOrderSignatures";
+import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 
 export class SignChangeOrderController {
     async handle(req: Request, res: Response) {
@@ -80,10 +81,8 @@ export class SignChangeOrderController {
                         })
                     }
 
-                    const createdEstimateServices: string[] = []
-
                     for (const service of changeOrder.changeOrderServices) {
-                        const estimateService = await smartbuild.estimateServiceProject.create({
+                        await smartbuild.estimateServiceProject.create({
                             data: {
                                 name: service.name,
                                 description: service.description,
@@ -95,73 +94,17 @@ export class SignChangeOrderController {
                                 hours: service.quantity
                             }
                         })
-
-                        createdEstimateServices.push(estimateService.id)
                     }
 
-                    const newPriceServices = await smartbuild.estimateServiceProject.findMany({
-                        where: {
-                            estimateId: estimate.id
-                        },
-                        select: {
-                            price: true
-                        }
-                    })
-
-                    const newPrice = newPriceServices.reduce((acc, curr) => acc + Number(curr.price), 0)
-
+                    await syncEstimateDiscountedServices(smartbuild, estimate.id)
                     await smartbuild.estimate.update({
                         where: {
                             id: estimate.id
                         },
                         data: {
-                            totalAmount: newPrice,
                             pdf_needs_update: true
                         }
                     })
-
-                    console.log("Valor novo do estimate:", newPrice)
-
-                    if (estimate.status === "approved") {
-                        const project = await smartbuild.project.findUnique({
-                            where: {
-                                id: estimate.projectId
-                            },
-                            include: {
-                                serviceProject: true,
-                            }
-                        })
-
-                        if (!project) {
-                            return res.status(404).json({
-                                error: "Project not found"
-                            })
-                        }
-
-                        const estimateServicesToCreateInProject = await smartbuild.estimateServiceProject.findMany({
-                            where: {
-                                id: {
-                                    in: createdEstimateServices
-                                }
-                            }
-                        })
-
-                        for (const estimateService of estimateServicesToCreateInProject) {
-                            await smartbuild.serviceProject.create({
-                                data: {
-                                    name: estimateService.name,
-                                    description: estimateService.description || "",
-                                    hours: estimateService.hours || estimateService.quantity,
-                                    price: estimateService.price || estimateService.lineTotal,
-                                    projectId: project.id,
-                                    estimateServiceId: estimateService.id,
-                                    start_date: estimateService.start_date,
-                                    deadline: estimateService.deadline,
-                                    id_service: estimateService.id_service
-                                }
-                            })
-                        }
-                    }
                 })
             }
 

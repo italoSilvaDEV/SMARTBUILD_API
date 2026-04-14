@@ -8,6 +8,10 @@ import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { addClientSignatureImageToPdfBuffer } from '../../utils/pdfEstimateSignatures';
+import {
+  clearEstimateClientSignaturePdf,
+  EstimatePdfNotFoundError,
+} from '../../utils/clearEstimateClientSignaturePdf';
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
@@ -660,7 +664,7 @@ export class EstimateController {
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
             clientName: project?.workContext?.Name || project?.client?.name || "Customer",
-            projectName: project?.serviceProject?.[0]?.name || `Project ${project?.contract_number || ''}`,
+            projectName: project?.workContext?.location || project?.location || `Project #${project?.contract_number || 'N/A'}`,
             location: project?.workContext?.location || project?.location || "Not specified",
             totalAmount: totalFormatted,
             companyName: project?.company?.name || "SmartBuild",
@@ -695,7 +699,8 @@ export class EstimateController {
             include: {
               client: true,
               company: true,
-              serviceProject: true
+              serviceProject: true,
+              workContext: true
             }
           }
         }
@@ -842,7 +847,7 @@ export class EstimateController {
       }).format(Number(estimate.totalAmount));
 
       const commonData = {
-        projectName: project.serviceProject?.[0]?.name || `Project ${project.contract_number || ''}`,
+        projectName: project.workContext?.location || project.location || `Project #${project.contract_number || 'N/A'}`,
         contractNumber: project.contract_number || "N/A",
         location: project.workContext?.location || project.location || "Not specified",
         totalAmount: totalFormatted,
@@ -922,6 +927,19 @@ export class EstimateController {
       }
 
       if (estimateExists.status === "approved") {
+        let cleanedPdf: { pdfProjectId: string; newFileName: string };
+
+        try {
+          cleanedPdf = await clearEstimateClientSignaturePdf(id);
+        } catch (error) {
+          if (error instanceof EstimatePdfNotFoundError) {
+            return res.status(404).json({ error: error.message });
+          }
+
+          console.error("[estimate.cancel] Error clearing client signature from PDF:", error);
+          return res.status(500).json({ error: "Failed to clear estimate signature from PDF" });
+        }
+
         await prisma.$transaction(async (smartbuild) => {
           for (const estimateServiceProject of estimateExists.serviceProjects) {
             const serviceProject = await smartbuild.serviceProject.findFirst({
@@ -943,6 +961,11 @@ export class EstimateController {
             }
           }
 
+          await smartbuild.pdfProject.update({
+            where: { id: cleanedPdf.pdfProjectId },
+            data: { uri: cleanedPdf.newFileName }
+          });
+
           const estimate = await smartbuild.estimate.update({
             where: { id },
             data: {
@@ -951,6 +974,7 @@ export class EstimateController {
               canceledById: userId,
               cancellationReason,
               assignatureRequired: false,
+              clientSignature: null,
               date_update: new Date()
             }
           });
@@ -1378,7 +1402,8 @@ export class EstimateController {
             include: {
               client: true,
               company: true,
-              serviceProject: true
+              serviceProject: true,
+              workContext: true
             }
           }
         }
@@ -1467,7 +1492,7 @@ export class EstimateController {
 
         const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}`;
         const companyName = estimate.project?.company?.name || 'SmartBuild';
-        const projectDispName = estimate.project?.serviceProject?.[0]?.name || `Project ${estimate.project?.contract_number || ''}`;
+        const projectDispName = estimate.project?.workContext?.location || estimate.project?.location || `Project #${estimate.project?.contract_number || 'N/A'}`;
 
         const subjectFixed = `Estimate ${estimateNumber} from ${companyName}`;
 

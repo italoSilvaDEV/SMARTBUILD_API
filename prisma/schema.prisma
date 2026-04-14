@@ -86,8 +86,8 @@ model User {
   // Nova relação N:N através da tabela UserCompany
   companies UserCompany[]
 
-  Invoice  Invoice[]
-  TimeLine TimeLine[]
+  Invoice            Invoice[]
+  TimeLine           TimeLine[]
   WorkerLiveLocation WorkerLiveLocation[]
   WorkerLocationPing WorkerLocationPing[]
 
@@ -112,7 +112,7 @@ model User {
   SubcontractorFiles  SubcontractorFiles[]
   SubcontractorPastes SubcontractorPastes[]
   changeOrders        ChangeOrder[]
-  tutorialProgress TutorialProgress[]
+  tutorialProgress    TutorialProgress[]
 
   // Sales CRM
   salesDeals      SalesDeal[]     @relation("AssignedDeals")
@@ -128,10 +128,10 @@ model User {
   expoPushToken String?
 
   // Chat Relationships
-  sentMessages        ChatMessage[] @relation("SentMessages")
-  deletedChatMessages ChatMessage[] @relation("DeletedChatMessages")
+  sentMessages        ChatMessage[]       @relation("SentMessages")
+  deletedChatMessages ChatMessage[]       @relation("DeletedChatMessages")
   chatMemberships     ChatMember[]
-  createdChats        Chat[]        @relation("CreatedChats")
+  createdChats        Chat[]              @relation("CreatedChats")
   aiAssistantThreads  AIAssistantThread[]
 
   @@index([office_id], map: "User_office_id_fkey")
@@ -215,8 +215,8 @@ model AIAssistantThread {
   companyId String
   userId    String
 
-  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company  Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages AIAssistantMessage[]
 
   lastMessageAt DateTime @default(now())
@@ -330,8 +330,8 @@ model Company {
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
 
-  offices Office[]
-  chats   Chat[]
+  offices             Office[]
+  chats               Chat[]
   workerLiveLocations WorkerLiveLocation[]
   workerLocationPings WorkerLocationPing[]
 }
@@ -1018,7 +1018,7 @@ model Subcontractor {
   company_id                   String?
   subContractorServiceProjects SubContractorServiceProject[]
   SubcontractorPastes          SubcontractorPastes[]
-  SubcontractorFiles            SubcontractorFiles[]
+  SubcontractorFiles           SubcontractorFiles[]
 
   @@unique([email, company_id])
   @@map("subcontractors")
@@ -1043,6 +1043,7 @@ model Workedhours {
   amount_of_hours Decimal?
   hourly_price    Decimal?
   fixed_price     Decimal?
+  overtime_hours  Decimal?
 
   description  String?
   payment_date DateTime?
@@ -1157,29 +1158,29 @@ model SubContractorServiceProject {
 }
 
 model UserAttendance {
-  id                      String             @id @default(uuid())
-  check_in_time           DateTime
-  check_out_time          DateTime?
-  check_in_address        String
-  check_in_latitude       Float
-  check_in_longitude      Float
-  check_out_address       String?
-  check_out_latitude      Float?
-  check_out_longitude     Float?
-  date                    DateTime           @default(now())
-  user                    User               @relation(fields: [user_id], references: [id])
-  user_id                 String
-  UserServiceProject      UserServiceProject? @relation(fields: [user_service_project_id], references: [id], onDelete: Cascade)
-  user_service_project_id String?
-  company                 Company?           @relation(fields: [company_id], references: [id])
-  company_id              String?
-  service_selection_status AttendanceServiceSelectionStatus @default(selected)
-  pending_project_id      String?
-  pending_project_name    String?
-  pending_project_address String?
-  pending_project_latitude Float?
+  id                        String                           @id @default(uuid())
+  check_in_time             DateTime
+  check_out_time            DateTime?
+  check_in_address          String
+  check_in_latitude         Float
+  check_in_longitude        Float
+  check_out_address         String?
+  check_out_latitude        Float?
+  check_out_longitude       Float?
+  date                      DateTime                         @default(now())
+  user                      User                             @relation(fields: [user_id], references: [id])
+  user_id                   String
+  UserServiceProject        UserServiceProject?              @relation(fields: [user_service_project_id], references: [id], onDelete: Cascade)
+  user_service_project_id   String?
+  company                   Company?                         @relation(fields: [company_id], references: [id])
+  company_id                String?
+  service_selection_status  AttendanceServiceSelectionStatus @default(selected)
+  pending_project_id        String?
+  pending_project_name      String?
+  pending_project_address   String?
+  pending_project_latitude  Float?
   pending_project_longitude Float?
-  pending_project_radius  Float?
+  pending_project_radius    Float?
 
   workStartTime String? // Format: "HH:mm" (24-hour)
   workEndTime   String?
@@ -1331,16 +1332,16 @@ model WorkerLocationPing {
 }
 
 model WorkerTrackingReminder {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   companyId      String
   userId         String
   attendanceId   String
   reminderNumber Int
-  triggeredAt    DateTime @default(now())
+  triggeredAt    DateTime  @default(now())
   acknowledgedAt DateTime?
   restoredAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([attendanceId, reminderNumber])
   @@index([companyId, userId, attendanceId])
@@ -1577,25 +1578,25 @@ enum TypeEstimate {
   estimate
   estimateProject
 }
+
 enum EstimateDiscountType {
   fixed
   percentage
 }
 
-
 model Estimate {
-  id              String   @id @default(uuid())
+  id              String                @id @default(uuid())
   number          String
-  approvedAt      DateTime @default(now())
-  clientSignature String?  @db.Text
+  approvedAt      DateTime              @default(now())
+  clientSignature String?               @db.Text
   totalAmount     Decimal
   discountType    EstimateDiscountType?
   discountValue   Decimal?
   discountAmount  Decimal?
   finalAmount     Decimal?
-  description     String?  @db.Text
-  terms           String?  @db.Text
-  status          String   @default("pending")
+  description     String?               @db.Text
+  terms           String?               @db.Text
+  status          String                @default("pending")
 
   assignatureRequired Boolean? @default(false)
 
@@ -1651,14 +1652,14 @@ model EstimateServiceProject {
   estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   estimateId String
 
-  name        String
-  description String? @db.Text
-  quantity    Int     @default(1)
-  unitPrice   Decimal
-  lineTotal   Decimal
+  name              String
+  description       String?  @db.Text
+  quantity          Int      @default(1)
+  unitPrice         Decimal
+  lineTotal         Decimal
   originalUnitPrice Decimal?
   originalLineTotal Decimal?
-  notes       String? @db.Text
+  notes             String?  @db.Text
 
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])

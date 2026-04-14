@@ -582,10 +582,8 @@ export class ProjectController {
           ...project,
           cover_photo: coverPhotoUrl,
           project_manager: projectManagerWithAvatar,
-          balanceDue: 1200,
-          amountPaid: 3250,
-          // balanceDue: balanceDue,
-          // amountPaid: Number(totalAmountPaid),
+          balanceDue: balanceDue,
+          amountPaid: Number(totalAmountPaid),
           client: {
             ...project.client,
             location: project.location,
