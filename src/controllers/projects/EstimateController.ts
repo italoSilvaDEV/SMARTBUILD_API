@@ -660,7 +660,7 @@ export class EstimateController {
           dynamicTemplateData: {
             recipientName: project?.workContext?.Name || project?.user?.name || "Team Member",
             clientName: project?.workContext?.Name || project?.client?.name || "Customer",
-            projectName: project?.serviceProject?.[0]?.name || `Project ${project?.contract_number || ''}`,
+            projectName: project?.workContext?.location || project?.location || `Project #${project?.contract_number || 'N/A'}`,
             location: project?.workContext?.location || project?.location || "Not specified",
             totalAmount: totalFormatted,
             companyName: project?.company?.name || "SmartBuild",
@@ -695,7 +695,8 @@ export class EstimateController {
             include: {
               client: true,
               company: true,
-              serviceProject: true
+              serviceProject: true,
+              workContext: true
             }
           }
         }
@@ -842,7 +843,7 @@ export class EstimateController {
       }).format(Number(estimate.totalAmount));
 
       const commonData = {
-        projectName: project.serviceProject?.[0]?.name || `Project ${project.contract_number || ''}`,
+        projectName: project.workContext?.location || project.location || `Project #${project.contract_number || 'N/A'}`,
         contractNumber: project.contract_number || "N/A",
         location: project.workContext?.location || project.location || "Not specified",
         totalAmount: totalFormatted,
@@ -1378,7 +1379,8 @@ export class EstimateController {
             include: {
               client: true,
               company: true,
-              serviceProject: true
+              serviceProject: true,
+              workContext: true
             }
           }
         }
@@ -1467,7 +1469,7 @@ export class EstimateController {
 
         const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}`;
         const companyName = estimate.project?.company?.name || 'SmartBuild';
-        const projectDispName = estimate.project?.serviceProject?.[0]?.name || `Project ${estimate.project?.contract_number || ''}`;
+        const projectDispName = estimate.project?.workContext?.location || estimate.project?.location || `Project #${estimate.project?.contract_number || 'N/A'}`;
 
         const subjectFixed = `Estimate ${estimateNumber} from ${companyName}`;
 
