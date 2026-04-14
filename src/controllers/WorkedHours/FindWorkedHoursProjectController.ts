@@ -223,6 +223,7 @@ export class FindWorkedHoursProjectController {
                     hourly_price: true,
                     fixed_price: true,
                     type_price: true,
+                    overtime_hours: true,
                     subcontractor_id: true,
                     date_creation: true,
                     start_date: true,
@@ -312,16 +313,13 @@ export class FindWorkedHoursProjectController {
                 }
             });
             const formattedResult = result.map((workedHours) => {
-                let price = null;
-                if (workedHours.type_price === "fixed") {
-                    price = workedHours.fixed_price ? Number(workedHours.fixed_price) : null;
-                } else {
-                    price = workedHours.amount_of_hours && workedHours.hourly_price ? Number(workedHours.amount_of_hours) * Number(workedHours.hourly_price) : null;
-                }
+                const price = getWorkedHoursPrice(workedHours);
+                const overtimeHours = workedHoursToNumber(workedHours.overtime_hours);
+
                 return {
                     ...workedHours,
-                    overtime_hours: null,
-                    price
+                    overtime_hours: overtimeHours > 0 ? overtimeHours : null,
+                    price,
                 }
             })
             const overtimePerAttendance = calculateWeeklyOvertimePerAttendance(
