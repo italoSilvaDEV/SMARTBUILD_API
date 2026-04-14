@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
+import { getWorkedHoursPrice, workedHoursToNumber } from "../../utils/workedHoursCost";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {

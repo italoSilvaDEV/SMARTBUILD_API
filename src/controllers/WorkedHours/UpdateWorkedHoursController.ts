@@ -7,6 +7,7 @@ export class UpdateWorkedHoursController {
       id,
       name_user,
       amount_of_hours,
+      overtime_hours,
       hourly_price,
       fixed_price,
       type_price,
@@ -20,17 +21,33 @@ export class UpdateWorkedHoursController {
       custom_service_schedule_id,
       subcontractor_service_id,
       categoryId,
-    } = request.body; 
+    } = request.body;
 
-    // Função de validação
     function validateWorkedHoursData(data: any): string | null {
       if (!data.id) return "You cannot change the data coming from the worker's APP!";
       if (!data.name_user) return "Name user is required";
-      
+
       const type = data.type_price || "hourly";
       if (type === "hourly") {
         if (!data.hourly_price) return "Hourly price is required for hourly type";
-        if (!data.amount_of_hours && data.amount_of_hours !== null) return "Amount of hours is required";
+        if ((data.amount_of_hours === undefined || data.amount_of_hours === null || data.amount_of_hours === "") && data.amount_of_hours !== 0) {
+          return "Amount of hours is required";
+        }
+
+        const totalHours = Number(data.amount_of_hours);
+        if (!Number.isFinite(totalHours) || totalHours <= 0) {
+          return "Amount of hours must be greater than zero";
+        }
+
+        if (data.overtime_hours !== undefined && data.overtime_hours !== null && data.overtime_hours !== "") {
+          const overtimeHours = Number(data.overtime_hours);
+          if (!Number.isFinite(overtimeHours) || overtimeHours < 0) {
+            return "Overtime hours cannot be negative";
+          }
+          if (overtimeHours > totalHours) {
+            return "Overtime hours cannot be greater than total hours";
+          }
+        }
       } else if (type === "fixed") {
         if (!data.fixed_price) return "Fixed price is required for fixed type";
       }
@@ -57,11 +74,18 @@ export class UpdateWorkedHoursController {
         return response.status(404).json({ error: "Worked hours record not found!" });
       }
 
-      // Preparar dados base para atualização
+      const parsedAmountOfHours = amount_of_hours !== undefined && amount_of_hours !== null && amount_of_hours !== ""
+        ? parseFloat(amount_of_hours)
+        : null;
+      const parsedOvertimeHours = overtime_hours !== undefined && overtime_hours !== null && overtime_hours !== ""
+        ? parseFloat(overtime_hours)
+        : null;
+
       const updateData: any = {
         name_user,
         type_price,
-        amount_of_hours: amount_of_hours ? parseFloat(amount_of_hours) : null,
+        amount_of_hours: type_price === "hourly" ? parsedAmountOfHours : null,
+        overtime_hours: type_price === "hourly" ? parsedOvertimeHours : null,
         hourly_price: type_price === "hourly" ? hourly_price : null,
         fixed_price: type_price === "fixed" ? fixed_price : null,
         start_date,
@@ -108,7 +132,7 @@ export class UpdateWorkedHoursController {
 
       await prisma.workedhours.update({
         where: { id },
-        data: updateData,
+        data: updateData as any,
       });
 
       return response.json({ message: "Worked hours record updated successfully" });
