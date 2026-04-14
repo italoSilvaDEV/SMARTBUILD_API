@@ -33,7 +33,13 @@ export class GetProjectsByCompanyController {
                     company_id: company.id,
                     status_project: {
                         in: ["In Progress", "Pre-Start"]
-                    }
+                    },
+                    OR: [
+                        { start_date: null },
+                        { start_date: "" },
+                        { deadline: null },
+                        { deadline: "" }
+                    ]
                 },
                 select: {
                     id: true,
