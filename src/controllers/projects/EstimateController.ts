@@ -8,6 +8,10 @@ import { sendEmail } from "../../utils/sendEmail";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { addClientSignatureImageToPdfBuffer } from '../../utils/pdfEstimateSignatures';
+import {
+  clearEstimateClientSignaturePdf,
+  EstimatePdfNotFoundError,
+} from '../../utils/clearEstimateClientSignaturePdf';
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
@@ -923,6 +927,19 @@ export class EstimateController {
       }
 
       if (estimateExists.status === "approved") {
+        let cleanedPdf: { pdfProjectId: string; newFileName: string };
+
+        try {
+          cleanedPdf = await clearEstimateClientSignaturePdf(id);
+        } catch (error) {
+          if (error instanceof EstimatePdfNotFoundError) {
+            return res.status(404).json({ error: error.message });
+          }
+
+          console.error("[estimate.cancel] Error clearing client signature from PDF:", error);
+          return res.status(500).json({ error: "Failed to clear estimate signature from PDF" });
+        }
+
         await prisma.$transaction(async (smartbuild) => {
           for (const estimateServiceProject of estimateExists.serviceProjects) {
             const serviceProject = await smartbuild.serviceProject.findFirst({
@@ -944,6 +961,11 @@ export class EstimateController {
             }
           }
 
+          await smartbuild.pdfProject.update({
+            where: { id: cleanedPdf.pdfProjectId },
+            data: { uri: cleanedPdf.newFileName }
+          });
+
           const estimate = await smartbuild.estimate.update({
             where: { id },
             data: {
@@ -952,6 +974,7 @@ export class EstimateController {
               canceledById: userId,
               cancellationReason,
               assignatureRequired: false,
+              clientSignature: null,
               date_update: new Date()
             }
           });
