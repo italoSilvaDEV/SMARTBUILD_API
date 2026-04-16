@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3 } from "../../utils/S3/uploadFIleS3";
 import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
+import { userHasAccessToCompany } from "./fileAccess";
 
 export class UpdateFileController {
     async handle(req: Request, res: Response) {
@@ -10,6 +11,7 @@ export class UpdateFileController {
             name,
             description,
         } = req.body
+        const authenticatedUserId = (req as any).userId as string | undefined;
 
         const filename = req.file
 
@@ -20,6 +22,12 @@ export class UpdateFileController {
         }
 
         try {
+            if (!authenticatedUserId) {
+                return res.status(401).json({
+                    error: "Authenticated user not found"
+                })
+            }
+
             const file = await prisma.projectFiles.findUnique({
                 where: {
                     id
@@ -30,6 +38,26 @@ export class UpdateFileController {
                 return res.status(404).json({
                     error: "File"
                 })
+            }
+
+            const project = await prisma.project.findUnique({
+                where: {
+                    id: file.projectId
+                },
+                select: {
+                    company_id: true
+                }
+            });
+
+            const hasAccess = await userHasAccessToCompany(
+                authenticatedUserId,
+                project?.company_id || file.companyId
+            );
+
+            if (!hasAccess) {
+                return res.status(403).json({
+                    error: "Access denied"
+                });
             }
 
             if (!filename && !name && !description) {
