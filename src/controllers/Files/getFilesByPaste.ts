@@ -1,25 +1,37 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { userHasAccessToCompany } from "./fileAccess";
 
 export class GetFilesController {
     async handle(req: Request, res: Response) {
         const {
             pasteId,
-            userId,
             projectId
         } = req.params
+        const authenticatedUserId = (req as any).userId as string | undefined;
 
-        if (!pasteId || !userId || !projectId) {
+        if (!pasteId || !projectId) {
             return res.status(400).json({
-                error: "pasteId, userId and projectId are required"
+                error: "pasteId and projectId are required"
             })
         }
 
         try {
+            if (!authenticatedUserId) {
+                return res.status(401).json({
+                    error: "Authenticated user not found"
+                })
+            }
+
             const paste = await prisma.projectPastes.findUnique({
                 where: {
                     id: pasteId
+                },
+                select: {
+                    id: true,
+                    projectId: true,
+                    companyId: true
                 }
             })
 
@@ -29,21 +41,13 @@ export class GetFilesController {
                 })
             }
 
-            const user = await prisma.user.findUnique({
-                where: {
-                    id: userId
-                }
-            })
-
-            if (!user) {
-                return res.status(404).json({
-                    error: "User not found"
-                })
-            }
-
             const project = await prisma.project.findUnique({
                 where: {
                     id: projectId
+                },
+                select: {
+                    id: true,
+                    company_id: true
                 }
             })
 
@@ -53,11 +57,27 @@ export class GetFilesController {
                 })
             }
 
+            if (paste.projectId !== project.id) {
+                return res.status(400).json({
+                    error: "Paste does not belong to this project"
+                });
+            }
+
+            const hasAccess = await userHasAccessToCompany(
+                authenticatedUserId,
+                project.company_id || paste.companyId
+            );
+
+            if (!hasAccess) {
+                return res.status(403).json({
+                    error: "Access denied"
+                });
+            }
+
             const files = await prisma.projectFiles.findMany({
                 where: {
                     pasteId: pasteId,
-                    projectId: projectId,
-                    userAuthorId: userId
+                    projectId: projectId
                 }
             })
 

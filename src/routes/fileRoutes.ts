@@ -18,15 +18,15 @@ fileRoutes.post("/file", checkToken, uploadFile.single("file"), createFileContro
 );
 
 const getFilesController = new GetFilesController();
-fileRoutes.get("/files/:projectId/:userId", checkToken, getFilesController.handle.bind(getFilesController)
+fileRoutes.get("/files/:projectId", checkToken, getFilesController.handle.bind(getFilesController)
 );
 
 const getFileController = new GetFileController();
-fileRoutes.get("/file/get/:id/:userId/:projectId", checkToken, getFileController.handle.bind(getFileController)
+fileRoutes.get("/file/get/:id/:projectId", checkToken, getFileController.handle.bind(getFileController)
 );
 
 const getFilesByPasteController = new GetFilesByPasteController();
-fileRoutes.get("/files/paste/:pasteId/:userId/:projectId", checkToken, getFilesByPasteController.handle.bind(getFilesByPasteController)
+fileRoutes.get("/files/paste/:pasteId/:projectId", checkToken, getFilesByPasteController.handle.bind(getFilesByPasteController)
 );
 
 const updateFileController = new UpdateFileController();
