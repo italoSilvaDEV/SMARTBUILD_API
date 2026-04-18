@@ -168,10 +168,6 @@ const CLIENT_SIGNATURE_MARGIN = 50;
 const CLIENT_SIGNATURE_WIDTH = 100;
 const CLIENT_SIGNATURE_HEIGHT = 50;
 const CLIENT_BLOCK_WIDTH = 240;
-const CLIENT_SIGNATURE_TOP_MARGIN = 12;
-const CLIENT_SIGNATURE_GAP_ABOVE_LINE = 20;
-const CLIENT_SIGNATURE_DATE_OFFSET = 15;
-const CLIENT_SIGNATURE_MIN_HEIGHT = 14;
 
 export async function addClientSignatureImageToPdfBuffer(
   pdfBuffer: Buffer,
@@ -186,8 +182,9 @@ export async function addClientSignatureImageToPdfBuffer(
   const targetPage = pos ? getPageAt(pages, pos.pageIndex) : lastPage;
   if (!targetPage) return pdfBuffer;
 
-  const { width, height: pageHeight } = targetPage.getSize();
+  const { width } = targetPage.getSize();
   const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
+  const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
 
   const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
   const signatureBuffer = Buffer.from(base64Data, "base64");
@@ -199,21 +196,9 @@ export async function addClientSignatureImageToPdfBuffer(
   }
 
   const maxSigWidth = Math.min(CLIENT_SIGNATURE_WIDTH, CLIENT_BLOCK_WIDTH);
-  const desiredY =
-    pos?.lineY != null
-      ? pos.lineY + CLIENT_SIGNATURE_GAP_ABOVE_LINE
-      : pos?.y ?? FALLBACK_SIGNATURE_Y;
-  const maxSigHeight = Math.min(
-    CLIENT_SIGNATURE_HEIGHT,
-    Math.max(CLIENT_SIGNATURE_MIN_HEIGHT, pageHeight - CLIENT_SIGNATURE_TOP_MARGIN - desiredY)
-  );
-  const scaledSize = signatureImage.scaleToFit(maxSigWidth, maxSigHeight);
-  const drawWidth = scaledSize.width;
-  const drawHeight = scaledSize.height;
-  const y =
-    pos?.lineY != null
-      ? desiredY
-      : Math.min(desiredY, pageHeight - CLIENT_SIGNATURE_TOP_MARGIN - drawHeight);
+  const scale = maxSigWidth / CLIENT_SIGNATURE_WIDTH;
+  const drawWidth = CLIENT_SIGNATURE_WIDTH * scale;
+  const drawHeight = CLIENT_SIGNATURE_HEIGHT * scale;
 
   targetPage.drawImage(signatureImage, {
     x: clientBlockLeft,
@@ -234,7 +219,7 @@ export async function addClientSignatureImageToPdfBuffer(
   });
   const signedOnText = `Signed on: ${formattedDate}`;
   const signedOnLines = wrapTextToLines(helveticaFont, signedOnText, DATE_FONT_SIZE, CLIENT_BLOCK_WIDTH);
-  let lineY = y - CLIENT_SIGNATURE_DATE_OFFSET;
+  let lineY = y - 15;
   for (const line of signedOnLines) {
     targetPage.drawText(line, {
       x: clientBlockLeft,
