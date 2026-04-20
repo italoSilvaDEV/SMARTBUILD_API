@@ -1,3 +1,5 @@
+import { formatInvoicePaymentDate } from "../utils/invoicePaymentDate";
+
 export const invoicePaidPaymentEmail = (
     clientName: string,
     logo: string,
@@ -15,7 +17,7 @@ export const invoicePaidPaymentEmail = (
         currency: 'USD',
     }).format(paymentAmount);
 
-    const formattedDate = new Date(paymentDate).toLocaleDateString('en-US', {
+    const formattedDate = formatInvoicePaymentDate(paymentDate, 'en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
