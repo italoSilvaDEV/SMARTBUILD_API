@@ -1202,6 +1202,7 @@ export class StripeController {
                             id: true,
                             paymentMethod: true,
                             notes: true,
+                            paidAt: true,
                             createdAt: true,
                             amount: true
                         }
@@ -1454,6 +1455,7 @@ export class StripeController {
                             id: true,
                             paymentMethod: true,
                             notes: true,
+                            paidAt: true,
                             createdAt: true,
                             amount: true
                         }
@@ -1474,6 +1476,7 @@ export class StripeController {
                             surchargeAmount: true,
                             currency: true,
                             paymentMethodType: true,
+                            createdAt: true,
                         }
 
                     },

@@ -2,13 +2,20 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
+import {
+  InvoicePaymentDateError,
+  formatInvoicePaymentDate,
+  resolveManualPaymentDate,
+} from "../../utils/invoicePaymentDate";
 
 export class CustomInvoicePaymentController {
   async createPayment(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { paymentMethod, notes, amount } = req.body;
+    const { paymentMethod, notes, amount, paidAtDate, clientTimezone } = req.body;
 
     try {
+      const paymentDate = resolveManualPaymentDate({ paidAtDate, clientTimezone });
+
       const invoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
         select: {
@@ -121,7 +128,8 @@ export class CustomInvoicePaymentController {
             paymentMethod,
             notes: notes || "",
             amount,
-            invoiceId
+            invoiceId,
+            paidAt: paymentDate.paidAt,
           }
         });
 
@@ -130,13 +138,14 @@ export class CustomInvoicePaymentController {
           data: {
             status: "paid",
             checked: true,
+            lastPaymentAt: paymentDate.paidAt,
             updatedAt: new Date()
           }
         });
 
         await smartbuild.invoiceTimeline.create({
           data: {
-            description: `Payment`,
+            description: `Payment recorded on ${paymentDate.formattedDate}`,
             invoice: {
               connect: { id: invoiceId }
             }
@@ -150,7 +159,7 @@ export class CustomInvoicePaymentController {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + new Date().toLocaleDateString('en-US'),
+              }).format(Number(invoice.totalAmount)) + " on " + paymentDate.formattedDate,
               projectId: project.id
             }
           })
@@ -160,7 +169,7 @@ export class CustomInvoicePaymentController {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + new Date().toLocaleDateString('en-US'),
+              }).format(Number(invoice.totalAmount)) + " on " + paymentDate.formattedDate,
               estimateId: invoice.estimate.id
             }
           })
@@ -188,9 +197,7 @@ export class CustomInvoicePaymentController {
           }).format(Number(amount));
           const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
           const projectDispName = `Project #${project?.contract_number || 'N/A'}`;
-          const paymentDateFormatted = new Date().toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric'
-          });
+          const paymentDateFormatted = formatInvoicePaymentDate(paymentDate.paidAt);
 
           const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
             where: { invoiceId }
@@ -253,6 +260,10 @@ export class CustomInvoicePaymentController {
         payment
       });
     } catch (error: any) {
+      if (error instanceof InvoicePaymentDateError) {
+        return res.status(400).json({ error: error.message });
+      }
+
       console.error("Error recording custom invoice payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }

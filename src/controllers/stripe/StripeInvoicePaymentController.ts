@@ -5,6 +5,11 @@ import { stripeConfig } from "../../config/stripe";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import { sendEmail } from "../../utils/sendEmail";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import {
+  InvoicePaymentDateError,
+  formatInvoicePaymentDate,
+  resolveManualPaymentDate,
+} from "../../utils/invoicePaymentDate";
 
 const stripe = stripeConfig.getClient();
 
@@ -16,9 +21,10 @@ export class StripeInvoicePaymentController {
   }
   async createPayment(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { paymentMethod, notes, amount } = req.body;
+    const { paymentMethod, notes, amount, paidAtDate, clientTimezone } = req.body;
 
     try {
+      const paymentDate = resolveManualPaymentDate({ paidAtDate, clientTimezone });
       // Verificar se a fatura existe e é do tipo stripe
       const invoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
@@ -127,7 +133,8 @@ export class StripeInvoicePaymentController {
             paymentMethod,
             notes: notes || "",
             amount,
-            invoiceId
+            invoiceId,
+            paidAt: paymentDate.paidAt
           }
         });
 
@@ -137,6 +144,7 @@ export class StripeInvoicePaymentController {
           data: {
             status: "paid",
             checked: true,
+            lastPaymentAt: paymentDate.paidAt,
             updatedAt: new Date()
           }
         });
@@ -144,7 +152,7 @@ export class StripeInvoicePaymentController {
         // Criar entrada no timeline
         await smartbuild.invoiceTimeline.create({
           data: {
-            description: `Manual payment recorded${cancelledPaymentIntentId ? ` (PaymentIntent ${cancelledPaymentIntentId} was cancelled)` : ''}`,
+            description: `Manual payment recorded on ${paymentDate.formattedDate}${cancelledPaymentIntentId ? ` (PaymentIntent ${cancelledPaymentIntentId} was cancelled)` : ''}`,
             invoice: {
               connect: { id: invoiceId }
             }
@@ -158,7 +166,7 @@ export class StripeInvoicePaymentController {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              }).format(Number(invoice.totalAmount)) + " on " + paymentDate.formattedDate,
               projectId: invoice.project.id
             }
           });
@@ -168,7 +176,7 @@ export class StripeInvoicePaymentController {
               description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
-              }).format(Number(invoice.totalAmount)) + " on " + invoice.updatedAt.toLocaleDateString('en-US'),
+              }).format(Number(invoice.totalAmount)) + " on " + paymentDate.formattedDate,
               estimateId: invoice.estimate.id
             }
           });
@@ -277,7 +285,7 @@ export class StripeInvoicePaymentController {
 
       if (updatedInvoice) {
         try {
-          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
+          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount, paymentDate.paidAt);
         } catch (pdfEmailError: any) {
           console.error("Erro ao enviar email com PDF de confirmação:", pdfEmailError.message);
         }
@@ -299,6 +307,10 @@ export class StripeInvoicePaymentController {
         // }
       });
     } catch (error: any) {
+      if (error instanceof InvoicePaymentDateError) {
+        return res.status(400).json({ error: error.message });
+      }
+
       console.error("Error recording Stripe invoice payment:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
@@ -357,7 +369,7 @@ export class StripeInvoicePaymentController {
     }
   }
 
-  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number) {
+  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number, paidAt: Date) {
     try {
       const project = invoiceData.project || invoiceData.estimate?.project;
       const client = invoiceData.project?.client || invoiceData.estimate?.project?.client;
@@ -408,7 +420,7 @@ export class StripeInvoicePaymentController {
         console.log("PDF invoice paid não encontrado, enviando email sem anexo");
       }
 
-      const paymentDate = new Date();
+      const paymentDateLabel = formatInvoicePaymentDate(paidAt);
       const formattedAmount = `$${amount.toFixed(2)}`;
       const invoiceCode = invoiceData.externalInvoiceId || invoiceData.id;
       const emailSubject = `Invoice #${invoiceCode} - Payment Confirmation`;
@@ -422,7 +434,7 @@ export class StripeInvoicePaymentController {
           projectName: `Project #${project?.contract_number || 'N/A'}`,
           invoiceNumber: invoiceCode,
           totalAmount: formattedAmount,
-          paymentDate: paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          paymentDate: paymentDateLabel,
           companyName: company?.name || "SmartBuild",
           companyAvatar: companyAvatar,
           customBody: "",

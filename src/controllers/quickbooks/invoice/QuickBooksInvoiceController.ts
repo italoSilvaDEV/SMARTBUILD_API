@@ -8,6 +8,11 @@ import { getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../../utils/sendEmail";
 import { invoicePaidPaymentEmail } from "../../../templateEmail/invoicePaidPayment";
+import {
+  InvoicePaymentDateError,
+  formatInvoicePaymentDate,
+  resolveManualPaymentDate,
+} from "../../../utils/invoicePaymentDate";
 
 // Função para determinar se deve marcar needsReauthorization
 function shouldRequireReauthorization(err: any): boolean {
@@ -3091,9 +3096,11 @@ export class QuickBooksInvoiceController {
    */
   async createPayment(req: Request, res: Response) {
     const { invoiceId } = req.params;
-    const { paymentMethod, notes, amount, userId } = req.body;
+    const { paymentMethod, notes, amount, userId, paidAtDate, clientTimezone } = req.body;
 
     try {
+      const paymentDate = resolveManualPaymentDate({ paidAtDate, clientTimezone });
+
       console.log(`[QuickBooks Payment] Iniciando registro de pagamento para invoice: ${invoiceId}`);
 
       // Validações
@@ -3216,6 +3223,7 @@ export class QuickBooksInvoiceController {
             console.log(`[QuickBooks Payment] Criando pagamento no QuickBooks...`);
             const paymentPayload = {
               TotalAmt: amount,
+              TxnDate: paymentDate.paidAtDate,
               CustomerRef: {
                 value: (qbInvoice as any).CustomerRef.value
               },
@@ -3307,7 +3315,8 @@ export class QuickBooksInvoiceController {
           paymentMethod,
           notes: notes || '',
           amount: amount,
-          createdAt: new Date()
+          createdAt: new Date(),
+          paidAt: paymentDate.paidAt
         }
       });
 
@@ -3318,7 +3327,7 @@ export class QuickBooksInvoiceController {
           status: newStatus,
           checked: true,
           balanceRemaining: balance,
-          lastPaymentAt: new Date(),
+          lastPaymentAt: paymentDate.paidAt,
           updatedAt: new Date()
         },
         include: {
@@ -3334,7 +3343,7 @@ export class QuickBooksInvoiceController {
       await prisma.invoiceTimeline.create({
         data: {
           invoiceId: invoice.id,
-          description: `Payment received via ${paymentMethod} - Amount: $${amount.toFixed(2)}${notes ? ` - Notes: ${notes}` : ''}`,
+          description: `Payment received on ${paymentDate.formattedDate} via ${paymentMethod} - Amount: $${amount.toFixed(2)}${notes ? ` - Notes: ${notes}` : ''}`,
           date_creation: new Date(),
           date_update: new Date()
         }
@@ -3348,7 +3357,7 @@ export class QuickBooksInvoiceController {
             description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(Number(amount)) + " on " + new Date().toLocaleDateString('en-US'),
+            }).format(Number(amount)) + " on " + paymentDate.formattedDate,
             projectId: invoice.project.id
           }
         });
@@ -3359,7 +3368,7 @@ export class QuickBooksInvoiceController {
             description: "Payment invoice #" + invoice.externalInvoiceId + " of " + new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(Number(amount)) + " on " + new Date().toLocaleDateString('en-US'),
+            }).format(Number(amount)) + " on " + paymentDate.formattedDate,
             estimateId: invoice.estimate.id
           }
         });
@@ -3369,7 +3378,7 @@ export class QuickBooksInvoiceController {
       if (newStatus === "paid") {
         try {
           console.log(`[QuickBooks Payment] Invoice totalmente pago. Enviando email de confirmação...`);
-          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount);
+          await this.sendPaymentConfirmationEmailWithPdf(updatedInvoice, paymentMethod, amount, paymentDate.paidAt);
         } catch (emailError) {
           console.error("[QuickBooks Payment] Erro ao enviar email de confirmação:", emailError);
           // Não falhar a requisição se o email falhar
@@ -3395,6 +3404,10 @@ export class QuickBooksInvoiceController {
       });
 
     } catch (error: any) {
+      if (error instanceof InvoicePaymentDateError) {
+        return res.status(400).json({ error: error.message });
+      }
+
       console.error("[QuickBooks Payment] Erro ao registrar pagamento:", error);
 
       // Verificar se é erro de autorização
@@ -3482,7 +3495,7 @@ export class QuickBooksInvoiceController {
   /**
    * Envia email de confirmação de pagamento com PDF
    */
-  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number) {
+  private async sendPaymentConfirmationEmailWithPdf(invoiceData: any, paymentMethod: string, amount: number, paidAt: Date) {
     try {
       console.log(`[QuickBooks Payment] Iniciando envio de email de confirmação para invoice ${invoiceData.id}`);
 
@@ -3543,7 +3556,7 @@ export class QuickBooksInvoiceController {
         }
       }
 
-      const paymentDate = new Date();
+      const paymentDateLabel = formatInvoicePaymentDate(paidAt);
       const emailSubject = `Invoice #${invoiceData.externalInvoiceId} - Payment Confirmation`;
 
       const emailHtml = invoicePaidPaymentEmail(
@@ -3552,7 +3565,7 @@ export class QuickBooksInvoiceController {
         company?.name || '',
         invoiceData.externalInvoiceId || invoiceData.id,
         Number(amount),
-        paymentDate.toISOString(),
+        paidAt.toISOString(),
         paymentMethod,
         undefined,
         company?.phone || '',
@@ -3572,7 +3585,7 @@ We are pleased to confirm that Invoice #${invoiceData.externalInvoiceId} has bee
 Payment Details:
 - Invoice Number: #${invoiceData.externalInvoiceId}
 - Payment Amount: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount))}
-- Payment Date: ${paymentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+- Payment Date: ${paymentDateLabel}
 - Payment Method: ${paymentMethod}
 
 Thank you for your prompt payment. If you have any questions, please feel free to contact us.

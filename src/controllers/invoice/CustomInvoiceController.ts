@@ -7,6 +7,7 @@ import { CreatePdfProjectEstimateInvoiceController } from "../projects/CreatePdf
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import { stripeConfig } from "../../config/stripe";
 import { sendEmail } from "../../utils/sendEmail";
+import { formatInvoicePaymentDate } from "../../utils/invoicePaymentDate";
 
 const stripe = stripeConfig.getClient();
 
@@ -2273,9 +2274,7 @@ export class CustomInvoiceController {
       }).format(Number(invoice.totalAmount));
       const invoiceCode = invoice.externalInvoiceId || invoiceId.substring(0, 8);
       const projectDispName = `Project #${invoice.project?.contract_number || 'N/A'}`;
-      const paymentDateFormatted = (invoice.payment?.createdAt || invoice.updatedAt).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric'
-      });
+      const paymentDateFormatted = formatInvoicePaymentDate(invoice.payment?.paidAt || invoice.payment?.createdAt || invoice.updatedAt);
 
       const emailSubject = customSubject || `Payment Received - Invoice #${invoiceCode} - ${companyName}`;
 
