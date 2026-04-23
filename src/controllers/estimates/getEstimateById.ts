@@ -126,6 +126,9 @@ export class GetEstimateByProjectIdController {
                         }
                     },
                     timelineEvents: {
+                        orderBy: {
+                            date_creation: "asc",
+                        },
                         select: {
                             id: true,
                             description: true,
