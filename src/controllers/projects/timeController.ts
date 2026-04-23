@@ -2,9 +2,115 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { TimeService } from "../../services/TimeService";
 import { getByWorkerIdController } from "../TimeCards/getByWorkerIdController";
+import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 
 const timeService = new TimeService();
 const timeCardsWorkerController = new getByWorkerIdController();
+
+function getAttendanceIdentity(attendance: any) {
+    if (attendance?.id) {
+        return String(attendance.id);
+    }
+
+    const userId = attendance?.user_id || attendance?.user?.id || "unknown-user";
+    const dayKey = getAttendanceDayKey(attendance);
+    const checkIn = attendance?.check_in_time ? new Date(attendance.check_in_time).toISOString() : "null";
+    const checkOut = attendance?.check_out_time ? new Date(attendance.check_out_time).toISOString() : "null";
+
+    return `${userId}|${dayKey}|${checkIn}|${checkOut}`;
+}
+
+function getAttendanceDayKey(attendance: any) {
+    const dateValue = attendance?.date || attendance?.check_in_time;
+
+    if (!dateValue) {
+        return "unknown-date";
+    }
+
+    const parsedDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+        return "unknown-date";
+    }
+
+    return parsedDate.toISOString().slice(0, 10);
+}
+
+function getGrossWorkedHours(attendance: any) {
+    if (!attendance?.check_in_time || !attendance?.check_out_time) {
+        return 0;
+    }
+
+    const hours = calcularHorasTrabalhadas(
+        attendance.check_in_time.toISOString(),
+        attendance.check_out_time.toISOString(),
+        attendance.workStartTime,
+        attendance.workEndTime,
+        0
+    );
+
+    return convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+}
+
+function buildDailyBreakMap(attendances: any[]) {
+    const breakByAttendance = new Map<string, number>();
+    const groupedAttendances = new Map<string, any[]>();
+
+    attendances.forEach(attendance => {
+        const identity = getAttendanceIdentity(attendance);
+        const userId = attendance?.user_id || attendance?.user?.id || "unknown-user";
+        const groupKey = `${userId}|${getAttendanceDayKey(attendance)}`;
+
+        breakByAttendance.set(identity, 0);
+
+        if (!groupedAttendances.has(groupKey)) {
+            groupedAttendances.set(groupKey, []);
+        }
+
+        groupedAttendances.get(groupKey)!.push(attendance);
+    });
+
+    groupedAttendances.forEach(group => {
+        const sortedAttendances = [...group].sort((a, b) =>
+            new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
+        );
+
+        const breakTarget = sortedAttendances.find(attendance => getGrossWorkedHours(attendance) > 0);
+
+        if (!breakTarget) {
+            return;
+        }
+
+        const grossWorkedMinutes = Math.round(getGrossWorkedHours(breakTarget) * 60);
+        const breakMinutesApplied = Math.min(
+            breakTarget?.user?.defaultBreakMinutes || 0,
+            grossWorkedMinutes
+        );
+
+        breakByAttendance.set(getAttendanceIdentity(breakTarget), breakMinutesApplied);
+    });
+
+    return breakByAttendance;
+}
+
+function applyDailyBreakMap(attendances: any[], breakByAttendance: Map<string, number>) {
+    attendances.forEach(attendance => {
+        if (!attendance?.user) {
+            return;
+        }
+
+        const breakMinutes = breakByAttendance.get(getAttendanceIdentity(attendance));
+
+        if (breakMinutes === undefined) {
+            return;
+        }
+
+        attendance.user = {
+            ...attendance.user,
+            defaultBreakMinutes: breakMinutes
+        };
+    });
+}
 
 export class TimeController {
     async findMany(req: Request, res: Response) {
@@ -58,6 +164,9 @@ export class TimeController {
                 },
                 orderBy: { check_in_time: 'desc' }
             });
+
+            const dailyBreakMap = buildDailyBreakMap(allAttendances as any[]);
+            applyDailyBreakMap(allAttendances as any[], dailyBreakMap);
 
             const processed = timeService.calculatePeriodTotals(allAttendances as any);
             const indicators = this.calculateIndicators(processed);
