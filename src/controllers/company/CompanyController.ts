@@ -22,6 +22,49 @@ export class CompanyController {
         deleteFile(`./public/tmp/company/${requestFile}`);
     }
 
+    private async convertBufferToPngBase64(buffer: Buffer, resizeWidth?: number) {
+        const sharp = require("sharp");
+
+        try {
+            let sharpPipeline = sharp(buffer).rotate();
+
+            if (resizeWidth) {
+                sharpPipeline = sharpPipeline.resize(resizeWidth);
+            }
+
+            const pngBuffer = await sharpPipeline
+                .png({ quality: 80 })
+                .toBuffer();
+
+            return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+        } catch (sharpError) {
+            try {
+                const convert = require("heic-convert");
+                const convertedBuffer = await convert({
+                    buffer,
+                    format: "PNG",
+                });
+
+                let finalBuffer = Buffer.from(convertedBuffer);
+
+                if (resizeWidth) {
+                    finalBuffer = await sharp(finalBuffer)
+                        .resize(resizeWidth)
+                        .png({ quality: 80 })
+                        .toBuffer();
+                }
+
+                return `data:image/png;base64,${finalBuffer.toString("base64")}`;
+            } catch (heicError) {
+                console.error("Failed to convert image buffer to PNG", {
+                    sharpError,
+                    heicError,
+                });
+                throw heicError;
+            }
+        }
+    }
+
     async create(req: Request, res: Response) {
         function validateNewUser(data: INewCompany): string | null {
             if (!data.company_name) return "Company name is mandatory";
@@ -851,14 +894,9 @@ export class CompanyController {
                 return res.status(500).json({ error: "Failed to fetch image from S3" });
             }
 
-            // Obter os dados da imagem e converter para base64
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
-
-            // Converter a imagem de WebP para PNG usando Sharp
-            const sharp = require("sharp");
-            const pngBuffer = await sharp(buffer).png().toBuffer();
-            const base64 = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+            const base64 = await this.convertBufferToPngBase64(buffer);
 
             return res.json({ base64 });
         } catch (error) {
@@ -894,6 +932,8 @@ export class CompanyController {
             // Obter os dados da imagem e converter para base64
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
+            const convertedBase64 = await this.convertBufferToPngBase64(buffer, 800);
+            return res.json({ base64: convertedBase64 });
 
             // Converter a imagem de WebP para PNG usando Sharp
             const sharp = require("sharp");
