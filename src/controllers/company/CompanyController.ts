@@ -15,6 +15,8 @@ export class CompanyController {
         this.create = this.create.bind(this);
         this.createFromMaster = this.createFromMaster.bind(this);
         this.deleteFiles = this.deleteFiles.bind(this);
+        this.proxyImage = this.proxyImage.bind(this);
+        this.proxyImageByUri = this.proxyImageByUri.bind(this);
     }
 
     deleteFiles(file: string, requestFile: string | undefined) {
