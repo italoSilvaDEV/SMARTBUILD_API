@@ -59,22 +59,7 @@ export async function sendEmail({
     sgMail.setApiKey(process.env.SENDGRID_KEY);
 
     try {
-        console.log(`[sendEmail] [${contextLabel}] Sending email`, {
-            recipients,
-            templateId: templateId || null,
-            subject: subject || null,
-            from: msg.from,
-            replyTo: replyTo || null,
-            attachmentCount: attachments?.length || 0,
-        });
-
-        const [response] = await sgMail.send(msg);
-
-        console.log(`[sendEmail] [${contextLabel}] Email sent successfully`, {
-            recipients,
-            statusCode: response?.statusCode || null,
-            headers: response?.headers || null,
-        });
+        await sgMail.send(msg);
     } catch (error: any) {
         console.error(`[sendEmail] [${contextLabel}] Error sending email via SendGrid`, {
             recipients,

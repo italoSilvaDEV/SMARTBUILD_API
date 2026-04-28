@@ -866,77 +866,35 @@ export class EstimateController {
       );
       const clientRecipient = project.client?.email || null;
 
-      console.log("[estimate.sign] Approval email flow started", {
-        estimateId: estimate.id,
-        estimateNumber: estimate.number,
-        projectId: project.id,
-        projectContractNumber: project.contract_number || null,
-        approvedByEmail: decodedEmail,
-        sellerUserId: project.seller_user_id || null,
-        sellerEmail: project.user?.email || null,
-        companyId: project.company_id || null,
-        companyEmail: project.company?.email || null,
-        clientEmail: clientRecipient,
-        companyRecipients,
-      });
-
       const emailTasks: Array<Promise<unknown>> = [
         (async () => {
-          if (companyRecipients.length === 0) {
-            console.warn("[estimate.sign] No company recipients resolved for approved estimate email", {
-              estimateId: estimate.id,
-              estimateNumber: estimate.number,
-              projectId: project.id,
-              sellerEmail: project.user?.email || null,
-              companyEmail: project.company?.email || null,
+          if (companyRecipients.length > 0) {
+            await sendEmail({
+              to: companyRecipients,
+              templateId: "d-640a0ff263d24f7b8f53af6581758706",
+              dynamicTemplateData: {
+                ...commonData,
+                recipientName: project?.user?.name || "Team Member",
+                clientName: project.workContext?.Name || project.client?.name || "Customer"
+              },
+              debugContext: `estimate.sign.company.estimate:${estimate.id}`,
+              throwOnError: true,
             });
-            return;
           }
-
-          console.log("[estimate.sign] Sending approved estimate email to company recipients", {
-            estimateId: estimate.id,
-            recipients: companyRecipients,
-            templateId: "d-640a0ff263d24f7b8f53af6581758706",
-          });
-
-          await sendEmail({
-            to: companyRecipients,
-            templateId: "d-640a0ff263d24f7b8f53af6581758706",
-            dynamicTemplateData: {
-              ...commonData,
-              recipientName: project?.user?.name || "Team Member",
-              clientName: project.workContext?.Name || project.client?.name || "Customer"
-            },
-            debugContext: `estimate.sign.company.estimate:${estimate.id}`,
-            throwOnError: true,
-          });
         })(),
         (async () => {
-          if (!clientRecipient) {
-            console.warn("[estimate.sign] No client recipient resolved for approved estimate email", {
-              estimateId: estimate.id,
-              estimateNumber: estimate.number,
-              projectId: project.id,
+          if (clientRecipient) {
+            await sendEmail({
+              to: clientRecipient,
+              templateId: "d-61180196c59a4b599cefc0828aaebdc1",
+              dynamicTemplateData: {
+                ...commonData,
+                recipientName: project.workContext?.Name || project.client?.name || "Customer"
+              },
+              debugContext: `estimate.sign.client.estimate:${estimate.id}`,
+              throwOnError: true,
             });
-            return;
           }
-
-          console.log("[estimate.sign] Sending approved estimate email to client", {
-            estimateId: estimate.id,
-            recipient: clientRecipient,
-            templateId: "d-61180196c59a4b599cefc0828aaebdc1",
-          });
-
-          await sendEmail({
-            to: clientRecipient,
-            templateId: "d-61180196c59a4b599cefc0828aaebdc1",
-            dynamicTemplateData: {
-              ...commonData,
-              recipientName: project.workContext?.Name || project.client?.name || "Customer"
-            },
-            debugContext: `estimate.sign.client.estimate:${estimate.id}`,
-            throwOnError: true,
-          });
         })(),
         EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail)
       ];
@@ -951,11 +909,6 @@ export class EstimateController {
           recipients: companyRecipients,
           error: companyEmailResult.reason,
         });
-      } else {
-        console.log("[estimate.sign] Approved estimate email to company recipients completed", {
-          estimateId: estimate.id,
-          recipients: companyRecipients,
-        });
       }
 
       if (clientEmailResult.status === "rejected") {
@@ -963,11 +916,6 @@ export class EstimateController {
           estimateId: estimate.id,
           recipient: clientRecipient,
           error: clientEmailResult.reason,
-        });
-      } else {
-        console.log("[estimate.sign] Approved estimate email to client completed", {
-          estimateId: estimate.id,
-          recipient: clientRecipient,
         });
       }
 
