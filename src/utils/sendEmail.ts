@@ -15,9 +15,25 @@ interface SendEmailData {
         type: string;
         disposition?: string;
     }>;
+    debugContext?: string;
+    throwOnError?: boolean;
 }
 
-export async function sendEmail({ to, subject, html, text, from, replyTo, templateId, dynamicTemplateData, attachments }: SendEmailData) {
+export async function sendEmail({
+    to,
+    subject,
+    html,
+    text,
+    from,
+    replyTo,
+    templateId,
+    dynamicTemplateData,
+    attachments,
+    debugContext,
+    throwOnError = false,
+}: SendEmailData) {
+    const recipients = Array.isArray(to) ? to : [to];
+    const contextLabel = debugContext || 'sendEmail';
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',
@@ -39,16 +55,40 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, templa
     if (!process.env.SENDGRID_KEY) {
         throw new Error('SENDGRID_KEY not defined');
     }
-    
+
     sgMail.setApiKey(process.env.SENDGRID_KEY);
 
     try {
-        await sgMail.send(msg);
-        console.log(`Email sent to ${to}`);
+        console.log(`[sendEmail] [${contextLabel}] Sending email`, {
+            recipients,
+            templateId: templateId || null,
+            subject: subject || null,
+            from: msg.from,
+            replyTo: replyTo || null,
+            attachmentCount: attachments?.length || 0,
+        });
+
+        const [response] = await sgMail.send(msg);
+
+        console.log(`[sendEmail] [${contextLabel}] Email sent successfully`, {
+            recipients,
+            statusCode: response?.statusCode || null,
+            headers: response?.headers || null,
+        });
     } catch (error: any) {
-        console.error('Error sending email via SendGrid:', error);
+        console.error(`[sendEmail] [${contextLabel}] Error sending email via SendGrid`, {
+            recipients,
+            message: error?.message || null,
+            code: error?.code || null,
+            responseBody: error?.response?.body || null,
+            responseHeaders: error?.response?.headers || null,
+        });
         if (error.response) {
             console.error(error.response.body);
+        }
+
+        if (throwOnError) {
+            throw error;
         }
     }
 }

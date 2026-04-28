@@ -687,6 +687,7 @@ export class EstimateController {
   }
 
   async addSignature(req: Request, res: Response) {
+    const estimateIdForLog = req.params.id;
     try {
       const { id } = req.params;
       const { signature, email } = req.body;
@@ -860,39 +861,122 @@ export class EstimateController {
         })
       };
 
-      await Promise.all([
+      const companyRecipients = Array.from(
+        new Set([project.user?.email, project.company?.email].filter(Boolean) as string[])
+      );
+      const clientRecipient = project.client?.email || null;
+
+      console.log("[estimate.sign] Approval email flow started", {
+        estimateId: estimate.id,
+        estimateNumber: estimate.number,
+        projectId: project.id,
+        projectContractNumber: project.contract_number || null,
+        approvedByEmail: decodedEmail,
+        sellerUserId: project.seller_user_id || null,
+        sellerEmail: project.user?.email || null,
+        companyId: project.company_id || null,
+        companyEmail: project.company?.email || null,
+        clientEmail: clientRecipient,
+        companyRecipients,
+      });
+
+      const emailTasks: Array<Promise<unknown>> = [
         (async () => {
-          // Email para o Dono da Empresa e Company
-          if (project.user?.email || project.company?.email) {
-            await sendEmail({
-              to: [project.user?.email, project.company?.email].filter(Boolean) as string[],
-              templateId: "d-640a0ff263d24f7b8f53af6581758706",
-              dynamicTemplateData: {
-                ...commonData,
-                recipientName: project?.user?.name || "Team Member",
-                clientName: project.workContext?.Name || project.client?.name || "Customer"
-              }
+          if (companyRecipients.length === 0) {
+            console.warn("[estimate.sign] No company recipients resolved for approved estimate email", {
+              estimateId: estimate.id,
+              estimateNumber: estimate.number,
+              projectId: project.id,
+              sellerEmail: project.user?.email || null,
+              companyEmail: project.company?.email || null,
             });
+            return;
           }
+
+          console.log("[estimate.sign] Sending approved estimate email to company recipients", {
+            estimateId: estimate.id,
+            recipients: companyRecipients,
+            templateId: "d-640a0ff263d24f7b8f53af6581758706",
+          });
+
+          await sendEmail({
+            to: companyRecipients,
+            templateId: "d-640a0ff263d24f7b8f53af6581758706",
+            dynamicTemplateData: {
+              ...commonData,
+              recipientName: project?.user?.name || "Team Member",
+              clientName: project.workContext?.Name || project.client?.name || "Customer"
+            },
+            debugContext: `estimate.sign.company.estimate:${estimate.id}`,
+            throwOnError: true,
+          });
         })(),
         (async () => {
-          if (project.client?.email) {
-            await sendEmail({
-              to: project.client.email,
-              templateId: "d-61180196c59a4b599cefc0828aaebdc1",
-              dynamicTemplateData: {
-                ...commonData,
-                recipientName: project.workContext?.Name || project.client?.name || "Customer"
-              }
+          if (!clientRecipient) {
+            console.warn("[estimate.sign] No client recipient resolved for approved estimate email", {
+              estimateId: estimate.id,
+              estimateNumber: estimate.number,
+              projectId: project.id,
             });
+            return;
           }
+
+          console.log("[estimate.sign] Sending approved estimate email to client", {
+            estimateId: estimate.id,
+            recipient: clientRecipient,
+            templateId: "d-61180196c59a4b599cefc0828aaebdc1",
+          });
+
+          await sendEmail({
+            to: clientRecipient,
+            templateId: "d-61180196c59a4b599cefc0828aaebdc1",
+            dynamicTemplateData: {
+              ...commonData,
+              recipientName: project.workContext?.Name || project.client?.name || "Customer"
+            },
+            debugContext: `estimate.sign.client.estimate:${estimate.id}`,
+            throwOnError: true,
+          });
         })(),
         EstimateController.addTimelineEvent(estimate.id, "Approved by client email: " + decodedEmail)
-      ]);
+      ];
+
+      const emailResults = await Promise.allSettled(emailTasks);
+      const companyEmailResult = emailResults[0];
+      const clientEmailResult = emailResults[1];
+
+      if (companyEmailResult.status === "rejected") {
+        console.error("[estimate.sign] Failed to send approved estimate email to company recipients", {
+          estimateId: estimate.id,
+          recipients: companyRecipients,
+          error: companyEmailResult.reason,
+        });
+      } else {
+        console.log("[estimate.sign] Approved estimate email to company recipients completed", {
+          estimateId: estimate.id,
+          recipients: companyRecipients,
+        });
+      }
+
+      if (clientEmailResult.status === "rejected") {
+        console.error("[estimate.sign] Failed to send approved estimate email to client", {
+          estimateId: estimate.id,
+          recipient: clientRecipient,
+          error: clientEmailResult.reason,
+        });
+      } else {
+        console.log("[estimate.sign] Approved estimate email to client completed", {
+          estimateId: estimate.id,
+          recipient: clientRecipient,
+        });
+      }
 
       return res.json(estimate);
     } catch (error) {
-      console.error(error);
+      console.error("[estimate.sign] Failed to add signature to estimate", {
+        estimateId: estimateIdForLog,
+        error,
+      });
       return res.status(500).json({ error: "Failed to add signature to estimate" });
     }
   }
