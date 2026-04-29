@@ -4,7 +4,6 @@ import { SocketService } from './services/SocketService';
 import { router } from './routes/routes';
 import path from 'path';
 import dotenv from 'dotenv';
-import { setupWebhook } from './config/stripeWebHook';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
 // setupConnectWebhook is now deprecated - setupWebhook() handles all webhooks
@@ -63,7 +62,6 @@ app.use('/api/audits', auditRoutes);
 app.use(express.static('public'));
 
 (async () => {
-  await setupWebhook();
   // Note: Extra Employee config is created on-demand when first accessed
   // setupAttendanceJobs();
   setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
