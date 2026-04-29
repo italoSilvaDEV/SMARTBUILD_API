@@ -39,7 +39,7 @@ export async function setupWebhook() {
 
     // Passo 1: Buscar todos os webhooks existentes no Stripe
     console.log("\n[1] Buscando webhooks existentes no Stripe...");
-    const existingStripeWebhooks = await stripe.webhookEndpoints.list();
+    const existingStripeWebhooks = await stripe.webhookEndpoints.list({ limit: 100 });
     console.log(`    Encontrados ${existingStripeWebhooks.data.length} webhook(s) no Stripe`);
 
     // Passo 2: Remover todos os webhooks do Stripe
@@ -117,6 +117,7 @@ export async function setupWebhook() {
     console.log("===========================================");
   } catch (err) {
     console.error("Erro ao configurar webhooks:", err);
+    throw err;
   }
 }
 
