@@ -43,6 +43,9 @@ export class UpdateEstimateFieldsController {
             },
             include: {
                 serviceProjects: {
+                    orderBy: {
+                        date_creation: "asc",
+                    },
                     select: {
                         quantity: true,
                         unitPrice: true,

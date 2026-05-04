@@ -111,6 +111,9 @@ export class GetEstimateByProjectIdController {
                         },
                     },
                     serviceProjects: {
+                        orderBy: {
+                            date_creation: "asc",
+                        },
                         select: {
                             id: true,
                             name: true,

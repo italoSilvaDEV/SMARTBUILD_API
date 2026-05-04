@@ -38,6 +38,9 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
         },
       },
       serviceProjects: {
+        orderBy: {
+          date_creation: "asc",
+        },
         select: {
           id: true,
           name: true,

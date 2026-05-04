@@ -122,6 +122,9 @@ export class CreateNewEstimateController {
                             where: {
                                 projectId: payloadCreateEstimate.projectId
                             },
+                            orderBy: {
+                                date_creation: "asc",
+                            },
                             select: {
                                 id: true,
                                 name: true,

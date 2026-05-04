@@ -20,6 +20,9 @@ export class ConvertToProjectController {
             select: {
                 projectId: true,
                 serviceProjects: {
+                    orderBy: {
+                        date_creation: "asc",
+                    },
                     select: {
                         id: true,
                         name: true,

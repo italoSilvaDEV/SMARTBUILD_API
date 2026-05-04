@@ -250,6 +250,9 @@ export class GetAllEstimatesByCompanyController {
                         },
                     },
                     serviceProjects: {
+                        orderBy: {
+                            date_creation: "asc",
+                        },
                         select: {
                             id: true,
                             name: true,
