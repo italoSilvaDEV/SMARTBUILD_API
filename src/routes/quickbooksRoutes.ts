@@ -6,6 +6,7 @@ import { SyncPreferencesController } from "../controllers/quickbooks/syncPrefere
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
+import { QuickBooksProjectInboundController } from "../controllers/quickbooks/project/QuickBooksProjectInboundController";
 import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
 import { QuickBooksProjectOutboundController } from "../controllers/quickbooks/project/QuickBooksProjectOutboundController";
 
@@ -16,6 +17,7 @@ const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
+const quickBooksProjectInboundController = new QuickBooksProjectInboundController();
 const quickBooksProjectController = new QuickBooksProjectController();
 const qbProjectOutbound = new QuickBooksProjectOutboundController();
 
@@ -127,6 +129,11 @@ quickbooksRoutes.delete(
 );
 
 quickbooksRoutes.get("/clients/sync/:companyId/:userId", checkToken, quickbooksClientController.syncClients);
+quickbooksRoutes.get(
+  "/projects/sync/:companyId/:userId",
+  checkToken,
+  quickBooksProjectInboundController.syncProjects.bind(quickBooksProjectInboundController)
+);
 quickbooksRoutes.get(
   "/quickbooks/projects/:userId/:companyId",
   checkToken,

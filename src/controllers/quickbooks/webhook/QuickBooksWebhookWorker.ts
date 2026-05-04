@@ -1,4 +1,4 @@
-// src/controllers/quickbooks/webhook/QuickBooksWebhookWorker.ts
+﻿// src/controllers/quickbooks/webhook/QuickBooksWebhookWorker.ts
 import QuickBooks from "node-quickbooks";
 import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
@@ -8,26 +8,31 @@ import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { jsonSafe } from "../customer/quickbooksHelpers";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
+import {
+  logProjectDeleteEvent,
+  PROJECT_SYNC_ENTITY,
+  upsertProjectFromQBO,
+} from "../project/quickbooksProjectHelpers";
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 
 // helper no topo do arquivo (ou antes do uso)
 export function extractCustomer(data: any) {
-  // 1) Resposta clássica do node-quickbooks para getCustomer
+  // 1) Resposta clÃ¡ssica do node-quickbooks para getCustomer
   if (data?.Customer) return data.Customer;
   // 2) Resposta de consulta (query)
   if (data?.QueryResponse?.Customer?.[0]) return data.QueryResponse.Customer[0];
-  // 3) Alguns ambientes já retornam o próprio Customer "achatado"
+  // 3) Alguns ambientes jÃ¡ retornam o prÃ³prio Customer "achatado"
   if (data && typeof data === "object" && data.Id && data.DisplayName) return data;
   return null;
 }
 
 /**
- * ETAPA 4: Função de derivação de status QBO
- * QuickBooks é a fonte de verdade - sempre usar os dados vindos do QBO
+ * ETAPA 4: FunÃ§Ã£o de derivaÃ§Ã£o de status QBO
+ * QuickBooks Ã© a fonte de verdade - sempre usar os dados vindos do QBO
  */
 export function deriveQboInvoiceStatus(qbInvoice: any): "void" | "paid" | "partial" | "open" {
-  // 1. Verificar se está cancelado
+  // 1. Verificar se estÃ¡ cancelado
   if (qbInvoice.TxnStatus === "Voided") {
     return "void";
   }
@@ -64,13 +69,13 @@ export class QuickBooksWebhookWorker {
         continue;
       }
 
-      // Verificar se a conta está desabilitada
+      // Verificar se a conta estÃ¡ desabilitada
       if (account.isDisabled) {
         console.log(`[QBO Webhook] Conta QuickBooks desabilitada para realmId=${realmId}, ignorando webhook`);
         continue;
       }
 
-      // Garanta token válido
+      // Garanta token vÃ¡lido
       const qb = await this.getQBForAccount(account);
 
       // Descubra a company_id para salvar no Client
@@ -86,48 +91,92 @@ export class QuickBooksWebhookWorker {
         continue;
       }
 
-      // Filtre somente Customer events 
       const customerEvents = entities.filter((e: any) => e.name?.toLowerCase() === "customer");
-      
-      //  Validação de sincronização APENAS para Customer events
+
       if (customerEvents.length > 0) {
-        const syncEnabled = await this.isSyncEnabledForCompany(companyId, account.user_id);
-        if (!syncEnabled) {
-          console.log(`[QBO Webhook] Sincronização de customers desabilitada para company=${companyId} user=${account.user_id}`);
-          // Continue para processar outros eventos (Invoice, Payment)
+        const customerSyncEnabled = await this.isSyncEnabledForEntity(
+          companyId,
+          account.user_id,
+          "customers"
+        );
+        const projectSyncEnabled = await this.isSyncEnabledForEntity(
+          companyId,
+          account.user_id,
+          PROJECT_SYNC_ENTITY
+        );
+
+        if (!customerSyncEnabled && !projectSyncEnabled) {
+          console.log(
+            `[QBO Webhook] Sincronização de customers/projects desabilitada para company=${companyId} user=${account.user_id}`
+          );
         } else {
-          // Processar customer events apenas se sincronização estiver habilitada
           for (const evt of customerEvents) {
             const id = evt.id;
-            const op = (evt.operation || "").toLowerCase(); // create | update | delete | merge ...
+            const op = (evt.operation || "").toLowerCase();
 
             try {
               if (op === "delete") {
-                // QBO marca como inativo; se quiser, sincronize um flag local
-                await this.handleDeleteCustomer(companyId, id);
+                const localProject = projectSyncEnabled
+                  ? await prisma.project.findFirst({
+                      where: {
+                        company_id: companyId,
+                        quickbooksCustomerId: id,
+                      },
+                      select: { id: true },
+                    })
+                  : null;
+
+                if (localProject) {
+                  await logProjectDeleteEvent({
+                    companyId,
+                    qboProjectCustomerId: id,
+                    projectId: localProject.id,
+                    source: "webhook",
+                  });
+                } else if (customerSyncEnabled) {
+                  await this.handleDeleteCustomer(companyId, id);
+                }
                 continue;
               }
 
-          // Para create/update/merge: busque o Customer completo
-          const current: any = await limiter.schedule(
-            () =>
-              new Promise((resolve, reject) => {
-                qb.getCustomer(id, (err: any, data: any) => (err ? reject(err) : resolve(data)));
-              })
-          );
-          
-          // O SDK às vezes retorna em formatos diferentes
-          const qbCustomer = extractCustomer(current);
-          
-          if (!qbCustomer) {
-            console.warn(
-              "[QBO Webhook] Customer não encontrado ao buscar detalhes:",
-              id,
-              "shape:", JSON.stringify(Object.keys(current || {}))
-            );
-            continue;
-          }
- 
+              const current: any = await limiter.schedule(
+                () =>
+                  new Promise((resolve, reject) => {
+                    qb.getCustomer(id, (err: any, data: any) => (err ? reject(err) : resolve(data)));
+                  })
+              );
+
+              const qbCustomer = extractCustomer(current);
+
+              if (!qbCustomer) {
+                console.warn(
+                  "[QBO Webhook] Customer não encontrado ao buscar detalhes:",
+                  id,
+                  "shape:",
+                  JSON.stringify(Object.keys(current || {}))
+                );
+                continue;
+              }
+
+              const isProjectJob = qbCustomer.Job === true || !!qbCustomer.ParentRef;
+
+              if (isProjectJob) {
+                if (!projectSyncEnabled) {
+                  continue;
+                }
+
+                await upsertProjectFromQBO({
+                  companyId,
+                  qbCustomer,
+                  source: "webhook",
+                });
+                continue;
+              }
+
+              if (!customerSyncEnabled) {
+                continue;
+              }
+
               await this.upsertCustomerFromQBO(companyId, qbCustomer);
             } catch (e: any) {
               console.error("[QBO Webhook] erro entity:", id, e?.message || e);
@@ -231,7 +280,7 @@ export class QuickBooksWebhookWorker {
       if (!r.success) throw new Error("Falha ao renovar token: " + r.error);
       // re-carrega
       acc = await prisma.quickBooksAccount.findUnique({ where: { id: acc.id } });
-      if (!acc) throw new Error("Conta QuickBooks não encontrada após refresh");
+      if (!acc) throw new Error("Conta QuickBooks nÃ£o encontrada apÃ³s refresh");
     }
 
     const QB_CLIENT_ID = process.env.QUICKBOOKS_CLIENT_ID;
@@ -243,7 +292,7 @@ export class QuickBooksWebhookWorker {
       acc.accessToken,
       false,
       acc.realmId,
-      process.env.QUICKBOOKS_ENVIRONMENT !== 'production',   // Use sandbox apenas se não for produção
+      process.env.QUICKBOOKS_ENVIRONMENT !== 'production',   // Use sandbox apenas se nÃ£o for produÃ§Ã£o
       true,   // new api
       null,
       "2.0",
@@ -286,7 +335,7 @@ export class QuickBooksWebhookWorker {
     });
 
     if (byId) {
-      // só atualiza se o remoto for mais novo que nosso espelho
+      // sÃ³ atualiza se o remoto for mais novo que nosso espelho
       const lastSeenRemote = byId.quickbooksUpdatedAt ?? new Date(0);
       if (qbUpdatedAt && qbUpdatedAt > lastSeenRemote) {
         const data = mapFromQb(byId);
@@ -302,7 +351,7 @@ export class QuickBooksWebhookWorker {
       return;
     }
 
-    // 2) Não temos idQuickbooks local — tente achar por e-mail
+    // 2) NÃ£o temos idQuickbooks local â€” tente achar por e-mail
     if (!emailFromQb) {
       await createSyncLog({
         entity: "customers",
@@ -344,8 +393,8 @@ export class QuickBooksWebhookWorker {
   }
 
   private static async handleDeleteCustomer(companyId: string, qbId: string) {
-    // QBO não hard-deleta; a operação vem como Delete. Você pode marcar localmente (ex.: flag “inactive”).
-    // Aqui, só logamos.
+    // QBO nÃ£o hard-deleta; a operaÃ§Ã£o vem como Delete. VocÃª pode marcar localmente (ex.: flag â€œinactiveâ€).
+    // Aqui, sÃ³ logamos.
     await createSyncLog({
       entity: "customers",
       action: "WebhookDelete",
@@ -355,27 +404,31 @@ export class QuickBooksWebhookWorker {
     });
   }
 
-  // Função helper para verificar se a sincronização está habilitada para uma empresa
-  private static async isSyncEnabledForCompany(companyId: string, userId: string): Promise<boolean> {
+  // Função helper para verificar se a sincronização está habilitada para uma entidade
+  private static async isSyncEnabledForEntity(
+    companyId: string,
+    userId: string,
+    entity: string
+  ): Promise<boolean> {
     try {
       const syncPreference = await prisma.syncPreferences.findFirst({
         where: {
           companyId,
           userId,
-          typesEntity: 'customers',
+          typesEntity: entity as any,
           isDisable: false
         }
       });
       
       return !!syncPreference;
     } catch (error) {
-      console.error("[isSyncEnabledForCompany] Erro ao verificar preferências:", error);
+      console.error("[isSyncEnabledForEntity] Erro ao verificar preferências:", error);
       return false;
     }
   }
 
   /**
-   * Processar evento de Invoice (criação, atualização, deleção)
+   * Processar evento de Invoice (criaÃ§Ã£o, atualizaÃ§Ã£o, deleÃ§Ã£o)
    */
   private static async handleInvoiceEvent(
     companyId: string,
@@ -413,7 +466,7 @@ export class QuickBooksWebhookWorker {
       });
 
       if (!localInvoice) {
-        console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} não encontrado localmente, ignorando evento`);
+        console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} nÃ£o encontrado localmente, ignorando evento`);
         await createSyncLog({
           entity: "invoices",
           action: "WebhookSkipped",
@@ -430,14 +483,14 @@ export class QuickBooksWebhookWorker {
       const totalPaid = totalAmt - balance;
       const oldStatus = localInvoice.status;
 
-      //  Verificar se é um cancelamento ANTES de derivar o status
-      // O QuickBooks pode não retornar TxnStatus="Voided" em algumas respostas, mas o operation será "void"
+      //  Verificar se Ã© um cancelamento ANTES de derivar o status
+      // O QuickBooks pode nÃ£o retornar TxnStatus="Voided" em algumas respostas, mas o operation serÃ¡ "void"
       const isVoidOperation = operation === "void" || 
                              qbInvoice.TxnStatus === "Voided" || 
                              (qbInvoice.PrivateNote && qbInvoice.PrivateNote.includes("Voided"));
 
-      //  Usar função de derivação de status 
-      // Mas se for operação de void, forçar o status para "void"
+      //  Usar funÃ§Ã£o de derivaÃ§Ã£o de status 
+      // Mas se for operaÃ§Ã£o de void, forÃ§ar o status para "void"
       let newStatus: "void" | "paid" | "partial" | "open";
       if (isVoidOperation) {
         newStatus = "void";
@@ -446,35 +499,35 @@ export class QuickBooksWebhookWorker {
         newStatus = deriveQboInvoiceStatus(qbInvoice);
       }
 
-      console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} - Status: ${oldStatus} → ${newStatus}, Total: ${totalAmt}, Balance: ${balance}, Paid: ${totalPaid}`);
+      console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} - Status: ${oldStatus} â†’ ${newStatus}, Total: ${totalAmt}, Balance: ${balance}, Paid: ${totalPaid}`);
 
-      //  Se o invoice está void, SEMPRE preservar o valor original no banco local
+      //  Se o invoice estÃ¡ void, SEMPRE preservar o valor original no banco local
       const localAmount = Number(localInvoice.totalAmount);
       const shouldPreserveAmount = newStatus === "void" && localAmount > 0 && totalAmt === 0;
 
       // Determinar qual valor usar para totalAmount
       let finalTotalAmount = totalAmt;
       if (shouldPreserveAmount) {
-        // Manter o valor original quando está cancelado
+        // Manter o valor original quando estÃ¡ cancelado
         finalTotalAmount = localAmount;
-        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} está void - preservando valor original: $${finalTotalAmount} (QBO retornou: $${totalAmt})`);
+        console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} estÃ¡ void - preservando valor original: $${finalTotalAmount} (QBO retornou: $${totalAmt})`);
       } else if (newStatus === "void" && localAmount > 0) {
-        // Se já estava void e temos valor local, manter o valor local
+        // Se jÃ¡ estava void e temos valor local, manter o valor local
         finalTotalAmount = localAmount;
         console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} mantendo valor void existente: $${finalTotalAmount}`);
       }
 
-      // ETAPA 7: Detectar alteração de valor após pagamento
+      // ETAPA 7: Detectar alteraÃ§Ã£o de valor apÃ³s pagamento
       let amountChanged = localInvoice.amountChangedAfterPayment;
       let timelineMessage = `QuickBooks webhook: Invoice ${operation} - Status changed from ${oldStatus} to ${newStatus}`;
 
       if ((oldStatus === "paid" || oldStatus === "partial") && totalAmt !== Number(localInvoice.totalAmount)) {
         amountChanged = true;
-        timelineMessage = `QuickBooks updated invoice amount after payment (${localInvoice.totalAmount} → ${totalAmt})`;
+        timelineMessage = `QuickBooks updated invoice amount after payment (${localInvoice.totalAmount} â†’ ${totalAmt})`;
         console.log(`[QBO Webhook]  Invoice ${qbInvoice.Id} amount changed after payment!`);
       }
 
-      // Se foi cancelado, adicionar mensagem específica na timeline
+      // Se foi cancelado, adicionar mensagem especÃ­fica na timeline
       if (isVoidOperation && oldStatus !== "void") {
         timelineMessage = `Invoice voided in QuickBooks (original amount preserved: $${finalTotalAmount})`;
       }
@@ -487,7 +540,7 @@ export class QuickBooksWebhookWorker {
           checked: true,
           totalAmount: finalTotalAmount, // Usar valor preservado se foi cancelado
           balanceRemaining: isVoidOperation ? 0 : balance, // Se void, balance deve ser 0
-          totalAmountPaidQbo: isVoidOperation ? 0 : totalPaid, // Se void, não há pagamento
+          totalAmountPaidQbo: isVoidOperation ? 0 : totalPaid, // Se void, nÃ£o hÃ¡ pagamento
           amountChangedAfterPayment: amountChanged,
           docNumberQuickBooksContabio: qbInvoice.DocNumber || localInvoice.docNumberQuickBooksContabio,
           updatedAt: new Date()
@@ -502,7 +555,7 @@ export class QuickBooksWebhookWorker {
         }
       });
 
-      // Log de sincronização
+      // Log de sincronizaÃ§Ã£o
       await createSyncLog({
         entity: "invoices",
         action: "UpdatedFromWebhook",
@@ -517,7 +570,7 @@ export class QuickBooksWebhookWorker {
         }),
       });
 
-      // Se operation = "payment_applied", sempre enviar emails (cada pagamento deve gerar notificação)
+      // Se operation = "payment_applied", sempre enviar emails (cada pagamento deve gerar notificaÃ§Ã£o)
       if (operation === "payment_applied") {
         // Recarregar invoice com relacionamentos completos para envio de email
         const invoiceWithRelations = await prisma.invoice.findUnique({
@@ -542,14 +595,14 @@ export class QuickBooksWebhookWorker {
         });
 
         if (!invoiceWithRelations) {
-          console.warn(`[QBO Webhook] Não foi possível recarregar invoice ${localInvoice.id} para envio de email`);
+          console.warn(`[QBO Webhook] NÃ£o foi possÃ­vel recarregar invoice ${localInvoice.id} para envio de email`);
           return;
         }
 
         if (newStatus === "paid") {
           console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} foi pago completamente, enviando emails com PDF...`);
           
-          // Enviar emails de confirmação COM PDF (similar ao Stripe)
+          // Enviar emails de confirmaÃ§Ã£o COM PDF (similar ao Stripe)
           await this.sendQuickBooksFullPaymentEmailWithPdf(invoiceWithRelations, qbInvoice);
         } else if (newStatus === "partial") {
           console.log(`[QBO Webhook] Invoice ${qbInvoice.Id} recebeu pagamento parcial, enviando emails...`);
@@ -579,7 +632,7 @@ export class QuickBooksWebhookWorker {
     try {
       console.log(`[QBO Webhook] Processando payment ${qbPayment.Id} - Operation: ${operation}`);
 
-      // ETAPA 5.1: Verificar se já existe PaymentTransaction (idempotência)
+      // ETAPA 5.1: Verificar se jÃ¡ existe PaymentTransaction (idempotÃªncia)
       const existingPayment = await prisma.paymentTransaction.findFirst({
         where: {
           provider: "qbo",
@@ -592,7 +645,7 @@ export class QuickBooksWebhookWorker {
       });
 
       if (existingPayment) {
-        console.log(`[QBO Webhook] Payment ${qbPayment.Id} já processado anteriormente para company ${companyId}, pulando`);
+        console.log(`[QBO Webhook] Payment ${qbPayment.Id} jÃ¡ processado anteriormente para company ${companyId}, pulando`);
         return;
       }
 
@@ -633,7 +686,7 @@ export class QuickBooksWebhookWorker {
               });
 
               if (!localInvoice) {
-                console.warn(`[QBO Webhook] Invoice ${qboInvoiceId} não encontrado localmente`);
+                console.warn(`[QBO Webhook] Invoice ${qboInvoiceId} nÃ£o encontrado localmente`);
                 continue;
               }
 
@@ -657,14 +710,14 @@ export class QuickBooksWebhookWorker {
                 }
               });
 
-              // Criar entrada no InvoicePaymentTimeLine para o histórico de pagamentos
+              // Criar entrada no InvoicePaymentTimeLine para o histÃ³rico de pagamentos
               if (updatedInvoice.type_invoicebase === "project" && updatedInvoice.projectId) {
                 const paymentDateUTC = paymentTransaction.txnDate || new Date();
                 const paymentDate = paymentDateUTC.toLocaleDateString('en-US', {
                   timeZone: 'America/New_York'
                 });
 
-                // Verificar se é pagamento parcial ou total
+                // Verificar se Ã© pagamento parcial ou total
                 const invoiceTotalAmount = Number(updatedInvoice.totalAmount || 0);
                 const isPartialPayment = amountApplied < invoiceTotalAmount;
 
@@ -707,7 +760,7 @@ export class QuickBooksWebhookWorker {
                 const qbInvoice = invoiceData?.Invoice || invoiceData;
 
                 if (qbInvoice && qbInvoice.Id) {
-                  // Processar o invoice como se fosse um evento de atualização
+                  // Processar o invoice como se fosse um evento de atualizaÃ§Ã£o
                   await this.handleInvoiceEvent(companyId, userId, qbInvoice, "payment_applied", qb);
                 }
 
@@ -719,7 +772,7 @@ export class QuickBooksWebhookWorker {
         }
       }
 
-      // Log de sincronização do payment
+      // Log de sincronizaÃ§Ã£o do payment
       await createSyncLog({
         entity: "payments",
         action: "ProcessedFromWebhook",
@@ -750,7 +803,7 @@ export class QuickBooksWebhookWorker {
       console.log("[QBO Webhook] Iniciando envio de emails de pagamento parcial QuickBooks");
 
       if (!invoice.company?.name) {
-        console.error("[QBO Webhook] Nome da empresa não encontrado, cancelando envio de emails");
+        console.error("[QBO Webhook] Nome da empresa nÃ£o encontrado, cancelando envio de emails");
         return;
       }
 
@@ -765,7 +818,7 @@ export class QuickBooksWebhookWorker {
 
       const recipients = [];
 
-      // Obter email do destinatário
+      // Obter email do destinatÃ¡rio
       const workContext = invoice.project?.workContext;
       const client = invoice.project?.client;
       
@@ -799,11 +852,11 @@ export class QuickBooksWebhookWorker {
         });
       }
 
-      // Email da empresa (usando template melhorado com histórico)
+      // Email da empresa (usando template melhorado com histÃ³rico)
       if (invoice.company?.email) {
         const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
         
-        // Buscar histórico de pagamentos do QBO
+        // Buscar histÃ³rico de pagamentos do QBO
         const paymentHistory = await prisma.paymentTransaction.findMany({
           where: {
             applications: {
@@ -824,7 +877,7 @@ export class QuickBooksWebhookWorker {
           }
         });
 
-        // Formatar histórico para o template
+        // Formatar histÃ³rico para o template
         const formattedHistory = paymentHistory.map(payment => ({
           date: payment.txnDate 
             ? new Date(payment.txnDate).toLocaleDateString('en-US', { 
@@ -849,7 +902,7 @@ export class QuickBooksWebhookWorker {
           formattedPartial,
           clientName || 'Client',
           invoice.project?.contract_number || undefined,
-          formattedHistory.length > 1 ? formattedHistory : undefined, // Só mostrar histórico se houver múltiplos pagamentos
+          formattedHistory.length > 1 ? formattedHistory : undefined, // SÃ³ mostrar histÃ³rico se houver mÃºltiplos pagamentos
           formattedBalance,
           formattedTotal
         );
@@ -862,7 +915,7 @@ export class QuickBooksWebhookWorker {
         });
       }
 
-      console.log(`[QBO Webhook] Enviando para ${recipients.length} destinatários (pagamento parcial)`);
+      console.log(`[QBO Webhook] Enviando para ${recipients.length} destinatÃ¡rios (pagamento parcial)`);
 
       // Enviar emails
       for (const recipient of recipients) {
@@ -905,15 +958,15 @@ export class QuickBooksWebhookWorker {
   }
 
   /**
-   * Enviar emails de confirmação de pagamento QuickBooks (cliente + empresa)
+   * Enviar emails de confirmaÃ§Ã£o de pagamento QuickBooks (cliente + empresa)
    */
   private static async sendQuickBooksPaymentConfirmationEmails(invoice: any, qbInvoice: any) {
     try {
-      console.log("[QBO Webhook] Iniciando envio de emails de confirmação de pagamento QuickBooks");
+      console.log("[QBO Webhook] Iniciando envio de emails de confirmaÃ§Ã£o de pagamento QuickBooks");
 
-      // Verificar dados obrigatórios
+      // Verificar dados obrigatÃ³rios
       if (!invoice.company?.name) {
-        console.error("[QBO Webhook] Nome da empresa não encontrado, cancelando envio de emails");
+        console.error("[QBO Webhook] Nome da empresa nÃ£o encontrado, cancelando envio de emails");
         return;
       }
 
@@ -923,7 +976,7 @@ export class QuickBooksWebhookWorker {
 
       const recipients = [];
 
-      // Obter email do destinatário: prioridade work context, fallback client
+      // Obter email do destinatÃ¡rio: prioridade work context, fallback client
       const workContext = invoice.project?.workContext;
       const client = invoice.project?.client;
       
@@ -974,7 +1027,7 @@ export class QuickBooksWebhookWorker {
         });
       }
 
-      console.log(`[QBO Webhook] Enviando para ${recipients.length} destinatários:`, recipients.map(r => `${r.email} (${r.type})`));
+      console.log(`[QBO Webhook] Enviando para ${recipients.length} destinatÃ¡rios:`, recipients.map(r => `${r.email} (${r.type})`));
 
       // Enviar emails
       for (const recipient of recipients) {
@@ -1014,7 +1067,7 @@ export class QuickBooksWebhookWorker {
 
     } catch (error: any) {
       console.error("[QBO Webhook] Erro geral ao enviar emails:", error.message);
-      // Não fazer throw para não interromper o processamento do webhook
+      // NÃ£o fazer throw para nÃ£o interromper o processamento do webhook
     }
   }
 
@@ -1028,7 +1081,7 @@ export class QuickBooksWebhookWorker {
       const company = invoice.company;
       const workContext = project?.workContext;
 
-      // Usar email do work context se disponível, senão usar email do cliente
+      // Usar email do work context se disponÃ­vel, senÃ£o usar email do cliente
       const recipientEmail = workContext?.Email || client?.email;
       const recipientName = workContext?.Name || client?.name || 'Client';
 
@@ -1037,7 +1090,7 @@ export class QuickBooksWebhookWorker {
         return;
       }
 
-      // Buscar o PDF de invoice pago (opcional - pode não existir)
+      // Buscar o PDF de invoice pago (opcional - pode nÃ£o existir)
       const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
         where: {
           invoiceId: invoice.id
@@ -1070,7 +1123,7 @@ export class QuickBooksWebhookWorker {
           // Continua sem o PDF anexado
         }
       } else {
-        console.log("[QBO Webhook] PDF invoice paid não encontrado, enviando email sem anexo");
+        console.log("[QBO Webhook] PDF invoice paid nÃ£o encontrado, enviando email sem anexo");
       }
 
       const paymentDate = new Date();
@@ -1128,12 +1181,12 @@ ${company?.name || ''}
         }
       });
 
-      // Também enviar email para a empresa (notificação de pagamento completo com histórico)
+      // TambÃ©m enviar email para a empresa (notificaÃ§Ã£o de pagamento completo com histÃ³rico)
       if (company?.email) {
         try {
           const { quickBooksPaymentNotificationCompany } = require("../../../templateEmail/quickBooksPaymentNotificationCompany");
           
-          // Buscar histórico de pagamentos do QBO
+          // Buscar histÃ³rico de pagamentos do QBO
           const paymentHistory = await prisma.paymentTransaction.findMany({
             where: {
               applications: {
@@ -1154,7 +1207,7 @@ ${company?.name || ''}
             }
           });
 
-          // Formatar histórico para o template
+          // Formatar histÃ³rico para o template
           const formattedHistory = paymentHistory.map(payment => ({
             date: payment.txnDate 
               ? new Date(payment.txnDate).toLocaleDateString('en-US', { 
@@ -1179,7 +1232,7 @@ ${company?.name || ''}
             formattedAmount,
             recipientName || 'Client',
             project?.contract_number || undefined,
-            formattedHistory.length > 1 ? formattedHistory : undefined // Só mostrar histórico se houver múltiplos pagamentos
+            formattedHistory.length > 1 ? formattedHistory : undefined // SÃ³ mostrar histÃ³rico se houver mÃºltiplos pagamentos
           );
 
           await sendEmail({
@@ -1188,7 +1241,7 @@ ${company?.name || ''}
             html: companyTemplate,
           });
 
-          console.log(`[QBO Webhook] Email de notificação enviado para empresa ${company.email}`);
+          console.log(`[QBO Webhook] Email de notificaÃ§Ã£o enviado para empresa ${company.email}`);
 
           await prisma.invoiceEmailLog.create({
             data: {
@@ -1205,7 +1258,8 @@ ${company?.name || ''}
 
     } catch (error: any) {
       console.error("[QBO Webhook] Erro ao enviar email com PDF:", error.message);
-      // Não fazer throw para não interromper o fluxo principal
+      // NÃ£o fazer throw para nÃ£o interromper o fluxo principal
     }
   }
 }
+

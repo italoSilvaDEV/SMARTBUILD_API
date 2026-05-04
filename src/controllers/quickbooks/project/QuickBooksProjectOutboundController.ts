@@ -1,18 +1,38 @@
 import { Request, Response } from "express";
 import { AxiosError, AxiosInstance } from "axios";
+import Bottleneck from "bottleneck";
 import { prisma } from "../../../utils/prisma";
+import { getQbClientOrThrow } from "../util/QuickBooksClientUtil";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
-import { jsonSafe } from "../customer/quickbooksHelpers";
+import { deepEqual, jsonSafe } from "../customer/quickbooksHelpers";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 import { isDuplicateNameError } from "../util/uniqueDisplayName";
+import { extractCustomer } from "../webhook/QuickBooksWebhookWorker";
+import {
+  buildProjectDisplayName,
+  buildProjectKey,
+  buildProjectLogDetails,
+  buildProjectPayloadForQbo,
+  normalizeLocalProjectForQbo,
+  normalizeQboProjectForCompare,
+  parseQboUpdatedAt,
+  PROJECT_SYNC_ENTITY,
+} from "./quickbooksProjectHelpers";
 
 const BATCH_SIZE_TRY = 30;
 const BATCH_SIZE_FALLBACK = 10;
 const BATCH_PAUSE_MS = 1500;
 const MAX_RETRIES = 3;
 const JOBS_PAGE_SIZE = 1000;
+const QBO_COOLDOWN_MS = 5000;
+const MIN_DELTA_MS = 1000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const limiter = new Bottleneck({
+  maxConcurrent: 1,
+  minTime: 1100,
+});
 
 type ProjectWithClient = {
   id: string;
@@ -21,9 +41,41 @@ type ProjectWithClient = {
   quickbooksCustomerId: string | null;
   quickbooksSyncToken: string | null;
   quickbooksUpdatedAt: Date | null;
+  status_project: string;
+  price: any;
+  amountPaid: any;
+  balanceDue: any;
+  start_date: string | null;
+  deadline: string | null;
+  date_update: Date;
+  location: string | null;
+  lat: string | null;
+  log: string | null;
+  radius: number | null;
   client: {
     id: string;
     idQuickbooks: string | null;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    city_and_state: string | null;
+    location: string | null;
+  } | null;
+  workContext: {
+    label: string | null;
+    Name: string | null;
+    Email: string | null;
+    phone: string | null;
+    street: string | null;
+    district: string | null;
+    zip_code: string | null;
+    city_and_state: string | null;
+    state: string | null;
+    number: string | null;
+    complement: string | null;
+    location: string | null;
+    addressOffice: string | null;
+    notes: string | null;
   } | null;
 };
 
@@ -37,8 +89,14 @@ type ProjectCandidate = {
 type ProjectCounters = {
   created: number;
   linkedExisting: number;
+  updated: number;
   skipped: number;
   failed: number;
+  conflicts: number;
+  orphaned: number;
+  noOpSkipped: number;
+  coolingSkipped: number;
+  staleLocalSkipped: number;
   skippedWithoutClient: number;
   skippedWithoutSyncedClient: number;
   alreadyLinked: number;
@@ -47,44 +105,6 @@ type ProjectCounters = {
   totalBatches: number;
   duplicateRetries: number;
 };
-
-function buildProjectDisplayName(project: { contract_number?: number | null; id: string }) {
-  const base = project.contract_number
-    ? `Project ${project.contract_number}`
-    : `Project ${project.id.slice(0, 8)}`;
-
-  return base.slice(0, 100);
-}
-
-function parseQboUpdatedAt(customer: any) {
-  return customer?.MetaData?.LastUpdatedTime
-    ? new Date(customer.MetaData.LastUpdatedTime)
-    : null;
-}
-
-function buildProjectLogDetails(params: {
-  project: ProjectWithClient;
-  projectName: string;
-  qboParentCustomerId?: string | null;
-  qboProjectCustomerId?: string | null;
-  error?: any;
-  reason?: string;
-}) {
-  return jsonSafe({
-    projectId: params.project.id,
-    projectName: params.projectName,
-    clientId: params.project.client_id ?? null,
-    qboParentCustomerId: params.qboParentCustomerId ?? null,
-    qboProjectCustomerId:
-      params.qboProjectCustomerId ?? params.project.quickbooksCustomerId ?? null,
-    reason: params.reason ?? null,
-    error: params.error ?? null,
-  });
-}
-
-function buildProjectKey(parentCustomerId: string, projectName: string) {
-  return `${parentCustomerId}::${projectName.trim().toLowerCase()}`;
-}
 
 function retryAfterMsFromErr(err: AxiosError) {
   const retryAfter = err.response?.headers?.["retry-after"];
@@ -194,15 +214,17 @@ async function persistProjectLink(params: {
   });
 
   await createSyncLog({
-    entity: "Project",
+    entity: PROJECT_SYNC_ENTITY,
     action: params.action,
     entityId: params.project.id,
     companyId: params.companyId,
     details: buildProjectLogDetails({
-      project: params.project,
+      projectId: params.project.id,
       projectName: params.projectName,
+      clientId: params.project.client_id,
       qboParentCustomerId: params.qboParentCustomerId,
       qboProjectCustomerId: params.qboCustomer?.Id ?? null,
+      contractNumber: params.project.contract_number,
       reason: params.reason,
     }),
     syncExecutionId: params.syncExecutionId,
@@ -219,14 +241,17 @@ async function failProjectSync(params: {
   reason?: string;
 }) {
   await createSyncLog({
-    entity: "Project",
+    entity: PROJECT_SYNC_ENTITY,
     action: "Failed",
     entityId: params.project.id,
     companyId: params.companyId,
     details: buildProjectLogDetails({
-      project: params.project,
+      projectId: params.project.id,
       projectName: params.projectName,
+      clientId: params.project.client_id,
       qboParentCustomerId: params.qboParentCustomerId,
+      qboProjectCustomerId: params.project.quickbooksCustomerId,
+      contractNumber: params.project.contract_number,
       reason: params.reason,
       error: params.error?.response?.data || params.error?.message || params.error,
     }),
@@ -301,13 +326,7 @@ async function processProjectCreateBatch(params: {
     const batchItems = slice.map((candidate) => ({
       bId: `p_${candidate.project.id}`,
       operation: "create",
-      Customer: {
-        DisplayName: candidate.projectName,
-        Job: true,
-        ParentRef: {
-          value: candidate.qboParentCustomerId,
-        },
-      },
+      Customer: buildProjectPayloadForQbo(candidate.project),
     }));
 
     let batchResponse: any;
@@ -466,6 +485,10 @@ async function processProjectCreateBatch(params: {
           continue;
         }
 
+        const duplicateError = new Error(
+          "Duplicate name reported by QuickBooks, but no matching job was found afterward"
+        );
+
         counters.failed++;
         await failProjectSync({
           project: candidate.project,
@@ -473,7 +496,7 @@ async function processProjectCreateBatch(params: {
           companyId,
           syncExecutionId,
           qboParentCustomerId: candidate.qboParentCustomerId,
-          error: new Error("Duplicate name reported by QuickBooks, but no matching job was found afterward"),
+          error: duplicateError,
         });
 
         if (siblings.length > 0) {
@@ -482,7 +505,7 @@ async function processProjectCreateBatch(params: {
             siblings,
             companyId,
             syncExecutionId,
-            error: new Error("Duplicate name reported by QuickBooks, but no matching job was found afterward"),
+            error: duplicateError,
             reason: "Primary project duplicate could not be resolved in QuickBooks",
           });
         }
@@ -493,17 +516,262 @@ async function processProjectCreateBatch(params: {
   }
 }
 
+async function syncLinkedProjectsToQBO(params: {
+  qb: any;
+  projects: ProjectWithClient[];
+  companyId: string;
+  syncExecutionId?: string;
+  counters: ProjectCounters;
+}) {
+  const { qb, projects, companyId, syncExecutionId, counters } = params;
+
+  for (const project of projects) {
+    const projectName = buildProjectDisplayName(project);
+    const qboParentCustomerId = project.client?.idQuickbooks ?? null;
+
+    if (!project.quickbooksCustomerId || !qboParentCustomerId) {
+      counters.skipped++;
+      await createSyncLog({
+        entity: PROJECT_SYNC_ENTITY,
+        action: "Skipped",
+        entityId: project.id,
+        companyId,
+        details: buildProjectLogDetails({
+          projectId: project.id,
+          projectName,
+          clientId: project.client_id,
+          qboParentCustomerId,
+          qboProjectCustomerId: project.quickbooksCustomerId,
+          contractNumber: project.contract_number,
+          reason: "Project is linked but parent customer is not synced",
+        }),
+        syncExecutionId,
+      });
+      continue;
+    }
+
+    const now = new Date();
+    const lastRemote = project.quickbooksUpdatedAt ?? new Date(0);
+    const stillCooling =
+      project.quickbooksUpdatedAt &&
+      now.getTime() - lastRemote.getTime() < QBO_COOLDOWN_MS;
+
+    if (stillCooling) {
+      counters.skipped++;
+      counters.coolingSkipped++;
+      await createSyncLog({
+        entity: PROJECT_SYNC_ENTITY,
+        action: "Skipped",
+        entityId: project.id,
+        companyId,
+        details: buildProjectLogDetails({
+          projectId: project.id,
+          projectName,
+          clientId: project.client_id,
+          qboParentCustomerId,
+          qboProjectCustomerId: project.quickbooksCustomerId,
+          contractNumber: project.contract_number,
+          reason: `CoolingOff (${QBO_COOLDOWN_MS}ms) after last QBO mirror`,
+        }),
+        syncExecutionId,
+      });
+      continue;
+    }
+
+    const localNewer =
+      project.date_update.getTime() - lastRemote.getTime() > MIN_DELTA_MS;
+
+    if (!localNewer) {
+      counters.skipped++;
+      counters.staleLocalSkipped++;
+      await createSyncLog({
+        entity: PROJECT_SYNC_ENTITY,
+        action: "Skipped",
+        entityId: project.id,
+        companyId,
+        details: buildProjectLogDetails({
+          projectId: project.id,
+          projectName,
+          clientId: project.client_id,
+          qboParentCustomerId,
+          qboProjectCustomerId: project.quickbooksCustomerId,
+          contractNumber: project.contract_number,
+          reason: "Local project is not newer than the last QBO mirror",
+        }),
+        syncExecutionId,
+      });
+      continue;
+    }
+
+    try {
+      const current: any = await limiter.schedule(
+        () =>
+          new Promise((resolve, reject) => {
+            qb.getCustomer(project.quickbooksCustomerId, (err: any, data: any) =>
+              err ? reject(err) : resolve(data)
+            );
+          })
+      );
+
+      const qbProject = extractCustomer(current);
+      if (!qbProject) {
+        counters.skipped++;
+        counters.orphaned++;
+        await createSyncLog({
+          entity: PROJECT_SYNC_ENTITY,
+          action: "OrphanDetected",
+          entityId: project.id,
+          companyId,
+          details: buildProjectLogDetails({
+            projectId: project.id,
+            projectName,
+            clientId: project.client_id,
+            qboParentCustomerId,
+            qboProjectCustomerId: project.quickbooksCustomerId,
+            contractNumber: project.contract_number,
+            reason: "QBO job not found for quickbooksCustomerId",
+          }),
+          syncExecutionId,
+        });
+        continue;
+      }
+
+      const qbUpdatedAt = parseQboUpdatedAt(qbProject);
+      if (
+        qbUpdatedAt &&
+        project.quickbooksUpdatedAt &&
+        qbUpdatedAt > project.quickbooksUpdatedAt &&
+        project.date_update <= qbUpdatedAt
+      ) {
+        counters.conflicts++;
+        await createSyncLog({
+          entity: PROJECT_SYNC_ENTITY,
+          action: "Conflict",
+          entityId: project.id,
+          companyId,
+          details: buildProjectLogDetails({
+            projectId: project.id,
+            projectName,
+            clientId: project.client_id,
+            qboParentCustomerId,
+            qboProjectCustomerId: project.quickbooksCustomerId,
+            contractNumber: project.contract_number,
+            reason: "QBO job is newer than local changes, skipping push",
+          }),
+          syncExecutionId,
+        });
+        continue;
+      }
+
+      const normalizedLocal = normalizeLocalProjectForQbo(project);
+      const normalizedQbo = normalizeQboProjectForCompare(qbProject);
+
+      if (deepEqual(normalizedLocal, normalizedQbo)) {
+        counters.skipped++;
+        counters.noOpSkipped++;
+        await createSyncLog({
+          entity: PROJECT_SYNC_ENTITY,
+          action: "Skipped",
+          entityId: project.id,
+          companyId,
+          details: buildProjectLogDetails({
+            projectId: project.id,
+            projectName,
+            clientId: project.client_id,
+            qboParentCustomerId,
+            qboProjectCustomerId: project.quickbooksCustomerId,
+            contractNumber: project.contract_number,
+            reason: "No-op (same content)",
+          }),
+          syncExecutionId,
+        });
+        continue;
+      }
+
+      const projectPayload = buildProjectPayloadForQbo(project);
+      const updatePayload = {
+        Id: qbProject.Id,
+        SyncToken: qbProject.SyncToken,
+        sparse: true,
+        ...projectPayload,
+      };
+
+      const updated: any = await limiter.schedule(
+        () =>
+          new Promise((resolve, reject) => {
+            qb.updateCustomer(updatePayload, (err: any, data: any) =>
+              err ? reject(err) : resolve(data)
+            );
+          })
+      );
+
+      const updatedCustomer = extractCustomer(updated) ?? updated?.Customer ?? updated;
+      const updatedLast = parseQboUpdatedAt(updatedCustomer) ?? new Date();
+
+      await prisma.project.update({
+        where: { id: project.id },
+        data: {
+          quickbooksSyncToken: updatedCustomer?.SyncToken ?? project.quickbooksSyncToken,
+          quickbooksUpdatedAt: updatedLast,
+        },
+      });
+
+      counters.updated++;
+      await createSyncLog({
+        entity: PROJECT_SYNC_ENTITY,
+        action: "UpdatedInQBO",
+        entityId: project.id,
+        companyId,
+        details: jsonSafe({
+          projectId: project.id,
+          projectName,
+          clientId: project.client_id,
+          qboParentCustomerId,
+          qboProjectCustomerId: project.quickbooksCustomerId,
+          contractNumber: project.contract_number,
+          before: normalizedQbo,
+          pushed: normalizedLocal,
+          result: {
+            Id: updatedCustomer?.Id,
+            SyncToken: updatedCustomer?.SyncToken,
+            lastUpdated: updatedLast,
+          },
+        }),
+        syncExecutionId,
+      });
+    } catch (error: any) {
+      counters.failed++;
+      await createSyncLog({
+        entity: PROJECT_SYNC_ENTITY,
+        action: "ErrorPushToQBO",
+        entityId: project.id,
+        companyId,
+        details: buildProjectLogDetails({
+          projectId: project.id,
+          projectName,
+          clientId: project.client_id,
+          qboParentCustomerId,
+          qboProjectCustomerId: project.quickbooksCustomerId,
+          contractNumber: project.contract_number,
+          error: error?.message || error,
+        }),
+        syncExecutionId,
+      });
+    }
+  }
+}
+
 export class QuickBooksProjectOutboundController {
   async syncProjectsToQBO(req: Request, res: Response) {
     const { companyId, userId } = req.params;
     const syncExecutionId = (req as any).syncExecutionId;
 
     if (!userId) {
-      return res.status(400).json({ error: "User ID nÃ£o fornecido" });
+      return res.status(400).json({ error: "User ID não fornecido" });
     }
 
     if (!companyId) {
-      return res.status(400).json({ error: "Company ID nÃ£o fornecido" });
+      return res.status(400).json({ error: "Company ID não fornecido" });
     }
 
     try {
@@ -529,6 +797,7 @@ export class QuickBooksProjectOutboundController {
       }
 
       const api = qboClientForAccount(account.id);
+      const qb = await getQbClientOrThrow(userId, companyId);
 
       const projects = await prisma.project.findMany({
         where: { company_id: companyId },
@@ -539,10 +808,44 @@ export class QuickBooksProjectOutboundController {
           quickbooksCustomerId: true,
           quickbooksSyncToken: true,
           quickbooksUpdatedAt: true,
+          status_project: true,
+          price: true,
+          amountPaid: true,
+          balanceDue: true,
+          start_date: true,
+          deadline: true,
+          date_update: true,
+          location: true,
+          lat: true,
+          log: true,
+          radius: true,
           client: {
             select: {
               id: true,
               idQuickbooks: true,
+              name: true,
+              email: true,
+              phone: true,
+              city_and_state: true,
+              location: true,
+            },
+          },
+          workContext: {
+            select: {
+              label: true,
+              Name: true,
+              Email: true,
+              phone: true,
+              street: true,
+              district: true,
+              zip_code: true,
+              city_and_state: true,
+              state: true,
+              number: true,
+              complement: true,
+              location: true,
+              addressOffice: true,
+              notes: true,
             },
           },
         },
@@ -552,8 +855,14 @@ export class QuickBooksProjectOutboundController {
       const counters: ProjectCounters = {
         created: 0,
         linkedExisting: 0,
+        updated: 0,
         skipped: 0,
         failed: 0,
+        conflicts: 0,
+        orphaned: 0,
+        noOpSkipped: 0,
+        coolingSkipped: 0,
+        staleLocalSkipped: 0,
         skippedWithoutClient: 0,
         skippedWithoutSyncedClient: 0,
         alreadyLinked: 0,
@@ -564,6 +873,7 @@ export class QuickBooksProjectOutboundController {
       };
 
       const eligibleCandidates: ProjectCandidate[] = [];
+      const updateCandidates: ProjectWithClient[] = [];
 
       for (const project of projects) {
         const projectName = buildProjectDisplayName(project);
@@ -573,13 +883,14 @@ export class QuickBooksProjectOutboundController {
           counters.skipped++;
           counters.skippedWithoutClient++;
           await createSyncLog({
-            entity: "Project",
+            entity: PROJECT_SYNC_ENTITY,
             action: "Skipped",
             entityId: project.id,
             companyId,
             details: buildProjectLogDetails({
-              project,
+              projectId: project.id,
               projectName,
+              contractNumber: project.contract_number,
               reason: "Project has no client",
             }),
             syncExecutionId,
@@ -591,13 +902,15 @@ export class QuickBooksProjectOutboundController {
           counters.skipped++;
           counters.skippedWithoutSyncedClient++;
           await createSyncLog({
-            entity: "Project",
+            entity: PROJECT_SYNC_ENTITY,
             action: "Skipped",
             entityId: project.id,
             companyId,
             details: buildProjectLogDetails({
-              project,
+              projectId: project.id,
               projectName,
+              clientId: project.client_id,
+              contractNumber: project.contract_number,
               reason: "Client is not synced with QuickBooks",
             }),
             syncExecutionId,
@@ -606,22 +919,8 @@ export class QuickBooksProjectOutboundController {
         }
 
         if (project.quickbooksCustomerId) {
-          counters.skipped++;
           counters.alreadyLinked++;
-          await createSyncLog({
-            entity: "Project",
-            action: "AlreadyLinked",
-            entityId: project.id,
-            companyId,
-            details: buildProjectLogDetails({
-              project,
-              projectName,
-              qboParentCustomerId,
-              qboProjectCustomerId: project.quickbooksCustomerId,
-              reason: "Project already linked with QuickBooks",
-            }),
-            syncExecutionId,
-          });
+          updateCandidates.push(project);
           continue;
         }
 
@@ -680,18 +979,36 @@ export class QuickBooksProjectOutboundController {
         });
       }
 
+      if (updateCandidates.length > 0) {
+        await syncLinkedProjectsToQBO({
+          qb,
+          projects: updateCandidates,
+          companyId,
+          syncExecutionId,
+          counters,
+        });
+      }
+
       return res.status(200).json({
         message:
-          counters.created > 0 || counters.linkedExisting > 0
+          counters.created > 0 ||
+          counters.linkedExisting > 0 ||
+          counters.updated > 0
             ? "Project sync to QuickBooks finished"
             : counters.skippedWithoutSyncedClient > 0
               ? "No eligible projects were exported. Sync customers first so each project has a parent QuickBooks customer."
               : "Project sync to QuickBooks finished",
         created: counters.created,
         linkedExisting: counters.linkedExisting,
+        updated: counters.updated,
         alreadyLinked: counters.alreadyLinked,
         skipped: counters.skipped,
         failed: counters.failed,
+        conflicts: counters.conflicts,
+        orphaned: counters.orphaned,
+        noOpSkipped: counters.noOpSkipped,
+        coolingSkipped: counters.coolingSkipped,
+        staleLocalSkipped: counters.staleLocalSkipped,
         skippedWithoutClient: counters.skippedWithoutClient,
         skippedWithoutSyncedClient: counters.skippedWithoutSyncedClient,
         totalProcessed: projects.length,
