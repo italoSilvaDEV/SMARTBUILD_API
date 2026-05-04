@@ -53,7 +53,7 @@ export class QuickBooksClientController {
 
       const result: any = await limiter.schedule(() =>
         new Promise((resolve, reject) => {
-          qb.findCustomers({ fetchAll: true }, (err: any, data: any) => {
+          qb.findCustomers({ fetchAll: true, Job: false }, (err: any, data: any) => {
             if (err) {
               console.error("QBO ERROR DETALHADO:", JSON.stringify(err, null, 2));
               console.error("QBO ERROR Fault:", err?.Fault);

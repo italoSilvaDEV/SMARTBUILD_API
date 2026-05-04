@@ -747,6 +747,10 @@ model Project {
   workContext   WorkContext? @relation(fields: [workContextId], references: [id])
   workContextId String?
 
+  quickbooksCustomerId String?
+  quickbooksSyncToken  String?
+  quickbooksUpdatedAt  DateTime?
+
   radius                 Float?
   location               String?                  @db.Text
   log                    String?                  @db.VarChar(191)
@@ -1971,6 +1975,7 @@ model SyncPreferences {
 
 enum TypesEntity {
   customers
+  projects
   invoices
   payments
 }
