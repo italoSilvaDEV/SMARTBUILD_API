@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { DateTime } from "luxon";
+import { Prisma } from "@prisma/client";
 import { deleteFile } from "../../config/file";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
@@ -149,11 +150,13 @@ export interface IputServiceData extends IServicesData {
 export class ProjectController {
   async getAllProjects(req: Request, res: Response) {
     const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate } = req.query;
+    if (!company_id)
+      return res.status(404).json({ error: "Company_id is required!" });
+
+    try {
     const query: any = {};
     const userId = (req as any).userId as string | undefined;
     // console.log("valor do userId", userId);
-    if (!company_id)
-      return res.status(404).json({ error: "Company_id is required!" });
 
     const validPeriods = [
       "thisYear",
@@ -261,8 +264,6 @@ export class ProjectController {
     const take = Math.min(per_page, 1000);
     const pageNumber = Number(page);
     const skip = pageNumber * take;
-
-    try {
       const projects = await prisma.project.findMany({
         where: {
           status_project: {
@@ -614,10 +615,19 @@ export class ProjectController {
       }
       return res.json({ projects: projectsWithCalculations, total, amount });
     } catch (error) {
-      if (error instanceof Error) {
-        return res.json({ error: error.message });
+      console.error("[getAllProjects] Error:", error);
+
+      if (error instanceof Prisma.PrismaClientInitializationError) {
+        return res.status(503).json({
+          error: "Database unavailable",
+          details: error.message,
+        });
       }
-      return res.json({ error: "Erro interno do servidor" });
+
+      if (error instanceof Error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Erro interno do servidor" });
     }
   }
 
