@@ -171,6 +171,9 @@ export class GetAllEstimatesByCompanyController {
                             status_project: true,
                             autorId: true,
                             location: true,
+                            lat: true,
+                            log: true,
+                            radius: true,
                             client: {
                                 select: {
                                     id: true,
