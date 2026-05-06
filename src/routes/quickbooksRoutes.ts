@@ -6,6 +6,7 @@ import { SyncPreferencesController } from "../controllers/quickbooks/syncPrefere
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
+import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -14,12 +15,17 @@ const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
+const quickBooksProjectController = new QuickBooksProjectController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId/:companyId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId/:companyId", checkToken, quickbooksController.refreshToken);
+quickbooksRoutes.get("/quickbooks/projects/pre-check/:companyId/:userId", checkToken, quickBooksProjectController.preCheck);
+quickbooksRoutes.get("/quickbooks/projects/:companyId/:userId", checkToken, quickBooksProjectController.listProjects);
+quickbooksRoutes.post("/quickbooks/projects/import/:companyId/:userId", checkToken, quickBooksProjectController.importProjectsToSmartBuild);
+quickbooksRoutes.get("/quickbooks/projects-graphql/:companyId/:userId", checkToken, quickBooksProjectController.listProjectsGraphql);
 
 //  NOVAS: Rotas de desconexão
 quickbooksRoutes.delete("/quickbooks/disconnect/:userId/:companyId", checkToken, quickbooksController.disconnect);
