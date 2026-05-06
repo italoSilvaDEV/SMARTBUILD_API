@@ -436,6 +436,7 @@ export class StripeInvoicePaymentController {
           totalAmount: formattedAmount,
           paymentDate: paymentDateLabel,
           companyName: company?.name || "SmartBuild",
+          companyReplyToEmail: company?.email || "",
           companyAvatar: companyAvatar,
           customBody: "",
           currentYear: new Date().getFullYear().toString(),

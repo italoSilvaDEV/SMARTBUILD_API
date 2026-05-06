@@ -1324,6 +1324,7 @@ export class EstimateController {
           await sendEmail({
             to: email,
             subject: estimate.project?.company?.name + " - Estimate Reminder",
+            companyId: estimate.project?.company?.id,
             html: estimateEmail(
               estimate.project?.client?.name || '',
               companyAvatar || "",
@@ -1578,6 +1579,7 @@ export class EstimateController {
               validUntil: validUntilFormatted,
               reviewLink: reviewLink,
               companyName: companyName,
+              companyReplyToEmail: estimate.project?.company?.email || "",
               companyAvatar: companyAvatar,
               currentYear: new Date().getFullYear().toString(),
               recipientEmail: recipientEmail,

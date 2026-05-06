@@ -3574,6 +3574,7 @@ export class QuickBooksInvoiceController {
 
       await sendEmail({
         to: recipientEmail,
+        replyTo: company?.email || undefined,
         subject: emailSubject,
         html: emailHtml,
         attachments: attachments.length > 0 ? attachments : undefined,

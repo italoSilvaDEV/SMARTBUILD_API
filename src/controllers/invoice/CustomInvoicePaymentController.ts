@@ -233,6 +233,7 @@ export class CustomInvoicePaymentController {
               totalAmount: totalFormatted,
               paymentDate: paymentDateFormatted,
               companyName: company?.name || "SmartBuild",
+              companyReplyToEmail: company?.email || "",
               companyAvatar: companyAvatar,
               customBody: notes || "",
               currentYear: new Date().getFullYear().toString(),

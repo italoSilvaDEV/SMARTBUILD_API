@@ -2775,6 +2775,7 @@ export class ProjectController {
 
       await sendEmail({
         to: project.client.email,
+        replyTo: companyData.email || undefined,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
@@ -2957,6 +2958,7 @@ export class ProjectController {
 
       await sendEmail({
         to: project.client.email,
+        replyTo: companyData.email || undefined,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [

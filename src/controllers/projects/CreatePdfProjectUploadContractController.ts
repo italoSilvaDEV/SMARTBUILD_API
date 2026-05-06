@@ -17,6 +17,7 @@ interface AdditionalData {
     totalPrice: number;
     companyAvatar: string;  
     emailClient: string;
+    companyEmail?: string | null;
 }
 
 export class CreatePdContractfProjectController {
@@ -78,6 +79,15 @@ export class CreatePdContractfProjectController {
                     id: result.id,
                     original_file_name: result.original_file_name
                 };
+
+                const project = await prisma.project.findUnique({
+                    where: { id: projectId },
+                    select: {
+                        company: {
+                            select: { email: true }
+                        }
+                    }
+                });
                 
                 // Iniciar envio de e-mail em background com os dados recebidos
                 const additionalData: AdditionalData = {
@@ -85,7 +95,8 @@ export class CreatePdContractfProjectController {
                     companyName,
                     totalPrice: Number(totalPrice),
                     companyAvatar,
-                    emailClient
+                    emailClient,
+                    companyEmail: project?.company?.email
                 };
                 
                 this.sendEmailInBackground(additionalData, file.path);
@@ -119,6 +130,7 @@ export class CreatePdContractfProjectController {
 
             await sendEmail({
                 to: additionalData.emailClient, // Assumindo que o e-mail está no nome do cliente
+                replyTo: additionalData.companyEmail || undefined,
                 subject: `Contract for ${additionalData.clientName.toUpperCase()}`,
                 html: templateEmail,
                 attachments: [

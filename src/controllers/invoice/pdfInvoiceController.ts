@@ -341,6 +341,7 @@ export class PdfInvoicePaidController {
 
                 await sendEmail({
                     to: client.email || "",
+                    replyTo: company?.email || undefined,
                     subject: emailSubject,
                     html: emailHtml,
                     attachments: [
