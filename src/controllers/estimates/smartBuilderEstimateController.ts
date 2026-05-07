@@ -140,6 +140,15 @@ Source priority:
 - When explicit prices exist in an attached document for an import/copy request, do not reprice from the catalog, do not replace with web search values, and do not round them.
 - If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
 
+Copy/import mode:
+- When the latest request is a copy/import/replicate/use-this-document request, the attachment is the source of truth for structure and scope.
+- Preserve the document's grouping. If the source is organized by unit, building, room, phase, or section, return one service per source group unless the document itself contains explicit separate priced line items.
+- Do not split one source unit/section into multiple services just to make the estimate look more detailed.
+- Do not merge multiple source units/sections into one service when the document presents them separately.
+- Do not add scope, assumptions, exclusions, code/licensing language, HVAC, structural work, hidden-damage language, or quality standards unless they appear in the source document or are explicitly requested by the user.
+- If the source document does not include explicit pricing, estimate only unitPrice/lineTotal while keeping service names and descriptions faithful to the document. Add one friendly warning that the document did not include pricing, so values were estimated.
+- If the source document includes explicit pricing, copy quantities, unit prices, and totals exactly and do not round.
+
 Web search:
 - Use web_search_market_rates only when company catalog/current services/attachments are insufficient and the user is not asking to import or copy explicit prices.
 - Treat web_search_market_rates output only as supporting US-market context.
@@ -668,6 +677,7 @@ function buildUserPrompt(params: {
   attachments: SmartBuilderAttachment[];
   grounding: SmartBuilderGrounding;
 }) {
+  const copyImportMode = hasImportPricingIntent(params.message, params.attachments);
   const attachmentText = params.attachments
     .filter((attachment) => attachment.extractedText)
     .map((attachment) => `Attachment ${attachment.originalName} extracted text:\n${attachment.extractedText}`)
@@ -704,18 +714,42 @@ function buildUserPrompt(params: {
       hasExtractedText: Boolean(attachment.extractedText),
     })),
     extractedAttachmentText: attachmentText || null,
+    copyImportMode: {
+      active: copyImportMode,
+      sourceOfTruth: copyImportMode ? "attachedDocumentStructureAndScope" : "userRequestAndEstimateContext",
+      preserveDocumentStructure: copyImportMode,
+      preserveDocumentScopeOnly: copyImportMode,
+      doNotReorganizeDocument: copyImportMode,
+      doNotInventScope: copyImportMode,
+      ifOrganizedByUnit: "Return one proposed service per unit unless the document itself has explicit separate priced line items.",
+      ifDocumentHasNoExplicitPricing: "Copy names/descriptions/scope faithfully from the document and estimate only unitPrice/lineTotal. Add exactly one friendly warning that prices were estimated because the document did not include pricing.",
+      ifDocumentHasExplicitPricing: "Copy names, quantities, unit prices, and totals exactly. Do not use catalog, web, or rounding to change them.",
+      forbiddenAdditionsUnlessPresentInDocument: [
+        "generic assumptions",
+        "generic exclusions",
+        "local building code claims",
+        "licensed trade claims",
+        "HVAC scope",
+        "structural work",
+        "hidden damage assumptions",
+        "quality standards not stated by the document",
+      ],
+    },
     operatingModeRules: {
       importOrCopyAttachedEstimate: {
         triggerExamples: [
           "copy this estimate",
           "import this proposal",
           "replicate this bid",
+          "use this PDF",
+          "copy the PDF",
+          "convert this PDF into services",
           "use the same prices",
           "transform this quote into services",
           "copiar esse orcamento",
           "usar os valores do arquivo",
         ],
-        rule: "When this applies, preserve service names, quantities, unit prices, and totals from the attachment. Do not reprice, do not replace with catalog/web, and do not round to nicer numbers.",
+        rule: "When this applies, preserve the attachment's structure, service names, quantities, unit prices, totals, and scope as faithfully as possible. If the attachment has no explicit prices, preserve structure/scope and estimate prices only.",
       },
       estimateFromScratch: {
         rule: "When no explicit imported pricing is requested, estimate conservatively for the United States using current services, project context, and any catalog/web grounding provided by the backend.",
@@ -736,6 +770,9 @@ function buildUserPrompt(params: {
         "Assumptions",
         "Exclusions",
       ],
+      copyImportOverride: copyImportMode
+        ? "Do not expand descriptions beyond the source document. Format the copied scope cleanly in HTML, but only include sections/details that are present or clearly implied by the document."
+        : null,
       minimumQuality: [
         "Mention what will be performed for this specific service",
         "Mention preparation/protection steps when relevant",
@@ -846,8 +883,8 @@ function buildWebMarketRatesTool() {
   };
 }
 
-function buildSmartBuilderTools(allowWebSearch: boolean) {
-  const tools: any[] = CATALOG_TOOL_ENABLED ? [buildCatalogSearchTool()] : [];
+function buildSmartBuilderTools(allowWebSearch: boolean, allowCatalogSearch = true) {
+  const tools: any[] = CATALOG_TOOL_ENABLED && allowCatalogSearch ? [buildCatalogSearchTool()] : [];
 
   if (allowWebSearch) {
     tools.push(buildWebMarketRatesTool());
@@ -880,8 +917,26 @@ function hasImportPricingIntent(message: string, attachments: SmartBuilderAttach
   const normalizedMessage = message.toLowerCase();
   return [
     "copy",
+    "copy this",
+    "copy the",
+    "copy from",
     "import",
     "replicate",
+    "recreate",
+    "duplicate",
+    "extract",
+    "transcribe",
+    "convert this pdf",
+    "turn this pdf",
+    "use this pdf",
+    "use the pdf",
+    "use this file",
+    "use the file",
+    "from this pdf",
+    "from the pdf",
+    "based on this pdf",
+    "based on the pdf",
+    "same scope",
     "same price",
     "same prices",
     "use the values",
@@ -893,10 +948,24 @@ function hasImportPricingIntent(message: string, attachments: SmartBuilderAttach
     "orcamento",
     "orçamento",
     "proposta",
+    "copie",
+    "copia",
     "copiar",
     "importe",
     "importar",
     "replicar",
+    "recriar",
+    "extrair",
+    "transcrever",
+    "converter esse pdf",
+    "usar esse pdf",
+    "usar este pdf",
+    "use esse pdf",
+    "use este pdf",
+    "a partir desse pdf",
+    "a partir deste pdf",
+    "igual ao pdf",
+    "mesmo escopo",
     "mesmos valores",
     "usar os valores",
   ].some((term) => normalizedMessage.includes(term));
@@ -1831,9 +1900,18 @@ async function createFileContextAgentResponse(params: {
     instructions: [
       "You are fileContextAgent for SmartBuilder estimates.",
       "Read the attached PDF/image/document inputs and extract only compact, useful estimating context.",
-      "Return plain text, not JSON.",
-      "Include explicit line items, quantities, unit prices, totals, exclusions, alternates, and scope notes when present.",
-      "If the file is an existing estimate/proposal/bid/quote, preserve the original values exactly in the summary.",
+      "Return a compact structured text report using the exact labels below. Do not return prose before or after the report.",
+      "DOCUMENT_HAS_EXPLICIT_PRICING: true or false.",
+      "SOURCE_STRUCTURE: one of unit_based, room_based, phase_based, line_item_based, section_based, mixed, unknown.",
+      "PRICES_FOUND: list exact prices/totals found with their source labels, or none.",
+      "MISSING_PRICES: list source groups/items that have scope but no explicit pricing, or none.",
+      "SCOPE_BY_UNIT_OR_SECTION: preserve the document's own unit/room/phase/section grouping. For each group, include its exact title and concise copied scope bullets.",
+      "LINE_ITEMS: include explicit line items only when the document itself presents separate line items or priced rows. Include name, quantity, unit price, total, and copied scope when present.",
+      "EXCLUSIONS_OR_ALTERNATES: include only exclusions/alternates explicitly stated in the document.",
+      "IMPORTANT_COPY_NOTES: note whether the correct import structure should be one service per unit/section or one service per priced line item.",
+      "If the file is existing estimate/proposal/bid/quote, preserve original names, values, quantities, totals, section titles, and unit labels exactly in the report.",
+      "If pricing is absent, say DOCUMENT_HAS_EXPLICIT_PRICING: false and do not invent pricing in this file-context report.",
+      "Do not add assumptions, exclusions, code/licensing language, HVAC, hidden damage, structural scope, or quality standards unless the document explicitly says them.",
       "Keep output concise and under the configured token budget.",
     ].join("\n"),
     input: params.input,
@@ -1868,6 +1946,7 @@ async function createStructuredEstimateResponse(params: {
   hasDocumentAttachment: boolean;
   companyId?: string | null;
   allowWebSearch?: boolean;
+  importPricingIntent?: boolean;
   traceId?: string;
 }) {
   if (!openai) {
@@ -1905,7 +1984,11 @@ async function createStructuredEstimateResponse(params: {
             type: "input_text",
             text: [
               "Document context extracted by fileContextAgent. Use this as attachment context for the final service proposal.",
-              "If this context contains explicit estimate/proposal/bid line items and the user asks to copy/import, preserve those names, quantities, unit prices, and totals.",
+              "If the user asks to copy/import/replicate/use this document, the document context is the source of truth for service structure and scope.",
+              "For copy/import mode, follow SOURCE_STRUCTURE and IMPORTANT_COPY_NOTES exactly. If SOURCE_STRUCTURE is unit_based, return one service per unit unless LINE_ITEMS contains explicit separate priced rows.",
+              "If DOCUMENT_HAS_EXPLICIT_PRICING is false, keep the copied service names/descriptions faithful to SCOPE_BY_UNIT_OR_SECTION and estimate only the money fields. Add one warning that pricing was estimated because the document did not include explicit prices.",
+              "If DOCUMENT_HAS_EXPLICIT_PRICING is true, copy quantities, unit prices, and totals exactly from LINE_ITEMS/PRICES_FOUND. Do not reprice or round.",
+              "Do not add scope that is absent from the document context.",
               fileContextText || "No readable document context was extracted.",
             ].join("\n\n"),
           },
@@ -1914,7 +1997,7 @@ async function createStructuredEstimateResponse(params: {
     ];
   }
 
-  const serviceTools = buildSmartBuilderTools(Boolean(params.allowWebSearch));
+  const serviceTools = buildSmartBuilderTools(Boolean(params.allowWebSearch), !params.importPricingIntent);
   const request = {
     ...buildSmartBuilderResponseRequest(SERVICE_MODEL, serviceInput, {
       tools: serviceTools,
@@ -1929,6 +2012,7 @@ async function createStructuredEstimateResponse(params: {
     model: SERVICE_MODEL,
     reasoning: false,
     allowWebSearch: Boolean(params.allowWebSearch),
+    importPricingIntent: Boolean(params.importPricingIntent),
     tools: summarizeSmartBuilderTools(serviceTools),
     input: summarizeSmartBuilderInput(serviceInput),
   });
@@ -2120,6 +2204,7 @@ export class SmartBuilderEstimateController {
         })),
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
+        importPricingIntent: grounding.importPricingIntent,
         allowWebSearch: grounding.allowWebSearch,
         catalogToolEnabled: CATALOG_TOOL_ENABLED,
         serviceCatalogAvailable: grounding.serviceCatalog.length,
@@ -2136,6 +2221,7 @@ export class SmartBuilderEstimateController {
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId: estimate.project.company_id,
         allowWebSearch: grounding.allowWebSearch,
+        importPricingIntent: grounding.importPricingIntent,
         traceId,
       });
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
@@ -2269,6 +2355,7 @@ export class SmartBuilderEstimateController {
         })),
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
+        importPricingIntent: grounding.importPricingIntent,
         allowWebSearch: grounding.allowWebSearch,
         catalogToolEnabled: CATALOG_TOOL_ENABLED,
         serviceCatalogAvailable: grounding.serviceCatalog.length,
@@ -2285,6 +2372,7 @@ export class SmartBuilderEstimateController {
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId,
         allowWebSearch: grounding.allowWebSearch,
+        importPricingIntent: grounding.importPricingIntent,
         traceId,
       });
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
