@@ -62,6 +62,7 @@ const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIM
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 9000);
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 1);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
+const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "true").toLowerCase() !== "false";
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -934,6 +935,112 @@ function getErrorHeader(error: any, headerName: string) {
   return headers[headerName] || headers[headerName.toLowerCase()] || null;
 }
 
+function createSmartBuilderTraceId(scope: string) {
+  return `${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function summarizeSmartBuilderInput(input: any[] = []) {
+  return input.reduce((summary, item) => {
+    summary.messages += 1;
+
+    if (item?.type === "function_call_output") {
+      summary.functionOutputs += 1;
+      summary.textChars += String(item.output || "").length;
+      return summary;
+    }
+
+    const content = item?.content;
+    if (typeof content === "string") {
+      summary.textChars += content.length;
+      return summary;
+    }
+
+    if (!Array.isArray(content)) return summary;
+
+    for (const part of content) {
+      summary.contentParts += 1;
+      if (part?.type === "input_text") summary.textChars += String(part.text || "").length;
+      else if (part?.type === "input_image") summary.imageParts += 1;
+      else if (part?.type === "input_file") summary.fileParts += 1;
+      else summary.otherParts += 1;
+    }
+
+    return summary;
+  }, {
+    messages: 0,
+    contentParts: 0,
+    textChars: 0,
+    imageParts: 0,
+    fileParts: 0,
+    functionOutputs: 0,
+    otherParts: 0,
+  });
+}
+
+function summarizeSmartBuilderTools(tools: any[] = []) {
+  const toolTypes = tools.map((tool) => tool?.type || tool?.name || "unknown");
+  return {
+    count: tools.length,
+    types: toolTypes,
+    hasCatalogSearch: tools.some((tool) => tool?.name === "search_company_services"),
+    hasWebSearch: tools.some((tool) => String(tool?.type || "").includes("web_search")),
+  };
+}
+
+function summarizeOpenAiResponse(response: any) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const outputTypes = output.map((item: any) => item?.type || "unknown");
+  return {
+    id: response?.id || null,
+    status: response?.status || null,
+    outputCount: output.length,
+    outputTypes,
+    functionCalls: output
+      .filter((item: any) => item?.type === "function_call")
+      .map((item: any) => ({ name: item.name, callId: item.call_id })),
+    usage: response?.usage || null,
+  };
+}
+
+function summarizeSmartBuilderError(error: any) {
+  return {
+    name: error?.name || null,
+    message: error?.message || null,
+    status: error?.status || error?.response?.status || null,
+    code: error?.code || error?.error?.code || null,
+    type: error?.type || error?.error?.type || null,
+    requestID: error?.requestID || error?.request_id || null,
+    retryAfter: getErrorHeader(error, "retry-after"),
+    proxyStatus: getErrorHeader(error, "proxy-status"),
+  };
+}
+
+function logSmartBuilderTrace(
+  traceId: string | undefined,
+  event: string,
+  payload: Record<string, any> = {},
+  level: "log" | "warn" | "error" = "log"
+) {
+  if (!SMARTBUILDER_TRACE_LOGS) return;
+
+  const logPayload = {
+    traceId,
+    ...payload,
+  };
+
+  if (level === "error") {
+    console.error(`[SmartBuilderEstimate.trace.${event}]`, logPayload);
+    return;
+  }
+
+  if (level === "warn") {
+    console.warn(`[SmartBuilderEstimate.trace.${event}]`, logPayload);
+    return;
+  }
+
+  console.log(`[SmartBuilderEstimate.trace.${event}]`, logPayload);
+}
+
 function isOpenAiTimeoutError(error: any) {
   const message = String(error?.message || "").toLowerCase();
   return error?.name === "APIConnectionTimeoutError"
@@ -971,27 +1078,54 @@ async function createOpenAiResponseWithTransientRetry(
   request: any,
   timeoutMs: number,
   label: string,
-  maxRetries = OPENAI_MAX_TRANSIENT_RETRIES
+  maxRetries = OPENAI_MAX_TRANSIENT_RETRIES,
+  traceId?: string
 ) {
   let lastError: any;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const startedAt = Date.now();
+
+    logSmartBuilderTrace(traceId, `${label}.request`, {
+      attempt: attempt + 1,
+      maxAttempts: maxRetries + 1,
+      model: request?.model,
+      timeoutMs,
+      maxOutputTokens: request?.max_output_tokens,
+      toolChoice: request?.tool_choice || null,
+      input: summarizeSmartBuilderInput(request?.input || []),
+      tools: summarizeSmartBuilderTools(request?.tools || []),
+    });
+
     try {
-      return await createOpenAiResponse(request, timeoutMs);
+      const response = await createOpenAiResponse(request, timeoutMs);
+      logSmartBuilderTrace(traceId, `${label}.response`, {
+        attempt: attempt + 1,
+        durationMs: Date.now() - startedAt,
+        response: summarizeOpenAiResponse(response),
+      });
+      return response;
     } catch (error) {
       lastError = error;
+      logSmartBuilderTrace(traceId, `${label}.error`, {
+        attempt: attempt + 1,
+        durationMs: Date.now() - startedAt,
+        error: summarizeSmartBuilderError(error),
+        transient: isOpenAiTransientError(error),
+      }, "warn");
+
       if (!isOpenAiTransientError(error) || attempt >= maxRetries) {
         throw error;
       }
 
       const delayMs = getTransientRetryDelayMs(error);
-      console.warn(`[SmartBuilderEstimate.${label}.transientRetry]`, {
+      logSmartBuilderTrace(traceId, `${label}.transientRetry`, {
         attempt: attempt + 1,
         nextAttempt: attempt + 2,
         status: (error as any)?.status,
         code: (error as any)?.code,
         delayMs,
-      });
+      }, "warn");
       await sleep(delayMs);
     }
   }
@@ -1003,13 +1137,33 @@ async function resolveFunctionToolCalls(response: any, params: {
   model: string;
   input: any[];
   companyId?: string | null;
+  traceId?: string;
 }) {
   const toolCalls = getFunctionToolCalls(response);
   if (!toolCalls.length) return response;
 
+  logSmartBuilderTrace(params.traceId, "tools.detected", {
+    responseId: response?.id || null,
+    toolCallCount: toolCalls.length,
+    toolCalls: toolCalls.map((call: any) => ({
+      name: call.name,
+      callId: call.call_id,
+      argumentChars: String(call.arguments || "").length,
+    })),
+  });
+
   const toolOutputs = await Promise.all(
     toolCalls.map((call: any) => executeFunctionToolCall(call, params.companyId))
   );
+
+  logSmartBuilderTrace(params.traceId, "tools.outputs", {
+    outputCount: toolOutputs.length,
+    outputs: toolOutputs.map((output: any) => ({
+      callId: output.call_id,
+      outputChars: String(output.output || "").length,
+      parsedCount: safeParseAiJson(output.output)?.count ?? null,
+    })),
+  });
 
   const followUpRequest = {
     ...buildSmartBuilderResponseRequest(params.model, toolOutputs),
@@ -1021,17 +1175,18 @@ async function resolveFunctionToolCalls(response: any, params: {
     return await createOpenAiResponseWithTransientRetry(
       followUpRequest,
       OPENAI_RETRY_TIMEOUT_MS,
-      "toolFollowUp"
+      "toolFollowUp",
+      OPENAI_MAX_TRANSIENT_RETRIES,
+      params.traceId
     );
   } catch (error) {
     if (!isOpenAiTransientError(error)) throw error;
 
-    console.warn("[SmartBuilderEstimate.toolFollowUp.statelessFallback]", {
+    logSmartBuilderTrace(params.traceId, "toolFollowUp.statelessFallback", {
       responseId: response.id,
       toolCallCount: toolCalls.length,
-      status: (error as any)?.status,
-      code: (error as any)?.code,
-    });
+      error: summarizeSmartBuilderError(error),
+    }, "warn");
 
     const statelessInput = [
       ...params.input,
@@ -1055,7 +1210,9 @@ async function resolveFunctionToolCalls(response: any, params: {
     return createOpenAiResponseWithTransientRetry(
       statelessRequest,
       OPENAI_RETRY_TIMEOUT_MS,
-      "toolFollowUpStateless"
+      "toolFollowUpStateless",
+      OPENAI_MAX_TRANSIENT_RETRIES,
+      params.traceId
     );
   }
 }
@@ -1117,10 +1274,21 @@ async function createSmartBuilderResponse(params: {
   input: any[];
   allowWebSearch: boolean;
   companyId?: string | null;
+  traceId?: string;
 }) {
   if (!openai) {
     throw new Error("OpenAI API key is not configured");
   }
+
+  logSmartBuilderTrace(params.traceId, "response.start", {
+    model: params.model,
+    serviceModel: SERVICE_MODEL,
+    docModel: DOC_MODEL,
+    allowWebSearch: params.allowWebSearch,
+    webSearchEnabled: WEB_SEARCH_ENABLED,
+    companyId: params.companyId || null,
+    input: summarizeSmartBuilderInput(params.input),
+  });
 
   const runBaseRequest = async (allowWebSearchForRequest = params.allowWebSearch) => {
     const tools = buildSmartBuilderTools(allowWebSearchForRequest);
@@ -1134,17 +1302,22 @@ async function createSmartBuilderResponse(params: {
       const response = await createOpenAiResponseWithTransientRetry(
         baseRequest,
         OPENAI_REQUEST_TIMEOUT_MS,
-        "base"
+        "base",
+        OPENAI_MAX_TRANSIENT_RETRIES,
+        params.traceId
       );
       return await resolveFunctionToolCalls(response, {
         model: params.model,
         input: params.input,
         companyId: params.companyId,
+        traceId: params.traceId,
       });
     } catch (error) {
       if (!isOpenAiTransientError(error)) throw error;
 
-      console.error("[SmartBuilderEstimate.primaryTransientFallback]", error);
+      logSmartBuilderTrace(params.traceId, "primaryTransientFallback", {
+        error: summarizeSmartBuilderError(error),
+      }, "warn");
 
       const fallbackInput = inputHasNonTextParts(params.input) ? stripInputToTextOnly(params.input) : params.input;
       const fallbackTools = buildSmartBuilderTools(false);
@@ -1157,12 +1330,15 @@ async function createSmartBuilderResponse(params: {
       const fallbackResponse = await createOpenAiResponseWithTransientRetry(
         fallbackRequest,
         OPENAI_RETRY_TIMEOUT_MS,
-        "fallback"
+        "fallback",
+        OPENAI_MAX_TRANSIENT_RETRIES,
+        params.traceId
       );
       return resolveFunctionToolCalls(fallbackResponse, {
         model: SERVICE_MODEL,
         input: fallbackInput,
         companyId: params.companyId,
+        traceId: params.traceId,
       });
     }
   };
@@ -1184,7 +1360,8 @@ async function createSmartBuilderResponse(params: {
         baseRequest,
         Math.min(OPENAI_REQUEST_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS),
         "webSearch",
-        0
+        0,
+        params.traceId
       ),
       WEB_SEARCH_TIMEOUT_MS,
       "SmartBuilder web search"
@@ -1193,9 +1370,12 @@ async function createSmartBuilderResponse(params: {
       model: params.model,
       input: params.input,
       companyId: params.companyId,
+      traceId: params.traceId,
     });
   } catch (error) {
-    console.error("[SmartBuilderEstimate.webSearchFallback]", error);
+    logSmartBuilderTrace(params.traceId, "webSearchFallback", {
+      error: summarizeSmartBuilderError(error),
+    }, "warn");
     return runBaseRequest(false);
   }
 }
@@ -1269,6 +1449,7 @@ export class SmartBuilderEstimateController {
   async messageExisting(req: Request, res: Response) {
     const { estimateId } = req.params;
     const userId = (req as any).userId as string | undefined;
+    const traceId = createSmartBuilderTraceId("existing");
 
     try {
       if (!openai) {
@@ -1354,11 +1535,32 @@ export class SmartBuilderEstimateController {
         attachments: prepared.attachments,
       });
 
+      logSmartBuilderTrace(traceId, "messageExisting.context", {
+        estimateId,
+        companyId: estimate.project.company_id || null,
+        userId: userId || null,
+        messageChars: message.length,
+        currentServicesCount: currentServices.length,
+        priorMessageCount: Array.isArray(session.messages) ? session.messages.length : 0,
+        attachments: prepared.attachments.map((attachment) => ({
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          hasExtractedText: Boolean(attachment.extractedText),
+          extractedTextChars: attachment.extractedText?.length || 0,
+        })),
+        contentPartsCount: prepared.contentParts.length,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
+        allowWebSearch,
+        input: summarizeSmartBuilderInput(input),
+      });
+
       const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
         allowWebSearch,
         companyId: estimate.project.company_id,
+        traceId,
       });
 
       const rawText = getResponseText(response);
@@ -1418,7 +1620,9 @@ export class SmartBuilderEstimateController {
         },
       });
     } catch (error) {
-      console.error("[SmartBuilderEstimate.messageExisting]", error);
+      logSmartBuilderTrace(traceId, "messageExisting.error", {
+        error: summarizeSmartBuilderError(error),
+      }, "error");
       const smartBuilderError = getSmartBuilderErrorResponse(error);
       if (smartBuilderError) {
         return res.status(smartBuilderError.status).json(smartBuilderError.body);
@@ -1429,6 +1633,7 @@ export class SmartBuilderEstimateController {
 
   async messageDraft(req: Request, res: Response) {
     const userId = (req as any).userId as string | undefined;
+    const traceId = createSmartBuilderTraceId("draft");
 
     try {
       if (!openai) {
@@ -1471,11 +1676,32 @@ export class SmartBuilderEstimateController {
         attachments: prepared.attachments,
       });
 
+      logSmartBuilderTrace(traceId, "messageDraft.context", {
+        companyId,
+        userId: userId || null,
+        messageChars: message.length,
+        currentServicesCount: currentServices.length,
+        priorMessageCount: priorMessages.length,
+        contextKeys: context && typeof context === "object" ? Object.keys(context).slice(0, 20) : [],
+        attachments: prepared.attachments.map((attachment) => ({
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          hasExtractedText: Boolean(attachment.extractedText),
+          extractedTextChars: attachment.extractedText?.length || 0,
+        })),
+        contentPartsCount: prepared.contentParts.length,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
+        allowWebSearch,
+        input: summarizeSmartBuilderInput(input),
+      });
+
       const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
         allowWebSearch,
         companyId,
+        traceId,
       });
 
       const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
@@ -1521,7 +1747,9 @@ export class SmartBuilderEstimateController {
         },
       });
     } catch (error) {
-      console.error("[SmartBuilderEstimate.messageDraft]", error);
+      logSmartBuilderTrace(traceId, "messageDraft.error", {
+        error: summarizeSmartBuilderError(error),
+      }, "error");
       const smartBuilderError = getSmartBuilderErrorResponse(error);
       if (smartBuilderError) {
         return res.status(smartBuilderError.status).json(smartBuilderError.body);
