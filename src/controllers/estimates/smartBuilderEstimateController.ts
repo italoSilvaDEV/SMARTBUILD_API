@@ -49,7 +49,10 @@ type DraftSessionPayload = {
 };
 
 const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
-  ? new OpenAI({ apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY })
+  ? new OpenAI({
+    apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
+    maxRetries: 0,
+  })
   : null;
 
 const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
@@ -63,10 +66,11 @@ const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKE
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 1);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
 const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "true").toLowerCase() !== "false";
+const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "").toLowerCase() === "true";
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
-const MAX_PROMPT_CATALOG_SERVICES = Number(process.env.SMARTBUILDER_MAX_PROMPT_CATALOG_SERVICES || 80);
+const MAX_PROMPT_CATALOG_SERVICES = Number(process.env.SMARTBUILDER_MAX_PROMPT_CATALOG_SERVICES || 20);
 
 const SMARTBUILDER_SYSTEM_PROMPT = `
 You are SmartBuilder AI for Pro SmartBuild estimates.
@@ -83,7 +87,8 @@ Language and writing standards:
 
 Pricing standards for the United States:
 - Use the company service catalog as the primary pricing anchor when it matches the requested work.
-- Do not expect the full catalog in the prompt. When catalog pricing matters, call search_company_services with focused queries and use the returned services as anchors.
+- The backend may include compact catalog candidates in the request. Use those candidates as pricing anchors when relevant. Do not invent catalog prices.
+- Only call search_company_services if that tool is explicitly available. If no catalog candidates match, estimate conservatively from the request/context instead of repeatedly searching.
 - Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
 - Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
@@ -596,11 +601,24 @@ function buildUserPrompt(params: {
   estimateContext: any;
   hasCompanyCatalog: boolean;
   attachments: SmartBuilderAttachment[];
+  serviceCatalog: any[];
 }) {
   const attachmentText = params.attachments
     .filter((attachment) => attachment.extractedText)
     .map((attachment) => `Attachment ${attachment.originalName} extracted text:\n${attachment.extractedText}`)
     .join("\n\n");
+  const catalogCandidates = params.hasCompanyCatalog
+    ? compactServiceCatalogForPrompt({
+      message: params.message,
+      currentServices: params.currentServices,
+      serviceCatalog: params.serviceCatalog,
+      attachments: params.attachments,
+    })
+    : {
+      totalAvailable: 0,
+      sentToModel: 0,
+      services: [],
+    };
 
   return JSON.stringify({
     userRequest: params.message,
@@ -609,8 +627,9 @@ function buildUserPrompt(params: {
     companyServiceCatalog: {
       available: params.hasCompanyCatalog,
       access: params.hasCompanyCatalog
-        ? "Use the search_company_services tool to retrieve matching company catalog services, prices, and descriptions. Do not assume catalog prices without calling the tool when catalog pricing matters."
+        ? "Use catalogCandidates below as best-effort pricing and service anchors when relevant. If candidates are irrelevant or empty, estimate conservatively from request/context. Do not repeatedly search the catalog."
         : "No company catalog is available in this request.",
+      catalogCandidates,
     },
     attachmentMetadata: params.attachments.map((attachment) => ({
       fileName: attachment.originalName,
@@ -736,7 +755,7 @@ function buildCatalogSearchTool() {
 }
 
 function buildSmartBuilderTools(allowWebSearch: boolean) {
-  const tools: any[] = [buildCatalogSearchTool()];
+  const tools: any[] = CATALOG_TOOL_ENABLED ? [buildCatalogSearchTool()] : [];
 
   if (allowWebSearch) {
     tools.push(...((buildWebSearchOptions() as any).tools || []));
@@ -1294,8 +1313,7 @@ async function createSmartBuilderResponse(params: {
     const tools = buildSmartBuilderTools(allowWebSearchForRequest);
     const baseRequest = {
       ...buildSmartBuilderResponseRequest(params.model, params.input),
-      tools,
-      tool_choice: "auto",
+      ...(tools.length ? { tools, tool_choice: "auto" } : {}),
     };
 
     try {
@@ -1323,8 +1341,7 @@ async function createSmartBuilderResponse(params: {
       const fallbackTools = buildSmartBuilderTools(false);
       const fallbackRequest = {
         ...buildSmartBuilderResponseRequest(SERVICE_MODEL, fallbackInput),
-        tools: fallbackTools,
-        tool_choice: "auto",
+        ...(fallbackTools.length ? { tools: fallbackTools, tool_choice: "auto" } : {}),
       };
 
       const fallbackResponse = await createOpenAiResponseWithTransientRetry(
@@ -1350,8 +1367,7 @@ async function createSmartBuilderResponse(params: {
   const tools = buildSmartBuilderTools(true);
   const baseRequest = {
     ...buildSmartBuilderResponseRequest(params.model, params.input),
-    tools,
-    tool_choice: "auto",
+    ...(tools.length ? { tools, tool_choice: "auto" } : {}),
   };
 
   try {
@@ -1473,6 +1489,11 @@ export class SmartBuilderEstimateController {
 
       const session = await getOrCreateSession(estimateId, estimate.project.company_id, userId);
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
+      const shouldUseCatalog = Boolean(estimate.project.company_id)
+        && !hasImportPricingIntent(message, prepared.attachments);
+      const serviceCatalog = shouldUseCatalog
+        ? await buildServiceCatalog(estimate.project.company_id)
+        : [];
       const userPrompt = buildUserPrompt({
         message,
         currentServices,
@@ -1485,6 +1506,7 @@ export class SmartBuilderEstimateController {
         },
         hasCompanyCatalog: Boolean(estimate.project.company_id),
         attachments: prepared.attachments,
+        serviceCatalog,
       });
 
       const userMessage = await prisma.estimateAiMessage.create({
@@ -1552,6 +1574,8 @@ export class SmartBuilderEstimateController {
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         allowWebSearch,
+        catalogToolEnabled: CATALOG_TOOL_ENABLED,
+        serviceCatalogAvailable: serviceCatalog.length,
         input: summarizeSmartBuilderInput(input),
       });
 
@@ -1650,6 +1674,11 @@ export class SmartBuilderEstimateController {
       const draftSession = parseJsonField<DraftSessionPayload>(req.body.draftSession, {});
       const companyId = context?.companyId || context?.company_id || context?.project?.company_id || null;
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
+      const shouldUseCatalog = Boolean(companyId)
+        && !hasImportPricingIntent(message, prepared.attachments);
+      const serviceCatalog = shouldUseCatalog
+        ? await buildServiceCatalog(companyId)
+        : [];
 
       const userPrompt = buildUserPrompt({
         message,
@@ -1657,6 +1686,7 @@ export class SmartBuilderEstimateController {
         estimateContext: context,
         hasCompanyCatalog: Boolean(companyId),
         attachments: prepared.attachments,
+        serviceCatalog,
       });
 
       const priorMessages = Array.isArray(draftSession.messages) ? draftSession.messages : [];
@@ -1693,6 +1723,8 @@ export class SmartBuilderEstimateController {
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         allowWebSearch,
+        catalogToolEnabled: CATALOG_TOOL_ENABLED,
+        serviceCatalogAvailable: serviceCatalog.length,
         input: summarizeSmartBuilderInput(input),
       });
 
