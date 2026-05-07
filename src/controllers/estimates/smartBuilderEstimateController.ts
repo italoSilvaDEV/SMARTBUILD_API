@@ -48,6 +48,31 @@ type DraftSessionPayload = {
   metadata?: any;
 };
 
+type SmartBuilderGrounding = {
+  importPricingIntent: boolean;
+  companyId: string | null;
+  shouldUseCatalog: boolean;
+  serviceCatalog: any[];
+  catalogCandidates: ReturnType<typeof compactServiceCatalogForPrompt>;
+  catalogStats: {
+    categoriesTotal: number;
+    categoriesActive: number;
+    subcategoriesTotal: number;
+    subcategoriesActive: number;
+    servicesTotal: number;
+    servicesActive: number;
+  } | null;
+  allowWebSearch: boolean;
+  webResearch: {
+    used: boolean;
+    skippedReason?: string;
+    summary?: string;
+    responseId?: string | null;
+    durationMs?: number;
+    error?: ReturnType<typeof summarizeSmartBuilderError>;
+  };
+};
+
 const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
   ? new OpenAI({
     apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
@@ -57,16 +82,20 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
 
 const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
 const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
-const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "").toLowerCase() === "true";
+const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 12_000);
 const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 60_000);
 const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 45_000);
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 9000);
-const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 1);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 4200);
+const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_WEB_RESEARCH_MAX_OUTPUT_TOKENS || 700);
+const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 0);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
 const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "true").toLowerCase() !== "false";
 const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "").toLowerCase() === "true";
+const SERVICE_REASONING_EFFORT = process.env.SMARTBUILDER_SERVICE_REASONING_EFFORT || "low";
+const DOC_REASONING_EFFORT = process.env.SMARTBUILDER_DOC_REASONING_EFFORT || "medium";
+const TEXT_VERBOSITY = process.env.SMARTBUILDER_TEXT_VERBOSITY || "low";
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -82,13 +111,13 @@ Preserve existing service ids when modifying existing services. Use null id for 
 Language and writing standards:
 - Always write service names, notes, assistant messages, and descriptions in professional American English.
 - Service descriptions must be specific and construction-ready, not vague. Use safe simple HTML.
-- Prefer structured descriptions with sections such as Scope of Work, Preparation, Materials, Execution, Finish/Cleanup, Quality Standards, Assumptions, and Exclusions when applicable.
+- Prefer concise structured descriptions with 2 to 5 short sections such as Scope of Work, Preparation, Materials/Execution, Finish/Cleanup, Assumptions, and Exclusions when applicable.
 - Include measurable details from the user request, attachments, location, and current services whenever available.
+- Do not write oversized descriptions. Each service description should be client-ready, but compact enough for a responsive estimate editor and PDF.
 
 Pricing standards for the United States:
 - Use the company service catalog as the primary pricing anchor when it matches the requested work.
-- The backend may include compact catalog candidates in the request. Use those candidates as pricing anchors when relevant. Do not invent catalog prices.
-- Only call search_company_services if that tool is explicitly available. If no catalog candidates match, estimate conservatively from the request/context instead of repeatedly searching.
+- The backend includes compact catalog candidates when available. Use those candidates as pricing anchors when relevant. Do not invent catalog prices.
 - Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
 - Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
@@ -102,7 +131,7 @@ Source priority:
 - If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
 
 Web search:
-- Use web search only when catalog/context/attachments are insufficient to price or describe unfamiliar US construction services.
+- The backend may include bounded web research in the prompt. Use it only as supporting market context.
 - Do not use web search to override explicit prices from an attached estimate/proposal/bid/quote when the user is asking to import or copy.
 
 Do not change taxes, discounts, project status, signatures, invoices, clients, payments, schedules, or PDFs.
@@ -143,6 +172,26 @@ const smartBuilderJsonSchema = {
   },
   required: ["assistantMessage", "proposedServices", "changeSummary", "warnings"],
 };
+
+function supportsReasoningControls(model: string) {
+  const normalizedModel = String(model || "").toLowerCase();
+  return normalizedModel.startsWith("gpt-5") || normalizedModel.startsWith("o");
+}
+
+function buildReasoningOptions(model: string, effort: string) {
+  return supportsReasoningControls(model)
+    ? { reasoning: { effort } }
+    : {};
+}
+
+function buildTextOptions(model: string, format: any) {
+  return {
+    text: {
+      ...(supportsReasoningControls(model) ? { verbosity: TEXT_VERBOSITY } : {}),
+      format,
+    },
+  };
+}
 
 function parseJsonField<T>(value: unknown, fallback: T): T {
   if (!value) return fallback;
@@ -599,37 +648,34 @@ function buildUserPrompt(params: {
   message: string;
   currentServices: SmartBuilderService[];
   estimateContext: any;
-  hasCompanyCatalog: boolean;
   attachments: SmartBuilderAttachment[];
-  serviceCatalog: any[];
+  grounding: SmartBuilderGrounding;
 }) {
   const attachmentText = params.attachments
     .filter((attachment) => attachment.extractedText)
     .map((attachment) => `Attachment ${attachment.originalName} extracted text:\n${attachment.extractedText}`)
     .join("\n\n");
-  const catalogCandidates = params.hasCompanyCatalog
-    ? compactServiceCatalogForPrompt({
-      message: params.message,
-      currentServices: params.currentServices,
-      serviceCatalog: params.serviceCatalog,
-      attachments: params.attachments,
-    })
-    : {
-      totalAvailable: 0,
-      sentToModel: 0,
-      services: [],
-    };
+  const catalogCandidates = params.grounding.catalogCandidates;
 
   return JSON.stringify({
     userRequest: params.message,
     currentServices: normalizeServices(params.currentServices),
     estimate: params.estimateContext,
     companyServiceCatalog: {
-      available: params.hasCompanyCatalog,
-      access: params.hasCompanyCatalog
+      available: params.grounding.serviceCatalog.length > 0,
+      stats: params.grounding.catalogStats,
+      access: params.grounding.serviceCatalog.length > 0
         ? "Use catalogCandidates below as best-effort pricing and service anchors when relevant. If candidates are irrelevant or empty, estimate conservatively from request/context. Do not repeatedly search the catalog."
         : "No company catalog is available in this request.",
       catalogCandidates,
+    },
+    marketResearch: {
+      enabled: WEB_SEARCH_ENABLED,
+      allowedForRequest: params.grounding.allowWebSearch,
+      used: params.grounding.webResearch.used,
+      skippedReason: params.grounding.webResearch.skippedReason || null,
+      summary: params.grounding.webResearch.summary || null,
+      rule: "Use this only as supporting US-market context. It must not override explicit attachment prices, current service prices, or matching company catalog anchors.",
     },
     attachmentMetadata: params.attachments.map((attachment) => ({
       fileName: attachment.originalName,
@@ -675,10 +721,10 @@ function buildUserPrompt(params: {
       market: "United States",
       priority: [
         "Explicit attached estimate/proposal/bid prices when user asks to copy/import",
-        "Company catalog fixedPrice/minPrice/maxPrice returned by search_company_services for matching services",
+        "Company catalog fixedPrice/minPrice/maxPrice included in catalogCandidates for matching services",
         "Current estimate service prices if user is editing existing work",
-        "Conservative US-market estimate from context",
-        "Web search only when the above sources are insufficient",
+        "Bounded web market research only when the above sources are insufficient",
+        "Conservative US-market estimate from project context",
       ],
       preserveDecimals: true,
       allowCents: true,
@@ -688,7 +734,7 @@ function buildUserPrompt(params: {
     },
     webSearchPolicy: {
       enabled: WEB_SEARCH_ENABLED,
-      useOnlyWhenNeeded: true,
+      researchAlreadyPreparedByBackend: params.grounding.webResearch.used,
       userLocationCountry: "US",
       neverOverrideExplicitAttachmentPrices: true,
     },
@@ -696,37 +742,20 @@ function buildUserPrompt(params: {
   });
 }
 
-function buildSmartBuilderResponseRequest(model: string, input: any[]) {
+function buildSmartBuilderResponseRequest(model: string, input: any[], hasDocumentAttachment = false) {
   return {
     model,
     instructions: SMARTBUILDER_SYSTEM_PROMPT,
     input,
     max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
-    text: {
-      format: {
+    parallel_tool_calls: false,
+    ...buildReasoningOptions(model, hasDocumentAttachment ? DOC_REASONING_EFFORT : SERVICE_REASONING_EFFORT),
+    ...buildTextOptions(model, {
         type: "json_schema",
         name: "estimate_smartbuilder_response",
         strict: true,
         schema: smartBuilderJsonSchema,
-      },
-    },
-  };
-}
-
-function buildWebSearchOptions() {
-  if (!WEB_SEARCH_ENABLED) return {};
-
-  return {
-    tools: [
-      {
-        type: WEB_SEARCH_TOOL_TYPE,
-        user_location: {
-          type: "approximate",
-          country: "US",
-        },
-      },
-    ],
-    tool_choice: "auto",
+    }),
   };
 }
 
@@ -764,6 +793,23 @@ function buildSmartBuilderTools(allowWebSearch: boolean) {
   return tools;
 }
 
+function buildWebSearchOptions() {
+  if (!WEB_SEARCH_ENABLED) return {};
+
+  return {
+    tools: [
+      {
+        type: WEB_SEARCH_TOOL_TYPE,
+        user_location: {
+          type: "approximate",
+          country: "US",
+        },
+      },
+    ],
+    tool_choice: "auto",
+  };
+}
+
 function hasImportPricingIntent(message: string, attachments: SmartBuilderAttachment[]) {
   if (!attachments.length) return false;
 
@@ -795,11 +841,20 @@ function hasImportPricingIntent(message: string, attachments: SmartBuilderAttach
 function shouldAllowWebSearch(params: {
   message: string;
   hasCompanyCatalog: boolean;
+  catalogCandidates?: ReturnType<typeof compactServiceCatalogForPrompt>;
   attachments: SmartBuilderAttachment[];
 }) {
   if (!WEB_SEARCH_ENABLED) return false;
   if (hasImportPricingIntent(params.message, params.attachments)) return false;
   if (!params.hasCompanyCatalog) return true;
+  if (!params.catalogCandidates?.services?.length) return true;
+
+  const hasCatalogPricing = params.catalogCandidates.services.some((service: any) => (
+    moneyToNumber(service.fixedPrice, 0) > 0
+    || moneyToNumber(service.minPrice, 0) > 0
+    || moneyToNumber(service.maxPrice, 0) > 0
+  ));
+  if (!hasCatalogPricing) return true;
 
   const normalizedMessage = params.message.toLowerCase();
   return [
@@ -814,6 +869,271 @@ function shouldAllowWebSearch(params: {
     "labor rate",
     "material cost",
   ].some((term) => normalizedMessage.includes(term));
+}
+
+async function getCompanyCatalogStats(companyId?: string | null) {
+  if (!companyId) return null;
+
+  const [
+    categoriesTotal,
+    categoriesActive,
+    subcategoriesTotal,
+    subcategoriesActive,
+    servicesTotal,
+    servicesActive,
+  ] = await Promise.all([
+    prisma.category.count({ where: { company_id: companyId } }),
+    prisma.category.count({
+      where: {
+        company_id: companyId,
+        status_category: { not: false },
+      },
+    }),
+    prisma.subCategory.count({ where: { company_id: companyId } }),
+    prisma.subCategory.count({
+      where: {
+        company_id: companyId,
+        status_subcategory: { not: false },
+      },
+    }),
+    prisma.service.count({ where: { company_id: companyId } }),
+    prisma.service.count({
+      where: {
+        company_id: companyId,
+        service: {
+          status_subcategory: { not: false },
+          subcategory: {
+            status_category: { not: false },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    categoriesTotal,
+    categoriesActive,
+    subcategoriesTotal,
+    subcategoriesActive,
+    servicesTotal,
+    servicesActive,
+  };
+}
+
+async function searchCompanyCatalogForPrompt(params: {
+  companyId?: string | null;
+  message: string;
+  currentServices: SmartBuilderService[];
+  attachments: SmartBuilderAttachment[];
+  importPricingIntent: boolean;
+  traceId?: string;
+}) {
+  const shouldUseCatalog = Boolean(params.companyId) && !params.importPricingIntent;
+  const [catalogStats, serviceCatalog] = await Promise.all([
+    getCompanyCatalogStats(params.companyId),
+    shouldUseCatalog ? buildServiceCatalog(params.companyId) : Promise.resolve([]),
+  ]);
+  const catalogCandidates = serviceCatalog.length
+    ? compactServiceCatalogForPrompt({
+      message: params.message,
+      currentServices: params.currentServices,
+      serviceCatalog,
+      attachments: params.attachments,
+    })
+    : {
+      totalAvailable: serviceCatalog.length,
+      sentToModel: 0,
+      services: [],
+    };
+
+  logSmartBuilderTrace(params.traceId, "catalog.grounding", {
+    companyId: params.companyId || null,
+    shouldUseCatalog,
+    importPricingIntent: params.importPricingIntent,
+    catalogStats,
+    serviceCatalogLoaded: serviceCatalog.length,
+    catalogCandidatesSent: catalogCandidates.sentToModel,
+    candidateNames: catalogCandidates.services.map((service: any) => service.name).slice(0, 10),
+  });
+
+  return {
+    shouldUseCatalog,
+    serviceCatalog,
+    catalogCandidates,
+    catalogStats,
+  };
+}
+
+function buildWebResearchPrompt(params: {
+  message: string;
+  currentServices: SmartBuilderService[];
+  estimateContext: any;
+  catalogCandidates: ReturnType<typeof compactServiceCatalogForPrompt>;
+  attachments: SmartBuilderAttachment[];
+}) {
+  return [
+    "Research concise US construction market pricing context for the estimate request below.",
+    "Return only a compact paragraph or bullet list with realistic price/rate references and scope assumptions.",
+    "Do not create final line items. Do not override explicit prices from attachments or matching company catalog anchors.",
+    "If the request is too vague, give conservative pricing context and important assumptions.",
+    JSON.stringify({
+      userRequest: params.message,
+      currentServices: normalizeServices(params.currentServices),
+      projectLocation: params.estimateContext?.location || params.estimateContext?.project?.location || null,
+      clientLocation: params.estimateContext?.client?.location || null,
+      catalogCandidates: params.catalogCandidates.services.slice(0, 8),
+      attachments: params.attachments.map((attachment) => ({
+        fileName: attachment.originalName,
+        mimeType: attachment.mimeType,
+        hasExtractedText: Boolean(attachment.extractedText),
+      })),
+    }),
+  ].join("\n\n");
+}
+
+async function runBoundedWebPricingResearch(params: {
+  message: string;
+  currentServices: SmartBuilderService[];
+  estimateContext: any;
+  catalogCandidates: ReturnType<typeof compactServiceCatalogForPrompt>;
+  attachments: SmartBuilderAttachment[];
+  allowWebSearch: boolean;
+  traceId?: string;
+}): Promise<SmartBuilderGrounding["webResearch"]> {
+  if (!WEB_SEARCH_ENABLED) return { used: false, skippedReason: "web_search_disabled" };
+  if (!params.allowWebSearch) return { used: false, skippedReason: "web_search_not_needed" };
+  if (!openai) return { used: false, skippedReason: "openai_not_configured" };
+
+  const startedAt = Date.now();
+  const request = {
+    model: SERVICE_MODEL,
+    instructions: [
+      "You are a US construction pricing research assistant.",
+      "Use web search only for concise market context. Do not generate the final estimate JSON.",
+      "Keep the response short and practical for an estimator.",
+    ].join("\n"),
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: buildWebResearchPrompt(params),
+          },
+        ],
+      },
+    ],
+    max_output_tokens: OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS,
+    max_tool_calls: 1,
+    parallel_tool_calls: false,
+    ...(buildWebSearchOptions() as any),
+    ...buildReasoningOptions(SERVICE_MODEL, "low"),
+    ...buildTextOptions(SERVICE_MODEL, { type: "text" }),
+  };
+
+  logSmartBuilderTrace(params.traceId, "webResearch.start", {
+    timeoutMs: WEB_SEARCH_TIMEOUT_MS,
+    model: SERVICE_MODEL,
+    input: summarizeSmartBuilderInput(request.input),
+    tools: summarizeSmartBuilderTools((request as any).tools || []),
+  });
+
+  try {
+    const response = await withTimeout(
+      createOpenAiResponseWithTransientRetry(
+        request,
+        WEB_SEARCH_TIMEOUT_MS,
+        "webResearch",
+        0,
+        params.traceId
+      ),
+      WEB_SEARCH_TIMEOUT_MS,
+      "SmartBuilder web research"
+    );
+    const summary = getResponseText(response).slice(0, 3000);
+
+    logSmartBuilderTrace(params.traceId, "webResearch.completed", {
+      durationMs: Date.now() - startedAt,
+      response: summarizeOpenAiResponse(response),
+      summaryChars: summary.length,
+    });
+
+    return {
+      used: Boolean(summary),
+      skippedReason: summary ? undefined : "web_search_returned_empty",
+      summary,
+      responseId: response?.id || null,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    logSmartBuilderTrace(params.traceId, "webResearch.failed", {
+      durationMs: Date.now() - startedAt,
+      error: summarizeSmartBuilderError(error),
+    }, "warn");
+
+    return {
+      used: false,
+      skippedReason: "web_search_failed",
+      durationMs: Date.now() - startedAt,
+      error: summarizeSmartBuilderError(error),
+    };
+  }
+}
+
+async function prepareSmartBuilderGrounding(params: {
+  companyId?: string | null;
+  message: string;
+  currentServices: SmartBuilderService[];
+  estimateContext: any;
+  attachments: SmartBuilderAttachment[];
+  traceId?: string;
+}): Promise<SmartBuilderGrounding> {
+  const importPricingIntent = hasImportPricingIntent(params.message, params.attachments);
+  const catalog = await searchCompanyCatalogForPrompt({
+    companyId: params.companyId,
+    message: params.message,
+    currentServices: params.currentServices,
+    attachments: params.attachments,
+    importPricingIntent,
+    traceId: params.traceId,
+  });
+  const allowWebSearch = shouldAllowWebSearch({
+    message: params.message,
+    hasCompanyCatalog: catalog.serviceCatalog.length > 0,
+    catalogCandidates: catalog.catalogCandidates,
+    attachments: params.attachments,
+  });
+  const webResearch = await runBoundedWebPricingResearch({
+    message: params.message,
+    currentServices: params.currentServices,
+    estimateContext: params.estimateContext,
+    catalogCandidates: catalog.catalogCandidates,
+    attachments: params.attachments,
+    allowWebSearch,
+    traceId: params.traceId,
+  });
+
+  logSmartBuilderTrace(params.traceId, "grounding.completed", {
+    companyId: params.companyId || null,
+    importPricingIntent,
+    shouldUseCatalog: catalog.shouldUseCatalog,
+    serviceCatalogAvailable: catalog.serviceCatalog.length,
+    catalogCandidatesSent: catalog.catalogCandidates.sentToModel,
+    allowWebSearch,
+    webResearchUsed: webResearch.used,
+    webResearchSkippedReason: webResearch.skippedReason || null,
+  });
+
+  return {
+    importPricingIntent,
+    companyId: params.companyId || null,
+    shouldUseCatalog: catalog.shouldUseCatalog,
+    serviceCatalog: catalog.serviceCatalog,
+    catalogCandidates: catalog.catalogCandidates,
+    catalogStats: catalog.catalogStats,
+    allowWebSearch,
+    webResearch,
+  };
 }
 
 async function searchCompanyServicesForAi(companyId: string | null | undefined, query: string, limit = 10) {
@@ -1152,6 +1472,23 @@ async function createOpenAiResponseWithTransientRetry(
   throw lastError;
 }
 
+function buildEstimateGenerationInput(params: {
+  priorMessages: SmartBuilderMessage[];
+  userPrompt: string;
+  contentParts: any[];
+}) {
+  return [
+    ...compactMessages(params.priorMessages),
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: params.userPrompt },
+        ...params.contentParts,
+      ],
+    },
+  ];
+}
+
 async function resolveFunctionToolCalls(response: any, params: {
   model: string;
   input: any[];
@@ -1288,10 +1625,10 @@ function getSmartBuilderErrorResponse(error: any) {
   return null;
 }
 
-async function createSmartBuilderResponse(params: {
+async function createStructuredEstimateResponse(params: {
   model: string;
   input: any[];
-  allowWebSearch: boolean;
+  hasDocumentAttachment: boolean;
   companyId?: string | null;
   traceId?: string;
 }) {
@@ -1303,97 +1640,26 @@ async function createSmartBuilderResponse(params: {
     model: params.model,
     serviceModel: SERVICE_MODEL,
     docModel: DOC_MODEL,
-    allowWebSearch: params.allowWebSearch,
+    hasDocumentAttachment: params.hasDocumentAttachment,
     webSearchEnabled: WEB_SEARCH_ENABLED,
     companyId: params.companyId || null,
     input: summarizeSmartBuilderInput(params.input),
   });
 
-  const runBaseRequest = async (allowWebSearchForRequest = params.allowWebSearch) => {
-    const tools = buildSmartBuilderTools(allowWebSearchForRequest);
-    const baseRequest = {
-      ...buildSmartBuilderResponseRequest(params.model, params.input),
-      ...(tools.length ? { tools, tool_choice: "auto" } : {}),
-    };
-
-    try {
-      const response = await createOpenAiResponseWithTransientRetry(
-        baseRequest,
-        OPENAI_REQUEST_TIMEOUT_MS,
-        "base",
-        OPENAI_MAX_TRANSIENT_RETRIES,
-        params.traceId
-      );
-      return await resolveFunctionToolCalls(response, {
-        model: params.model,
-        input: params.input,
-        companyId: params.companyId,
-        traceId: params.traceId,
-      });
-    } catch (error) {
-      if (!isOpenAiTransientError(error)) throw error;
-
-      logSmartBuilderTrace(params.traceId, "primaryTransientFallback", {
-        error: summarizeSmartBuilderError(error),
-      }, "warn");
-
-      const fallbackInput = inputHasNonTextParts(params.input) ? stripInputToTextOnly(params.input) : params.input;
-      const fallbackTools = buildSmartBuilderTools(false);
-      const fallbackRequest = {
-        ...buildSmartBuilderResponseRequest(SERVICE_MODEL, fallbackInput),
-        ...(fallbackTools.length ? { tools: fallbackTools, tool_choice: "auto" } : {}),
-      };
-
-      const fallbackResponse = await createOpenAiResponseWithTransientRetry(
-        fallbackRequest,
-        OPENAI_RETRY_TIMEOUT_MS,
-        "fallback",
-        OPENAI_MAX_TRANSIENT_RETRIES,
-        params.traceId
-      );
-      return resolveFunctionToolCalls(fallbackResponse, {
-        model: SERVICE_MODEL,
-        input: fallbackInput,
-        companyId: params.companyId,
-        traceId: params.traceId,
-      });
-    }
+  const finalInput = inputHasNonTextParts(params.input) && !params.hasDocumentAttachment
+    ? stripInputToTextOnly(params.input)
+    : params.input;
+  const request = {
+    ...buildSmartBuilderResponseRequest(params.model, finalInput, params.hasDocumentAttachment),
   };
 
-  if (!params.allowWebSearch) {
-    return runBaseRequest();
-  }
-
-  const tools = buildSmartBuilderTools(true);
-  const baseRequest = {
-    ...buildSmartBuilderResponseRequest(params.model, params.input),
-    ...(tools.length ? { tools, tool_choice: "auto" } : {}),
-  };
-
-  try {
-    const response = await withTimeout(
-      createOpenAiResponseWithTransientRetry(
-        baseRequest,
-        Math.min(OPENAI_REQUEST_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS),
-        "webSearch",
-        0,
-        params.traceId
-      ),
-      WEB_SEARCH_TIMEOUT_MS,
-      "SmartBuilder web search"
-    );
-    return resolveFunctionToolCalls(response, {
-      model: params.model,
-      input: params.input,
-      companyId: params.companyId,
-      traceId: params.traceId,
-    });
-  } catch (error) {
-    logSmartBuilderTrace(params.traceId, "webSearchFallback", {
-      error: summarizeSmartBuilderError(error),
-    }, "warn");
-    return runBaseRequest(false);
-  }
+  return createOpenAiResponseWithTransientRetry(
+    request,
+    OPENAI_REQUEST_TIMEOUT_MS,
+    "generate",
+    OPENAI_MAX_TRANSIENT_RETRIES,
+    params.traceId
+  );
 }
 
 function serializeSession(session: any) {
@@ -1489,24 +1755,27 @@ export class SmartBuilderEstimateController {
 
       const session = await getOrCreateSession(estimateId, estimate.project.company_id, userId);
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
-      const shouldUseCatalog = Boolean(estimate.project.company_id)
-        && !hasImportPricingIntent(message, prepared.attachments);
-      const serviceCatalog = shouldUseCatalog
-        ? await buildServiceCatalog(estimate.project.company_id)
-        : [];
+      const estimateContext = {
+        id: estimate.id,
+        number: estimate.number,
+        status: estimate.status,
+        type: estimate.type_estimate,
+        project: estimate.project,
+      };
+      const grounding = await prepareSmartBuilderGrounding({
+        companyId: estimate.project.company_id,
+        message,
+        currentServices,
+        estimateContext,
+        attachments: prepared.attachments,
+        traceId,
+      });
       const userPrompt = buildUserPrompt({
         message,
         currentServices,
-        estimateContext: {
-          id: estimate.id,
-          number: estimate.number,
-          status: estimate.status,
-          type: estimate.type_estimate,
-          project: estimate.project,
-        },
-        hasCompanyCatalog: Boolean(estimate.project.company_id),
+        estimateContext,
         attachments: prepared.attachments,
-        serviceCatalog,
+        grounding,
       });
 
       const userMessage = await prisma.estimateAiMessage.create({
@@ -1541,20 +1810,10 @@ export class SmartBuilderEstimateController {
         ? await prisma.estimateAiAttachment.findMany({ where: { messageId: userMessage.id } })
         : [];
 
-      const input = [
-        ...compactMessages((session.messages || []) as any),
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: userPrompt },
-            ...prepared.contentParts,
-          ],
-        },
-      ];
-      const allowWebSearch = shouldAllowWebSearch({
-        message,
-        hasCompanyCatalog: Boolean(estimate.project.company_id),
-        attachments: prepared.attachments,
+      const input = buildEstimateGenerationInput({
+        priorMessages: (session.messages || []) as any,
+        userPrompt,
+        contentParts: prepared.contentParts,
       });
 
       logSmartBuilderTrace(traceId, "messageExisting.context", {
@@ -1573,16 +1832,20 @@ export class SmartBuilderEstimateController {
         })),
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
-        allowWebSearch,
+        allowWebSearch: grounding.allowWebSearch,
         catalogToolEnabled: CATALOG_TOOL_ENABLED,
-        serviceCatalogAvailable: serviceCatalog.length,
+        serviceCatalogAvailable: grounding.serviceCatalog.length,
+        catalogStats: grounding.catalogStats,
+        catalogCandidatesSent: grounding.catalogCandidates.sentToModel,
+        webResearchUsed: grounding.webResearch.used,
+        webResearchSkippedReason: grounding.webResearch.skippedReason || null,
         input: summarizeSmartBuilderInput(input),
       });
 
-      const response = await createSmartBuilderResponse({
+      const response = await createStructuredEstimateResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
-        allowWebSearch,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId: estimate.project.company_id,
         traceId,
       });
@@ -1609,7 +1872,8 @@ export class SmartBuilderEstimateController {
           metadata: {
             ...(session.metadata ? (session.metadata as any) : {}),
             webSearchEnabled: WEB_SEARCH_ENABLED,
-            webSearchAllowedForLastRequest: allowWebSearch,
+            webSearchAllowedForLastRequest: grounding.allowWebSearch,
+            webSearchUsedForLastRequest: grounding.webResearch.used,
           },
         },
       });
@@ -1674,36 +1938,28 @@ export class SmartBuilderEstimateController {
       const draftSession = parseJsonField<DraftSessionPayload>(req.body.draftSession, {});
       const companyId = context?.companyId || context?.company_id || context?.project?.company_id || null;
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
-      const shouldUseCatalog = Boolean(companyId)
-        && !hasImportPricingIntent(message, prepared.attachments);
-      const serviceCatalog = shouldUseCatalog
-        ? await buildServiceCatalog(companyId)
-        : [];
+      const grounding = await prepareSmartBuilderGrounding({
+        companyId,
+        message,
+        currentServices,
+        estimateContext: context,
+        attachments: prepared.attachments,
+        traceId,
+      });
 
       const userPrompt = buildUserPrompt({
         message,
         currentServices,
         estimateContext: context,
-        hasCompanyCatalog: Boolean(companyId),
         attachments: prepared.attachments,
-        serviceCatalog,
+        grounding,
       });
 
       const priorMessages = Array.isArray(draftSession.messages) ? draftSession.messages : [];
-      const input = [
-        ...compactMessages(priorMessages),
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: userPrompt },
-            ...prepared.contentParts,
-          ],
-        },
-      ];
-      const allowWebSearch = shouldAllowWebSearch({
-        message,
-        hasCompanyCatalog: Boolean(companyId),
-        attachments: prepared.attachments,
+      const input = buildEstimateGenerationInput({
+        priorMessages,
+        userPrompt,
+        contentParts: prepared.contentParts,
       });
 
       logSmartBuilderTrace(traceId, "messageDraft.context", {
@@ -1722,16 +1978,20 @@ export class SmartBuilderEstimateController {
         })),
         contentPartsCount: prepared.contentParts.length,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
-        allowWebSearch,
+        allowWebSearch: grounding.allowWebSearch,
         catalogToolEnabled: CATALOG_TOOL_ENABLED,
-        serviceCatalogAvailable: serviceCatalog.length,
+        serviceCatalogAvailable: grounding.serviceCatalog.length,
+        catalogStats: grounding.catalogStats,
+        catalogCandidatesSent: grounding.catalogCandidates.sentToModel,
+        webResearchUsed: grounding.webResearch.used,
+        webResearchSkippedReason: grounding.webResearch.skippedReason || null,
         input: summarizeSmartBuilderInput(input),
       });
 
-      const response = await createSmartBuilderResponse({
+      const response = await createStructuredEstimateResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
-        allowWebSearch,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId,
         traceId,
       });
@@ -1746,7 +2006,8 @@ export class SmartBuilderEstimateController {
           modelDocument: DOC_MODEL,
           lastResponseId: response.id,
           webSearchEnabled: WEB_SEARCH_ENABLED,
-          webSearchAllowedForLastRequest: allowWebSearch,
+          webSearchAllowedForLastRequest: grounding.allowWebSearch,
+          webSearchUsedForLastRequest: grounding.webResearch.used,
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
