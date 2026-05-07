@@ -19,6 +19,7 @@ type SyncEstimateService = {
   price: any;
   start_date: string | null;
   deadline: string | null;
+  pos: number;
 };
 
 export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId: string) => {
@@ -38,9 +39,11 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
         },
       },
       serviceProjects: {
-        orderBy: {
-          date_creation: "asc",
-        },
+        orderBy: [
+          { pos: "asc" },
+          { date_creation: "asc" },
+          { id: "asc" },
+        ],
         select: {
           id: true,
           name: true,
@@ -56,6 +59,7 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
           price: true,
           start_date: true,
           deadline: true,
+          pos: true,
         },
       },
     },
@@ -101,6 +105,7 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
         price,
         start_date: originalService.start_date ?? null,
         deadline: originalService.deadline ?? null,
+        pos: originalService.pos,
       },
     });
 

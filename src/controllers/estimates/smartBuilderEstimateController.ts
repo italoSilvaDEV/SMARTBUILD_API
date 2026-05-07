@@ -60,6 +60,8 @@ const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT
 const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 30_000);
 const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 25_000);
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 9000);
+const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 1);
+const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -422,7 +424,11 @@ async function getEstimateContext(estimateId: string) {
         },
       },
       serviceProjects: {
-        orderBy: { date_creation: "asc" },
+        orderBy: [
+          { pos: "asc" },
+          { date_creation: "asc" },
+          { id: "asc" },
+        ],
         select: {
           id: true,
           name: true,
@@ -432,6 +438,7 @@ async function getEstimateContext(estimateId: string) {
           lineTotal: true,
           id_service: true,
           notes: true,
+          pos: true,
           date_creation: true,
         },
       },
@@ -912,6 +919,21 @@ function stripInputToTextOnly(input: any[]) {
   });
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorHeader(error: any, headerName: string) {
+  const headers = error?.headers || error?.response?.headers;
+  if (!headers) return null;
+
+  if (typeof headers.get === "function") {
+    return headers.get(headerName) || headers.get(headerName.toLowerCase()) || null;
+  }
+
+  return headers[headerName] || headers[headerName.toLowerCase()] || null;
+}
+
 function isOpenAiTimeoutError(error: any) {
   const message = String(error?.message || "").toLowerCase();
   return error?.name === "APIConnectionTimeoutError"
@@ -920,8 +942,61 @@ function isOpenAiTimeoutError(error: any) {
     || message.includes("timeout");
 }
 
+function isOpenAiTransientError(error: any) {
+  const status = Number(error?.status || error?.response?.status || 0);
+  const message = String(error?.message || "").toLowerCase();
+  const proxyStatus = String(getErrorHeader(error, "proxy-status") || "").toLowerCase();
+
+  return isOpenAiTimeoutError(error)
+    || [500, 502, 503, 504].includes(status)
+    || (message.includes("status code") && ["500", "502", "503", "504"].some((code) => message.includes(code)))
+    || proxyStatus.includes("http_response_incomplete")
+    || proxyStatus.includes("cloudflare-proxy");
+}
+
+function getTransientRetryDelayMs(error: any) {
+  const retryAfter = Number(getErrorHeader(error, "retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1000, 5_000);
+  }
+
+  return Math.max(0, OPENAI_TRANSIENT_RETRY_DELAY_MS);
+}
+
 function createOpenAiResponse(request: any, timeoutMs: number) {
   return openai!.responses.create(request as any, { timeout: timeoutMs } as any);
+}
+
+async function createOpenAiResponseWithTransientRetry(
+  request: any,
+  timeoutMs: number,
+  label: string,
+  maxRetries = OPENAI_MAX_TRANSIENT_RETRIES
+) {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await createOpenAiResponse(request, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!isOpenAiTransientError(error) || attempt >= maxRetries) {
+        throw error;
+      }
+
+      const delayMs = getTransientRetryDelayMs(error);
+      console.warn(`[SmartBuilderEstimate.${label}.transientRetry]`, {
+        attempt: attempt + 1,
+        nextAttempt: attempt + 2,
+        status: (error as any)?.status,
+        code: (error as any)?.code,
+        delayMs,
+      });
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
 }
 
 async function resolveFunctionToolCalls(response: any, params: {
@@ -942,7 +1017,11 @@ async function resolveFunctionToolCalls(response: any, params: {
     tool_choice: "none",
   };
 
-  return createOpenAiResponse(followUpRequest, OPENAI_RETRY_TIMEOUT_MS);
+  return createOpenAiResponseWithTransientRetry(
+    followUpRequest,
+    OPENAI_RETRY_TIMEOUT_MS,
+    "toolFollowUp"
+  );
 }
 
 function getSmartBuilderErrorResponse(error: any) {
@@ -983,6 +1062,17 @@ function getSmartBuilderErrorResponse(error: any) {
     };
   }
 
+  if (isOpenAiTransientError(error)) {
+    return {
+      status: 503,
+      body: {
+        success: false,
+        error: "SmartBuilder AI is temporarily overloaded. Please wait a moment and try again.",
+        code: "openai_temporarily_unavailable",
+      },
+    };
+  }
+
   return null;
 }
 
@@ -996,34 +1086,43 @@ async function createSmartBuilderResponse(params: {
     throw new Error("OpenAI API key is not configured");
   }
 
-  const tools = buildSmartBuilderTools(params.allowWebSearch);
-  const baseRequest = {
-    ...buildSmartBuilderResponseRequest(params.model, params.input),
-    tools,
-    tool_choice: "auto",
-  };
+  const runBaseRequest = async (allowWebSearchForRequest = params.allowWebSearch) => {
+    const tools = buildSmartBuilderTools(allowWebSearchForRequest);
+    const baseRequest = {
+      ...buildSmartBuilderResponseRequest(params.model, params.input),
+      tools,
+      tool_choice: "auto",
+    };
 
-  const runBaseRequest = async () => {
     try {
-      const response = await createOpenAiResponse(baseRequest, OPENAI_REQUEST_TIMEOUT_MS);
+      const response = await createOpenAiResponseWithTransientRetry(
+        baseRequest,
+        OPENAI_REQUEST_TIMEOUT_MS,
+        "base"
+      );
       return await resolveFunctionToolCalls(response, {
         model: params.model,
         input: params.input,
         companyId: params.companyId,
       });
     } catch (error) {
-      if (!isOpenAiTimeoutError(error)) throw error;
+      if (!isOpenAiTransientError(error)) throw error;
 
-      console.error("[SmartBuilderEstimate.primaryTimeoutFallback]", error);
+      console.error("[SmartBuilderEstimate.primaryTransientFallback]", error);
 
       const fallbackInput = inputHasNonTextParts(params.input) ? stripInputToTextOnly(params.input) : params.input;
+      const fallbackTools = buildSmartBuilderTools(false);
       const fallbackRequest = {
         ...buildSmartBuilderResponseRequest(SERVICE_MODEL, fallbackInput),
-        tools,
+        tools: fallbackTools,
         tool_choice: "auto",
       };
 
-      const fallbackResponse = await createOpenAiResponse(fallbackRequest, OPENAI_RETRY_TIMEOUT_MS);
+      const fallbackResponse = await createOpenAiResponseWithTransientRetry(
+        fallbackRequest,
+        OPENAI_RETRY_TIMEOUT_MS,
+        "fallback"
+      );
       return resolveFunctionToolCalls(fallbackResponse, {
         model: SERVICE_MODEL,
         input: fallbackInput,
@@ -1036,11 +1135,21 @@ async function createSmartBuilderResponse(params: {
     return runBaseRequest();
   }
 
+  const tools = buildSmartBuilderTools(true);
+  const baseRequest = {
+    ...buildSmartBuilderResponseRequest(params.model, params.input),
+    tools,
+    tool_choice: "auto",
+  };
+
   try {
     const response = await withTimeout(
-      createOpenAiResponse({
-        ...baseRequest,
-      }, Math.min(OPENAI_REQUEST_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS)),
+      createOpenAiResponseWithTransientRetry(
+        baseRequest,
+        Math.min(OPENAI_REQUEST_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS),
+        "webSearch",
+        0
+      ),
       WEB_SEARCH_TIMEOUT_MS,
       "SmartBuilder web search"
     );
@@ -1051,7 +1160,7 @@ async function createSmartBuilderResponse(params: {
     });
   } catch (error) {
     console.error("[SmartBuilderEstimate.webSearchFallback]", error);
-    return runBaseRequest();
+    return runBaseRequest(false);
   }
 }
 

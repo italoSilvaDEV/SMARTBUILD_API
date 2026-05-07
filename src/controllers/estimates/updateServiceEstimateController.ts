@@ -15,6 +15,7 @@ type Fields = {
     price?: number
     start_date?: string
     deadline?: string
+    pos?: number
 }
 
 const DISCOUNT_ERRORS = new Set([
@@ -36,6 +37,7 @@ export class UpdateServiceEstimateController {
             price,
             start_date,
             deadline,
+            pos,
         } = req.body
 
         if (!serviceId) {
@@ -72,7 +74,8 @@ export class UpdateServiceEstimateController {
             hours !== undefined ||
             price !== undefined ||
             start_date !== undefined ||
-            deadline !== undefined
+            deadline !== undefined ||
+            pos !== undefined
 
         if (!hasAnyField) {
             return res.status(400).json({
@@ -115,6 +118,9 @@ export class UpdateServiceEstimateController {
             if (deadline !== undefined) {
                 campos.deadline = deadline
             }
+            if (pos !== undefined && serviceEstimate) {
+                campos.pos = Number(pos)
+            }
 
             if (serviceEstimate) {
                 const updatedServiceEstimate = await prisma.$transaction(async (tx) => {
@@ -137,11 +143,12 @@ export class UpdateServiceEstimateController {
             }
 
             if (serviceProject) {
+                const { pos: _pos, ...serviceProjectCampos } = campos
                 const updatedServiceProject = await prisma.serviceProject.update({
                     where: {
                         id: serviceId
                     },
-                    data: campos,
+                    data: serviceProjectCampos,
                 })
 
                 return res.status(200).json({

@@ -1661,6 +1661,7 @@ model EstimateServiceProject {
   originalUnitPrice Decimal?
   originalLineTotal Decimal?
   notes             String?  @db.Text
+  pos               Int      @default(0)
 
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])

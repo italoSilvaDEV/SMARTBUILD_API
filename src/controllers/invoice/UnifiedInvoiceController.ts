@@ -442,11 +442,17 @@ export class UnifiedInvoiceController {
           project: {
             include: {
               serviceProject: true,
-              estimates: {
-                include: {
-                  serviceProjects: true
-                }
-              },
+                estimates: {
+                  include: {
+                    serviceProjects: {
+                      orderBy: [
+                        { pos: "asc" },
+                        { date_creation: "asc" },
+                        { id: "asc" },
+                      ],
+                    }
+                  }
+                },
               pdfproject: true
             }
           }

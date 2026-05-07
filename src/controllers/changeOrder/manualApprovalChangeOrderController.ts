@@ -93,7 +93,13 @@ export class ManualApprovalChangeOrderController {
             id: changeOrder.estimateId
           },
           include: {
-            serviceProjects: true,
+            serviceProjects: {
+              orderBy: [
+                { pos: "asc" },
+                { date_creation: "asc" },
+                { id: "asc" },
+              ],
+            },
             project: true,
           },
         });
@@ -104,7 +110,9 @@ export class ManualApprovalChangeOrderController {
           });
         }
 
-        for (const service of changeOrder.changeOrderServices) {
+        const basePosition = estimate.serviceProjects.length;
+
+        for (const [index, service] of changeOrder.changeOrderServices.entries()) {
           await smartbuild.estimateServiceProject.create({
             data: {
               name: service.name,
@@ -115,6 +123,7 @@ export class ManualApprovalChangeOrderController {
               price: service.price,
               estimateId: estimate.id,
               hours: service.quantity,
+              pos: basePosition + index,
             },
           });
         }

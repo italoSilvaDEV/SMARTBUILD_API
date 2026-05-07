@@ -369,7 +369,13 @@ export class ProjectController {
             id: true,
             status: true,
             projectId: true,
-            serviceProjects: true,
+            serviceProjects: {
+              orderBy: [
+                { pos: "asc" },
+                { date_creation: "asc" },
+                { id: "asc" },
+              ],
+            },
             canceledBy: {
               select: {
                 id: true,
