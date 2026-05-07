@@ -56,6 +56,8 @@ const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
 const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
+const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 12_000);
+const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 45_000);
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -599,25 +601,91 @@ function buildWebSearchOptions() {
   };
 }
 
-async function createSmartBuilderResponse(params: { model: string; input: any[] }) {
+function hasImportPricingIntent(message: string, attachments: SmartBuilderAttachment[]) {
+  if (!attachments.length) return false;
+
+  const normalizedMessage = message.toLowerCase();
+  return [
+    "copy",
+    "import",
+    "replicate",
+    "same price",
+    "same prices",
+    "use the values",
+    "use these values",
+    "quote",
+    "proposal",
+    "bid",
+    "estimate",
+    "orcamento",
+    "orçamento",
+    "proposta",
+    "copiar",
+    "importe",
+    "importar",
+    "replicar",
+    "mesmos valores",
+    "usar os valores",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+function shouldAllowWebSearch(params: {
+  message: string;
+  serviceCatalog: any[];
+  attachments: SmartBuilderAttachment[];
+}) {
+  if (!WEB_SEARCH_ENABLED) return false;
+  if (hasImportPricingIntent(params.message, params.attachments)) return false;
+  if (!params.serviceCatalog.length) return true;
+
+  const normalizedMessage = params.message.toLowerCase();
+  return [
+    "web",
+    "search",
+    "research",
+    "market price",
+    "market rate",
+    "current price",
+    "current rate",
+    "average cost",
+    "labor rate",
+    "material cost",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  let timeout: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout!));
+}
+
+async function createSmartBuilderResponse(params: { model: string; input: any[]; allowWebSearch: boolean }) {
   if (!openai) {
     throw new Error("OpenAI API key is not configured");
   }
 
   const baseRequest = buildSmartBuilderResponseRequest(params.model, params.input);
+  const requestOptions = { timeout: OPENAI_REQUEST_TIMEOUT_MS } as any;
 
-  if (!WEB_SEARCH_ENABLED) {
-    return openai.responses.create(baseRequest as any);
+  if (!params.allowWebSearch) {
+    return openai.responses.create(baseRequest as any, requestOptions);
   }
 
   try {
-    return await openai.responses.create({
-      ...baseRequest,
-      ...buildWebSearchOptions(),
-    } as any);
+    return await withTimeout(
+      openai.responses.create({
+        ...baseRequest,
+        ...buildWebSearchOptions(),
+      } as any, requestOptions),
+      WEB_SEARCH_TIMEOUT_MS,
+      "SmartBuilder web search"
+    );
   } catch (error) {
     console.error("[SmartBuilderEstimate.webSearchFallback]", error);
-    return openai.responses.create(baseRequest as any);
+    return openai.responses.create(baseRequest as any, requestOptions);
   }
 }
 
@@ -770,10 +838,16 @@ export class SmartBuilderEstimateController {
           ],
         },
       ];
+      const allowWebSearch = shouldAllowWebSearch({
+        message,
+        serviceCatalog,
+        attachments: prepared.attachments,
+      });
 
       const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
+        allowWebSearch,
       });
 
       const rawText = getResponseText(response);
@@ -798,6 +872,7 @@ export class SmartBuilderEstimateController {
           metadata: {
             ...(session.metadata ? (session.metadata as any) : {}),
             webSearchEnabled: WEB_SEARCH_ENABLED,
+            webSearchAllowedForLastRequest: allowWebSearch,
           },
         },
       });
@@ -876,10 +951,16 @@ export class SmartBuilderEstimateController {
           ],
         },
       ];
+      const allowWebSearch = shouldAllowWebSearch({
+        message,
+        serviceCatalog,
+        attachments: prepared.attachments,
+      });
 
       const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
+        allowWebSearch,
       });
 
       const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
@@ -892,6 +973,7 @@ export class SmartBuilderEstimateController {
           modelDocument: DOC_MODEL,
           lastResponseId: response.id,
           webSearchEnabled: WEB_SEARCH_ENABLED,
+          webSearchAllowedForLastRequest: allowWebSearch,
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
