@@ -1,10 +1,10 @@
 -- AlterTable
-ALTER TABLE `estimateserviceproject` ADD COLUMN `pos` INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE `EstimateServiceProject` ADD COLUMN `pos` INTEGER NOT NULL DEFAULT 0;
 
 SET @current_estimate_id := '';
 SET @row_number := -1;
 
-UPDATE `estimateserviceproject` esp
+UPDATE `EstimateServiceProject` esp
 JOIN (
   SELECT ranked.id, ranked.pos
   FROM (
@@ -14,7 +14,7 @@ JOIN (
       @current_estimate_id := ordered.estimateId
     FROM (
       SELECT id, estimateId
-      FROM `estimateserviceproject`
+      FROM `EstimateServiceProject`
       ORDER BY estimateId ASC, date_creation ASC, id ASC
     ) ordered
   ) ranked
