@@ -196,6 +196,27 @@ function collectProjectRefValues(rows: any[]): string[] {
   return Array.from(refs);
 }
 
+function summarizeAddress(address: any) {
+  if (!address) return null;
+
+  return {
+    formatted: formatAddressFromQbo(address),
+    cityAndState: formatCityAndStateFromQbo(address),
+    raw: address,
+  };
+}
+
+function pickLatestTxn(rows: any[]) {
+  return rows
+    .slice()
+    .sort((a: any, b: any) =>
+      String(b?.TxnDate || b?.MetaData?.LastUpdatedTime || "").localeCompare(
+        String(a?.TxnDate || a?.MetaData?.LastUpdatedTime || "")
+      )
+    )
+    .at(0) ?? null;
+}
+
 function resolveImportedProjectLocation(
   qboProject: EnrichedQuickBooksProject,
   parentCustomer: any | null,
@@ -502,7 +523,28 @@ async function fetchEnrichedQuickBooksProjects(
   userId: string,
   companyId: string
 ) {
-  const { account } = await getQbClientWithAccountOrThrow(userId, companyId);
+  const { api, minorversion, customers, projects } = await fetchQuickBooksProjectShells(
+    userId,
+    companyId
+  );
+  const enrichedProjects = await Promise.all(
+    projects.map((project: any) => enrichProjectWithRelatedData(api, project, minorversion))
+  );
+
+  return {
+    api,
+    minorversion,
+    query: "SELECT * FROM Customer WHERE Job = true MAXRESULTS 1000",
+    customers,
+    projects: enrichedProjects,
+  };
+}
+
+async function fetchQuickBooksProjectShells(
+  userId: string,
+  companyId: string
+) {
+  const { qb, account } = await getQbClientWithAccountOrThrow(userId, companyId);
   const api = qboClientForAccount(account.id);
   const query = "SELECT * FROM Customer WHERE Job = true MAXRESULTS 1000";
   const minorversion = 40;
@@ -515,16 +557,15 @@ async function fetchEnrichedQuickBooksProjects(
       : [];
 
   const projects = customers.filter((customer: any) => customer?.IsProject === true);
-  const enrichedProjects = await Promise.all(
-    projects.map((project: any) => enrichProjectWithRelatedData(api, project, minorversion))
-  );
 
   return {
+    qb,
+    account,
     api,
     minorversion,
     query,
     customers,
-    projects: enrichedProjects,
+    projects,
   };
 }
 
@@ -695,6 +736,17 @@ async function getNextProjectContractNumber(companyId: string) {
   return Math.max(lastEstimateNumber, lastProjectNumber) + 1;
 }
 
+function buildMinimalProjectFinancials(qboProject: any) {
+  return {
+    price: 0,
+    amountPaid: 0,
+    balanceDue: 0,
+    startDate: toIsoDate(qboProject?.MetaData?.CreateTime),
+    deadline: undefined,
+    statusProject: qboProject?.Active === false ? "Canceled" : "Pre-Start",
+  };
+}
+
 export class QuickBooksProjectController {
   async preCheck(req: Request, res: Response) {
     const { companyId, userId } = req.params;
@@ -798,6 +850,142 @@ export class QuickBooksProjectController {
     }
   }
 
+  async debugProjectCount(req: Request, res: Response) {
+    const { companyId, userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ error: "User ID not provided" });
+    }
+
+    if (!companyId) {
+      return res.status(400).json({ error: "Company ID not provided" });
+    }
+
+    try {
+      const { account, api, query, minorversion, customers, projects } =
+        await fetchQuickBooksProjectShells(userId, companyId);
+      const enrichedProjects = await Promise.all(
+        projects.map((project: any) => enrichProjectWithRelatedData(api, project, minorversion))
+      );
+      const restAddressDiagnostics = await Promise.all(
+        enrichedProjects.map(async (project: EnrichedQuickBooksProject) => {
+          const projectId = String(project?.Id || "");
+          const parentId = project?.ParentRef?.value ? String(project.ParentRef.value) : null;
+          const projectReadById = projectId
+            ? await fetchQboCustomerById(api, projectId, minorversion).catch(() => null)
+            : null;
+          const parentCustomer = parentId
+            ? await fetchQboCustomerById(api, parentId, minorversion).catch(() => null)
+            : null;
+
+          const latestEstimate = pickLatestTxn(project.relatedData?.Estimate?.rows || []);
+          const latestInvoice = pickLatestTxn(project.relatedData?.Invoice?.rows || []);
+          const latestSalesReceipt = pickLatestTxn(project.relatedData?.SalesReceipt?.rows || []);
+          const latestPayment = pickLatestTxn(project.relatedData?.Payment?.rows || []);
+
+          const resolvedLocation = resolveImportedProjectLocation(
+            project,
+            parentCustomer,
+            projectReadById
+          );
+
+          return {
+            projectId,
+            queriesTested: {
+              customerByProjectId: `GET /customer/${projectId}`,
+              customerByParentId: parentId ? `GET /customer/${parentId}` : null,
+              estimateByCustomerRef: `SELECT * FROM Estimate WHERE CustomerRef = '${projectId}'`,
+              invoiceByCustomerRef: `SELECT * FROM Invoice WHERE CustomerRef = '${projectId}'`,
+              salesReceiptByCustomerRef: `SELECT * FROM SalesReceipt WHERE CustomerRef = '${projectId}'`,
+            },
+            projectQuery: {
+              billAddr: summarizeAddress(project?.BillAddr),
+              shipAddr: summarizeAddress(project?.ShipAddr),
+            },
+            projectReadById: {
+              found: !!projectReadById,
+              billAddr: summarizeAddress(projectReadById?.BillAddr),
+              shipAddr: summarizeAddress(projectReadById?.ShipAddr),
+            },
+            parentCustomer: {
+              id: parentId,
+              found: !!parentCustomer,
+              displayName: parentCustomer?.DisplayName || null,
+              billAddr: summarizeAddress(parentCustomer?.BillAddr),
+              shipAddr: summarizeAddress(parentCustomer?.ShipAddr),
+            },
+            latestTransactions: {
+              estimate: latestEstimate
+                ? {
+                    id: latestEstimate?.Id || null,
+                    txnDate: latestEstimate?.TxnDate || null,
+                    billAddr: summarizeAddress(latestEstimate?.BillAddr),
+                    shipAddr: summarizeAddress(latestEstimate?.ShipAddr),
+                  }
+                : null,
+              invoice: latestInvoice
+                ? {
+                    id: latestInvoice?.Id || null,
+                    txnDate: latestInvoice?.TxnDate || null,
+                    billAddr: summarizeAddress(latestInvoice?.BillAddr),
+                    shipAddr: summarizeAddress(latestInvoice?.ShipAddr),
+                  }
+                : null,
+              salesReceipt: latestSalesReceipt
+                ? {
+                    id: latestSalesReceipt?.Id || null,
+                    txnDate: latestSalesReceipt?.TxnDate || null,
+                    billAddr: summarizeAddress(latestSalesReceipt?.BillAddr),
+                    shipAddr: summarizeAddress(latestSalesReceipt?.ShipAddr),
+                  }
+                : null,
+              payment: latestPayment
+                ? {
+                    id: latestPayment?.Id || null,
+                    txnDate: latestPayment?.TxnDate || null,
+                  }
+                : null,
+            },
+            resolvedLocation,
+          };
+        })
+      );
+
+      const projectsWithDiagnostics = enrichedProjects.map((project, index) => ({
+        ...project,
+        restAddressDiagnostics: restAddressDiagnostics[index],
+      }));
+
+      return res.status(200).json({
+        ok: true,
+        message: `Found ${projects.length} QuickBooks project(s) with IsProject=true and loaded their available QuickBooks details.`,
+        companyId,
+        userId,
+        connectedRealmId: account.realmId,
+        connectedCompanyName: account.companyName || null,
+        queryMode: "rest-customer-isproject-count",
+        query,
+        minorversion,
+        totalCustomersReturned: customers.length,
+        totalProjects: projects.length,
+        projectIds: projects.map((project: any) => String(project?.Id || "")),
+        projectNames: projects.map((project: any) => String(project?.DisplayName || "")),
+        relatedEntities: PROJECT_RELATED_ENTITIES,
+        projects: projectsWithDiagnostics,
+      });
+    } catch (error: any) {
+      console.error("QuickBooks Projects debug count error:", error?.response?.data || error);
+      return res.status(error?.response?.status || 500).json({
+        error: "Failed to count QuickBooks projects",
+        details:
+          error?.response?.data ||
+          error?.message ||
+          "Unknown error",
+        queryMode: "rest-customer-isproject-count",
+      });
+    }
+  }
+
   async importProjectsToSmartBuild(req: Request, res: Response) {
     const { companyId, userId } = req.params;
 
@@ -810,38 +998,26 @@ export class QuickBooksProjectController {
     }
 
     try {
-      const { api, minorversion, projects } = await fetchEnrichedQuickBooksProjects(userId, companyId);
+      const { api, minorversion, projects } = await fetchQuickBooksProjectShells(userId, companyId);
       const results: Array<Record<string, any>> = [];
 
       for (const qboProject of projects) {
-        const existingClient = await prisma.client.findFirst({
-          where: {
-            company_id: companyId,
-            email: qboProject?.PrimaryEmailAddr?.Address || undefined,
-          },
-        });
+        const parentCustomerId = qboProject?.ParentRef?.value
+          ? String(qboProject.ParentRef.value)
+          : null;
+        const parentCustomer = parentCustomerId
+          ? await fetchQboCustomerById(api, parentCustomerId, minorversion).catch(() => null)
+          : null;
+        const resolvedProjectLocation = resolveImportedProjectLocation(
+          qboProject as any,
+          parentCustomer,
+          null
+        );
 
-          const parentCustomerId =
-            qboProject?.ParentRef?.value ||
-            existingClient?.idQuickbooks ||
-            null;
-
-          const projectReadById = qboProject?.Id
-            ? await fetchQboCustomerById(api, String(qboProject.Id), minorversion).catch(() => null)
-            : null;
-          const parentCustomer = parentCustomerId
-            ? await fetchQboCustomerById(api, String(parentCustomerId), minorversion).catch(() => null)
-            : null;
-          const resolvedProjectLocation = resolveImportedProjectLocation(
-            qboProject,
-            parentCustomer,
-            projectReadById
-          );
-
-          const client = await findOrCreateClientForImportedProject({
-            companyId,
-            userId,
-            qboProject,
+        const client = await findOrCreateClientForImportedProject({
+          companyId,
+          userId,
+          qboProject: qboProject as any,
           parentCustomer,
           projectAddress: resolvedProjectLocation.address,
           projectCityAndState: resolvedProjectLocation.cityAndState,
@@ -850,13 +1026,12 @@ export class QuickBooksProjectController {
         const workContext = await ensureWorkContextForImportedProject({
           client,
           companyId,
-          qboProject,
+          qboProject: qboProject as any,
           parentCustomer,
           projectAddress: resolvedProjectLocation.address,
         });
 
-        const financials = computeProjectFinancials(qboProject);
-        const services = buildImportedServices(qboProject);
+        const financials = buildMinimalProjectFinancials(qboProject);
         const metadataMarker = `QBO_PROJECT:${qboProject.Id}`;
 
         const existingImportedLink = await prisma.projectPastes.findFirst({
@@ -926,45 +1101,6 @@ export class QuickBooksProjectController {
           });
         }
 
-        let createdServices = 0;
-        let updatedServices = 0;
-
-        for (const service of services) {
-          const existingService = await prisma.serviceProject.findFirst({
-            where: {
-              projectId: project.id,
-              name: service.name,
-            },
-          });
-
-          if (existingService) {
-            await prisma.serviceProject.update({
-              where: { id: existingService.id },
-              data: {
-                description: service.description,
-                price: service.price,
-                hours: service.hours,
-                status: service.status,
-                company_id: companyId,
-              },
-            });
-            updatedServices++;
-          } else {
-            await prisma.serviceProject.create({
-              data: {
-                projectId: project.id,
-                name: service.name,
-                description: service.description,
-                price: service.price,
-                hours: service.hours,
-                status: service.status,
-                company_id: companyId,
-              },
-            });
-            createdServices++;
-          }
-        }
-
         results.push({
           action,
           localProjectId: project.id,
@@ -974,17 +1110,16 @@ export class QuickBooksProjectController {
           localClientId: client.id,
           workContextId: workContext?.id || null,
             importedServices: {
-              created: createdServices,
-              updated: updatedServices,
-              detected: services.length,
+              created: 0,
+              updated: 0,
+              detected: 0,
             },
             financials,
             resolvedLocation: resolvedProjectLocation,
             qboData: {
               projectQuery: qboProject,
-              projectReadById,
               parentCustomer,
-              relatedData: qboProject.relatedData,
+              relatedData: null,
             },
           });
         }
@@ -1007,6 +1142,10 @@ export class QuickBooksProjectController {
         details: error?.response?.data || error?.message || "Unknown error",
       });
     }
+  }
+
+  async syncProjectsQboToSmartBuild(req: Request, res: Response) {
+    return this.importProjectsToSmartBuild(req, res);
   }
 
   async listProjectsGraphql(req: Request, res: Response) {

@@ -23,8 +23,10 @@ quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId/:companyId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId/:companyId", checkToken, quickbooksController.refreshToken);
 quickbooksRoutes.get("/quickbooks/projects/pre-check/:companyId/:userId", checkToken, quickBooksProjectController.preCheck);
+quickbooksRoutes.get("/quickbooks/projects/debug-count/:companyId/:userId", checkToken, quickBooksProjectController.debugProjectCount);
 quickbooksRoutes.get("/quickbooks/projects/:companyId/:userId", checkToken, quickBooksProjectController.listProjects);
 quickbooksRoutes.post("/quickbooks/projects/import/:companyId/:userId", checkToken, quickBooksProjectController.importProjectsToSmartBuild);
+quickbooksRoutes.post("/quickbooks/projects/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksProjectController.syncProjectsQboToSmartBuild);
 quickbooksRoutes.get("/quickbooks/projects-graphql/:companyId/:userId", checkToken, quickBooksProjectController.listProjectsGraphql);
 
 //  NOVAS: Rotas de desconexão
