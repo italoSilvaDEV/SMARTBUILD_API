@@ -37,6 +37,8 @@ companyRoutes.put(
 );
 
 companyRoutes.get('/company/:id', checkToken, Company.searchOneCompany);
+companyRoutes.get('/company/:id/accent-color', checkToken, Company.getAccentColor);
+companyRoutes.patch('/company/:id/accent-color', checkToken, Company.updateAccentColor);
 
 companyRoutes.get('/company-details-contract/:id', checkToken, Company.searchOneCompanyNotes);
 

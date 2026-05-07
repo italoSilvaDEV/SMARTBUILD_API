@@ -581,6 +581,75 @@ export class CompanyController {
         }
     }
 
+    async getAccentColor(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    accentColor: true,
+                }
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            return response.json({
+                companyId: company.id,
+                accentColor: company.accentColor,
+            });
+        } catch (error) {
+            console.error('Error fetching company accent color:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    async updateAccentColor(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+            const { accentColor } = request.body;
+
+            if (
+                accentColor !== null &&
+                accentColor !== undefined &&
+                !/^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(String(accentColor))
+            ) {
+                return response.status(400).json({ error: "Invalid accent color" });
+            }
+
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: { id: true }
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            const updatedCompany = await prisma.company.update({
+                where: { id },
+                data: {
+                    accentColor: accentColor ?? null,
+                },
+                select: {
+                    id: true,
+                    accentColor: true,
+                }
+            });
+
+            return response.json({
+                companyId: updatedCompany.id,
+                accentColor: updatedCompany.accentColor,
+            });
+        } catch (error) {
+            console.error('Error updating company accent color:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+
     async searchOneCompanyNotes(request: Request, response: Response) {
         try {
             const { id } = request.params;
