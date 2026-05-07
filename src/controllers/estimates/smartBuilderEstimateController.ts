@@ -57,10 +57,13 @@ const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 12_000);
-const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 45_000);
+const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 30_000);
+const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 25_000);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 9000);
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
+const MAX_PROMPT_CATALOG_SERVICES = Number(process.env.SMARTBUILDER_MAX_PROMPT_CATALOG_SERVICES || 80);
 
 const SMARTBUILDER_SYSTEM_PROMPT = `
 You are SmartBuilder AI for Pro SmartBuild estimates.
@@ -77,6 +80,7 @@ Language and writing standards:
 
 Pricing standards for the United States:
 - Use the company service catalog as the primary pricing anchor when it matches the requested work.
+- Do not expect the full catalog in the prompt. When catalog pricing matters, call search_company_services with focused queries and use the returned services as anchors.
 - Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
 - Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
@@ -211,6 +215,98 @@ function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[]) 
     proposedServices: normalizeServices(Array.isArray(raw.proposedServices) ? raw.proposedServices : fallbackServices),
     changeSummary: Array.isArray(raw.changeSummary) ? raw.changeSummary.map(String) : [],
     warnings: Array.isArray(raw.warnings) ? raw.warnings.map(String) : [],
+  };
+}
+
+function getSearchTokens(value: string) {
+  const stopWords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "into",
+    "estimate",
+    "service",
+    "project",
+    "work",
+    "please",
+    "create",
+    "make",
+    "need",
+    "want",
+    "para",
+    "com",
+    "uma",
+    "um",
+    "que",
+    "por",
+    "favor",
+  ]);
+
+  return Array.from(
+    new Set(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((token) => token.length >= 4 && !stopWords.has(token))
+    )
+  );
+}
+
+function compactServiceCatalogForPrompt(params: {
+  message: string;
+  currentServices: SmartBuilderService[];
+  serviceCatalog: any[];
+  attachments: SmartBuilderAttachment[];
+}) {
+  const attachmentText = params.attachments
+    .map((attachment) => `${attachment.originalName} ${attachment.extractedText || ""}`)
+    .join(" ")
+    .slice(0, 4000);
+  const currentServiceText = params.currentServices
+    .map((service) => `${service.name || ""} ${service.description || ""}`)
+    .join(" ");
+  const tokens = getSearchTokens(`${params.message} ${currentServiceText} ${attachmentText}`);
+
+  const scoredServices = params.serviceCatalog.map((service, index) => {
+    const searchable = [
+      service.name,
+      service.category,
+      service.subcategory,
+      service.description,
+      service.priceType,
+    ].join(" ").toLowerCase();
+    const score = tokens.reduce((total, token) => total + (searchable.includes(token) ? 1 : 0), 0);
+    return { service, index, score };
+  });
+
+  scoredServices.sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const relevantServices = scoredServices
+    .filter((item) => item.score > 0)
+    .slice(0, MAX_PROMPT_CATALOG_SERVICES);
+
+  const selectedServices = (relevantServices.length ? relevantServices : scoredServices.slice(0, MAX_PROMPT_CATALOG_SERVICES))
+    .map(({ service }) => ({
+      id: service.id,
+      category: service.category,
+      subcategory: service.subcategory,
+      name: service.name,
+      description: typeof service.description === "string" ? service.description.slice(0, 700) : service.description,
+      priceType: service.priceType,
+      fixedPrice: service.fixedPrice,
+      minPrice: service.minPrice,
+      maxPrice: service.maxPrice,
+    }));
+
+  return {
+    totalAvailable: params.serviceCatalog.length,
+    sentToModel: selectedServices.length,
+    services: selectedServices,
   };
 }
 
@@ -490,7 +586,7 @@ function buildUserPrompt(params: {
   message: string;
   currentServices: SmartBuilderService[];
   estimateContext: any;
-  serviceCatalog: any[];
+  hasCompanyCatalog: boolean;
   attachments: SmartBuilderAttachment[];
 }) {
   const attachmentText = params.attachments
@@ -502,7 +598,12 @@ function buildUserPrompt(params: {
     userRequest: params.message,
     currentServices: normalizeServices(params.currentServices),
     estimate: params.estimateContext,
-    companyServiceCatalog: params.serviceCatalog,
+    companyServiceCatalog: {
+      available: params.hasCompanyCatalog,
+      access: params.hasCompanyCatalog
+        ? "Use the search_company_services tool to retrieve matching company catalog services, prices, and descriptions. Do not assume catalog prices without calling the tool when catalog pricing matters."
+        : "No company catalog is available in this request.",
+    },
     attachmentMetadata: params.attachments.map((attachment) => ({
       fileName: attachment.originalName,
       mimeType: attachment.mimeType || null,
@@ -547,7 +648,7 @@ function buildUserPrompt(params: {
       market: "United States",
       priority: [
         "Explicit attached estimate/proposal/bid prices when user asks to copy/import",
-        "Company catalog fixedPrice/minPrice/maxPrice for matching services",
+        "Company catalog fixedPrice/minPrice/maxPrice returned by search_company_services for matching services",
         "Current estimate service prices if user is editing existing work",
         "Conservative US-market estimate from context",
         "Web search only when the above sources are insufficient",
@@ -573,6 +674,7 @@ function buildSmartBuilderResponseRequest(model: string, input: any[]) {
     model,
     instructions: SMARTBUILDER_SYSTEM_PROMPT,
     input,
+    max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
     text: {
       format: {
         type: "json_schema",
@@ -599,6 +701,40 @@ function buildWebSearchOptions() {
     ],
     tool_choice: "auto",
   };
+}
+
+function buildCatalogSearchTool() {
+  return {
+    type: "function",
+    name: "search_company_services",
+    description: "Search the current company's service catalog for matching construction services, descriptions, and pricing anchors.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        query: {
+          type: "string",
+          description: "Short search query for the service category or line item, such as painting, siding, bathroom remodel, demolition, or cabinet installation.",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of services to return. Use 5 to 12 for focused searches.",
+        },
+      },
+      required: ["query", "limit"],
+    },
+    strict: true,
+  };
+}
+
+function buildSmartBuilderTools(allowWebSearch: boolean) {
+  const tools: any[] = [buildCatalogSearchTool()];
+
+  if (allowWebSearch) {
+    tools.push(...((buildWebSearchOptions() as any).tools || []));
+  }
+
+  return tools;
 }
 
 function hasImportPricingIntent(message: string, attachments: SmartBuilderAttachment[]) {
@@ -631,12 +767,12 @@ function hasImportPricingIntent(message: string, attachments: SmartBuilderAttach
 
 function shouldAllowWebSearch(params: {
   message: string;
-  serviceCatalog: any[];
+  hasCompanyCatalog: boolean;
   attachments: SmartBuilderAttachment[];
 }) {
   if (!WEB_SEARCH_ENABLED) return false;
   if (hasImportPricingIntent(params.message, params.attachments)) return false;
-  if (!params.serviceCatalog.length) return true;
+  if (!params.hasCompanyCatalog) return true;
 
   const normalizedMessage = params.message.toLowerCase();
   return [
@@ -653,6 +789,104 @@ function shouldAllowWebSearch(params: {
   ].some((term) => normalizedMessage.includes(term));
 }
 
+async function searchCompanyServicesForAi(companyId: string | null | undefined, query: string, limit = 10) {
+  if (!companyId) {
+    return {
+      services: [],
+      warning: "No companyId was available, so the company service catalog could not be searched.",
+    };
+  }
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 20);
+  const tokens = getSearchTokens(query).slice(0, 8);
+  const searchConditions = tokens.flatMap((token) => [
+    { service_name: { contains: token } },
+    { description: { contains: token } },
+    { price_type: { contains: token } },
+    { service: { subcategory_name: { contains: token } } },
+    { service: { subcategory: { category_name: { contains: token } } } },
+  ]);
+
+  const services = await prisma.service.findMany({
+    where: {
+      company_id: companyId,
+      service: {
+        status_subcategory: {
+          not: false,
+        },
+        subcategory: {
+          status_category: {
+            not: false,
+          },
+        },
+      },
+      ...(searchConditions.length ? { OR: searchConditions } : {}),
+    },
+    select: {
+      id: true,
+      service_name: true,
+      description: true,
+      price_type: true,
+      price_fixe: true,
+      price_minimum: true,
+      price_maximum: true,
+      date_creation: true,
+      service: {
+        select: {
+          subcategory_name: true,
+          subcategory: {
+            select: {
+              category_name: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { date_creation: "asc" },
+    take: safeLimit,
+  });
+
+  return {
+    query,
+    count: services.length,
+    services: services.map((service) => ({
+      id: service.id,
+      category: service.service.subcategory.category_name,
+      subcategory: service.service.subcategory_name,
+      name: service.service_name,
+      description: service.description,
+      priceType: service.price_type,
+      fixedPrice: moneyToNumber(service.price_fixe, 0),
+      minPrice: moneyToNumber(service.price_minimum, 0),
+      maxPrice: moneyToNumber(service.price_maximum, 0),
+    })),
+  };
+}
+
+function getFunctionToolCalls(response: any) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output.filter((item: any) => item?.type === "function_call" && item?.name);
+}
+
+async function executeFunctionToolCall(call: any, companyId: string | null | undefined) {
+  if (call.name !== "search_company_services") {
+    return {
+      type: "function_call_output",
+      call_id: call.call_id,
+      output: JSON.stringify({ error: `Unsupported tool: ${call.name}` }),
+    };
+  }
+
+  const args = safeParseAiJson(call.arguments || "{}");
+  const result = await searchCompanyServicesForAi(companyId, String(args.query || ""), Number(args.limit || 10));
+
+  return {
+    type: "function_call_output",
+    call_id: call.call_id,
+    output: JSON.stringify(result),
+  };
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   let timeout: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
@@ -662,30 +896,126 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout!));
 }
 
-async function createSmartBuilderResponse(params: { model: string; input: any[]; allowWebSearch: boolean }) {
+function inputHasNonTextParts(input: any[]) {
+  return input.some((item) => Array.isArray(item?.content)
+    && item.content.some((part: any) => part?.type && part.type !== "input_text"));
+}
+
+function stripInputToTextOnly(input: any[]) {
+  return input.map((item) => {
+    if (!Array.isArray(item?.content)) return item;
+
+    return {
+      ...item,
+      content: item.content.filter((part: any) => part?.type === "input_text"),
+    };
+  });
+}
+
+function isOpenAiTimeoutError(error: any) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.name === "APIConnectionTimeoutError"
+    || error?.code === "ETIMEDOUT"
+    || message.includes("timed out")
+    || message.includes("timeout");
+}
+
+function createOpenAiResponse(request: any, timeoutMs: number) {
+  return openai!.responses.create(request as any, { timeout: timeoutMs } as any);
+}
+
+async function resolveFunctionToolCalls(response: any, params: {
+  model: string;
+  input: any[];
+  companyId?: string | null;
+}) {
+  const toolCalls = getFunctionToolCalls(response);
+  if (!toolCalls.length) return response;
+
+  const toolOutputs = await Promise.all(
+    toolCalls.map((call: any) => executeFunctionToolCall(call, params.companyId))
+  );
+
+  const followUpInput = [
+    ...params.input,
+    ...(Array.isArray(response.output) ? response.output : []),
+    ...toolOutputs,
+  ];
+
+  const followUpRequest = {
+    ...buildSmartBuilderResponseRequest(params.model, followUpInput),
+    tool_choice: "none",
+  };
+
+  return createOpenAiResponse(followUpRequest, OPENAI_RETRY_TIMEOUT_MS);
+}
+
+async function createSmartBuilderResponse(params: {
+  model: string;
+  input: any[];
+  allowWebSearch: boolean;
+  companyId?: string | null;
+}) {
   if (!openai) {
     throw new Error("OpenAI API key is not configured");
   }
 
-  const baseRequest = buildSmartBuilderResponseRequest(params.model, params.input);
-  const requestOptions = { timeout: OPENAI_REQUEST_TIMEOUT_MS } as any;
+  const tools = buildSmartBuilderTools(params.allowWebSearch);
+  const baseRequest = {
+    ...buildSmartBuilderResponseRequest(params.model, params.input),
+    tools,
+    tool_choice: "auto",
+  };
+
+  const runBaseRequest = async () => {
+    try {
+      const response = await createOpenAiResponse(baseRequest, OPENAI_REQUEST_TIMEOUT_MS);
+      return await resolveFunctionToolCalls(response, {
+        model: params.model,
+        input: params.input,
+        companyId: params.companyId,
+      });
+    } catch (error) {
+      if (!isOpenAiTimeoutError(error)) throw error;
+
+      console.error("[SmartBuilderEstimate.primaryTimeoutFallback]", error);
+
+      const fallbackInput = inputHasNonTextParts(params.input) ? stripInputToTextOnly(params.input) : params.input;
+      const fallbackRequest = {
+        ...buildSmartBuilderResponseRequest(SERVICE_MODEL, fallbackInput),
+        tools,
+        tool_choice: "auto",
+      };
+
+      const fallbackResponse = await createOpenAiResponse(fallbackRequest, OPENAI_RETRY_TIMEOUT_MS);
+      return resolveFunctionToolCalls(fallbackResponse, {
+        model: SERVICE_MODEL,
+        input: fallbackInput,
+        companyId: params.companyId,
+      });
+    }
+  };
 
   if (!params.allowWebSearch) {
-    return openai.responses.create(baseRequest as any, requestOptions);
+    return runBaseRequest();
   }
 
   try {
-    return await withTimeout(
-      openai.responses.create({
+    const response = await withTimeout(
+      createOpenAiResponse({
         ...baseRequest,
-        ...buildWebSearchOptions(),
-      } as any, requestOptions),
+      }, Math.min(OPENAI_REQUEST_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS)),
       WEB_SEARCH_TIMEOUT_MS,
       "SmartBuilder web search"
     );
+    return resolveFunctionToolCalls(response, {
+      model: params.model,
+      input: params.input,
+      companyId: params.companyId,
+    });
   } catch (error) {
     console.error("[SmartBuilderEstimate.webSearchFallback]", error);
-    return openai.responses.create(baseRequest as any, requestOptions);
+    return runBaseRequest();
   }
 }
 
@@ -779,7 +1109,6 @@ export class SmartBuilderEstimateController {
         estimate.serviceProjects as any
       );
 
-      const serviceCatalog = await buildServiceCatalog(estimate.project.company_id);
       const session = await getOrCreateSession(estimateId, estimate.project.company_id, userId);
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
       const userPrompt = buildUserPrompt({
@@ -792,7 +1121,7 @@ export class SmartBuilderEstimateController {
           type: estimate.type_estimate,
           project: estimate.project,
         },
-        serviceCatalog,
+        hasCompanyCatalog: Boolean(estimate.project.company_id),
         attachments: prepared.attachments,
       });
 
@@ -840,7 +1169,7 @@ export class SmartBuilderEstimateController {
       ];
       const allowWebSearch = shouldAllowWebSearch({
         message,
-        serviceCatalog,
+        hasCompanyCatalog: Boolean(estimate.project.company_id),
         attachments: prepared.attachments,
       });
 
@@ -848,6 +1177,7 @@ export class SmartBuilderEstimateController {
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
         allowWebSearch,
+        companyId: estimate.project.company_id,
       });
 
       const rawText = getResponseText(response);
@@ -929,14 +1259,13 @@ export class SmartBuilderEstimateController {
       const context = parseJsonField<any>(req.body.context, {});
       const draftSession = parseJsonField<DraftSessionPayload>(req.body.draftSession, {});
       const companyId = context?.companyId || context?.company_id || context?.project?.company_id || null;
-      const serviceCatalog = await buildServiceCatalog(companyId);
       const prepared = await prepareAttachments(req.files as Express.Multer.File[] | undefined, userId);
 
       const userPrompt = buildUserPrompt({
         message,
         currentServices,
         estimateContext: context,
-        serviceCatalog,
+        hasCompanyCatalog: Boolean(companyId),
         attachments: prepared.attachments,
       });
 
@@ -953,7 +1282,7 @@ export class SmartBuilderEstimateController {
       ];
       const allowWebSearch = shouldAllowWebSearch({
         message,
-        serviceCatalog,
+        hasCompanyCatalog: Boolean(companyId),
         attachments: prepared.attachments,
       });
 
@@ -961,6 +1290,7 @@ export class SmartBuilderEstimateController {
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
         allowWebSearch,
+        companyId,
       });
 
       const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
