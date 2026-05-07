@@ -121,21 +121,23 @@ Language and writing standards:
 - Keep descriptions focused, but do not make them generic or overly short.
 
 Pricing standards for the United States:
-- Use the company service catalog as the primary pricing anchor when a catalog tool result matches the requested work.
-- Use search_company_catalog_services when the user asks for work that may exist in the current company's Category -> SubCategory -> Service catalog. Do not invent catalog prices.
-- Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
-- Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
+- Estimate realistic average US-market labor/material pricing for the current year using your construction knowledge and web_search_market_rates when current market context is useful.
+- For new estimates from scratch, target the practical mid-market price range: not budget/low-bid, not premium/high-end, and not padded with unnecessary contingency.
+- Use web_search_market_rates to ground pricing in current United States market references when scope, location, or trade pricing could materially affect the total.
+- Do not use the company service catalog for SmartBuilder pricing in this flow.
+- Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
+- Avoid underpricing by ignoring labor, prep, protection, disposal, mobilization, site conditions, overhead, and normal contractor margin.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
 - Do not make every service price a clean round number. When estimating from labor/material calculations, use realistic calculated values with normal currency cents when appropriate.
 - Avoid totals that all end in 00, 50, 500, or 000 unless copied from an attachment or directly anchored to a catalog fixed price.
 - If no explicit price exists, derive price from a clear estimating basis such as labor hours/rates, material allowances, quantity, crew size, access/difficulty, and local US market context. The result should look calculated, not guessed.
-- If a catalog range is available, choose a realistic point inside the range based on scope/difficulty rather than always using the midpoint or a round number.
-- If no catalog or web research is provided, still estimate conservatively using realistic US construction assumptions and the project context. Do not mention missing catalog/web to the client unless critical.
+- When a range is available, choose a realistic mid-market point based on scope/difficulty rather than the cheapest plausible value or the premium value.
+- If no web research is available, still estimate using realistic 2026 US construction assumptions and the project context. Do not mention missing web research to the client unless critical.
 - unitPrice and lineTotal are money fields. Preserve cents when supplied by a document or calculation.
 - If calculating a line total, quantity * unitPrice should be rounded only to normal currency precision, never to a visually pleasing number.
 
 Source priority:
-- If the user asks to estimate/create from scratch, use current services, company catalog, provided context, attachments, and controlled web search only when needed.
+- If the user asks to estimate/create from scratch, use current services, provided context, attachments, construction knowledge, and controlled web search for current US market grounding.
 - If the user attaches an existing estimate, proposal, quote, bid, invoice, spreadsheet, or budget and asks to copy/import/replicate/use it, preserve the services, quantities, unit prices, and totals from the file as faithfully as possible.
 - When explicit prices exist in an attached document for an import/copy request, do not reprice from the catalog, do not replace with web search values, and do not round them.
 - If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
@@ -150,13 +152,12 @@ Copy/import mode:
 - If the source document includes explicit pricing, copy quantities, unit prices, and totals exactly and do not round.
 
 Web search:
-- Use web_search_market_rates only when company catalog/current services/attachments are insufficient and the user is not asking to import or copy explicit prices.
-- Treat web_search_market_rates output only as supporting US-market context.
+- Use web_search_market_rates for new estimates when current US-market pricing context helps calibrate labor/material/service rates.
+- Treat web_search_market_rates output as supporting US-market context, then combine it with your construction knowledge and project-specific scope.
 - Do not use web search to override explicit prices from an attached estimate/proposal/bid/quote when the user is asking to import or copy.
 
 Tool discipline:
 - Prefer answering directly when the request is clear and current services/attachments are enough.
-- At most one focused company catalog search per broad service category is allowed. Avoid many small tool calls.
 - At most one web market-rate search is allowed, and only when truly needed.
 - After receiving tool results, return the required JSON proposal. Do not call tools again.
 
@@ -689,14 +690,16 @@ function buildUserPrompt(params: {
     currentServices: normalizeServices(params.currentServices),
     estimate: params.estimateContext,
     companyServiceCatalog: {
-      availableByTool: CATALOG_TOOL_ENABLED && Boolean(params.grounding.companyId),
+      availableByTool: false,
       toolName: "search_company_catalog_services",
       promptInjectionEnabled: CATALOG_GROUNDING_ENABLED,
       stats: params.grounding.catalogStats,
-      access: CATALOG_TOOL_ENABLED && params.grounding.companyId
-        ? "Search the current company's catalog only when useful. The catalog is Category -> SubCategory -> Service/variable_service and is scoped to this companyId by the backend."
-        : "No company catalog tool is available in this request.",
-      catalogCandidates,
+      access: "Company catalog pricing is intentionally disabled for SmartBuilder AI pricing. Use construction knowledge plus web market-rate context instead.",
+      catalogCandidates: {
+        totalAvailable: catalogCandidates.totalAvailable,
+        sentToModel: 0,
+        services: [],
+      },
     },
     marketResearch: {
       enabled: WEB_SEARCH_ENABLED,
@@ -752,8 +755,8 @@ function buildUserPrompt(params: {
         rule: "When this applies, preserve the attachment's structure, service names, quantities, unit prices, totals, and scope as faithfully as possible. If the attachment has no explicit prices, preserve structure/scope and estimate prices only.",
       },
       estimateFromScratch: {
-        rule: "When no explicit imported pricing is requested, estimate conservatively for the United States using current services, project context, and any catalog/web grounding provided by the backend.",
-        fallbackRule: "If no catalog anchors or web research are provided, generate a reasonable conservative US estimate from the request, location, and construction assumptions.",
+        rule: "When no explicit imported pricing is requested, estimate realistic mid-market pricing for the United States using current services, project context, construction knowledge, and web market-rate grounding when available.",
+        fallbackRule: "If web research is not available, generate a realistic average US-market estimate from the request, location, labor/material assumptions, access, prep, disposal, overhead, and normal contractor margin.",
       },
     },
     descriptionRequirements: {
@@ -786,17 +789,18 @@ function buildUserPrompt(params: {
       market: "United States",
       priority: [
         "Explicit attached estimate/proposal/bid prices when user asks to copy/import",
-        "Company catalog fixedPrice/minPrice/maxPrice included in catalogCandidates for matching services",
         "Current estimate service prices if user is editing existing work",
-        "Bounded web market research only when the above sources are insufficient",
-        "Conservative US-market estimate from project context",
+        "Bounded web market research for current United States labor/material/service pricing",
+        "Model construction knowledge calibrated to realistic average 2026 US market pricing",
       ],
       preserveDecimals: true,
       allowCents: true,
       maxCurrencyDecimals: 2,
       avoidAggressiveRounding: true,
+      targetMarketPosition: "Aim for average/mid-market pricing. Avoid lowballing and avoid premium overpricing.",
       avoidInflation: "Do not add premium padding, high contingency, or extra markup without clear evidence or user instruction.",
-      priceQualityCheck: "For scratch estimates, avoid making every unitPrice and lineTotal a clean rounded number. Use calculated-looking values when not copied from catalog/document fixed prices.",
+      avoidUnderpricing: "Do not omit normal labor, materials, prep/protection, disposal, mobilization, overhead, and contractor margin.",
+      priceQualityCheck: "For scratch estimates, avoid making every unitPrice and lineTotal a clean rounded number. Use calculated-looking values based on realistic mid-market labor/material assumptions.",
     },
     webSearchPolicy: {
       enabled: WEB_SEARCH_ENABLED,
@@ -883,8 +887,8 @@ function buildWebMarketRatesTool() {
   };
 }
 
-function buildSmartBuilderTools(allowWebSearch: boolean, allowCatalogSearch = true) {
-  const tools: any[] = CATALOG_TOOL_ENABLED && allowCatalogSearch ? [buildCatalogSearchTool()] : [];
+function buildSmartBuilderTools(allowWebSearch: boolean, _allowCatalogSearch = true) {
+  const tools: any[] = [];
 
   if (allowWebSearch) {
     tools.push(buildWebMarketRatesTool());
@@ -2206,7 +2210,7 @@ export class SmartBuilderEstimateController {
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         importPricingIntent: grounding.importPricingIntent,
         allowWebSearch: grounding.allowWebSearch,
-        catalogToolEnabled: CATALOG_TOOL_ENABLED,
+        catalogToolEnabled: false,
         serviceCatalogAvailable: grounding.serviceCatalog.length,
         catalogStats: grounding.catalogStats,
         catalogCandidatesSent: grounding.catalogCandidates.sentToModel,
@@ -2250,7 +2254,7 @@ export class SmartBuilderEstimateController {
             webSearchEnabled: WEB_SEARCH_ENABLED,
             webSearchAllowedForLastRequest: grounding.allowWebSearch,
             webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
-            catalogSearchUsedForLastRequest: Boolean(toolUsage.catalogSearchUsed),
+            catalogSearchUsedForLastRequest: false,
           },
         },
       });
@@ -2357,7 +2361,7 @@ export class SmartBuilderEstimateController {
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         importPricingIntent: grounding.importPricingIntent,
         allowWebSearch: grounding.allowWebSearch,
-        catalogToolEnabled: CATALOG_TOOL_ENABLED,
+        catalogToolEnabled: false,
         serviceCatalogAvailable: grounding.serviceCatalog.length,
         catalogStats: grounding.catalogStats,
         catalogCandidatesSent: grounding.catalogCandidates.sentToModel,
@@ -2389,7 +2393,7 @@ export class SmartBuilderEstimateController {
           webSearchEnabled: WEB_SEARCH_ENABLED,
           webSearchAllowedForLastRequest: grounding.allowWebSearch,
           webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
-          catalogSearchUsedForLastRequest: Boolean(toolUsage.catalogSearchUsed),
+          catalogSearchUsedForLastRequest: false,
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
