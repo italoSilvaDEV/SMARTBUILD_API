@@ -936,18 +936,54 @@ async function resolveFunctionToolCalls(response: any, params: {
     toolCalls.map((call: any) => executeFunctionToolCall(call, params.companyId))
   );
 
-  const followUpInput = [
-    ...params.input,
-    ...(Array.isArray(response.output) ? response.output : []),
-    ...toolOutputs,
-  ];
-
   const followUpRequest = {
-    ...buildSmartBuilderResponseRequest(params.model, followUpInput),
+    ...buildSmartBuilderResponseRequest(params.model, toolOutputs),
+    previous_response_id: response.id,
     tool_choice: "none",
   };
 
   return createOpenAiResponse(followUpRequest, OPENAI_RETRY_TIMEOUT_MS);
+}
+
+function getSmartBuilderErrorResponse(error: any) {
+  const code = error?.code || error?.error?.code;
+  const type = error?.type || error?.error?.type;
+  const status = Number(error?.status || 0);
+
+  if (code === "insufficient_quota" || type === "insufficient_quota") {
+    return {
+      status: 402,
+      body: {
+        success: false,
+        error: "SmartBuilder AI is temporarily unavailable. Please try again in a few minutes or contact support if the issue continues.",
+        code: "openai_insufficient_quota",
+      },
+    };
+  }
+
+  if (status === 429 || code === "rate_limit_exceeded" || type === "rate_limit_exceeded") {
+    return {
+      status: 429,
+      body: {
+        success: false,
+        error: "SmartBuilder AI is receiving too many requests right now. Please wait a moment and try again.",
+        code: "openai_rate_limit",
+      },
+    };
+  }
+
+  if (isOpenAiTimeoutError(error)) {
+    return {
+      status: 504,
+      body: {
+        success: false,
+        error: "SmartBuilder AI took too long to generate this estimate. Please try again with a smaller file or a more focused request.",
+        code: "openai_timeout",
+      },
+    };
+  }
+
+  return null;
 }
 
 async function createSmartBuilderResponse(params: {
@@ -1238,6 +1274,10 @@ export class SmartBuilderEstimateController {
       });
     } catch (error) {
       console.error("[SmartBuilderEstimate.messageExisting]", error);
+      const smartBuilderError = getSmartBuilderErrorResponse(error);
+      if (smartBuilderError) {
+        return res.status(smartBuilderError.status).json(smartBuilderError.body);
+      }
       return res.status(500).json({ success: false, error: "Failed to process SmartBuilder message" });
     }
   }
@@ -1337,6 +1377,10 @@ export class SmartBuilderEstimateController {
       });
     } catch (error) {
       console.error("[SmartBuilderEstimate.messageDraft]", error);
+      const smartBuilderError = getSmartBuilderErrorResponse(error);
+      if (smartBuilderError) {
+        return res.status(smartBuilderError.status).json(smartBuilderError.body);
+      }
       return res.status(500).json({ success: false, error: "Failed to process SmartBuilder draft message" });
     }
   }
