@@ -271,6 +271,7 @@ model Company {
   workEndTime           String? // Format: "HH:mm" (24-hour)
   attendanceMode        AttendanceMode @default(manual)
   projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
+  accentColor String?
   isActive              Boolean        @default(true) // false = arquivado (master)
   createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
 
