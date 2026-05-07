@@ -54,6 +54,8 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
 
 const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
 const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
+const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "").toLowerCase() === "true";
+const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -64,9 +66,33 @@ Your only scope in this version is estimate Line Items/services.
 Always treat the currentServices passed in the latest request as the source of truth, even when prior chat history says something different.
 Return a complete proposedServices list, not a partial patch, so the user can review before applying.
 Preserve existing service ids when modifying existing services. Use null id for new services.
-Descriptions can contain simple HTML when the existing data uses HTML, but keep it concise and safe.
+
+Language and writing standards:
+- Always write service names, notes, assistant messages, and descriptions in professional American English.
+- Service descriptions must be specific and construction-ready, not vague. Use safe simple HTML.
+- Prefer structured descriptions with sections such as Scope of Work, Preparation, Materials, Execution, Finish/Cleanup, Quality Standards, Assumptions, and Exclusions when applicable.
+- Include measurable details from the user request, attachments, location, and current services whenever available.
+
+Pricing standards for the United States:
+- Use the company service catalog as the primary pricing anchor when it matches the requested work.
+- Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
+- Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
+- Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
+- unitPrice and lineTotal are money fields. Preserve cents when supplied by a document or calculation.
+- If calculating a line total, quantity * unitPrice should be rounded only to normal currency precision, never to a visually pleasing number.
+
+Source priority:
+- If the user asks to estimate/create from scratch, use current services, company catalog, provided context, attachments, and controlled web search only when needed.
+- If the user attaches an existing estimate, proposal, quote, bid, invoice, spreadsheet, or budget and asks to copy/import/replicate/use it, preserve the services, quantities, unit prices, and totals from the file as faithfully as possible.
+- When explicit prices exist in an attached document for an import/copy request, do not reprice from the catalog, do not replace with web search values, and do not round them.
+- If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
+
+Web search:
+- Use web search only when catalog/context/attachments are insufficient to price or describe unfamiliar US construction services.
+- Do not use web search to override explicit prices from an attached estimate/proposal/bid/quote when the user is asking to import or copy.
+
 Do not change taxes, discounts, project status, signatures, invoices, clients, payments, schedules, or PDFs.
-If the request is ambiguous, make a conservative proposal and add a warning.
+Warnings should be reserved for critical missing or ambiguous information that affects the proposal. Do not add generic warnings just to justify normal estimating uncertainty.
 `;
 
 const smartBuilderJsonSchema = {
@@ -141,11 +167,19 @@ function decimalToNumber(value: any, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
+function roundCurrency(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function moneyToNumber(value: any, fallback = 0) {
+  return roundCurrency(decimalToNumber(value, fallback));
+}
+
 function normalizeServices(services: SmartBuilderService[]) {
   return (Array.isArray(services) ? services : []).map((service) => {
     const quantity = decimalToNumber(service.quantity ?? service.hours, 1) || 1;
-    const unitPrice = decimalToNumber(service.unitPrice ?? service.price, 0);
-    const lineTotal = decimalToNumber(service.lineTotal, Number((quantity * unitPrice).toFixed(2)));
+    const unitPrice = moneyToNumber(service.unitPrice ?? service.price, 0);
+    const lineTotal = moneyToNumber(service.lineTotal, roundCurrency(quantity * unitPrice));
 
     return {
       id: service.id ?? null,
@@ -467,9 +501,124 @@ function buildUserPrompt(params: {
     currentServices: normalizeServices(params.currentServices),
     estimate: params.estimateContext,
     companyServiceCatalog: params.serviceCatalog,
+    attachmentMetadata: params.attachments.map((attachment) => ({
+      fileName: attachment.originalName,
+      mimeType: attachment.mimeType || null,
+      size: attachment.size || null,
+      hasExtractedText: Boolean(attachment.extractedText),
+    })),
     extractedAttachmentText: attachmentText || null,
+    operatingModeRules: {
+      importOrCopyAttachedEstimate: {
+        triggerExamples: [
+          "copy this estimate",
+          "import this proposal",
+          "replicate this bid",
+          "use the same prices",
+          "transform this quote into services",
+          "copiar esse orcamento",
+          "usar os valores do arquivo",
+        ],
+        rule: "When this applies, preserve service names, quantities, unit prices, and totals from the attachment. Do not reprice, do not replace with catalog/web, and do not round to nicer numbers.",
+      },
+      estimateFromScratch: {
+        rule: "When no explicit imported pricing is requested, estimate conservatively for the United States using current services, project context, company catalog anchors, and web search only if needed.",
+      },
+    },
+    descriptionRequirements: {
+      language: "American English",
+      html: "Use simple safe HTML only, such as paragraphs, strong labels, and unordered lists.",
+      detailLevel: "Professional, specific, and complete enough for a client-facing construction estimate.",
+      includeWhenApplicable: [
+        "Scope of Work",
+        "Preparation",
+        "Materials",
+        "Execution",
+        "Finish and cleanup",
+        "Quality standards",
+        "Assumptions",
+        "Exclusions",
+      ],
+      avoid: ["generic one-line descriptions", "vague language", "Portuguese service names or descriptions"],
+    },
+    pricingRequirements: {
+      market: "United States",
+      priority: [
+        "Explicit attached estimate/proposal/bid prices when user asks to copy/import",
+        "Company catalog fixedPrice/minPrice/maxPrice for matching services",
+        "Current estimate service prices if user is editing existing work",
+        "Conservative US-market estimate from context",
+        "Web search only when the above sources are insufficient",
+      ],
+      preserveDecimals: true,
+      allowCents: true,
+      maxCurrencyDecimals: 2,
+      avoidAggressiveRounding: true,
+      avoidInflation: "Do not add premium padding, high contingency, or extra markup without clear evidence or user instruction.",
+    },
+    webSearchPolicy: {
+      enabled: WEB_SEARCH_ENABLED,
+      useOnlyWhenNeeded: true,
+      userLocationCountry: "US",
+      neverOverrideExplicitAttachmentPrices: true,
+    },
     responseInstruction: "Return only the JSON object requested by the schema.",
   });
+}
+
+function buildSmartBuilderResponseRequest(model: string, input: any[]) {
+  return {
+    model,
+    instructions: SMARTBUILDER_SYSTEM_PROMPT,
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "estimate_smartbuilder_response",
+        strict: true,
+        schema: smartBuilderJsonSchema,
+      },
+    },
+  };
+}
+
+function buildWebSearchOptions() {
+  if (!WEB_SEARCH_ENABLED) return {};
+
+  return {
+    tools: [
+      {
+        type: WEB_SEARCH_TOOL_TYPE,
+        user_location: {
+          type: "approximate",
+          country: "US",
+        },
+      },
+    ],
+    tool_choice: "auto",
+  };
+}
+
+async function createSmartBuilderResponse(params: { model: string; input: any[] }) {
+  if (!openai) {
+    throw new Error("OpenAI API key is not configured");
+  }
+
+  const baseRequest = buildSmartBuilderResponseRequest(params.model, params.input);
+
+  if (!WEB_SEARCH_ENABLED) {
+    return openai.responses.create(baseRequest as any);
+  }
+
+  try {
+    return await openai.responses.create({
+      ...baseRequest,
+      ...buildWebSearchOptions(),
+    } as any);
+  } catch (error) {
+    console.error("[SmartBuilderEstimate.webSearchFallback]", error);
+    return openai.responses.create(baseRequest as any);
+  }
 }
 
 function serializeSession(session: any) {
@@ -622,19 +771,10 @@ export class SmartBuilderEstimateController {
         },
       ];
 
-      const response = await openai.responses.create({
+      const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
-        instructions: SMARTBUILDER_SYSTEM_PROMPT,
         input,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "estimate_smartbuilder_response",
-            strict: true,
-            schema: smartBuilderJsonSchema,
-          },
-        },
-      } as any);
+      });
 
       const rawText = getResponseText(response);
       const parsed = normalizeAiResponse(safeParseAiJson(rawText), currentServices);
@@ -655,6 +795,10 @@ export class SmartBuilderEstimateController {
           lastResponseId: response.id,
           modelSimple: SERVICE_MODEL,
           modelDocument: DOC_MODEL,
+          metadata: {
+            ...(session.metadata ? (session.metadata as any) : {}),
+            webSearchEnabled: WEB_SEARCH_ENABLED,
+          },
         },
       });
 
@@ -733,19 +877,10 @@ export class SmartBuilderEstimateController {
         },
       ];
 
-      const response = await openai.responses.create({
+      const response = await createSmartBuilderResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
-        instructions: SMARTBUILDER_SYSTEM_PROMPT,
         input,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "estimate_smartbuilder_response",
-            strict: true,
-            schema: smartBuilderJsonSchema,
-          },
-        },
-      } as any);
+      });
 
       const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
       const now = new Date().toISOString();
@@ -756,6 +891,7 @@ export class SmartBuilderEstimateController {
           modelSimple: SERVICE_MODEL,
           modelDocument: DOC_MODEL,
           lastResponseId: response.id,
+          webSearchEnabled: WEB_SEARCH_ENABLED,
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
