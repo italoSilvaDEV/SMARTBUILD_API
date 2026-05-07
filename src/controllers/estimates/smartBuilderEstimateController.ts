@@ -144,9 +144,12 @@ Source priority:
 
 Copy/import mode:
 - When the latest request is a copy/import/replicate/use-this-document request, the attachment is the source of truth for structure and scope.
-- Preserve the document's grouping. If the source is organized by unit, building, room, phase, or section, return one service per source group unless the document itself contains explicit separate priced line items.
-- Do not split one source unit/section into multiple services just to make the estimate look more detailed.
-- Do not merge multiple source units/sections into one service when the document presents them separately.
+- First infer the document's real commercial structure: priced line items, units, rooms, phases, sections, alternates, allowances, or summary totals.
+- Create proposed services from the document's real service groups. If the document is organized by unit/room/phase/section, use those groups. If it is organized by itemized rows, use those rows.
+- Only create a separate service for a document-level/general/common item when the document clearly presents it as its own scope group, line item, allowance, alternate, or priced item.
+- Avoid creating derived summary services that merely repeat scope already included inside other source groups.
+- Avoid splitting one source group into multiple services just to make the estimate look more detailed.
+- Avoid merging multiple source groups into one service when the document presents them separately.
 - Do not add scope, assumptions, exclusions, code/licensing language, HVAC, structural work, hidden-damage language, or quality standards unless they appear in the source document or are explicitly requested by the user.
 - If the source document does not include explicit pricing, estimate only unitPrice/lineTotal while keeping service names and descriptions faithful to the document. Add one friendly warning that the document did not include pricing, so values were estimated.
 - If the source document includes explicit pricing, copy quantities, unit prices, and totals exactly and do not round.
@@ -1906,13 +1909,13 @@ async function createFileContextAgentResponse(params: {
       "Read the attached PDF/image/document inputs and extract only compact, useful estimating context.",
       "Return a compact structured text report using the exact labels below. Do not return prose before or after the report.",
       "DOCUMENT_HAS_EXPLICIT_PRICING: true or false.",
-      "SOURCE_STRUCTURE: one of unit_based, room_based, phase_based, line_item_based, section_based, mixed, unknown.",
+      "SOURCE_STRUCTURE: one of priced_line_item_based, unit_based, room_based, phase_based, section_based, allowance_or_alternate_based, summary_total_only, mixed, unknown.",
       "PRICES_FOUND: list exact prices/totals found with their source labels, or none.",
       "MISSING_PRICES: list source groups/items that have scope but no explicit pricing, or none.",
       "SCOPE_BY_UNIT_OR_SECTION: preserve the document's own unit/room/phase/section grouping. For each group, include its exact title and concise copied scope bullets.",
       "LINE_ITEMS: include explicit line items only when the document itself presents separate line items or priced rows. Include name, quantity, unit price, total, and copied scope when present.",
       "EXCLUSIONS_OR_ALTERNATES: include only exclusions/alternates explicitly stated in the document.",
-      "IMPORTANT_COPY_NOTES: note whether the correct import structure should be one service per unit/section or one service per priced line item.",
+      "IMPORTANT_COPY_NOTES: explain which source groups should become services and why. Mention any document-level/common/general groups only if the document presents them as distinct scope, allowance, alternate, or priced line item.",
       "If the file is existing estimate/proposal/bid/quote, preserve original names, values, quantities, totals, section titles, and unit labels exactly in the report.",
       "If pricing is absent, say DOCUMENT_HAS_EXPLICIT_PRICING: false and do not invent pricing in this file-context report.",
       "Do not add assumptions, exclusions, code/licensing language, HVAC, hidden damage, structural scope, or quality standards unless the document explicitly says them.",
@@ -1989,7 +1992,8 @@ async function createStructuredEstimateResponse(params: {
             text: [
               "Document context extracted by fileContextAgent. Use this as attachment context for the final service proposal.",
               "If the user asks to copy/import/replicate/use this document, the document context is the source of truth for service structure and scope.",
-              "For copy/import mode, follow SOURCE_STRUCTURE and IMPORTANT_COPY_NOTES exactly. If SOURCE_STRUCTURE is unit_based, return one service per unit unless LINE_ITEMS contains explicit separate priced rows.",
+              "For copy/import mode, follow SOURCE_STRUCTURE and IMPORTANT_COPY_NOTES. Convert the document's real commercial groups into services: priced rows, units, rooms, phases, sections, allowances, alternates, or distinct general/common groups.",
+              "Only create a separate document-level/general/common service when the document presents it as a distinct scope group, allowance, alternate, or priced line item. Avoid derived summary services that duplicate scope already inside other services.",
               "If DOCUMENT_HAS_EXPLICIT_PRICING is false, keep the copied service names/descriptions faithful to SCOPE_BY_UNIT_OR_SECTION and estimate only the money fields. Add one warning that pricing was estimated because the document did not include explicit prices.",
               "If DOCUMENT_HAS_EXPLICIT_PRICING is true, copy quantities, unit prices, and totals exactly from LINE_ITEMS/PRICES_FOUND. Do not reprice or round.",
               "Do not add scope that is absent from the document context.",
