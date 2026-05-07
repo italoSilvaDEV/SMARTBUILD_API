@@ -84,18 +84,19 @@ const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
 const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
-const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 12_000);
+const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 18_000);
 const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 60_000);
 const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 45_000);
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 4200);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 5600);
 const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_WEB_RESEARCH_MAX_OUTPUT_TOKENS || 700);
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 0);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
 const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "true").toLowerCase() !== "false";
 const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "").toLowerCase() === "true";
+const CATALOG_INCLUDE_INACTIVE_FALLBACK = String(process.env.SMARTBUILDER_CATALOG_INCLUDE_INACTIVE_FALLBACK || "true").toLowerCase() === "true";
 const SERVICE_REASONING_EFFORT = process.env.SMARTBUILDER_SERVICE_REASONING_EFFORT || "low";
 const DOC_REASONING_EFFORT = process.env.SMARTBUILDER_DOC_REASONING_EFFORT || "medium";
-const TEXT_VERBOSITY = process.env.SMARTBUILDER_TEXT_VERBOSITY || "low";
+const TEXT_VERBOSITY = process.env.SMARTBUILDER_TEXT_VERBOSITY || "medium";
 const HISTORY_LIMIT = 30;
 const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
@@ -111,9 +112,10 @@ Preserve existing service ids when modifying existing services. Use null id for 
 Language and writing standards:
 - Always write service names, notes, assistant messages, and descriptions in professional American English.
 - Service descriptions must be specific and construction-ready, not vague. Use safe simple HTML.
-- Prefer concise structured descriptions with 2 to 5 short sections such as Scope of Work, Preparation, Materials/Execution, Finish/Cleanup, Assumptions, and Exclusions when applicable.
+- Use complete structured descriptions with 4 to 7 useful sections when applicable, such as Scope of Work, Preparation, Materials, Execution, Finish/Cleanup, Quality Standards, Assumptions, and Exclusions.
 - Include measurable details from the user request, attachments, location, and current services whenever available.
-- Do not write oversized descriptions. Each service description should be client-ready, but compact enough for a responsive estimate editor and PDF.
+- Each description must be client-ready and specific enough for a contractor to understand what is included. Avoid one-line descriptions.
+- Keep descriptions focused, but do not make them generic or overly short.
 
 Pricing standards for the United States:
 - Use the company service catalog as the primary pricing anchor when it matches the requested work.
@@ -121,6 +123,10 @@ Pricing standards for the United States:
 - Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
 - Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
+- Do not make every service price a clean round number. When estimating from labor/material calculations, use realistic calculated values with normal currency cents when appropriate.
+- Avoid totals that all end in 00, 50, 500, or 000 unless copied from an attachment or directly anchored to a catalog fixed price.
+- If no explicit price exists, derive price from a clear estimating basis such as labor hours/rates, material allowances, quantity, crew size, access/difficulty, and local US market context. The result should look calculated, not guessed.
+- If a catalog range is available, choose a realistic point inside the range based on scope/difficulty rather than always using the midpoint or a round number.
 - unitPrice and lineTotal are money fields. Preserve cents when supplied by a document or calculation.
 - If calculating a line total, quantity * unitPrice should be rounded only to normal currency precision, never to a visually pleasing number.
 
@@ -377,67 +383,67 @@ function compactMessages(messages: SmartBuilderMessage[]) {
     }));
 }
 
-async function buildServiceCatalog(companyId?: string | null) {
+async function buildCompanyCatalogServices(companyId?: string | null) {
   if (!companyId) return [];
 
-  const categories = await prisma.category.findMany({
+  // Prisma Service maps to variable_service: catalog category -> subcategory -> service item.
+  // It is not Project.ServiceProject or EstimateServiceProject.
+  const loadCatalogServiceItems = (activeOnly: boolean) => prisma.service.findMany({
     where: {
       company_id: companyId,
-      status_category: {
-        not: false,
-      },
-    },
-    select: {
-      category_name: true,
-      sub_category: {
-        where: {
+      ...(activeOnly ? {
+        service: {
           status_subcategory: {
             not: false,
           },
+          subcategory: {
+            status_category: {
+              not: false,
+            },
+          },
         },
+      } : {}),
+    },
+    select: {
+      id: true,
+      service_name: true,
+      description: true,
+      price_type: true,
+      price_fixe: true,
+      price_minimum: true,
+      price_maximum: true,
+      date_creation: true,
+      service: {
         select: {
           subcategory_name: true,
-          service: {
-            take: MAX_CATALOG_SERVICES,
-            orderBy: { date_creation: "asc" },
+          subcategory: {
             select: {
-              id: true,
-              service_name: true,
-              description: true,
-              price_type: true,
-              price_fixe: true,
-              price_minimum: true,
-              price_maximum: true,
+              category_name: true,
             },
           },
         },
       },
     },
     orderBy: { date_creation: "asc" },
-    take: 80,
+    take: MAX_CATALOG_SERVICES,
   });
 
-  const services: any[] = [];
-  for (const category of categories) {
-    for (const subCategory of category.sub_category) {
-      for (const service of subCategory.service) {
-        if (services.length >= MAX_CATALOG_SERVICES) return services;
-        services.push({
-          id: service.id,
-          category: category.category_name,
-          subcategory: subCategory.subcategory_name,
-          name: service.service_name,
-          description: service.description,
-          priceType: service.price_type,
-          fixedPrice: decimalToNumber(service.price_fixe, 0),
-          minPrice: decimalToNumber(service.price_minimum, 0),
-          maxPrice: decimalToNumber(service.price_maximum, 0),
-        });
-      }
-    }
+  let services = await loadCatalogServiceItems(true);
+  if (!services.length && CATALOG_INCLUDE_INACTIVE_FALLBACK) {
+    services = await loadCatalogServiceItems(false);
   }
 
-  return services;
+  return services.map((service) => ({
+    id: service.id,
+    category: service.service.subcategory.category_name,
+    subcategory: service.service.subcategory_name,
+    name: service.service_name,
+    description: service.description,
+    priceType: service.price_type,
+    fixedPrice: decimalToNumber(service.price_fixe, 0),
+    minPrice: decimalToNumber(service.price_minimum, 0),
+    maxPrice: decimalToNumber(service.price_maximum, 0),
+  }));
 }
 
 async function getEstimateContext(estimateId: string) {
@@ -664,6 +670,9 @@ function buildUserPrompt(params: {
     companyServiceCatalog: {
       available: params.grounding.serviceCatalog.length > 0,
       stats: params.grounding.catalogStats,
+      source: params.grounding.catalogStats?.servicesActive === 0 && params.grounding.serviceCatalog.length > 0
+        ? "Inactive catalog service fallback was used because active subcategories/services are currently zero for this company."
+        : "Active catalog service items.",
       access: params.grounding.serviceCatalog.length > 0
         ? "Use catalogCandidates below as best-effort pricing and service anchors when relevant. If candidates are irrelevant or empty, estimate conservatively from request/context. Do not repeatedly search the catalog."
         : "No company catalog is available in this request.",
@@ -704,7 +713,7 @@ function buildUserPrompt(params: {
     descriptionRequirements: {
       language: "American English",
       html: "Use simple safe HTML only, such as paragraphs, strong labels, and unordered lists.",
-      detailLevel: "Professional, specific, and complete enough for a client-facing construction estimate.",
+      detailLevel: "Professional, specific, and complete enough for a client-facing construction estimate. Do not return short generic descriptions.",
       includeWhenApplicable: [
         "Scope of Work",
         "Preparation",
@@ -714,6 +723,13 @@ function buildUserPrompt(params: {
         "Quality standards",
         "Assumptions",
         "Exclusions",
+      ],
+      minimumQuality: [
+        "Mention what will be performed for this specific service",
+        "Mention preparation/protection steps when relevant",
+        "Mention materials/equipment or allowances when relevant",
+        "Mention finish, cleanup, and quality expectations when relevant",
+        "Mention exclusions or assumptions when scope could be misunderstood",
       ],
       avoid: ["generic one-line descriptions", "vague language", "Portuguese service names or descriptions"],
     },
@@ -731,6 +747,7 @@ function buildUserPrompt(params: {
       maxCurrencyDecimals: 2,
       avoidAggressiveRounding: true,
       avoidInflation: "Do not add premium padding, high contingency, or extra markup without clear evidence or user instruction.",
+      priceQualityCheck: "For scratch estimates, avoid making every unitPrice and lineTotal a clean rounded number. Use calculated-looking values when not copied from catalog/document fixed prices.",
     },
     webSearchPolicy: {
       enabled: WEB_SEARCH_ENABLED,
@@ -931,7 +948,7 @@ async function searchCompanyCatalogForPrompt(params: {
   const shouldUseCatalog = Boolean(params.companyId) && !params.importPricingIntent;
   const [catalogStats, serviceCatalog] = await Promise.all([
     getCompanyCatalogStats(params.companyId),
-    shouldUseCatalog ? buildServiceCatalog(params.companyId) : Promise.resolve([]),
+    shouldUseCatalog ? buildCompanyCatalogServices(params.companyId) : Promise.resolve([]),
   ]);
   const catalogCandidates = serviceCatalog.length
     ? compactServiceCatalogForPrompt({
@@ -952,6 +969,7 @@ async function searchCompanyCatalogForPrompt(params: {
     importPricingIntent: params.importPricingIntent,
     catalogStats,
     serviceCatalogLoaded: serviceCatalog.length,
+    inactiveFallbackUsed: Boolean(catalogStats && catalogStats.servicesActive === 0 && serviceCatalog.length > 0),
     catalogCandidatesSent: catalogCandidates.sentToModel,
     candidateNames: catalogCandidates.services.map((service: any) => service.name).slice(0, 10),
   });
@@ -1039,16 +1057,12 @@ async function runBoundedWebPricingResearch(params: {
   });
 
   try {
-    const response = await withTimeout(
-      createOpenAiResponseWithTransientRetry(
-        request,
-        WEB_SEARCH_TIMEOUT_MS,
-        "webResearch",
-        0,
-        params.traceId
-      ),
+    const response = await createOpenAiResponseWithTransientRetry(
+      request,
       WEB_SEARCH_TIMEOUT_MS,
-      "SmartBuilder web research"
+      "webResearch",
+      0,
+      params.traceId
     );
     const summary = getResponseText(response).slice(0, 3000);
 
