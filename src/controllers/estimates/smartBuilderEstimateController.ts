@@ -80,20 +80,23 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
   })
   : null;
 
-const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5-mini";
+const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-4.1-mini";
 const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
-const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 18_000);
+const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 10_000);
 const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 60_000);
 const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 45_000);
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 5600);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 4200);
 const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_WEB_RESEARCH_MAX_OUTPUT_TOKENS || 700);
+const OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_DOC_CONTEXT_MAX_OUTPUT_TOKENS || 2500);
+const OPENAI_MAX_SERVICE_TOOL_CALLS = Number(process.env.SMARTBUILDER_MAX_SERVICE_TOOL_CALLS || 2);
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 0);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
 const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "true").toLowerCase() !== "false";
-const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "").toLowerCase() === "true";
-const CATALOG_INCLUDE_INACTIVE_FALLBACK = String(process.env.SMARTBUILDER_CATALOG_INCLUDE_INACTIVE_FALLBACK || "true").toLowerCase() === "true";
+const CATALOG_GROUNDING_ENABLED = String(process.env.SMARTBUILDER_CATALOG_GROUNDING_ENABLED || "false").toLowerCase() === "true";
+const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "true").toLowerCase() === "true";
+const CATALOG_INCLUDE_INACTIVE_FALLBACK = String(process.env.SMARTBUILDER_CATALOG_INCLUDE_INACTIVE_FALLBACK || "false").toLowerCase() === "true";
 const SERVICE_REASONING_EFFORT = process.env.SMARTBUILDER_SERVICE_REASONING_EFFORT || "low";
 const DOC_REASONING_EFFORT = process.env.SMARTBUILDER_DOC_REASONING_EFFORT || "medium";
 const TEXT_VERBOSITY = process.env.SMARTBUILDER_TEXT_VERBOSITY || "medium";
@@ -118,8 +121,8 @@ Language and writing standards:
 - Keep descriptions focused, but do not make them generic or overly short.
 
 Pricing standards for the United States:
-- Use the company service catalog as the primary pricing anchor when it matches the requested work.
-- The backend includes compact catalog candidates when available. Use those candidates as pricing anchors when relevant. Do not invent catalog prices.
+- Use the company service catalog as the primary pricing anchor when a catalog tool result matches the requested work.
+- Use search_company_catalog_services when the user asks for work that may exist in the current company's Category -> SubCategory -> Service catalog. Do not invent catalog prices.
 - Respect catalog fixedPrice, minPrice, and maxPrice as anchors; do not inflate above those anchors without clear project-specific evidence.
 - Estimate realistic US-market labor/material pricing. Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
 - Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
@@ -127,6 +130,7 @@ Pricing standards for the United States:
 - Avoid totals that all end in 00, 50, 500, or 000 unless copied from an attachment or directly anchored to a catalog fixed price.
 - If no explicit price exists, derive price from a clear estimating basis such as labor hours/rates, material allowances, quantity, crew size, access/difficulty, and local US market context. The result should look calculated, not guessed.
 - If a catalog range is available, choose a realistic point inside the range based on scope/difficulty rather than always using the midpoint or a round number.
+- If no catalog or web research is provided, still estimate conservatively using realistic US construction assumptions and the project context. Do not mention missing catalog/web to the client unless critical.
 - unitPrice and lineTotal are money fields. Preserve cents when supplied by a document or calculation.
 - If calculating a line total, quantity * unitPrice should be rounded only to normal currency precision, never to a visually pleasing number.
 
@@ -137,8 +141,15 @@ Source priority:
 - If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
 
 Web search:
-- The backend may include bounded web research in the prompt. Use it only as supporting market context.
+- Use web_search_market_rates only when company catalog/current services/attachments are insufficient and the user is not asking to import or copy explicit prices.
+- Treat web_search_market_rates output only as supporting US-market context.
 - Do not use web search to override explicit prices from an attached estimate/proposal/bid/quote when the user is asking to import or copy.
+
+Tool discipline:
+- Prefer answering directly when the request is clear and current services/attachments are enough.
+- At most one focused company catalog search per broad service category is allowed. Avoid many small tool calls.
+- At most one web market-rate search is allowed, and only when truly needed.
+- After receiving tool results, return the required JSON proposal. Do not call tools again.
 
 Do not change taxes, discounts, project status, signatures, invoices, clients, payments, schedules, or PDFs.
 Warnings should be reserved for critical missing or ambiguous information that affects the proposal. Do not add generic warnings just to justify normal estimating uncertainty.
@@ -184,16 +195,16 @@ function supportsReasoningControls(model: string) {
   return normalizedModel.startsWith("gpt-5") || normalizedModel.startsWith("o");
 }
 
-function buildReasoningOptions(model: string, effort: string) {
-  return supportsReasoningControls(model)
+function buildReasoningOptions(model: string, effort: string, enabled = false) {
+  return enabled && supportsReasoningControls(model)
     ? { reasoning: { effort } }
     : {};
 }
 
-function buildTextOptions(model: string, format: any) {
+function buildTextOptions(model: string, format: any, enableVerbosity = false) {
   return {
     text: {
-      ...(supportsReasoningControls(model) ? { verbosity: TEXT_VERBOSITY } : {}),
+      ...(enableVerbosity && supportsReasoningControls(model) ? { verbosity: TEXT_VERBOSITY } : {}),
       format,
     },
   };
@@ -668,23 +679,23 @@ function buildUserPrompt(params: {
     currentServices: normalizeServices(params.currentServices),
     estimate: params.estimateContext,
     companyServiceCatalog: {
-      available: params.grounding.serviceCatalog.length > 0,
+      availableByTool: CATALOG_TOOL_ENABLED && Boolean(params.grounding.companyId),
+      toolName: "search_company_catalog_services",
+      promptInjectionEnabled: CATALOG_GROUNDING_ENABLED,
       stats: params.grounding.catalogStats,
-      source: params.grounding.catalogStats?.servicesActive === 0 && params.grounding.serviceCatalog.length > 0
-        ? "Inactive catalog service fallback was used because active subcategories/services are currently zero for this company."
-        : "Active catalog service items.",
-      access: params.grounding.serviceCatalog.length > 0
-        ? "Use catalogCandidates below as best-effort pricing and service anchors when relevant. If candidates are irrelevant or empty, estimate conservatively from request/context. Do not repeatedly search the catalog."
-        : "No company catalog is available in this request.",
+      access: CATALOG_TOOL_ENABLED && params.grounding.companyId
+        ? "Search the current company's catalog only when useful. The catalog is Category -> SubCategory -> Service/variable_service and is scoped to this companyId by the backend."
+        : "No company catalog tool is available in this request.",
       catalogCandidates,
     },
     marketResearch: {
       enabled: WEB_SEARCH_ENABLED,
-      allowedForRequest: params.grounding.allowWebSearch,
+      allowedByToolForRequest: params.grounding.allowWebSearch,
+      toolName: "web_search_market_rates",
       used: params.grounding.webResearch.used,
       skippedReason: params.grounding.webResearch.skippedReason || null,
       summary: params.grounding.webResearch.summary || null,
-      rule: "Use this only as supporting US-market context. It must not override explicit attachment prices, current service prices, or matching company catalog anchors.",
+      rule: "Use web market-rate context only as support. It must not override explicit attachment prices, current service prices, or matching company catalog anchors.",
     },
     attachmentMetadata: params.attachments.map((attachment) => ({
       fileName: attachment.originalName,
@@ -707,7 +718,8 @@ function buildUserPrompt(params: {
         rule: "When this applies, preserve service names, quantities, unit prices, and totals from the attachment. Do not reprice, do not replace with catalog/web, and do not round to nicer numbers.",
       },
       estimateFromScratch: {
-        rule: "When no explicit imported pricing is requested, estimate conservatively for the United States using current services, project context, company catalog anchors, and web search only if needed.",
+        rule: "When no explicit imported pricing is requested, estimate conservatively for the United States using current services, project context, and any catalog/web grounding provided by the backend.",
+        fallbackRule: "If no catalog anchors or web research are provided, generate a reasonable conservative US estimate from the request, location, and construction assumptions.",
       },
     },
     descriptionRequirements: {
@@ -759,28 +771,38 @@ function buildUserPrompt(params: {
   });
 }
 
-function buildSmartBuilderResponseRequest(model: string, input: any[], hasDocumentAttachment = false) {
+function buildSmartBuilderResponseRequest(model: string, input: any[], options: {
+  useReasoning?: boolean;
+  enableVerbosity?: boolean;
+  tools?: any[];
+  toolChoice?: "auto" | "none";
+  maxToolCalls?: number;
+  maxOutputTokens?: number;
+} = {}) {
+  const tools = options.tools || [];
+
   return {
     model,
     instructions: SMARTBUILDER_SYSTEM_PROMPT,
     input,
-    max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+    max_output_tokens: options.maxOutputTokens || OPENAI_MAX_OUTPUT_TOKENS,
     parallel_tool_calls: false,
-    ...buildReasoningOptions(model, hasDocumentAttachment ? DOC_REASONING_EFFORT : SERVICE_REASONING_EFFORT),
+    ...(tools.length ? { tools, tool_choice: options.toolChoice || "auto", max_tool_calls: options.maxToolCalls || OPENAI_MAX_SERVICE_TOOL_CALLS } : {}),
+    ...buildReasoningOptions(model, options.useReasoning ? DOC_REASONING_EFFORT : SERVICE_REASONING_EFFORT, Boolean(options.useReasoning)),
     ...buildTextOptions(model, {
         type: "json_schema",
         name: "estimate_smartbuilder_response",
         strict: true,
         schema: smartBuilderJsonSchema,
-    }),
+    }, Boolean(options.enableVerbosity)),
   };
 }
 
 function buildCatalogSearchTool() {
   return {
     type: "function",
-    name: "search_company_services",
-    description: "Search the current company's service catalog for matching construction services, descriptions, and pricing anchors.",
+    name: "search_company_catalog_services",
+    description: "Search only the current company's Category -> SubCategory -> Service/variable_service catalog for matching construction services, descriptions, and pricing anchors.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -800,11 +822,35 @@ function buildCatalogSearchTool() {
   };
 }
 
+function buildWebMarketRatesTool() {
+  return {
+    type: "function",
+    name: "web_search_market_rates",
+    description: "Search concise US market-rate references for labor/material pricing when the company catalog is insufficient.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        query: {
+          type: "string",
+          description: "Short US-market construction pricing query, for example 'Boston MA interior painting labor rate per square foot'.",
+        },
+        location: {
+          type: "string",
+          description: "Optional US city/state or region for pricing context.",
+        },
+      },
+      required: ["query", "location"],
+    },
+    strict: true,
+  };
+}
+
 function buildSmartBuilderTools(allowWebSearch: boolean) {
   const tools: any[] = CATALOG_TOOL_ENABLED ? [buildCatalogSearchTool()] : [];
 
   if (allowWebSearch) {
-    tools.push(...((buildWebSearchOptions() as any).tools || []));
+    tools.push(buildWebMarketRatesTool());
   }
 
   return tools;
@@ -817,6 +863,7 @@ function buildWebSearchOptions() {
     tools: [
       {
         type: WEB_SEARCH_TOOL_TYPE,
+        search_context_size: "low",
         user_location: {
           type: "approximate",
           country: "US",
@@ -945,9 +992,11 @@ async function searchCompanyCatalogForPrompt(params: {
   importPricingIntent: boolean;
   traceId?: string;
 }) {
-  const shouldUseCatalog = Boolean(params.companyId) && !params.importPricingIntent;
+  const shouldUseCatalog = CATALOG_GROUNDING_ENABLED
+    && Boolean(params.companyId)
+    && !params.importPricingIntent;
   const [catalogStats, serviceCatalog] = await Promise.all([
-    getCompanyCatalogStats(params.companyId),
+    shouldUseCatalog ? getCompanyCatalogStats(params.companyId) : Promise.resolve(null),
     shouldUseCatalog ? buildCompanyCatalogServices(params.companyId) : Promise.resolve([]),
   ]);
   const catalogCandidates = serviceCatalog.length
@@ -967,6 +1016,7 @@ async function searchCompanyCatalogForPrompt(params: {
     companyId: params.companyId || null,
     shouldUseCatalog,
     importPricingIntent: params.importPricingIntent,
+    catalogGroundingEnabled: CATALOG_GROUNDING_ENABLED,
     catalogStats,
     serviceCatalogLoaded: serviceCatalog.length,
     inactiveFallbackUsed: Boolean(catalogStats && catalogStats.servicesActive === 0 && serviceCatalog.length > 0),
@@ -978,6 +1028,38 @@ async function searchCompanyCatalogForPrompt(params: {
     shouldUseCatalog,
     serviceCatalog,
     catalogCandidates,
+    catalogStats,
+  };
+}
+
+async function prepareCatalogToolContext(params: {
+  companyId?: string | null;
+  importPricingIntent: boolean;
+  traceId?: string;
+}) {
+  const catalogStats = params.companyId ? await getCompanyCatalogStats(params.companyId) : null;
+  const shouldUseCatalog = CATALOG_TOOL_ENABLED
+    && Boolean(params.companyId)
+    && !params.importPricingIntent;
+  const emptyCatalogCandidates = {
+    totalAvailable: catalogStats?.servicesTotal || 0,
+    sentToModel: 0,
+    services: [],
+  };
+
+  logSmartBuilderTrace(params.traceId, "catalog.toolContext", {
+    companyId: params.companyId || null,
+    shouldUseCatalog,
+    importPricingIntent: params.importPricingIntent,
+    catalogToolEnabled: CATALOG_TOOL_ENABLED,
+    catalogStats,
+    promptCatalogInjectionEnabled: CATALOG_GROUNDING_ENABLED,
+  });
+
+  return {
+    shouldUseCatalog,
+    serviceCatalog: [],
+    catalogCandidates: emptyCatalogCandidates,
     catalogStats,
   };
 }
@@ -1045,7 +1127,7 @@ async function runBoundedWebPricingResearch(params: {
     max_tool_calls: 1,
     parallel_tool_calls: false,
     ...(buildWebSearchOptions() as any),
-    ...buildReasoningOptions(SERVICE_MODEL, "low"),
+    ...buildReasoningOptions(SERVICE_MODEL, "low", false),
     ...buildTextOptions(SERVICE_MODEL, { type: "text" }),
   };
 
@@ -1103,29 +1185,25 @@ async function prepareSmartBuilderGrounding(params: {
   traceId?: string;
 }): Promise<SmartBuilderGrounding> {
   const importPricingIntent = hasImportPricingIntent(params.message, params.attachments);
-  const catalog = await searchCompanyCatalogForPrompt({
-    companyId: params.companyId,
-    message: params.message,
-    currentServices: params.currentServices,
-    attachments: params.attachments,
-    importPricingIntent,
-    traceId: params.traceId,
-  });
-  const allowWebSearch = shouldAllowWebSearch({
-    message: params.message,
-    hasCompanyCatalog: catalog.serviceCatalog.length > 0,
-    catalogCandidates: catalog.catalogCandidates,
-    attachments: params.attachments,
-  });
-  const webResearch = await runBoundedWebPricingResearch({
-    message: params.message,
-    currentServices: params.currentServices,
-    estimateContext: params.estimateContext,
-    catalogCandidates: catalog.catalogCandidates,
-    attachments: params.attachments,
-    allowWebSearch,
-    traceId: params.traceId,
-  });
+  const catalog = CATALOG_GROUNDING_ENABLED
+    ? await searchCompanyCatalogForPrompt({
+      companyId: params.companyId,
+      message: params.message,
+      currentServices: params.currentServices,
+      attachments: params.attachments,
+      importPricingIntent,
+      traceId: params.traceId,
+    })
+    : await prepareCatalogToolContext({
+      companyId: params.companyId,
+      importPricingIntent,
+      traceId: params.traceId,
+    });
+  const allowWebSearch = WEB_SEARCH_ENABLED && !importPricingIntent;
+  const webResearch = {
+    used: false,
+    skippedReason: allowWebSearch ? "tool_on_demand" : "web_search_not_allowed",
+  };
 
   logSmartBuilderTrace(params.traceId, "grounding.completed", {
     companyId: params.companyId || null,
@@ -1171,16 +1249,6 @@ async function searchCompanyServicesForAi(companyId: string | null | undefined, 
   const services = await prisma.service.findMany({
     where: {
       company_id: companyId,
-      service: {
-        status_subcategory: {
-          not: false,
-        },
-        subcategory: {
-          status_category: {
-            not: false,
-          },
-        },
-      },
       ...(searchConditions.length ? { OR: searchConditions } : {}),
     },
     select: {
@@ -1194,9 +1262,11 @@ async function searchCompanyServicesForAi(companyId: string | null | undefined, 
       date_creation: true,
       service: {
         select: {
+          status_subcategory: true,
           subcategory_name: true,
           subcategory: {
             select: {
+              status_category: true,
               category_name: true,
             },
           },
@@ -1214,6 +1284,8 @@ async function searchCompanyServicesForAi(companyId: string | null | undefined, 
       id: service.id,
       category: service.service.subcategory.category_name,
       subcategory: service.service.subcategory_name,
+      categoryStatus: service.service.subcategory.status_category,
+      subcategoryStatus: service.service.status_subcategory,
       name: service.service_name,
       description: service.description,
       priceType: service.price_type,
@@ -1224,27 +1296,155 @@ async function searchCompanyServicesForAi(companyId: string | null | undefined, 
   };
 }
 
+async function runStandardWebSearch(params: {
+  query: string;
+  location?: string | null;
+  traceId?: string;
+}) {
+  if (!WEB_SEARCH_ENABLED) {
+    return { used: false, skippedReason: "web_search_disabled", summary: "" };
+  }
+
+  if (!openai) {
+    return { used: false, skippedReason: "openai_not_configured", summary: "" };
+  }
+
+  const query = String(params.query || "").trim().slice(0, 240);
+  if (!query) {
+    return { used: false, skippedReason: "empty_query", summary: "" };
+  }
+
+  const startedAt = Date.now();
+  const request = {
+    model: SERVICE_MODEL,
+    instructions: [
+      "You are a concise US construction market-rate research tool.",
+      "Use web search to return practical pricing references only.",
+      "Do not produce a final estimate. Keep the answer under 8 bullets.",
+    ].join("\n"),
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              query,
+              location: params.location || "United States",
+              output: "Summarize realistic labor/material price ranges and assumptions. Include no more than 8 bullets.",
+            }),
+          },
+        ],
+      },
+    ],
+    max_output_tokens: OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS,
+    max_tool_calls: 1,
+    parallel_tool_calls: false,
+    ...(buildWebSearchOptions() as any),
+    ...buildTextOptions(SERVICE_MODEL, { type: "text" }),
+  };
+
+  logSmartBuilderTrace(params.traceId, "webSearchTool.request", {
+    agent: "web_search_market_rates",
+    model: SERVICE_MODEL,
+    reasoning: false,
+    query,
+    location: params.location || null,
+    timeoutMs: WEB_SEARCH_TIMEOUT_MS,
+    tools: summarizeSmartBuilderTools((request as any).tools || []),
+  });
+
+  try {
+    const response = await createOpenAiResponseWithTransientRetry(
+      request,
+      WEB_SEARCH_TIMEOUT_MS,
+      "webSearchTool",
+      0,
+      params.traceId
+    );
+    const summary = getResponseText(response).slice(0, 2500);
+
+    logSmartBuilderTrace(params.traceId, "webSearchTool.response", {
+      agent: "web_search_market_rates",
+      durationMs: Date.now() - startedAt,
+      response: summarizeOpenAiResponse(response),
+      summaryChars: summary.length,
+    });
+
+    return {
+      used: Boolean(summary),
+      skippedReason: summary ? undefined : "web_search_returned_empty",
+      summary,
+      responseId: response?.id || null,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    logSmartBuilderTrace(params.traceId, "webSearchTool.failed", {
+      agent: "web_search_market_rates",
+      durationMs: Date.now() - startedAt,
+      error: summarizeSmartBuilderError(error),
+    }, "warn");
+
+    return {
+      used: false,
+      skippedReason: "web_search_failed",
+      summary: "",
+      durationMs: Date.now() - startedAt,
+      error: summarizeSmartBuilderError(error),
+    };
+  }
+}
+
 function getFunctionToolCalls(response: any) {
   const output = Array.isArray(response?.output) ? response.output : [];
   return output.filter((item: any) => item?.type === "function_call" && item?.name);
 }
 
-async function executeFunctionToolCall(call: any, companyId: string | null | undefined) {
-  if (call.name !== "search_company_services") {
+async function executeFunctionToolCall(call: any, params: {
+  companyId?: string | null;
+  allowWebSearch?: boolean;
+  traceId?: string;
+}) {
+  if (call.name === "search_company_catalog_services") {
+    const args = safeParseAiJson(call.arguments || "{}");
+    const result = await searchCompanyServicesForAi(params.companyId, String(args.query || ""), Number(args.limit || 10));
+
+    logSmartBuilderTrace(params.traceId, "catalogTool.response", {
+      agent: "service",
+      tool: "search_company_catalog_services",
+      catalogCompanyId: params.companyId || null,
+      query: String(args.query || ""),
+      catalogResultCount: result.count,
+    });
+
     return {
       type: "function_call_output",
       call_id: call.call_id,
-      output: JSON.stringify({ error: `Unsupported tool: ${call.name}` }),
+      output: JSON.stringify(result),
     };
   }
 
-  const args = safeParseAiJson(call.arguments || "{}");
-  const result = await searchCompanyServicesForAi(companyId, String(args.query || ""), Number(args.limit || 10));
+  if (call.name === "web_search_market_rates") {
+    const args = safeParseAiJson(call.arguments || "{}");
+    const result = params.allowWebSearch
+      ? await runStandardWebSearch({
+        query: String(args.query || ""),
+        location: String(args.location || ""),
+        traceId: params.traceId,
+      })
+      : { used: false, skippedReason: "web_search_not_allowed", summary: "" };
+
+    return {
+      type: "function_call_output",
+      call_id: call.call_id,
+      output: JSON.stringify(result),
+    };
+  }
 
   return {
     type: "function_call_output",
     call_id: call.call_id,
-    output: JSON.stringify(result),
+    output: JSON.stringify({ error: `Unsupported tool: ${call.name}` }),
   };
 }
 
@@ -1335,8 +1535,8 @@ function summarizeSmartBuilderTools(tools: any[] = []) {
   return {
     count: tools.length,
     types: toolTypes,
-    hasCatalogSearch: tools.some((tool) => tool?.name === "search_company_services"),
-    hasWebSearch: tools.some((tool) => String(tool?.type || "").includes("web_search")),
+    hasCatalogSearch: tools.some((tool) => tool?.name === "search_company_catalog_services"),
+    hasWebSearch: tools.some((tool) => String(tool?.type || "").includes("web_search") || tool?.name === "web_search_market_rates"),
   };
 }
 
@@ -1507,10 +1707,12 @@ async function resolveFunctionToolCalls(response: any, params: {
   model: string;
   input: any[];
   companyId?: string | null;
+  allowWebSearch?: boolean;
   traceId?: string;
 }) {
   const toolCalls = getFunctionToolCalls(response);
   if (!toolCalls.length) return response;
+  const toolNames = toolCalls.map((call: any) => String(call.name || ""));
 
   logSmartBuilderTrace(params.traceId, "tools.detected", {
     responseId: response?.id || null,
@@ -1523,7 +1725,11 @@ async function resolveFunctionToolCalls(response: any, params: {
   });
 
   const toolOutputs = await Promise.all(
-    toolCalls.map((call: any) => executeFunctionToolCall(call, params.companyId))
+    toolCalls.slice(0, OPENAI_MAX_SERVICE_TOOL_CALLS).map((call: any) => executeFunctionToolCall(call, {
+      companyId: params.companyId,
+      allowWebSearch: params.allowWebSearch,
+      traceId: params.traceId,
+    }))
   );
 
   logSmartBuilderTrace(params.traceId, "tools.outputs", {
@@ -1536,55 +1742,31 @@ async function resolveFunctionToolCalls(response: any, params: {
   });
 
   const followUpRequest = {
-    ...buildSmartBuilderResponseRequest(params.model, toolOutputs),
+    ...buildSmartBuilderResponseRequest(params.model, toolOutputs, {
+      tools: [],
+      toolChoice: "none",
+      useReasoning: false,
+      enableVerbosity: false,
+    }),
     previous_response_id: response.id,
     tool_choice: "none",
   };
 
-  try {
-    return await createOpenAiResponseWithTransientRetry(
-      followUpRequest,
-      OPENAI_RETRY_TIMEOUT_MS,
-      "toolFollowUp",
-      OPENAI_MAX_TRANSIENT_RETRIES,
-      params.traceId
-    );
-  } catch (error) {
-    if (!isOpenAiTransientError(error)) throw error;
+  const followUpResponse = await createOpenAiResponseWithTransientRetry(
+    followUpRequest,
+    OPENAI_RETRY_TIMEOUT_MS,
+    "toolFollowUp",
+    OPENAI_MAX_TRANSIENT_RETRIES,
+    params.traceId
+  );
 
-    logSmartBuilderTrace(params.traceId, "toolFollowUp.statelessFallback", {
-      responseId: response.id,
-      toolCallCount: toolCalls.length,
-      error: summarizeSmartBuilderError(error),
-    }, "warn");
-
-    const statelessInput = [
-      ...params.input,
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: [
-              "The company catalog search tool returned the following results.",
-              "Use these results as pricing/service references, but still return the same required JSON schema.",
-              "Do not call tools again.",
-              JSON.stringify(toolOutputs.map((output) => safeParseAiJson(output.output)), null, 2),
-            ].join("\n"),
-          },
-        ],
-      },
-    ];
-
-    const statelessRequest = buildSmartBuilderResponseRequest(SERVICE_MODEL, statelessInput);
-    return createOpenAiResponseWithTransientRetry(
-      statelessRequest,
-      OPENAI_RETRY_TIMEOUT_MS,
-      "toolFollowUpStateless",
-      OPENAI_MAX_TRANSIENT_RETRIES,
-      params.traceId
-    );
-  }
+  return Object.assign(followUpResponse, {
+    __smartBuilderToolUsage: {
+      toolCalls: toolNames,
+      catalogSearchUsed: toolNames.includes("search_company_catalog_services"),
+      webSearchUsed: toolNames.includes("web_search_market_rates"),
+    },
+  });
 }
 
 function getSmartBuilderErrorResponse(error: any) {
@@ -1639,11 +1821,53 @@ function getSmartBuilderErrorResponse(error: any) {
   return null;
 }
 
+async function createFileContextAgentResponse(params: {
+  input: any[];
+  companyId?: string | null;
+  traceId?: string;
+}) {
+  const request = {
+    model: DOC_MODEL,
+    instructions: [
+      "You are fileContextAgent for SmartBuilder estimates.",
+      "Read the attached PDF/image/document inputs and extract only compact, useful estimating context.",
+      "Return plain text, not JSON.",
+      "Include explicit line items, quantities, unit prices, totals, exclusions, alternates, and scope notes when present.",
+      "If the file is an existing estimate/proposal/bid/quote, preserve the original values exactly in the summary.",
+      "Keep output concise and under the configured token budget.",
+    ].join("\n"),
+    input: params.input,
+    max_output_tokens: OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS,
+    parallel_tool_calls: false,
+    ...buildReasoningOptions(DOC_MODEL, DOC_REASONING_EFFORT, true),
+    ...buildTextOptions(DOC_MODEL, { type: "text" }, true),
+  };
+
+  logSmartBuilderTrace(params.traceId, "fileContextAgent.start", {
+    agent: "fileContext",
+    model: DOC_MODEL,
+    reasoning: supportsReasoningControls(DOC_MODEL),
+    companyId: params.companyId || null,
+    timeoutMs: OPENAI_REQUEST_TIMEOUT_MS,
+    maxOutputTokens: OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS,
+    input: summarizeSmartBuilderInput(params.input),
+  });
+
+  return createOpenAiResponseWithTransientRetry(
+    request,
+    OPENAI_REQUEST_TIMEOUT_MS,
+    "fileContext",
+    OPENAI_MAX_TRANSIENT_RETRIES,
+    params.traceId
+  );
+}
+
 async function createStructuredEstimateResponse(params: {
   model: string;
   input: any[];
   hasDocumentAttachment: boolean;
   companyId?: string | null;
+  allowWebSearch?: boolean;
   traceId?: string;
 }) {
   if (!openai) {
@@ -1651,7 +1875,8 @@ async function createStructuredEstimateResponse(params: {
   }
 
   logSmartBuilderTrace(params.traceId, "response.start", {
-    model: params.model,
+    agent: params.hasDocumentAttachment ? "fileContext+service" : "service",
+    model: params.hasDocumentAttachment ? SERVICE_MODEL : params.model,
     serviceModel: SERVICE_MODEL,
     docModel: DOC_MODEL,
     hasDocumentAttachment: params.hasDocumentAttachment,
@@ -1660,20 +1885,69 @@ async function createStructuredEstimateResponse(params: {
     input: summarizeSmartBuilderInput(params.input),
   });
 
-  const finalInput = inputHasNonTextParts(params.input) && !params.hasDocumentAttachment
+  let serviceInput = inputHasNonTextParts(params.input) && !params.hasDocumentAttachment
     ? stripInputToTextOnly(params.input)
     : params.input;
+
+  if (params.hasDocumentAttachment) {
+    const fileContext = await createFileContextAgentResponse({
+      input: params.input,
+      companyId: params.companyId,
+      traceId: params.traceId,
+    });
+    const fileContextText = getResponseText(fileContext).slice(0, 9000);
+    serviceInput = [
+      ...stripInputToTextOnly(params.input),
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "Document context extracted by fileContextAgent. Use this as attachment context for the final service proposal.",
+              "If this context contains explicit estimate/proposal/bid line items and the user asks to copy/import, preserve those names, quantities, unit prices, and totals.",
+              fileContextText || "No readable document context was extracted.",
+            ].join("\n\n"),
+          },
+        ],
+      },
+    ];
+  }
+
+  const serviceTools = buildSmartBuilderTools(Boolean(params.allowWebSearch));
   const request = {
-    ...buildSmartBuilderResponseRequest(params.model, finalInput, params.hasDocumentAttachment),
+    ...buildSmartBuilderResponseRequest(SERVICE_MODEL, serviceInput, {
+      tools: serviceTools,
+      toolChoice: serviceTools.length ? "auto" : "none",
+      useReasoning: false,
+      enableVerbosity: false,
+    }),
   };
 
-  return createOpenAiResponseWithTransientRetry(
+  logSmartBuilderTrace(params.traceId, "serviceAgent.start", {
+    agent: "service",
+    model: SERVICE_MODEL,
+    reasoning: false,
+    allowWebSearch: Boolean(params.allowWebSearch),
+    tools: summarizeSmartBuilderTools(serviceTools),
+    input: summarizeSmartBuilderInput(serviceInput),
+  });
+
+  const response = await createOpenAiResponseWithTransientRetry(
     request,
     OPENAI_REQUEST_TIMEOUT_MS,
     "generate",
     OPENAI_MAX_TRANSIENT_RETRIES,
     params.traceId
   );
+
+  return resolveFunctionToolCalls(response, {
+    model: SERVICE_MODEL,
+    input: serviceInput,
+    companyId: params.companyId,
+    allowWebSearch: params.allowWebSearch,
+    traceId: params.traceId,
+  });
 }
 
 function serializeSession(session: any) {
@@ -1861,8 +2135,10 @@ export class SmartBuilderEstimateController {
         input,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId: estimate.project.company_id,
+        allowWebSearch: grounding.allowWebSearch,
         traceId,
       });
+      const toolUsage = (response as any).__smartBuilderToolUsage || {};
 
       const rawText = getResponseText(response);
       const parsed = normalizeAiResponse(safeParseAiJson(rawText), currentServices);
@@ -1887,7 +2163,8 @@ export class SmartBuilderEstimateController {
             ...(session.metadata ? (session.metadata as any) : {}),
             webSearchEnabled: WEB_SEARCH_ENABLED,
             webSearchAllowedForLastRequest: grounding.allowWebSearch,
-            webSearchUsedForLastRequest: grounding.webResearch.used,
+            webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
+            catalogSearchUsedForLastRequest: Boolean(toolUsage.catalogSearchUsed),
           },
         },
       });
@@ -2007,8 +2284,10 @@ export class SmartBuilderEstimateController {
         input,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId,
+        allowWebSearch: grounding.allowWebSearch,
         traceId,
       });
+      const toolUsage = (response as any).__smartBuilderToolUsage || {};
 
       const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
       const now = new Date().toISOString();
@@ -2021,7 +2300,8 @@ export class SmartBuilderEstimateController {
           lastResponseId: response.id,
           webSearchEnabled: WEB_SEARCH_ENABLED,
           webSearchAllowedForLastRequest: grounding.allowWebSearch,
-          webSearchUsedForLastRequest: grounding.webResearch.used,
+          webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
+          catalogSearchUsedForLastRequest: Boolean(toolUsage.catalogSearchUsed),
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
