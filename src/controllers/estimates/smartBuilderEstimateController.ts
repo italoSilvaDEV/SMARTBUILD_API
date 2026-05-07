@@ -57,8 +57,8 @@ const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 12_000);
-const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 30_000);
-const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 25_000);
+const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT_MS || 60_000);
+const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 45_000);
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 9000);
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 1);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
@@ -1017,11 +1017,47 @@ async function resolveFunctionToolCalls(response: any, params: {
     tool_choice: "none",
   };
 
-  return createOpenAiResponseWithTransientRetry(
-    followUpRequest,
-    OPENAI_RETRY_TIMEOUT_MS,
-    "toolFollowUp"
-  );
+  try {
+    return await createOpenAiResponseWithTransientRetry(
+      followUpRequest,
+      OPENAI_RETRY_TIMEOUT_MS,
+      "toolFollowUp"
+    );
+  } catch (error) {
+    if (!isOpenAiTransientError(error)) throw error;
+
+    console.warn("[SmartBuilderEstimate.toolFollowUp.statelessFallback]", {
+      responseId: response.id,
+      toolCallCount: toolCalls.length,
+      status: (error as any)?.status,
+      code: (error as any)?.code,
+    });
+
+    const statelessInput = [
+      ...params.input,
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "The company catalog search tool returned the following results.",
+              "Use these results as pricing/service references, but still return the same required JSON schema.",
+              "Do not call tools again.",
+              JSON.stringify(toolOutputs.map((output) => safeParseAiJson(output.output)), null, 2),
+            ].join("\n"),
+          },
+        ],
+      },
+    ];
+
+    const statelessRequest = buildSmartBuilderResponseRequest(SERVICE_MODEL, statelessInput);
+    return createOpenAiResponseWithTransientRetry(
+      statelessRequest,
+      OPENAI_RETRY_TIMEOUT_MS,
+      "toolFollowUpStateless"
+    );
+  }
 }
 
 function getSmartBuilderErrorResponse(error: any) {
