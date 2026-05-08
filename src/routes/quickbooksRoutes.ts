@@ -7,6 +7,7 @@ import { QuickBooksClientController } from "../controllers/quickbooks/customer/Q
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
 import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
+import { QuickBooksEstimateController } from "../controllers/quickbooks/estimate/QuickBooksEstimateController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -16,6 +17,7 @@ const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
 const quickBooksProjectController = new QuickBooksProjectController();
+const quickBooksEstimateController = new QuickBooksEstimateController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
@@ -28,6 +30,8 @@ quickbooksRoutes.get("/quickbooks/projects/:companyId/:userId", checkToken, quic
 quickbooksRoutes.post("/quickbooks/projects/import/:companyId/:userId", checkToken, quickBooksProjectController.importProjectsToSmartBuild);
 quickbooksRoutes.post("/quickbooks/projects/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksProjectController.syncProjectsQboToSmartBuild);
 quickbooksRoutes.get("/quickbooks/projects-graphql/:companyId/:userId", checkToken, quickBooksProjectController.listProjectsGraphql);
+quickbooksRoutes.post("/quickbooks/estimates/import/:companyId/:userId", checkToken, quickBooksEstimateController.importEstimatesToSmartBuild.bind(quickBooksEstimateController));
+quickbooksRoutes.post("/quickbooks/estimates/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksEstimateController.syncEstimatesQboToSmartBuild.bind(quickBooksEstimateController));
 
 //  NOVAS: Rotas de desconexão
 quickbooksRoutes.delete("/quickbooks/disconnect/:userId/:companyId", checkToken, quickbooksController.disconnect);

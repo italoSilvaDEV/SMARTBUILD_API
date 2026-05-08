@@ -1614,6 +1614,11 @@ model Estimate {
   canceledById       String?
   cancellationReason String?   @db.Text
 
+  idQuickbooks        String?
+  quickbooksSyncToken String?
+  quickbooksUpdatedAt DateTime?
+  quickbooksRaw       Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
@@ -1971,6 +1976,8 @@ model SyncPreferences {
 
 enum TypesEntity {
   customers
+  projects
+  estimates
   invoices
   payments
 }

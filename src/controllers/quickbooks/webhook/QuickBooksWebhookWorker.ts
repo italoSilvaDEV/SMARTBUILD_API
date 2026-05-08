@@ -8,8 +8,12 @@ import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { sanitizeEmail } from "../util/sanatizeEmail";
 import { jsonSafe } from "../customer/quickbooksHelpers";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
+import { qboClientForAccount } from "../util/http/qboClientFactory";
+import { importQuickBooksProjectToSmartBuild } from "../project/QuickBooksProjectController";
+import { importQuickBooksEstimateToSmartBuild } from "../estimate/QuickBooksEstimateController";
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
+const MINOR_VERSION = 40;
 
 // helper no topo do arquivo (ou antes do uso)
 export function extractCustomer(data: any) {
@@ -86,19 +90,13 @@ export class QuickBooksWebhookWorker {
         continue;
       }
 
+      const api = qboClientForAccount(account.id);
+
       // Filtre somente Customer events 
       const customerEvents = entities.filter((e: any) => e.name?.toLowerCase() === "customer");
       
-      //  Validação de sincronização APENAS para Customer events
-      if (customerEvents.length > 0) {
-        const syncEnabled = await this.isSyncEnabledForCompany(companyId, account.user_id);
-        if (!syncEnabled) {
-          console.log(`[QBO Webhook] Sincronização de customers desabilitada para company=${companyId} user=${account.user_id}`);
-          // Continue para processar outros eventos (Invoice, Payment)
-        } else {
-          // Processar customer events apenas se sincronização estiver habilitada
-          for (const evt of customerEvents) {
-            const id = evt.id;
+      for (const evt of customerEvents) {
+        const id = evt.id;
             const op = (evt.operation || "").toLowerCase(); // create | update | delete | merge ...
 
             try {
@@ -128,6 +126,61 @@ export class QuickBooksWebhookWorker {
             continue;
           }
  
+              const isProjectCustomer = qbCustomer?.IsProject === true || qbCustomer?.Job === true;
+
+              if (isProjectCustomer) {
+                const projectsSyncEnabled = await this.isSyncEnabledForEntity(
+                  companyId,
+                  account.user_id,
+                  "projects"
+                );
+
+                if (!projectsSyncEnabled) {
+                  await createSyncLog({
+                    entity: "projects",
+                    action: "WebhookSkipped",
+                    entityId: id,
+                    companyId,
+                    details: jsonSafe({ reason: "Projects sync disabled", qbId: id, op }),
+                  });
+                  continue;
+                }
+
+                const result = await importQuickBooksProjectToSmartBuild({
+                  api,
+                  minorversion: MINOR_VERSION,
+                  companyId,
+                  userId: account.user_id,
+                  qboProject: qbCustomer,
+                });
+
+                await createSyncLog({
+                  entity: "projects",
+                  action: result.action === "created" ? "InsertedFromWebhook" : "UpdatedFromWebhook",
+                  entityId: result.localProjectId,
+                  companyId,
+                  details: jsonSafe({ qbId: id, op, result }),
+                });
+                continue;
+              }
+
+              const customersSyncEnabled = await this.isSyncEnabledForEntity(
+                companyId,
+                account.user_id,
+                "customers"
+              );
+
+              if (!customersSyncEnabled) {
+                await createSyncLog({
+                  entity: "customers",
+                  action: "WebhookSkipped",
+                  entityId: id,
+                  companyId,
+                  details: jsonSafe({ reason: "Customers sync disabled", qbId: id, op }),
+                });
+                continue;
+              }
+
               await this.upsertCustomerFromQBO(companyId, qbCustomer);
             } catch (e: any) {
               console.error("[QBO Webhook] erro entity:", id, e?.message || e);
@@ -140,8 +193,6 @@ export class QuickBooksWebhookWorker {
               });
             }
           }
-        }
-      }
 
       // Processar Invoice events (SEM validação de sincronização) isso apenas quando quiser a sincronização cruzada entre qbo e banco local 
       // const invoiceEvents = entities.filter((e: any) => e.name?.toLowerCase() === "invoice");
@@ -181,6 +232,110 @@ export class QuickBooksWebhookWorker {
       //     });
       //   }
       // }
+
+      const estimateEvents = entities.filter((e: any) => e.name?.toLowerCase() === "estimate");
+      for (const evt of estimateEvents) {
+        const id = evt.id;
+        const op = (evt.operation || "").toLowerCase();
+
+        try {
+          const estimatesSyncEnabled = await this.isSyncEnabledForEntity(
+            companyId,
+            account.user_id,
+            "estimates"
+          );
+
+          if (!estimatesSyncEnabled) {
+            await createSyncLog({
+              entity: "estimates",
+              action: "WebhookSkipped",
+              entityId: id,
+              companyId,
+              details: jsonSafe({ reason: "Estimates sync disabled", qbId: id, op }),
+            });
+            continue;
+          }
+
+          if (op === "delete") {
+            await createSyncLog({
+              entity: "estimates",
+              action: "WebhookDelete",
+              entityId: id,
+              companyId,
+              details: jsonSafe({ qbId: id, op }),
+            });
+            continue;
+          }
+
+          const { data } = await api.get(`/estimate/${id}`, {
+            params: { minorversion: MINOR_VERSION },
+          });
+          const qbEstimate = data?.Estimate || data;
+
+          if (!qbEstimate?.Id) {
+            await createSyncLog({
+              entity: "estimates",
+              action: "WebhookSkipped",
+              entityId: id,
+              companyId,
+              details: jsonSafe({ reason: "Estimate not found in QBO", qbId: id, op }),
+            });
+            continue;
+          }
+
+          const qboProjectId = qbEstimate?.CustomerRef?.value ? String(qbEstimate.CustomerRef.value) : null;
+
+          if (qboProjectId) {
+            const existingProjectLink = await prisma.projectPastes.findFirst({
+              where: {
+                companyId,
+                name: `QBO_PROJECT:${qboProjectId}`,
+              },
+              select: { projectId: true },
+            });
+
+            if (!existingProjectLink) {
+              const projectsSyncEnabled = await this.isSyncEnabledForEntity(
+                companyId,
+                account.user_id,
+                "projects"
+              );
+
+              if (projectsSyncEnabled) {
+                const projectResponse = await api.get(`/customer/${qboProjectId}`, {
+                  params: { minorversion: MINOR_VERSION },
+                });
+                const qboProject = projectResponse.data?.Customer || projectResponse.data;
+
+                if (qboProject?.Id && (qboProject?.IsProject === true || qboProject?.Job === true)) {
+                  await importQuickBooksProjectToSmartBuild({
+                    api,
+                    minorversion: MINOR_VERSION,
+                    companyId,
+                    userId: account.user_id,
+                    qboProject,
+                  });
+                }
+              }
+            }
+          }
+
+          await importQuickBooksEstimateToSmartBuild({
+            qboEstimate: qbEstimate,
+            companyId,
+            userId: account.user_id,
+          });
+        } catch (e: any) {
+          console.error("[QBO Webhook] erro ao processar Estimate:", id, e?.response?.data || e?.message || e);
+          await createSyncLog({
+            entity: "estimates",
+            action: "WebhookError",
+            entityId: id,
+            companyId,
+            details: jsonSafe({ message: e?.response?.data || e?.message || String(e), op }),
+          });
+        }
+      }
 
       // Processar Payment events (SEM validação de sincronização - sempre processa pagamentos)
       const paymentEvents = entities.filter((e: any) => e.name?.toLowerCase() === "payment");
@@ -370,6 +525,31 @@ export class QuickBooksWebhookWorker {
       return !!syncPreference;
     } catch (error) {
       console.error("[isSyncEnabledForCompany] Erro ao verificar preferências:", error);
+      return false;
+    }
+  }
+
+  private static async isSyncEnabledForEntity(
+    companyId: string,
+    userId: string,
+    typesEntity: "customers" | "projects" | "estimates"
+  ): Promise<boolean> {
+    try {
+      const syncPreference = await prisma.syncPreferences.findFirst({
+        where: {
+          companyId,
+          userId,
+          typesEntity: typesEntity as any,
+          isDisable: false,
+          typeSync: {
+            in: ["QuickBooksToSmartBuild", "bidirectional"],
+          },
+        },
+      });
+
+      return !!syncPreference;
+    } catch (error) {
+      console.error("[isSyncEnabledForEntity] Erro ao verificar preferências:", error);
       return false;
     }
   }

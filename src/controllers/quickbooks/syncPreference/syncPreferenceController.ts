@@ -1,26 +1,39 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import {
+  buildUnsupportedTypesEntityError,
+  isTypesEntitySupportedByPrismaClient,
   normalizeSyncTypeForEntity,
   shouldNormalizeProjectsSyncType,
 } from "./syncPreferenceUtils";
 
+const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects", "estimates"];
 
 export class SyncPreferencesController {
-  async listByCompany(req: Request, res: Response) {
-    const { companyId } = req.params;
+  private async normalizeQboToSmartOnlyPreferences(where: { companyId?: string; userId?: string }) {
+    for (const typesEntity of QBO_TO_SMART_ONLY_SYNC_ENTITIES) {
+      if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+        continue;
+      }
 
-    try {
-      await prisma.syncPreferences.updateMany({
+      await (prisma as any).syncPreferences.updateMany({
         where: {
-          companyId,
-          typesEntity: "projects" as any,
+          ...where,
+          typesEntity,
           NOT: { typeSync: "QuickBooksToSmartBuild" },
         },
         data: {
           typeSync: "QuickBooksToSmartBuild",
         },
       });
+    }
+  }
+
+  async listByCompany(req: Request, res: Response) {
+    const { companyId } = req.params;
+
+    try {
+      await this.normalizeQboToSmartOnlyPreferences({ companyId });
 
       const prefs = await prisma.syncPreferences.findMany({
         where: { companyId },
@@ -40,16 +53,7 @@ export class SyncPreferencesController {
     const { userId } = req.params;
 
     try {
-      await prisma.syncPreferences.updateMany({
-        where: {
-          userId,
-          typesEntity: "projects" as any,
-          NOT: { typeSync: "QuickBooksToSmartBuild" },
-        },
-        data: {
-          typeSync: "QuickBooksToSmartBuild",
-        },
-      });
+      await this.normalizeQboToSmartOnlyPreferences({ userId });
 
       const prefs = await prisma.syncPreferences.findMany({
         where: { userId },
@@ -66,7 +70,21 @@ export class SyncPreferencesController {
   async create(req: Request, res: Response) {
     const { typesEntity, typeSync, userId, companyId } = req.body;
 
+    if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+      const error = buildUnsupportedTypesEntityError(typesEntity);
+      return res.status(409).json({
+        error: "QuickBooks sync setup is not ready",
+        details: error.message,
+        code: (error as any).code,
+        typesEntity,
+      });
+    }
+
     try {
+      if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+        throw buildUnsupportedTypesEntityError(typesEntity);
+      }
+
       const existing = await prisma.syncPreferences.findFirst({
         where: { typesEntity, userId, companyId },
       });

@@ -747,6 +747,136 @@ function buildMinimalProjectFinancials(qboProject: any) {
   };
 }
 
+export async function importQuickBooksProjectToSmartBuild(params: {
+  api: ReturnType<typeof qboClientForAccount>;
+  minorversion: number;
+  companyId: string;
+  userId: string;
+  qboProject: any;
+}) {
+  const { api, minorversion, companyId, userId, qboProject } = params;
+  const parentCustomerId = qboProject?.ParentRef?.value
+    ? String(qboProject.ParentRef.value)
+    : null;
+  const parentCustomer = parentCustomerId
+    ? await fetchQboCustomerById(api, parentCustomerId, minorversion).catch(() => null)
+    : null;
+  const resolvedProjectLocation = resolveImportedProjectLocation(
+    qboProject as any,
+    parentCustomer,
+    null
+  );
+
+  const client = await findOrCreateClientForImportedProject({
+    companyId,
+    userId,
+    qboProject: qboProject as any,
+    parentCustomer,
+    projectAddress: resolvedProjectLocation.address,
+    projectCityAndState: resolvedProjectLocation.cityAndState,
+  });
+
+  const workContext = await ensureWorkContextForImportedProject({
+    client,
+    companyId,
+    qboProject: qboProject as any,
+    parentCustomer,
+    projectAddress: resolvedProjectLocation.address,
+  });
+
+  const financials = buildMinimalProjectFinancials(qboProject);
+  const metadataMarker = `QBO_PROJECT:${qboProject.Id}`;
+
+  const existingImportedLink = await prisma.projectPastes.findFirst({
+    where: {
+      companyId,
+      name: metadataMarker,
+    },
+    select: {
+      projectId: true,
+    },
+  });
+
+  let project: any;
+  let action: "created" | "updated" = "created";
+
+  if (existingImportedLink?.projectId) {
+    action = "updated";
+    project = await prisma.project.update({
+      where: { id: existingImportedLink.projectId },
+      data: {
+        seller_user_id: userId,
+        price: financials.price,
+        status_project: financials.statusProject,
+        client_id: client.id,
+        start_date: financials.startDate,
+        deadline: financials.deadline,
+        company_id: companyId,
+        location: resolvedProjectLocation.address || client.location || "",
+        lat: resolvedProjectLocation.lat || client.lat || "",
+        log: resolvedProjectLocation.log || client.log || "",
+        radius: client.radius ?? null,
+        balanceDue: financials.balanceDue,
+        amountPaid: financials.amountPaid,
+        workContextId: workContext?.id || null,
+      },
+    });
+  } else {
+    const nextContractNumber = await getNextProjectContractNumber(companyId);
+
+    project = await prisma.project.create({
+      data: {
+        seller_user_id: userId,
+        price: financials.price,
+        status_project: financials.statusProject,
+        client_id: client.id,
+        start_date: financials.startDate,
+        deadline: financials.deadline,
+        company_id: companyId,
+        contract_number: nextContractNumber,
+        location: resolvedProjectLocation.address || client.location || "",
+        lat: resolvedProjectLocation.lat || client.lat || "",
+        log: resolvedProjectLocation.log || client.log || "",
+        radius: client.radius ?? null,
+        balanceDue: financials.balanceDue,
+        amountPaid: financials.amountPaid,
+        workContextId: workContext?.id || null,
+      },
+    });
+
+    await prisma.projectPastes.create({
+      data: {
+        name: metadataMarker,
+        userAuthorId: userId,
+        projectId: project.id,
+        companyId,
+      },
+    });
+  }
+
+  return {
+    action,
+    localProjectId: project.id,
+    contractNumber: project.contract_number,
+    qboProjectId: qboProject.Id,
+    qboProjectName: qboProject.DisplayName,
+    localClientId: client.id,
+    workContextId: workContext?.id || null,
+    importedServices: {
+      created: 0,
+      updated: 0,
+      detected: 0,
+    },
+    financials,
+    resolvedLocation: resolvedProjectLocation,
+    qboData: {
+      projectQuery: qboProject,
+      parentCustomer,
+      relatedData: null,
+    },
+  };
+}
+
 export class QuickBooksProjectController {
   async preCheck(req: Request, res: Response) {
     const { companyId, userId } = req.params;
@@ -1002,127 +1132,16 @@ export class QuickBooksProjectController {
       const results: Array<Record<string, any>> = [];
 
       for (const qboProject of projects) {
-        const parentCustomerId = qboProject?.ParentRef?.value
-          ? String(qboProject.ParentRef.value)
-          : null;
-        const parentCustomer = parentCustomerId
-          ? await fetchQboCustomerById(api, parentCustomerId, minorversion).catch(() => null)
-          : null;
-        const resolvedProjectLocation = resolveImportedProjectLocation(
-          qboProject as any,
-          parentCustomer,
-          null
-        );
-
-        const client = await findOrCreateClientForImportedProject({
+        const result = await importQuickBooksProjectToSmartBuild({
+          api,
+          minorversion,
           companyId,
           userId,
-          qboProject: qboProject as any,
-          parentCustomer,
-          projectAddress: resolvedProjectLocation.address,
-          projectCityAndState: resolvedProjectLocation.cityAndState,
+          qboProject,
         });
 
-        const workContext = await ensureWorkContextForImportedProject({
-          client,
-          companyId,
-          qboProject: qboProject as any,
-          parentCustomer,
-          projectAddress: resolvedProjectLocation.address,
-        });
-
-        const financials = buildMinimalProjectFinancials(qboProject);
-        const metadataMarker = `QBO_PROJECT:${qboProject.Id}`;
-
-        const existingImportedLink = await prisma.projectPastes.findFirst({
-          where: {
-            companyId,
-            name: metadataMarker,
-          },
-          select: {
-            projectId: true,
-          },
-        });
-
-        let project: any;
-        let action: "created" | "updated" = "created";
-
-        if (existingImportedLink?.projectId) {
-          action = "updated";
-          project = await prisma.project.update({
-            where: { id: existingImportedLink.projectId },
-            data: {
-              seller_user_id: userId,
-              price: financials.price,
-              status_project: financials.statusProject,
-              client_id: client.id,
-              start_date: financials.startDate,
-              deadline: financials.deadline,
-              company_id: companyId,
-              location: resolvedProjectLocation.address || client.location || "",
-              lat: resolvedProjectLocation.lat || client.lat || "",
-              log: resolvedProjectLocation.log || client.log || "",
-              radius: client.radius ?? null,
-              balanceDue: financials.balanceDue,
-              amountPaid: financials.amountPaid,
-              workContextId: workContext?.id || null,
-            },
-          });
-        } else {
-          const nextContractNumber = await getNextProjectContractNumber(companyId);
-
-          project = await prisma.project.create({
-            data: {
-              seller_user_id: userId,
-              price: financials.price,
-              status_project: financials.statusProject,
-              client_id: client.id,
-              start_date: financials.startDate,
-              deadline: financials.deadline,
-              company_id: companyId,
-              contract_number: nextContractNumber,
-              location: resolvedProjectLocation.address || client.location || "",
-              lat: resolvedProjectLocation.lat || client.lat || "",
-              log: resolvedProjectLocation.log || client.log || "",
-              radius: client.radius ?? null,
-              balanceDue: financials.balanceDue,
-              amountPaid: financials.amountPaid,
-              workContextId: workContext?.id || null,
-            },
-          });
-
-          await prisma.projectPastes.create({
-            data: {
-              name: metadataMarker,
-              userAuthorId: userId,
-              projectId: project.id,
-              companyId,
-            },
-          });
-        }
-
-        results.push({
-          action,
-          localProjectId: project.id,
-          contractNumber: project.contract_number,
-          qboProjectId: qboProject.Id,
-          qboProjectName: qboProject.DisplayName,
-          localClientId: client.id,
-          workContextId: workContext?.id || null,
-            importedServices: {
-              created: 0,
-              updated: 0,
-              detected: 0,
-            },
-            financials,
-            resolvedLocation: resolvedProjectLocation,
-            qboData: {
-              projectQuery: qboProject,
-              parentCustomer,
-              relatedData: null,
-            },
-          });
-        }
+        results.push(result);
+      }
 
       const createdCount = results.filter((result) => result.action === "created").length;
       const updatedCount = results.filter((result) => result.action === "updated").length;
