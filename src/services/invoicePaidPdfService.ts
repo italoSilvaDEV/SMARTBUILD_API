@@ -79,22 +79,47 @@ function escapeHtml(value: any) {
 function sanitizeDescriptionHtml(value: any) {
   if (!value) return "";
 
-  const withoutDangerousBlocks = String(value)
+  let html = String(value).trim();
+
+  // Some records may store rich text already entity-encoded. The frontend feeds
+  // those descriptions into a DOM parser, so the backend needs to normalize the
+  // same common entities before sanitizing.
+  if (/&lt;\s*\/?\s*(p|br|strong|b|em|i|u|ul|ol|li)\b/i.test(html)) {
+    html = html
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#039;/gi, "'")
+      .replace(/&amp;/gi, "&");
+  }
+
+  html = html.replace(/&nbsp;/gi, " ");
+
+  const withoutDangerousBlocks = html
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "");
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "");
 
-  const withReadableBreaks = withoutDangerousBlocks
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\s*\/\s*(p|div|li|ul|ol)\s*>/gi, "\n")
-    .replace(/<\s*(p|div|li|ul|ol)\b[^>]*>/gi, "");
+  const hasAllowedHtml = /<\s*\/?\s*(p|br|strong|b|em|i|u|ul|ol|li)\b/i.test(withoutDangerousBlocks);
 
-  return withReadableBreaks
+  if (!hasAllowedHtml) {
+    return withoutDangerousBlocks
+      .split(/\n+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => `<p>${escapeHtml(part)}</p>`)
+      .join("");
+  }
+
+  return withoutDangerousBlocks
+    .replace(
+      /<\s*(\/?)\s*(p|br|strong|b|em|i|u|ul|ol|li)\b[^>]*>/gi,
+      (_match, closing, tag) => `<${closing}${String(tag).toLowerCase()}>`
+    )
     .replace(/<[^>]+>/g, "")
-    .split(/\n+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => `<p>${escapeHtml(part)}</p>`)
-    .join("");
+    .replace(/<p>\s*<\/p>/gi, "")
+    .trim();
 }
 
 function invoicePaymentAppliedAmount(invoice: any) {
@@ -309,13 +334,32 @@ function buildPaidInvoiceHtml(input: {
             font-size: 12px;
             line-height: 1.4;
           }
-          .page { width: 100%; background: #fff; }
+          .page { width: 100%; background: #fff; position: relative; }
+          .paid-watermark {
+            position: absolute;
+            top: 285px;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            z-index: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 200px;
+            font-weight: 900;
+            opacity: 0.10;
+            color: #22c55e;
+            letter-spacing: 32px;
+            text-transform: uppercase;
+          }
           .header {
             padding: 24px;
             border-bottom: 1px solid #e5e7eb;
             display: flex;
             justify-content: space-between;
             gap: 24px;
+            position: relative;
+            z-index: 1;
           }
           .brand { display: flex; align-items: flex-start; gap: 20px; }
           .logo { max-height: 48px; max-width: 140px; object-fit: contain; }
@@ -330,7 +374,14 @@ function buildPaidInvoiceHtml(input: {
             min-width: 210px;
           }
           .invoice-title { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px; letter-spacing: 0.5px; }
-          .info-grid { padding: 24px; display: grid; grid-template-columns: 1fr 300px; gap: 40px; }
+          .info-grid {
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 40px;
+            position: relative;
+            z-index: 1;
+          }
           .card {
             background: #ffffff;
             border: 1px solid #e5e7eb;
@@ -377,7 +428,13 @@ function buildPaidInvoiceHtml(input: {
             color: #374151;
             font-size: 11px;
           }
-          .services-section { padding: 24px; break-inside: auto; }
+          .services-section {
+            padding: 24px;
+            break-inside: auto;
+            page-break-inside: auto;
+            position: relative;
+            z-index: 1;
+          }
           .section-title {
             font-size: 14px;
             font-weight: 600;
@@ -404,7 +461,7 @@ function buildPaidInvoiceHtml(input: {
             border-radius: 0 0 6px 6px;
             background: #ffffff;
           }
-          .service-row { break-inside: avoid; }
+          .service-row { break-inside: auto; page-break-inside: auto; }
           .service-main {
             display: grid;
             grid-template-columns: 3fr 1fr 1.2fr 1.2fr;
@@ -426,8 +483,16 @@ function buildPaidInvoiceHtml(input: {
             border-radius: 4px;
             border: 1px solid #e9ecef;
             word-break: break-word;
+            overflow-wrap: anywhere;
           }
           .service-description p { margin: 0 0 8px 0; }
+          .service-description strong,
+          .service-description b { font-weight: 700; color: #4b5563; }
+          .service-description em,
+          .service-description i { font-style: italic; }
+          .service-description ul,
+          .service-description ol { margin: 0 0 8px 18px; padding: 0; }
+          .service-description li { margin-bottom: 4px; }
           .totals {
             margin-top: 24px;
             padding-top: 20px;
@@ -462,6 +527,7 @@ function buildPaidInvoiceHtml(input: {
       </head>
       <body>
         <div class="page">
+          <div class="paid-watermark">PAID</div>
           <div class="header">
             <div class="brand">
               ${input.companyLogoUrl ? `<img class="logo" src="${escapeHtml(input.companyLogoUrl)}" />` : ""}
