@@ -112,12 +112,21 @@ function sanitizeDescriptionHtml(value: any) {
       .join("");
   }
 
+  const allowedTags = new Set(["p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li"]);
+
   return withoutDangerousBlocks
-    .replace(
-      /<\s*(\/?)\s*(p|br|strong|b|em|i|u|ul|ol|li)\b[^>]*>/gi,
-      (_match, closing, tag) => `<${closing}${String(tag).toLowerCase()}>`
-    )
-    .replace(/<[^>]+>/g, "")
+    .replace(/<\s*(\/?)\s*([a-z0-9]+)\b[^>]*>/gi, (_match, closing, tag) => {
+      const normalizedTag = String(tag).toLowerCase();
+      if (!allowedTags.has(normalizedTag)) {
+        return "";
+      }
+
+      if (normalizedTag === "br") {
+        return "<br>";
+      }
+
+      return `<${closing}${normalizedTag}>`;
+    })
     .replace(/<p>\s*<\/p>/gi, "")
     .trim();
 }
@@ -341,13 +350,13 @@ function buildPaidInvoiceHtml(input: {
             left: 0;
             right: 0;
             pointer-events: none;
-            z-index: 0;
+            z-index: 9999;
             display: flex;
             justify-content: center;
             align-items: center;
             font-size: 200px;
             font-weight: 900;
-            opacity: 0.10;
+            opacity: 0.16;
             color: #22c55e;
             letter-spacing: 32px;
             text-transform: uppercase;
@@ -359,7 +368,7 @@ function buildPaidInvoiceHtml(input: {
             justify-content: space-between;
             gap: 24px;
             position: relative;
-            z-index: 1;
+            z-index: 2;
           }
           .brand { display: flex; align-items: flex-start; gap: 20px; }
           .logo { max-height: 48px; max-width: 140px; object-fit: contain; }
@@ -380,7 +389,7 @@ function buildPaidInvoiceHtml(input: {
             grid-template-columns: 1fr 300px;
             gap: 40px;
             position: relative;
-            z-index: 1;
+            z-index: 2;
           }
           .card {
             background: #ffffff;
@@ -433,7 +442,7 @@ function buildPaidInvoiceHtml(input: {
             break-inside: auto;
             page-break-inside: auto;
             position: relative;
-            z-index: 1;
+            z-index: 2;
           }
           .section-title {
             font-size: 14px;
