@@ -295,9 +295,16 @@ function buildPaidInvoiceHtml(input: {
   const invoice = input.invoice;
   const invoiceNumber = invoice.externalInvoiceId || invoice.id;
   const project = invoice.project || invoice.estimate?.project;
-  const location = input.workContext?.location || project?.location || input.client?.location || "Not specified";
+  const billToAddress =
+    input.workContext?.location ||
+    input.workContext?.addressOffice ||
+    project?.location ||
+    input.client?.location ||
+    "";
   const clientName = input.workContext?.Name || input.client?.name || "Client";
   const clientEmail = input.workContext?.Email || input.client?.email || "";
+  const clientPhone = input.workContext?.phone || input.client?.phone || "";
+  const paymentMethodLabel = invoice.invoiceType === "stripe" ? "Stripe" : "Other";
 
   const serviceRows = input.services
     .map((service, index) => {
@@ -356,7 +363,7 @@ function buildPaidInvoiceHtml(input: {
             align-items: center;
             font-size: 200px;
             font-weight: 900;
-            opacity: 0.16;
+            opacity: 0.10;
             color: #22c55e;
             letter-spacing: 32px;
             text-transform: uppercase;
@@ -552,7 +559,7 @@ function buildPaidInvoiceHtml(input: {
             <div class="invoice-box">
               <div class="invoice-title">INVOICE #${escapeHtml(invoiceNumber)}</div>
               <div class="muted">Date: ${dateLabel(invoice.createdAt)}</div>
-              <div class="muted">Paid: ${dateLabel(input.paidAt)}</div>
+              <div class="muted">Due: ${dateLabel(invoice.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))}</div>
             </div>
           </div>
 
@@ -562,15 +569,10 @@ function buildPaidInvoiceHtml(input: {
                 <div class="label">Bill To</div>
                 <div class="person">${escapeHtml(clientName)}</div>
                 <div class="muted">
-                  ${location ? `<div>${escapeHtml(location)}</div>` : ""}
-                  ${input.client?.phone ? `<div>${escapeHtml(input.client.phone)}</div>` : ""}
+                  ${billToAddress ? `<div>${escapeHtml(billToAddress)}</div>` : ""}
+                  ${clientPhone ? `<div>${escapeHtml(clientPhone)}</div>` : ""}
                   ${clientEmail ? `<div>${escapeHtml(clientEmail)}</div>` : ""}
                 </div>
-              </div>
-              <div class="card">
-                <div class="label">Work Site</div>
-                <div class="person">Project #${escapeHtml(project?.contract_number || "N/A")}</div>
-                <div class="muted">${escapeHtml(location)}</div>
               </div>
             </div>
 
@@ -578,15 +580,11 @@ function buildPaidInvoiceHtml(input: {
               <div class="label">Invoice Details</div>
               <div class="summary-line" style="border-top:none;">
                 <span>Payment Method:</span>
-                <strong>${escapeHtml(input.paymentMethod || invoice.invoiceType || "Payment")}</strong>
+                <strong>${escapeHtml(paymentMethodLabel)}</strong>
               </div>
               <div class="summary-line">
-                <span>Project Total:</span>
-                <strong>${money(input.targetTotal)}</strong>
-              </div>
-              <div class="summary-line">
-                <span>Paid To Date:</span>
-                <strong>${money(input.amountPaidAfterPayment)}</strong>
+                <span>Supervisor:</span>
+                <strong>${escapeHtml(input.company?.name || "Project Manager")}</strong>
               </div>
               <div class="balance-box">
                 <div class="balance-label">BALANCE DUE</div>
@@ -595,10 +593,6 @@ function buildPaidInvoiceHtml(input: {
               <div class="paid-line">
                 <span>Payment:</span>
                 <span>-${money(input.paymentAmount)}</span>
-              </div>
-              <div class="summary-line">
-                <span>Remaining Balance:</span>
-                <strong>${money(input.remainingBalance)}</strong>
               </div>
             </div>
           </div>
@@ -694,9 +688,7 @@ export async function generateAndStorePaidInvoicePdf(
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
     include: {
-      InvoiceItems: {
-        orderBy: { createdAt: "asc" },
-      },
+      InvoiceItems: true,
       payment: true,
       paymentApplications: {
         include: {
