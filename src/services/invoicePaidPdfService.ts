@@ -149,33 +149,21 @@ function invoicePaymentAppliedAmount(invoice: any) {
   return 0;
 }
 
-function getInvoiceItemDisplayPrice(quantity: number, storedPrice: number, total: number) {
-  if (quantity > 0 && total > 0) {
-    const expectedTotal = quantity * storedPrice;
-    const hasStoredPriceMismatch = Math.abs(expectedTotal - total) > 0.01;
-
-    if (hasStoredPriceMismatch) {
-      return total / quantity;
-    }
-  }
-
-  return storedPrice;
-}
-
 function getInvoiceLineItems(invoice: any) {
   if (invoice.InvoiceItems?.length) {
     return invoice.InvoiceItems.map((item: any) => {
       const quantity = toNumber(item.quantity, 1);
-      const total = toNumber(item.totalAmount);
-      const storedPrice = toNumber(item.price);
+      const price = toNumber(item.price);
+      const storedTotal = toNumber(item.totalAmount);
+      const originalTotal = quantity > 0 && price > 0 ? quantity * price : storedTotal;
 
       return {
         id: item.id,
         name: item.name,
         description: item.description,
         quantity,
-        price: getInvoiceItemDisplayPrice(quantity, storedPrice, total),
-        total,
+        price,
+        total: originalTotal,
       };
     });
   }
