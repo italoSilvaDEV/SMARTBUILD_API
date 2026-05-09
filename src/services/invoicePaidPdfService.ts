@@ -304,7 +304,12 @@ function buildPaidInvoiceHtml(input: {
   const clientName = input.workContext?.Name || input.client?.name || "Client";
   const clientEmail = input.workContext?.Email || input.client?.email || "";
   const clientPhone = input.workContext?.phone || input.client?.phone || "";
-  const paymentMethodLabel = invoice.invoiceType === "stripe" ? "Stripe" : "Other";
+  const paymentMethodLabel =
+    invoice.invoiceType === "stripe"
+      ? "Stripe"
+      : invoice.invoiceType === "quickbooks"
+        ? "QuickBooks"
+        : "Other";
 
   const serviceRows = input.services
     .map((service, index) => {
