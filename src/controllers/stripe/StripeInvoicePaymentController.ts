@@ -10,6 +10,7 @@ import {
   formatInvoicePaymentDate,
   resolveManualPaymentDate,
 } from "../../utils/invoicePaymentDate";
+import { generateAndStorePaidInvoicePdf } from "../../services/invoicePaidPdfService";
 
 const stripe = stripeConfig.getClient();
 
@@ -385,18 +386,24 @@ export class StripeInvoicePaymentController {
       }
 
       // Buscar o PDF de invoice pago (opcional - pode não existir para invoices antigos)
-      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-        where: {
-          invoiceId: invoiceData.id
-        }
-      });
-
       const companyAvatar = company?.avatar
         ? await getPresignedUrl(company.avatar)
         : "";
 
       // Buscar o PDF do S3 (apenas se existir)
       const attachments = [];
+      try {
+        const paidPdf = await generateAndStorePaidInvoicePdf(invoiceData.id, {
+          paymentAmount: Number(amount),
+          paidAt,
+          paymentMethod,
+        });
+        attachments.push(paidPdf.attachment);
+        console.log(`PDF paid regenerado e anexado ao email: ${paidPdf.fileName}`);
+      } catch (error) {
+        console.warn("Erro ao regenerar PDF invoice paid, enviando email sem anexo:", error);
+      }
+      /* Legacy S3 fetch disabled; the paid PDF is regenerated above.
       if (pdfInvoicePaid?.uri) {
         try {
           const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
@@ -416,9 +423,11 @@ export class StripeInvoicePaymentController {
           console.warn("Erro ao buscar PDF invoice paid, enviando email sem anexo:", error);
           // Continua sem o PDF anexado
         }
-      } else {
+      } else if (!attachments.length) {
         console.log("PDF invoice paid não encontrado, enviando email sem anexo");
       }
+
+      */
 
       const paymentDateLabel = formatInvoicePaymentDate(paidAt);
       const formattedAmount = `$${amount.toFixed(2)}`;

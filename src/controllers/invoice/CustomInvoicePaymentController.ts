@@ -7,6 +7,7 @@ import {
   formatInvoicePaymentDate,
   resolveManualPaymentDate,
 } from "../../utils/invoicePaymentDate";
+import { generateAndStorePaidInvoicePdf } from "../../services/invoicePaidPdfService";
 
 export class CustomInvoicePaymentController {
   async createPayment(req: Request, res: Response) {
@@ -199,27 +200,16 @@ export class CustomInvoicePaymentController {
           const projectDispName = `Project #${project?.contract_number || 'N/A'}`;
           const paymentDateFormatted = formatInvoicePaymentDate(paymentDate.paidAt);
 
-          const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-            where: { invoiceId }
-          });
-
           const attachments = [];
-          if (pdfInvoicePaid && pdfInvoicePaid.uri) {
-            try {
-              const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
-              const pdfResponse = await fetch(pdfUrl);
-              if (pdfResponse.ok) {
-                const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-                attachments.push({
-                  filename: pdfInvoicePaid.original_file_name || `payment_receipt_${invoiceCode}.pdf`,
-                  content: pdfBuffer.toString('base64'),
-                  type: 'application/pdf',
-                  disposition: 'attachment'
-                });
-              }
-            } catch (error) {
-              console.error("Error fetching PDF invoice paid:", error);
-            }
+          try {
+            const paidPdf = await generateAndStorePaidInvoicePdf(invoiceId, {
+              paymentAmount: Number(amount),
+              paidAt: paymentDate.paidAt,
+              paymentMethod,
+            });
+            attachments.push(paidPdf.attachment);
+          } catch (error) {
+            console.error("Error regenerating paid invoice PDF:", error);
           }
 
           await sendEmail({
