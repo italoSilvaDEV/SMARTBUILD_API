@@ -296,14 +296,14 @@ function buildPaidInvoiceHtml(input: {
   const invoiceNumber = invoice.externalInvoiceId || invoice.id;
   const project = invoice.project || invoice.estimate?.project;
   const billToAddress =
+    input.client?.location ||
+    project?.location ||
     input.workContext?.location ||
     input.workContext?.addressOffice ||
-    project?.location ||
-    input.client?.location ||
     "";
-  const clientName = input.workContext?.Name || input.client?.name || "Client";
-  const clientEmail = input.workContext?.Email || input.client?.email || "";
-  const clientPhone = input.workContext?.phone || input.client?.phone || "";
+  const clientName = input.client?.name || input.workContext?.Name || "Client";
+  const clientEmail = input.client?.email || input.workContext?.Email || "";
+  const clientPhone = input.client?.phone || input.workContext?.phone || "";
   const paymentMethodLabel =
     invoice.invoiceType === "stripe"
       ? "Stripe"
