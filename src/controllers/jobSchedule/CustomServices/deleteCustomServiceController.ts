@@ -58,6 +58,7 @@ export class DeleteCustomServiceController {
                 projectName: customService.name,
                 contractNumber: contractNumber,
                 companyName: company.name || "",
+                companyReplyToEmail: company.email || "",
                 currentYear: new Date().getFullYear().toString(),
                 isCancelled: true
             };

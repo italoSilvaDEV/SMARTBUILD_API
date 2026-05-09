@@ -113,6 +113,9 @@ export class EstimateController {
           contract_number: true,
           company_id: true,
           serviceProject: {
+            orderBy: {
+              date_creation: 'asc'
+            },
             select: {
               name: true,
               price: true,
@@ -201,6 +204,7 @@ export class EstimateController {
         unitPrice: Number(sp.price),
         lineTotal: Number(sp.price) * Number(sp.hours),
         notes: sp.description,
+        pos: index,
       }));
 
       // Criar o estimate e atualizar o PDF em paralelo
@@ -258,7 +262,13 @@ export class EstimateController {
           projectId
         },
         include: {
-          serviceProjects: true,
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          },
           project: {
             select: {
               id: true,
@@ -433,6 +443,7 @@ export class EstimateController {
           lineTotal: Number(service.lineTotal),
           originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
           originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+          pos: Number(service.pos ?? 0),
         }));
       }
 
@@ -450,7 +461,13 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: true,
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          },
           imagesAttachments: {
             select: {
               id: true,
@@ -585,6 +602,7 @@ export class EstimateController {
         lineTotal: Number(service.lineTotal),
         originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
         originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+        pos: Number(service.pos ?? 0),
       }));
 
       await EstimateController.addTimelineEvent(id, "Viewed");
@@ -695,7 +713,13 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: true,
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          },
           project: {
             include: {
               client: true,
@@ -948,7 +972,13 @@ export class EstimateController {
         },
         select: {
           status: true,
-          serviceProjects: true
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          }
         }
       })
 
@@ -1109,6 +1139,11 @@ export class EstimateController {
       const { id } = req.params;
       const { name, quantity, unitPrice, lineTotal, notes } = req.body;
 
+      const nextPosition = ((await prisma.estimateServiceProject.aggregate({
+        where: { estimateId: id },
+        _max: { pos: true }
+      }))._max.pos ?? -1) + 1;
+
       const estimateServiceProject = await prisma.estimateServiceProject.create({
         data: {
           estimate: {
@@ -1118,7 +1153,8 @@ export class EstimateController {
           quantity,
           unitPrice,
           lineTotal,
-          notes
+          notes,
+          pos: nextPosition
         }
       });
 
@@ -1126,7 +1162,13 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: true
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          }
         }
       });
 
@@ -1176,7 +1218,13 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: true
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          }
         }
       });
 
@@ -1234,7 +1282,13 @@ export class EstimateController {
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
-          serviceProjects: true
+          serviceProjects: {
+            orderBy: [
+              { pos: 'asc' },
+              { date_creation: 'asc' },
+              { id: 'asc' }
+            ]
+          }
         }
       });
 
@@ -1293,6 +1347,7 @@ export class EstimateController {
           await sendEmail({
             to: email,
             subject: estimate.project?.company?.name + " - Estimate Reminder",
+            companyId: estimate.project?.company?.id,
             html: estimateEmail(
               estimate.project?.client?.name || '',
               companyAvatar || "",
@@ -1547,6 +1602,7 @@ export class EstimateController {
               validUntil: validUntilFormatted,
               reviewLink: reviewLink,
               companyName: companyName,
+              companyReplyToEmail: estimate.project?.company?.email || "",
               companyAvatar: companyAvatar,
               currentYear: new Date().getFullYear().toString(),
               recipientEmail: recipientEmail,

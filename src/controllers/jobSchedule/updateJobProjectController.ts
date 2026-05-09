@@ -168,6 +168,7 @@ export class UpdateJobProjectController {
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
+                companyReplyToEmail: company.email || "",
                 startDateFormatted: formatDateForEmail(startDateOnly ?? serviceProject.start_date ?? undefined),
                 deadlineFormatted: formatDateForEmail(deadlineOnly ?? serviceProject.deadline ?? undefined),
                 description: body.description || serviceProject.description || "",

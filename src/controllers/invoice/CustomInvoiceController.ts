@@ -701,6 +701,7 @@ export class CustomInvoiceController {
               dueDate: dueDateFormatted,
               paymentUrl: paymentUrl,
               companyName: companyName,
+              companyReplyToEmail: company?.email || "",
               companyAvatar: companyAvatar,
               customBody: customBody || "",
               currentYear: new Date().getFullYear().toString(),
@@ -918,6 +919,7 @@ export class CustomInvoiceController {
               dueDate: dueDateFormatted,
               paymentUrl: paymentUrl,
               companyName: companyName,
+              companyReplyToEmail: company?.email || "",
               companyAvatar: companyAvatar,
               currentYear: new Date().getFullYear().toString(),
               recipientEmail: email
@@ -2310,6 +2312,7 @@ export class CustomInvoiceController {
               totalAmount: totalFormatted,
               paymentDate: paymentDateFormatted,
               companyName: companyName,
+              companyReplyToEmail: company?.email || "",
               companyAvatar: companyAvatar,
               customBody: customBody || "",
               currentYear: new Date().getFullYear().toString(),

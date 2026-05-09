@@ -25,6 +25,11 @@ export class BalanceController {
             },
             include: {
                 serviceProjects: {
+                    orderBy: [
+                        { pos: "asc" },
+                        { date_creation: "asc" },
+                        { id: "asc" },
+                    ],
                     select: {
                         quantity: true,
                         unitPrice: true,

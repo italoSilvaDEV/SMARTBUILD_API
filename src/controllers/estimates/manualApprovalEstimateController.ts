@@ -13,7 +13,13 @@ export class ManualApprovalEstimateController {
     const estimate = await prisma.estimate.findUnique({
       where: { id },
       include: {
-        serviceProjects: true,
+        serviceProjects: {
+          orderBy: [
+            { pos: "asc" },
+            { date_creation: "asc" },
+            { id: "asc" },
+          ],
+        },
         project: {
           include: {
             client: true,

@@ -369,7 +369,13 @@ export class ProjectController {
             id: true,
             status: true,
             projectId: true,
-            serviceProjects: true,
+            serviceProjects: {
+              orderBy: [
+                { pos: "asc" },
+                { date_creation: "asc" },
+                { id: "asc" },
+              ],
+            },
             canceledBy: {
               select: {
                 id: true,
@@ -2775,6 +2781,7 @@ export class ProjectController {
 
       await sendEmail({
         to: project.client.email,
+        replyTo: companyData.email || undefined,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [
@@ -2957,6 +2964,7 @@ export class ProjectController {
 
       await sendEmail({
         to: project.client.email,
+        replyTo: companyData.email || undefined,
         subject: `Estimate for ${project.client?.name.toUpperCase()}`,
         html: templateEmail,
         attachments: [

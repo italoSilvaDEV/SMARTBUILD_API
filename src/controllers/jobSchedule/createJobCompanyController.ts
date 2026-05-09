@@ -126,6 +126,7 @@ export class CreateJobCompanyController {
                             location: projectLocation,
                             googleMapsLink: googleMapsLink,
                             companyName: company.name || "",
+                            companyReplyToEmail: company.email || "",
                             startDateFormatted: formatDateForEmail(startDateOnly),
                             deadlineFormatted: formatDateForEmail(deadlineOnly),
                             notes: body.notes || "",

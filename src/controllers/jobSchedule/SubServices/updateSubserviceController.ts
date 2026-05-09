@@ -155,6 +155,7 @@ export class UpdateSubserviceController {
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
+                companyReplyToEmail: company.email || "",
                 startDateFormatted: formatDateForEmail(startDateOnly ?? subservice.start_date ?? undefined),
                 deadlineFormatted: formatDateForEmail(deadlineOnly ?? subservice.deadline ?? undefined),
                 description: body.description ? removeHtml(body.description) : subservice.description ? removeHtml(subservice.description) : "",

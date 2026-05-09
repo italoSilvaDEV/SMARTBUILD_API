@@ -14,6 +14,7 @@ import { invoicePaymentRequiresAction } from "../../templateEmail/invoicePayment
 import { invoicePaymentRequiresActionCompany } from "../../templateEmail/invoicePaymentRequiresActionCompany";
 import { invoicePaidPaymentEmail } from "../../templateEmail/invoicePaidPayment";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { generateAndStorePaidInvoicePdf } from "../../services/invoicePaidPdfService";
 
 const stripe = stripeConfig.getClient();
 
@@ -1272,11 +1273,6 @@ export class StripeWebHookControllerConnect {
             }
 
             // Buscar o PDF de invoice pago (opcional - pode não existir para invoices antigos)
-            const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-                where: {
-                    invoiceId: invoiceData.id
-                }
-            });
 
             const companyAvatar = company?.avatar
                 ? await getPresignedUrl(company.avatar)
@@ -1284,6 +1280,18 @@ export class StripeWebHookControllerConnect {
 
             // Buscar o PDF do S3 (apenas se existir)
             const attachments = [];
+            try {
+                const paidPdf = await generateAndStorePaidInvoicePdf(invoiceData.id, {
+                    paymentAmount: Number(paymentIntent.amount_received / 100),
+                    paidAt: new Date(),
+                    paymentMethod: invoiceData.paymentMethodType || "Stripe",
+                });
+                attachments.push(paidPdf.attachment);
+                console.log(`PDF paid regenerado e anexado ao email: ${paidPdf.fileName}`);
+            } catch (error) {
+                console.warn("Erro ao regenerar PDF invoice paid, enviando email sem anexo:", error);
+            }
+            /* Legacy S3 fetch disabled; the paid PDF is regenerated above.
             if (pdfInvoicePaid?.uri) {
                 try {
                     const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
@@ -1306,6 +1314,8 @@ export class StripeWebHookControllerConnect {
             } else {
                 console.log("PDF invoice paid não encontrado, enviando email sem anexo");
             }
+
+            */
 
             const paymentDate = new Date();
             const formattedAmount = `$${(paymentIntent.amount_received / 100).toFixed(2)}`;

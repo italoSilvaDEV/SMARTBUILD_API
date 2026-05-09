@@ -70,7 +70,13 @@ export class SignChangeOrderController {
                             id: changeOrder.estimateId
                         },
                         include: {
-                            serviceProjects: true,
+                            serviceProjects: {
+                                orderBy: [
+                                    { pos: "asc" },
+                                    { date_creation: "asc" },
+                                    { id: "asc" },
+                                ],
+                            },
                             project: true,
                         }
                     })
@@ -81,7 +87,9 @@ export class SignChangeOrderController {
                         })
                     }
 
-                    for (const service of changeOrder.changeOrderServices) {
+                    const basePosition = estimate.serviceProjects.length
+
+                    for (const [index, service] of changeOrder.changeOrderServices.entries()) {
                         await smartbuild.estimateServiceProject.create({
                             data: {
                                 name: service.name,
@@ -91,7 +99,8 @@ export class SignChangeOrderController {
                                 lineTotal: service.lineTotal,
                                 price: service.price,
                                 estimateId: estimate?.id,
-                                hours: service.quantity
+                                hours: service.quantity,
+                                pos: basePosition + index
                             }
                         })
                     }

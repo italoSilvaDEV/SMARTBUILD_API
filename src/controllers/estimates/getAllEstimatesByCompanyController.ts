@@ -171,6 +171,9 @@ export class GetAllEstimatesByCompanyController {
                             status_project: true,
                             autorId: true,
                             location: true,
+                            lat: true,
+                            log: true,
+                            radius: true,
                             client: {
                                 select: {
                                     id: true,
@@ -250,6 +253,11 @@ export class GetAllEstimatesByCompanyController {
                         },
                     },
                     serviceProjects: {
+                        orderBy: [
+                            { pos: "asc" },
+                            { date_creation: "asc" },
+                            { id: "asc" },
+                        ],
                         select: {
                             id: true,
                             name: true,
@@ -260,6 +268,7 @@ export class GetAllEstimatesByCompanyController {
                             originalUnitPrice: true,
                             originalLineTotal: true,
                             notes: true,
+                            pos: true,
                             date_creation: true,
                             date_update: true,
                         }
@@ -384,7 +393,7 @@ export class GetAllEstimatesByCompanyController {
                     },
                     PdfProject: pdfProjectData,
                     imagesAttachments: imagesAttachmentsData,
-                    serviceProjects: estimate.serviceProjects.map((service) => {
+                    serviceProjects: estimate.serviceProjects.map((service, index) => {
                         return {
                             ...service,
                             lineTotal: Number(service.lineTotal),
@@ -392,6 +401,7 @@ export class GetAllEstimatesByCompanyController {
                             quantity: Number(service.quantity),
                             originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
                             originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+                            pos: Number(service.pos ?? index),
                         }
                     }),
                 }

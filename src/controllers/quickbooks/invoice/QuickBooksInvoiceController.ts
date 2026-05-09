@@ -13,6 +13,7 @@ import {
   formatInvoicePaymentDate,
   resolveManualPaymentDate,
 } from "../../../utils/invoicePaymentDate";
+import { generateAndStorePaidInvoicePdf } from "../../../services/invoicePaidPdfService";
 
 // Função para determinar se deve marcar needsReauthorization
 function shouldRequireReauthorization(err: any): boolean {
@@ -3520,14 +3521,6 @@ export class QuickBooksInvoiceController {
       }
 
       // Verificar se existe PDF pago
-      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findFirst({
-        where: { invoiceId: invoiceData.id },
-        orderBy: { date_creation: 'desc' }
-      });
-
-      if (!pdfInvoicePaid) {
-        console.log(`[QuickBooks Payment] Nenhum PDF pago encontrado para invoice ${invoiceData.id}`);
-      }
 
       // Obter avatar da empresa
       const companyAvatar = company?.avatar
@@ -3537,6 +3530,19 @@ export class QuickBooksInvoiceController {
       // Preparar anexos
       const attachments = [];
 
+      try {
+        const paidPdf = await generateAndStorePaidInvoicePdf(invoiceData.id, {
+          paymentAmount: Number(amount),
+          paidAt,
+          paymentMethod,
+        });
+        attachments.push(paidPdf.attachment);
+        console.log(`[QuickBooks Payment] PDF pago regenerado e anexado: ${paidPdf.fileName}`);
+      } catch (error) {
+        console.error("[QuickBooks Payment] Erro ao regenerar PDF pago:", error);
+      }
+
+      /* Legacy S3 fetch disabled; the paid PDF is regenerated above.
       if (pdfInvoicePaid && pdfInvoicePaid.uri) {
         try {
           const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
@@ -3556,6 +3562,8 @@ export class QuickBooksInvoiceController {
         }
       }
 
+      */
+
       const paymentDateLabel = formatInvoicePaymentDate(paidAt);
       const emailSubject = `Invoice #${invoiceData.externalInvoiceId} - Payment Confirmation`;
 
@@ -3574,6 +3582,7 @@ export class QuickBooksInvoiceController {
 
       await sendEmail({
         to: recipientEmail,
+        replyTo: company?.email || undefined,
         subject: emailSubject,
         html: emailHtml,
         attachments: attachments.length > 0 ? attachments : undefined,

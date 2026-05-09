@@ -45,7 +45,13 @@ export class LastEstimateController {
                     projectId: projectId
                 },
                 include: {
-                    serviceProjects: true
+                    serviceProjects: {
+                        orderBy: [
+                            { pos: "asc" },
+                            { date_creation: "asc" },
+                            { id: "asc" },
+                        ],
+                    },
                 },
                 orderBy: {
                     date_creation: "desc"

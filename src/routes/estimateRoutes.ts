@@ -21,6 +21,7 @@ import { LastEstimateController } from "../controllers/estimates/lastEstimateCon
 import { ClearUpdateController } from "../controllers/estimates/clearUpdateController";
 import { ManualApprovalEstimateController } from "../controllers/estimates/manualApprovalEstimateController";
 import { RemoveManualSignatureEstimateController } from "../controllers/estimates/removeManualSignatureEstimateController";
+import { SmartBuilderEstimateController } from "../controllers/estimates/smartBuilderEstimateController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -42,9 +43,11 @@ const lastEstimateController = new LastEstimateController();
 const clearUpdateController = new ClearUpdateController();
 const manualApprovalEstimateController = new ManualApprovalEstimateController();
 const removeManualSignatureEstimateController = new RemoveManualSignatureEstimateController();
+const smartBuilderEstimateController = new SmartBuilderEstimateController();
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
+const uploadSmartBuilderAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-smartbuilder"));
 
 estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByCompanyController.handle);
 estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
@@ -64,6 +67,10 @@ estimateRoutes.get("/last/:companyId/:projectId", checkToken, lastEstimateContro
 estimateRoutes.put("/update/pdf-estimate", checkToken, UpdatePdfEstimateController.handle);
 estimateRoutes.patch("/update/balance-due", checkToken, balanceController.updateBalanceDue);
 estimateRoutes.get("/amount-paid/:estimateId", checkToken, balanceController.getAmountPaid);
+estimateRoutes.post("/smartbuilder/draft/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), smartBuilderEstimateController.messageDraft);
+estimateRoutes.get("/:estimateId/smartbuilder/session", checkToken, smartBuilderEstimateController.getSession);
+estimateRoutes.post("/:estimateId/smartbuilder/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), smartBuilderEstimateController.messageExisting);
+estimateRoutes.post("/:estimateId/smartbuilder/session/import", checkToken, smartBuilderEstimateController.importSession);
 
 estimateRoutes.post("/", checkToken, estimateController.create);
 estimateRoutes.get("/project/:projectId", checkToken, estimateController.findByProject);

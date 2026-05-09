@@ -122,6 +122,9 @@ export class CreateNewEstimateController {
                             where: {
                                 projectId: payloadCreateEstimate.projectId
                             },
+                            orderBy: {
+                                date_creation: "asc",
+                            },
                             select: {
                                 id: true,
                                 name: true,
@@ -134,7 +137,7 @@ export class CreateNewEstimateController {
                             }
                         })
 
-                        for (const projectService of projectServices) {
+                        for (const [index, projectService] of projectServices.entries()) {
                             const originalUnitPrice = Number(projectService.price ?? 0)
                             const quantity = Number(projectService.hours ?? 1)
                             const originalLineTotal = Number((originalUnitPrice * quantity).toFixed(2))
@@ -154,6 +157,7 @@ export class CreateNewEstimateController {
                                     price: projectService.price,
                                     start_date: projectService.start_date,
                                     deadline: projectService.deadline,
+                                    pos: index,
                                     serviceProject: {
                                         connect: {
                                             id: projectService.id

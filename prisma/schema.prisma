@@ -271,6 +271,7 @@ model Company {
   workEndTime           String? // Format: "HH:mm" (24-hour)
   attendanceMode        AttendanceMode @default(manual)
   projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
+  accentColor String?
   isActive              Boolean        @default(true) // false = arquivado (master)
   createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
 
@@ -1626,6 +1627,7 @@ model Estimate {
 
   emailLogs  EstimateEmailLog[]
   PdfProject PdfProject[]
+  aiSession  EstimateAiSession?
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects       fildsPdfProject[]
@@ -1660,6 +1662,7 @@ model EstimateServiceProject {
   originalUnitPrice Decimal?
   originalLineTotal Decimal?
   notes             String?  @db.Text
+  pos               Int      @default(0)
 
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])
@@ -1672,6 +1675,68 @@ model EstimateServiceProject {
   date_creation  DateTime        @default(now())
   date_update    DateTime        @updatedAt
   serviceProject ServiceProject?
+}
+
+model EstimateAiSession {
+  id            String   @id @default(uuid())
+  estimateId    String?  @unique
+  companyId     String?
+  createdById   String?
+  status        String   @default("active")
+  title         String?
+  lastResponseId String?
+  modelSimple   String?
+  modelDocument String?
+  metadata      Json?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  estimate    Estimate?              @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  messages    EstimateAiMessage[]
+  attachments EstimateAiAttachment[]
+
+  @@index([companyId])
+  @@index([createdById])
+  @@map("estimate_ai_session")
+}
+
+model EstimateAiMessage {
+  id            String   @id @default(uuid())
+  sessionId     String
+  role          String
+  content       String   @db.LongText
+  payload       Json?
+  responseId    String?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  session     EstimateAiSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attachments EstimateAiAttachment[]
+
+  @@index([sessionId, date_creation])
+  @@map("estimate_ai_message")
+}
+
+model EstimateAiAttachment {
+  id            String   @id @default(uuid())
+  sessionId     String
+  messageId     String?
+  fileName      String   @db.Text
+  originalName  String   @db.Text
+  mimeType      String?
+  size          Int?
+  s3Key         String?  @db.Text
+  extractedText String?  @db.LongText
+  summary       String?  @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  session EstimateAiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message EstimateAiMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([messageId])
+  @@map("estimate_ai_attachment")
 }
 
 model Permissions {
