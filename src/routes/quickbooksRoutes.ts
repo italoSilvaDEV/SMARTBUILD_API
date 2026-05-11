@@ -53,7 +53,7 @@ quickbooksRoutes.put("/quickbooks/invoices/:invoiceId/payment", checkToken, quic
 
 // Rotas de syncPreference
 quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quickbooksSyncPreferenceController.listByCompany);
-quickbooksRoutes.get("/quickbooks/sync-preferences/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
+quickbooksRoutes.get("/quickbooks/sync-preferences/user/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
 quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSyncPreferenceController.create);
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
 quickbooksRoutes.patch("/quickbooks/sync-preferences/:id/disable", checkToken, quickbooksSyncPreferenceController.updateIsDisable);

@@ -4,6 +4,7 @@ import { buildEstimateFinancialFields } from "../../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../../utils/estimateDiscountSync";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 import { jsonSafe } from "../customer/quickbooksHelpers";
+import { syncQboProjectFinancialsFromServices } from "../util/QuickBooksProjectFinancialsUtil";
 import {
   buildUnsupportedTypesEntityError,
   isTypesEntitySupportedByPrismaClient,
@@ -514,6 +515,7 @@ async function createOrUpdateEstimateFromQbo(params: {
       });
 
       await syncEstimateServiceLinesFromQbo(tx, existing.id, serviceLines);
+      await syncQboProjectFinancialsFromServices(tx, project.projectId);
 
       return tx.estimate.findUnique({
         where: { id: existing.id },
@@ -570,6 +572,7 @@ async function createOrUpdateEstimateFromQbo(params: {
     });
 
     await syncEstimateServiceLinesFromQbo(tx, estimate.id, serviceLines);
+    await syncQboProjectFinancialsFromServices(tx, project.projectId);
 
     return tx.estimate.findUnique({
       where: { id: estimate.id },

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import axios from "axios";
 import { getQbClientOrThrow, getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
+import { syncQboProjectFinancialsFromServices } from "../util/QuickBooksProjectFinancialsUtil";
 import { resolveImportedProjectBaseStatus } from "../util/QuickBooksProjectStatusUtil";
 import { prisma } from "../../../utils/prisma";
 
@@ -862,6 +863,8 @@ export async function importQuickBooksProjectToSmartBuild(params: {
       },
     });
   }
+
+  await syncQboProjectFinancialsFromServices(prisma as any, project.id);
 
   return {
     action,
