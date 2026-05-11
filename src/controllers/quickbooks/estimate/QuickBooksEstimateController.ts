@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
 import { buildEstimateFinancialFields } from "../../../utils/estimateDiscount";
+import { syncEstimateDiscountedServices } from "../../../utils/estimateDiscountSync";
 import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 import { jsonSafe } from "../customer/quickbooksHelpers";
 import {
@@ -143,6 +144,14 @@ function textOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function buildQboEstimateLineId(line: any): string | null {
+  const rawId = line?.Id;
+  if (rawId === undefined || rawId === null) return null;
+
+  const value = String(rawId).trim();
+  return value || null;
+}
+
 function buildEstimateDescription(qboEstimate: any): string | null {
   return textOrNull(qboEstimate?.CustomerMemo?.value || qboEstimate?.CustomerMemo);
 }
@@ -182,6 +191,8 @@ function buildEstimateServiceLines(qboEstimate: any) {
       const lineDescription = textOrNull(line?.Description);
 
       return {
+        idQuickbooks: buildQboEstimateLineId(line),
+        quickbooksRaw: jsonSafe(line),
         name: cleanQboServiceName(itemName, `Estimate Line ${index + 1}`),
         description: lineDescription,
         quantity,
@@ -204,6 +215,8 @@ function buildEstimateServiceLines(qboEstimate: any) {
 
   return [
     {
+      idQuickbooks: null,
+      quickbooksRaw: jsonSafe(qboEstimate),
       name: `Estimate ${qboEstimate?.DocNumber || qboEstimate?.Id || ""}`.trim(),
       description: buildEstimateDescription(qboEstimate),
       quantity: 1,
@@ -245,6 +258,90 @@ function buildEstimateFinancials(qboEstimate: any, serviceLines: Array<{ lineTot
     finalAmount,
     balanceDue: finalAmount,
   };
+}
+
+async function syncEstimateServiceLinesFromQbo(tx: any, estimateId: string, serviceLines: any[]) {
+  const existingServiceLines: Array<{ id: string; idQuickbooks: string | null }> =
+    await tx.estimateServiceProject.findMany({
+    where: { estimateId },
+    orderBy: {
+      date_creation: "asc",
+    },
+    select: {
+      id: true,
+      idQuickbooks: true,
+    },
+  });
+
+  const existingByQboId = new Map<string, { id: string; idQuickbooks: string | null }>(
+    existingServiceLines
+      .filter((line) => !!line.idQuickbooks)
+      .map((line) => [line.idQuickbooks as string, line])
+  );
+  const legacyLinesWithoutQboId = existingServiceLines.filter((line) => !line.idQuickbooks);
+
+  const matchedExistingIds = new Set<string>();
+  const createPayloads: any[] = [];
+  let legacyFallbackIndex = 0;
+
+  for (const serviceLine of serviceLines) {
+    const lineQboId = serviceLine.idQuickbooks ? String(serviceLine.idQuickbooks) : null;
+    let existingMatch =
+      lineQboId && existingByQboId.has(lineQboId)
+        ? existingByQboId.get(lineQboId)
+        : null;
+
+    if (!existingMatch && legacyFallbackIndex < legacyLinesWithoutQboId.length) {
+      existingMatch = legacyLinesWithoutQboId[legacyFallbackIndex];
+      legacyFallbackIndex += 1;
+    }
+
+    if (existingMatch?.id) {
+      await tx.estimateServiceProject.update({
+        where: { id: existingMatch.id },
+        data: serviceLine,
+      });
+
+      matchedExistingIds.add(existingMatch.id);
+      continue;
+    }
+
+    createPayloads.push({
+      ...serviceLine,
+      estimateId,
+    });
+  }
+
+  if (createPayloads.length > 0) {
+    await tx.estimateServiceProject.createMany({
+      data: createPayloads,
+    });
+  }
+
+  const staleServiceIds = existingServiceLines
+    .filter((line) => !matchedExistingIds.has(line.id))
+    .map((line) => line.id);
+
+  if (staleServiceIds.length > 0) {
+
+    await tx.serviceProject.deleteMany({
+      where: {
+        estimateServiceId: {
+          in: staleServiceIds,
+        },
+      },
+    });
+
+    await tx.estimateServiceProject.deleteMany({
+      where: {
+        id: {
+          in: staleServiceIds,
+        },
+      },
+    });
+  }
+
+  await syncEstimateDiscountedServices(tx, estimateId);
 }
 
 function resolveEstimateProject(
@@ -411,23 +508,16 @@ async function createOrUpdateEstimateFromQbo(params: {
   if (existing) {
     const updated = await (prisma as any).$transaction(async (tx: any) => {
       const { project: _projectRelation, ...estimateUpdateData } = estimateData;
-      const estimate = await tx.estimate.update({
+      await tx.estimate.update({
         where: { id: existing.id },
         data: estimateUpdateData,
       });
 
-      await tx.estimateServiceProject.deleteMany({
-        where: { estimateId: existing.id },
-      });
+      await syncEstimateServiceLinesFromQbo(tx, existing.id, serviceLines);
 
-      await tx.estimateServiceProject.createMany({
-        data: serviceLines.map((line: any) => ({
-          ...line,
-          estimateId: existing.id,
-        })),
+      return tx.estimate.findUnique({
+        where: { id: existing.id },
       });
-
-      return estimate;
     });
 
     await createSyncLog({
@@ -476,13 +566,14 @@ async function createOrUpdateEstimateFromQbo(params: {
     const estimate = await tx.estimate.create({
       data: {
         ...estimateData,
-        serviceProjects: {
-          create: serviceLines,
-        },
       },
     });
 
-    return estimate;
+    await syncEstimateServiceLinesFromQbo(tx, estimate.id, serviceLines);
+
+    return tx.estimate.findUnique({
+      where: { id: estimate.id },
+    });
   });
 
   await createSyncLog({

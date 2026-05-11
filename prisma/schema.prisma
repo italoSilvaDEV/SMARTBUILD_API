@@ -1673,10 +1673,14 @@ model EstimateServiceProject {
   price      Decimal?
   start_date String?
   deadline   String?
+  idQuickbooks String?
+  quickbooksRaw Json?
 
   date_creation  DateTime        @default(now())
   date_update    DateTime        @updatedAt
   serviceProject ServiceProject?
+
+  @@index([estimateId, idQuickbooks])
 }
 
 model Permissions {
