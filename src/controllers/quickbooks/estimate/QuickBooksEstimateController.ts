@@ -91,7 +91,10 @@ function collectProjectRefValues(estimate: any): string[] {
 function mapQboEstimateStatus(qboEstimate: any): string {
   const status = String(qboEstimate?.TxnStatus || "").trim().toLowerCase();
 
-  if (["accepted", "closed"].includes(status)) return "approved";
+  // SmartBuild currently works best with a 3-state estimate model:
+  // pending, approved, canceled. In QBO, converted/closed estimates are
+  // positive terminal states, so we intentionally bucket them as approved.
+  if (["accepted", "closed", "converted"].includes(status)) return "approved";
   if (["rejected", "declined", "void", "voided"].includes(status)) return "canceled";
 
   return "pending";
