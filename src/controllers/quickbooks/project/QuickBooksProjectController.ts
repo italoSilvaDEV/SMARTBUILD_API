@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import axios from "axios";
 import { getQbClientOrThrow, getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
+import { resolveImportedProjectBaseStatus } from "../util/QuickBooksProjectStatusUtil";
 import { prisma } from "../../../utils/prisma";
 
 type QuickBooksPreferenceNameValue = {
@@ -743,7 +744,7 @@ function buildMinimalProjectFinancials(qboProject: any) {
     balanceDue: 0,
     startDate: toIsoDate(qboProject?.MetaData?.CreateTime),
     deadline: undefined,
-    statusProject: qboProject?.Active === false ? "Canceled" : "Pre-Start",
+    statusProject: resolveImportedProjectBaseStatus(qboProject),
   };
 }
 
@@ -794,6 +795,11 @@ export async function importQuickBooksProjectToSmartBuild(params: {
     },
     select: {
       projectId: true,
+      project: {
+        select: {
+          status_project: true,
+        },
+      },
     },
   });
 
@@ -807,7 +813,10 @@ export async function importQuickBooksProjectToSmartBuild(params: {
       data: {
         seller_user_id: userId,
         price: financials.price,
-        status_project: financials.statusProject,
+        status_project: resolveImportedProjectBaseStatus(
+          qboProject,
+          existingImportedLink.project?.status_project
+        ),
         client_id: client.id,
         start_date: financials.startDate,
         deadline: financials.deadline,

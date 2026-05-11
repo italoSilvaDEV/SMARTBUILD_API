@@ -9,6 +9,7 @@ import {
 } from "../syncPreference/syncPreferenceUtils";
 import { getQbClientWithAccountOrThrow } from "../util/QuickBooksClientUtil";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
+import { resolveProjectStatusFromImportedEstimate } from "../util/QuickBooksProjectStatusUtil";
 
 const MINOR_VERSION = 40;
 const PAGE_SIZE = 1000;
@@ -98,6 +99,29 @@ function mapQboEstimateStatus(qboEstimate: any): string {
   if (["rejected", "declined", "void", "voided"].includes(status)) return "canceled";
 
   return "pending";
+}
+
+async function syncImportedEstimateProjectStatus(projectId: string, estimateStatus: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      status_project: true,
+    },
+  });
+
+  if (!project) return;
+  const nextStatus = resolveProjectStatusFromImportedEstimate(
+    project.status_project,
+    estimateStatus
+  );
+  if (!nextStatus) return;
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      status_project: nextStatus,
+    },
+  });
 }
 
 function buildEstimateNumber(qboEstimate: any): string {
@@ -415,6 +439,8 @@ async function createOrUpdateEstimateFromQbo(params: {
       syncExecutionId,
     });
 
+    await syncImportedEstimateProjectStatus(project.projectId, status);
+
     return { action: "updated" as const, estimate: updated };
   }
 
@@ -467,6 +493,8 @@ async function createOrUpdateEstimateFromQbo(params: {
     details: jsonSafe({ qboEstimateId: qboId, qboEstimate, localEstimate: created, userId }),
     syncExecutionId,
   });
+
+  await syncImportedEstimateProjectStatus(project.projectId, status);
 
   return { action: "created" as const, estimate: created };
 }
