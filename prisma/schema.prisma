@@ -296,6 +296,8 @@ model Company {
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
   NotesContrac ContractNotes[]
+  contracts    Contract[]
+  contractNumberSequences ContractNumberSequence[]
 
   stripeCustomerId String?
 
@@ -782,6 +784,158 @@ model ContractProject {
   @@map("contract_project")
 }
 
+enum ContractStatus {
+  draft
+  sent
+  viewed
+  signed
+  canceled
+  expired
+}
+
+enum ContractAuthType {
+  none
+  code
+}
+
+enum ContractSigner {
+  company
+  client
+}
+
+enum ContractFieldType {
+  signature
+  signature_date
+}
+
+model ContractNumberSequence {
+  id         String   @id @default(uuid())
+  companyId String   @unique
+  nextNumber Int     @default(1000)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@map("contract_number_sequence")
+}
+
+model Contract {
+  id             String           @id @default(uuid())
+  number         Int
+  status         ContractStatus   @default(draft)
+  authType       ContractAuthType @default(none)
+  authCode       String?          @db.VarChar(9)
+  publicToken    String           @unique @default(uuid())
+  expirationDays Int              @default(7)
+  expiresAt      DateTime
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  signedAt       DateTime?
+  canceledAt     DateTime?
+  clientSignature String?         @db.LongText
+  multi_emails   String?          @db.Text
+  createdById    String?
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+
+  workContext   WorkContext? @relation(fields: [workContextId], references: [id], onDelete: SetNull)
+  workContextId String?
+
+  documents      ContractDocument[]
+  fields         ContractField[]
+  emailLogs      ContractEmailLog[]
+  timelineEvents ContractTimeline[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@index([clientId])
+  @@index([workContextId])
+  @@map("contract")
+}
+
+model ContractDocument {
+  id               String  @id @default(uuid())
+  originalFileName String?
+  uri              String  @db.Text
+  preparedUri      String? @db.Text
+  signedUri        String? @db.Text
+  fileSize         Int?
+  pageCount        Int?
+  position         Int     @default(0)
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  fields ContractField[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([contractId])
+  @@map("contract_document")
+}
+
+model ContractField {
+  id         String            @id @default(uuid())
+  signer     ContractSigner
+  type       ContractFieldType
+  pageNumber Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  dateValue  DateTime?
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  document   ContractDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([contractId])
+  @@index([documentId])
+  @@map("contract_field")
+}
+
+model ContractEmailLog {
+  id           String   @id @default(uuid())
+  recipient    String
+  status       String
+  errorMessage String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  @@index([contractId])
+  @@map("contract_email_log")
+}
+
+model ContractTimeline {
+  id            String   @id @default(uuid())
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  @@index([contractId])
+  @@map("contract_timeline")
+}
+
 model ServiceStages {
   id            String   @id @default(uuid())
   description   String
@@ -911,6 +1065,7 @@ model Client {
   idQuickbooks          String?
   QuickBooksCustomerRaw QuickBooksCustomerRaw[]
   workContexts          WorkContext[]
+  contracts             Contract[]
 
   @@unique([idQuickbooks, company_id])
   @@unique([email, company_id])
@@ -955,6 +1110,7 @@ model WorkContext {
   isActive Boolean @default(true)
 
   projects Project[]
+  contracts Contract[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

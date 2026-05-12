@@ -59,6 +59,7 @@ import { chatRoutes } from './chatRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
+import contractRoutes from './contractRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -133,5 +134,6 @@ router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
 router.use(aiAssistantRoutes)
 router.use("/extra-employees", extraEmployeeRoutes)
+router.use("/contracts", contractRoutes)
 
 export { router }
