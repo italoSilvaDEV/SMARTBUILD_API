@@ -10,6 +10,7 @@ import bcrypt from "bcrypt";
 import { NewUser } from "../../templateEmail/newUser";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import { OWNER_FULL_ACCESS_DATA } from "../../utils/ownerFullAccess";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
@@ -128,7 +129,8 @@ export class CompanyController {
                     password: hashedPassword,
                     profession: data.profession,
                     company_id: company.id,
-                    onBoardingCompleted: false
+                    onBoardingCompleted: false,
+                    ...OWNER_FULL_ACCESS_DATA
                 },
             });
 
@@ -223,7 +225,8 @@ export class CompanyController {
                     password: hashedPassword,
                     profession: null,
                     company_id: company.id,
-                    onBoardingCompleted: false
+                    onBoardingCompleted: false,
+                    ...OWNER_FULL_ACCESS_DATA
                 },
             });
 
@@ -406,6 +409,7 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
+                        ...OWNER_FULL_ACCESS_DATA,
                     },
                 });
                 await prisma.userCompany.create({
@@ -428,7 +432,8 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
-                        company_id: company.id
+                        company_id: company.id,
+                        ...OWNER_FULL_ACCESS_DATA
                     }
                 });
             }

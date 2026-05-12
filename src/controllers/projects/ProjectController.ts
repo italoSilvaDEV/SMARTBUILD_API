@@ -14,6 +14,7 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 function projectAttendanceTotals(attendances: Array<{
   user_id: string;
@@ -196,11 +197,7 @@ export class ProjectController {
 
     // Filtro por permissão: projectEditAll = ver/editar todos; senão só os que é seller OU project manager
     if (userId) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { projectEditAll: true },
-      });
-      const canEditAll = user?.projectEditAll === true;
+      const canEditAll = await userHasFullAccess(userId, "projectEditAll", company_id ? String(company_id) : null);
       if (canEditAll) {
         if (id_seller) query.seller_user_id = { equals: id_seller };
       } else {

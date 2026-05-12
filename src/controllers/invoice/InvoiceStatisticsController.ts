@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -54,11 +55,8 @@ export class InvoiceStatisticsController {
     const userId = (req as any).userId as string | undefined;
     let invoiceFilterByUser: any = {};
     if (userId) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { invoiceEditAll: true },
-      });
-      if (user?.invoiceEditAll !== true) {
+      const canEditAll = await userHasFullAccess(userId, "invoiceEditAll", companyId);
+      if (!canEditAll) {
         // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto OU do invoice
         invoiceFilterByUser = {
           OR: [
