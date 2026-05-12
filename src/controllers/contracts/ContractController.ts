@@ -430,6 +430,37 @@ async function finalizeContractDocuments(contractId: string, signature: string, 
   }
 }
 
+async function ensureContractDocumentArtifacts(contract: any) {
+  const effectiveStatus = getEffectiveStatus(contract);
+  const documents = contract.documents || [];
+
+  if (
+    effectiveStatus === "signed"
+    && contract.clientSignature
+    && documents.some((document: any) => !document.signedUri)
+  ) {
+    await finalizeContractDocuments(contract.id, contract.clientSignature, contract.signedAt || new Date());
+    return db.contract.findUnique({
+      where: { id: contract.id },
+      include: contractInclude(),
+    });
+  }
+
+  if (
+    effectiveStatus !== "signed"
+    && effectiveStatus !== "canceled"
+    && documents.some((document: any) => !document.preparedUri)
+  ) {
+    await prepareContractDocuments(contract.id);
+    return db.contract.findUnique({
+      where: { id: contract.id },
+      include: contractInclude(),
+    });
+  }
+
+  return contract;
+}
+
 async function getContractByPublicToken(publicToken: string) {
   return db.contract.findUnique({
     where: { publicToken },
@@ -495,7 +526,8 @@ export class ContractController {
         return res.status(404).json({ error: "Contract not found" });
       }
 
-      return res.json(await formatContract(contract));
+      const latestContract = await ensureContractDocumentArtifacts(contract);
+      return res.json(await formatContract(latestContract));
     } catch (error) {
       console.error("[contracts.getById]", error);
       return res.status(500).json({ error: "Failed to load contract" });
@@ -559,11 +591,14 @@ export class ContractController {
         return created;
       });
 
+      await prepareContractDocuments(contract.id);
+
       const createdContract = await db.contract.findUnique({
         where: { id: contract.id },
         include: contractInclude(),
       });
 
+      cleanupTempFiles(files);
       return res.status(201).json(await formatContract(createdContract));
     } catch (error: any) {
       cleanupTempFiles(files);
@@ -644,11 +679,14 @@ export class ContractController {
         await addTimeline(tx, existing.id, "Contract updated");
       });
 
+      await prepareContractDocuments(existing.id);
+
       const updated = await db.contract.findUnique({
         where: { id: existing.id },
         include: contractInclude(),
       });
 
+      cleanupTempFiles(files);
       return res.json(await formatContract(updated));
     } catch (error: any) {
       cleanupTempFiles(files);
@@ -837,20 +875,23 @@ export class ContractController {
         });
       }
 
+      let latestContract = contract;
       if (contract.status === "sent" && !isContractExpired(contract)) {
-        await db.contract.update({
+        latestContract = await db.contract.update({
           where: { id: contract.id },
           data: {
             status: "viewed",
             viewedAt: contract.viewedAt || new Date(),
           },
+          include: contractInclude(),
         });
-        contract.status = "viewed";
       }
+
+      latestContract = await ensureContractDocumentArtifacts(latestContract);
 
       return res.json({
         requiresAuth: false,
-        contract: await formatContract(contract, true),
+        contract: await formatContract(latestContract, true),
       });
     } catch (error) {
       console.error("[contracts.getPublic]", error);
@@ -867,20 +908,23 @@ export class ContractController {
 
       validatePublicAccess(contract, String(req.body.authCode || ""));
 
+      let latestContract = contract;
       if (contract.status === "sent" && !isContractExpired(contract)) {
-        await db.contract.update({
+        latestContract = await db.contract.update({
           where: { id: contract.id },
           data: {
             status: "viewed",
             viewedAt: contract.viewedAt || new Date(),
           },
+          include: contractInclude(),
         });
-        contract.status = "viewed";
       }
+
+      latestContract = await ensureContractDocumentArtifacts(latestContract);
 
       return res.json({
         requiresAuth: false,
-        contract: await formatContract(contract, true),
+        contract: await formatContract(latestContract, true),
       });
     } catch (error: any) {
       console.error("[contracts.verifyCode]", error);
