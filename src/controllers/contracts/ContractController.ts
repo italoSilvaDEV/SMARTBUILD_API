@@ -76,8 +76,54 @@ function cleanupTempFiles(files: Express.Multer.File[]) {
 }
 
 function getRequestUserId(req: Request) {
+  if ((req as any).userId) {
+    return String((req as any).userId);
+  }
   const header = req.headers["x-user-id"];
   return Array.isArray(header) ? header[0] : header;
+}
+
+function forbidden(message: string) {
+  const error: any = new Error(message);
+  error.statusCode = 403;
+  return error;
+}
+
+function getErrorStatus(error: any, fallback: number) {
+  return Number.isInteger(error?.statusCode) ? error.statusCode : fallback;
+}
+
+async function ensureCompanyAccess(req: Request, companyId: string) {
+  const userId = getRequestUserId(req);
+  if (!userId) {
+    throw forbidden("Authenticated user not found");
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      company_id: true,
+      companies: {
+        select: {
+          companyId: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw forbidden("Authenticated user not found");
+  }
+
+  const allowedCompanyIds = new Set<string>();
+  if (user.company_id) allowedCompanyIds.add(user.company_id);
+  for (const membership of user.companies || []) {
+    if (membership.companyId) allowedCompanyIds.add(membership.companyId);
+  }
+
+  if (!allowedCompanyIds.has(companyId)) {
+    throw forbidden("Access denied for this company");
+  }
 }
 
 function isPdfFile(file: Express.Multer.File) {
@@ -482,6 +528,8 @@ export class ContractController {
   async listByCompany(req: Request, res: Response) {
     try {
       const { companyId } = req.params;
+      await ensureCompanyAccess(req, companyId);
+
       const search = String(req.query.search || "").trim();
       const status = String(req.query.status || "").trim();
       const searchFilters: any[] = [];
@@ -509,9 +557,9 @@ export class ContractController {
       });
 
       return res.json(await Promise.all(contracts.map((contract: any) => formatContract(contract))));
-    } catch (error) {
+    } catch (error: any) {
       console.error("[contracts.listByCompany]", error);
-      return res.status(500).json({ error: "Failed to list contracts" });
+      return res.status(getErrorStatus(error, 500)).json({ error: error.message || "Failed to list contracts" });
     }
   }
 
@@ -526,11 +574,13 @@ export class ContractController {
         return res.status(404).json({ error: "Contract not found" });
       }
 
+      await ensureCompanyAccess(req, contract.companyId);
+
       const latestContract = await ensureContractDocumentArtifacts(contract);
       return res.json(await formatContract(latestContract));
-    } catch (error) {
+    } catch (error: any) {
       console.error("[contracts.getById]", error);
-      return res.status(500).json({ error: "Failed to load contract" });
+      return res.status(getErrorStatus(error, 500)).json({ error: error.message || "Failed to load contract" });
     }
   }
 
@@ -545,6 +595,8 @@ export class ContractController {
       if (!payload.companyId || !payload.clientId) {
         throw new Error("Company and client are required");
       }
+
+      await ensureCompanyAccess(req, payload.companyId);
 
       const expirationDays = normalizeExpirationDays(payload.expirationDays);
       const uploadedDocuments = await uploadContractDocuments(files, getRequestUserId(req) || payload.companyId);
@@ -603,7 +655,7 @@ export class ContractController {
     } catch (error: any) {
       cleanupTempFiles(files);
       console.error("[contracts.create]", error);
-      return res.status(400).json({ error: error.message || "Failed to create contract" });
+      return res.status(getErrorStatus(error, 400)).json({ error: error.message || "Failed to create contract" });
     }
   }
 
@@ -625,6 +677,8 @@ export class ContractController {
       if (existing.status === "signed" || existing.status === "canceled") {
         return res.status(400).json({ error: "Signed or canceled contracts cannot be edited" });
       }
+
+      await ensureCompanyAccess(req, existing.companyId);
 
       const { authType, authCode } = validateAuth({
         authType: payload.authType ?? existing.authType,
@@ -691,7 +745,7 @@ export class ContractController {
     } catch (error: any) {
       cleanupTempFiles(files);
       console.error("[contracts.update]", error);
-      return res.status(400).json({ error: error.message || "Failed to update contract" });
+      return res.status(getErrorStatus(error, 400)).json({ error: error.message || "Failed to update contract" });
     }
   }
 
@@ -716,6 +770,8 @@ export class ContractController {
         cleanupTempFiles(files);
         return res.status(404).json({ error: "Contract not found" });
       }
+
+      await ensureCompanyAccess(req, contract.companyId);
 
       if (contract.status === "signed" || contract.status === "canceled" || isContractExpired(contract)) {
         cleanupTempFiles(files);
@@ -821,7 +877,7 @@ export class ContractController {
     } catch (error: any) {
       cleanupTempFiles(files);
       console.error("[contracts.send]", error);
-      return res.status(500).json({ error: error.message || "Failed to send contract" });
+      return res.status(getErrorStatus(error, 500)).json({ error: error.message || "Failed to send contract" });
     }
   }
 
@@ -831,6 +887,9 @@ export class ContractController {
       if (!contract) {
         return res.status(404).json({ error: "Contract not found" });
       }
+
+      await ensureCompanyAccess(req, contract.companyId);
+
       if (contract.status === "signed") {
         return res.status(400).json({ error: "Signed contracts cannot be canceled" });
       }
@@ -846,9 +905,30 @@ export class ContractController {
 
       await addTimeline(db, contract.id, "Contract canceled");
       return res.json(await formatContract(updated));
-    } catch (error) {
+    } catch (error: any) {
       console.error("[contracts.cancel]", error);
-      return res.status(500).json({ error: "Failed to cancel contract" });
+      return res.status(getErrorStatus(error, 500)).json({ error: error.message || "Failed to cancel contract" });
+    }
+  }
+
+  async delete(req: Request, res: Response) {
+    try {
+      const contract = await db.contract.findUnique({ where: { id: req.params.id } });
+      if (!contract) {
+        return res.status(404).json({ error: "Contract not found" });
+      }
+
+      await ensureCompanyAccess(req, contract.companyId);
+
+      if (contract.status === "signed" || contract.signedAt || contract.clientSignature) {
+        return res.status(400).json({ error: "Signed contracts cannot be deleted" });
+      }
+
+      await db.contract.delete({ where: { id: contract.id } });
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("[contracts.delete]", error);
+      return res.status(getErrorStatus(error, 500)).json({ error: error.message || "Failed to delete contract" });
     }
   }
 

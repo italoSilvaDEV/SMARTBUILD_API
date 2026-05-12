@@ -35,5 +35,6 @@ contractRoutes.put("/:id", checkToken, uploadContractDocuments.array("documents"
 contractRoutes.post("/:id/send", checkToken, uploadContractAttachments.array("attachments", 10), contractController.send.bind(contractController));
 contractRoutes.post("/:id/reminder", checkToken, uploadContractAttachments.array("attachments", 10), contractController.reminder.bind(contractController));
 contractRoutes.patch("/:id/cancel", checkToken, contractController.cancel.bind(contractController));
+contractRoutes.delete("/:id", checkToken, contractController.delete.bind(contractController));
 
 export default contractRoutes;

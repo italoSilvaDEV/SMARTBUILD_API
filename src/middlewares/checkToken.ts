@@ -35,7 +35,7 @@ export function checkToken(req: Request, res: Response, next: NextFunction) {
     }
 
     // Atualizar last_acess do usuário com throttling
-    const userId = req.headers['x-user-id'] as string || decoded?.userId || decoded?.id;
+    const userId = decoded?.userId || decoded?.id || decoded?.sub || req.headers['x-user-id'] as string;
     (req as any).userId = userId;
 
     if (userId) {
