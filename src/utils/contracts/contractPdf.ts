@@ -42,6 +42,13 @@ const TEXT_COLOR = rgb(0.05, 0.05, 0.05);
 const MUTED_COLOR = rgb(0.42, 0.42, 0.42);
 const BORDER_COLOR = rgb(0.73, 0.61, 0.42);
 
+interface PdfPageBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^\w.\-]+/g, "");
 }
@@ -60,12 +67,32 @@ function formatDate(value?: Date | string | null) {
   });
 }
 
-function toPdfBox(field: ContractFieldRender, pageWidth: number, pageHeight: number) {
-  const width = clamp(field.width * pageWidth, 24, pageWidth);
-  const height = clamp(field.height * pageHeight, 14, pageHeight);
-  const x = clamp(field.x * pageWidth, 0, Math.max(0, pageWidth - width));
-  const yTop = clamp(field.y * pageHeight, 0, pageHeight);
-  const y = clamp(pageHeight - yTop - height, 0, Math.max(0, pageHeight - height));
+function getVisiblePageBox(page: any): PdfPageBox {
+  const fallback = page.getSize();
+  const cropBox = typeof page.getCropBox === "function" ? page.getCropBox() : null;
+
+  if (cropBox && cropBox.width > 0 && cropBox.height > 0) {
+    return cropBox;
+  }
+
+  return {
+    x: 0,
+    y: 0,
+    width: fallback.width,
+    height: fallback.height,
+  };
+}
+
+function toPdfBox(field: ContractFieldRender, pageBox: PdfPageBox) {
+  const width = clamp(field.width * pageBox.width, 24, pageBox.width);
+  const height = clamp(field.height * pageBox.height, 14, pageBox.height);
+  const x = clamp(pageBox.x + field.x * pageBox.width, pageBox.x, Math.max(pageBox.x, pageBox.x + pageBox.width - width));
+  const yTop = clamp(field.y * pageBox.height, 0, pageBox.height);
+  const y = clamp(
+    pageBox.y + pageBox.height - yTop - height,
+    pageBox.y,
+    Math.max(pageBox.y, pageBox.y + pageBox.height - height)
+  );
   return { x, y, width, height };
 }
 
@@ -97,6 +124,19 @@ async function embedSignature(pdfDoc: PDFDocument, signatureData: string) {
 
 function looksLikeImageSignature(value?: string | null) {
   return Boolean(value && /^data:image\/[a-z]+;base64,/.test(value));
+}
+
+function flattenFillableFields(pdfDoc: PDFDocument) {
+  try {
+    const form = pdfDoc.getForm();
+    const fields = form.getFields();
+    if (fields.length === 0) return;
+
+    form.updateFieldAppearances();
+    form.flatten();
+  } catch (error) {
+    console.warn("[contracts.pdf] Could not flatten PDF form fields before stamping", error);
+  }
 }
 
 async function drawSignatureField(
@@ -189,6 +229,8 @@ export async function stampContractPdf(
   options: StampOptions
 ) {
   const pdfDoc = await PDFDocument.load(pdfBuffer);
+  flattenFillableFields(pdfDoc);
+
   const pages = pdfDoc.getPages();
   const fonts = {
     regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
@@ -199,8 +241,7 @@ export async function stampContractPdf(
     const page = pages[field.pageNumber - 1];
     if (!page) continue;
 
-    const { width: pageWidth, height: pageHeight } = page.getSize();
-    const box = toPdfBox(field, pageWidth, pageHeight);
+    const box = toPdfBox(field, getVisiblePageBox(page));
 
     if (field.type === "signature") {
       await drawSignatureField(pdfDoc, page, box, field, context, options, fonts);
