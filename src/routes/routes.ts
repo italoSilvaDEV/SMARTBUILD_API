@@ -124,6 +124,9 @@ router.use(projectFeedRoutes)
 router.use(publicFeedLinkRoutes)
 router.use("/changeorder", changeOrderRoutes)
 router.use(pdfInvoicePaidRoutes)
+// Keep contract public signing routes before tutorialRoutes, which installs
+// checkToken at router level and would otherwise intercept /contracts/public.
+router.use("/contracts", contractRoutes)
 router.use(tutorialRoutes)
 router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)
@@ -134,6 +137,5 @@ router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
 router.use(aiAssistantRoutes)
 router.use("/extra-employees", extraEmployeeRoutes)
-router.use("/contracts", contractRoutes)
 
 export { router }
