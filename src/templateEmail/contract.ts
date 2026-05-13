@@ -162,15 +162,6 @@ export function contractEmailTemplate({
                     </tr>
 
                     <tr>
-                        <td class="content-padding" style="padding:0 24px 24px;">
-                            <p style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#595959;margin:0;line-height:1.5;">
-                                If the button does not work, copy and paste this link into your browser:
-                                <a href="${safeReviewLink}" style="color:#A6855C;text-decoration:none;word-break:break-all;">${safeReviewLink}</a>
-                            </p>
-                        </td>
-                    </tr>
-
-                    <tr>
                         <td style="padding:0 24px;">
                             <div style="height:1px;background-color:#E5E7EB;"></div>
                         </td>
