@@ -10,6 +10,15 @@ import {
 const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects", "estimates"];
 
 export class SyncPreferencesController {
+  constructor() {
+    this.listByCompany = this.listByCompany.bind(this);
+    this.listByUser = this.listByUser.bind(this);
+    this.create = this.create.bind(this);
+    this.update = this.update.bind(this);
+    this.delete = this.delete.bind(this);
+    this.updateIsDisable = this.updateIsDisable.bind(this);
+  }
+
   private async normalizeQboToSmartOnlyPreferences(where: { companyId?: string; userId?: string }) {
     for (const typesEntity of QBO_TO_SMART_ONLY_SYNC_ENTITIES) {
       if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
