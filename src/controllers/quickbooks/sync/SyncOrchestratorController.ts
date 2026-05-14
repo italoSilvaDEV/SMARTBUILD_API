@@ -6,13 +6,14 @@ import { QuickBooksCustomerOutboundController } from "../customer/QuickbooksCust
 import { quickbooksQueue } from "../../../queue/quickbooksQueue";
 import { QuickBooksProjectController } from "../project/QuickBooksProjectController";
 import { QuickBooksEstimateController } from "../estimate/QuickBooksEstimateController";
+import { syncLocalEstimatesToQuickBooks } from "../estimate/QuickBooksEstimateOutboundService";
 import {
     buildUnsupportedTypesEntityError,
     isTypesEntitySupportedByPrismaClient,
     normalizeSyncTypeForEntity,
 } from "../syncPreference/syncPreferenceUtils";
 
-const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects", "estimates"];
+const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects"];
 
 function isPrismaTypesEntityEnumError(error: any): boolean {
     const message = String(error?.message || error?.details || "");
@@ -542,6 +543,13 @@ export class SyncOrchestratorController {
                     if (typeSync === 'QuickBooksToSmartBuild') {
                         const inbound = await this.executeEstimateSyncFromQuickBooks(companyId, userId, syncExecution.id);
                         syncResult = { direction: 'QBO->Local', inbound };
+                    } else if (typeSync === 'SmartBuildToQuickBooks') {
+                        const exported = await syncLocalEstimatesToQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Local->QBO', exported };
+                    } else if (typeSync === 'bidirectional') {
+                        const exported = await syncLocalEstimatesToQuickBooks(companyId, userId, syncExecution.id);
+                        const inbound = await this.executeEstimateSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Both', exported, inbound };
                     } else {
                         throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
                     }

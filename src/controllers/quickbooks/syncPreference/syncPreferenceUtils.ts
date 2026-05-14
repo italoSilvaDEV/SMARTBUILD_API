@@ -1,7 +1,7 @@
 import { Prisma, SyncType } from "@prisma/client";
 
 export const PROJECTS_SYNC_TYPE: SyncType = "QuickBooksToSmartBuild";
-const QBO_TO_SMART_ONLY_ENTITIES = new Set(["projects", "estimates"]);
+const QBO_TO_SMART_ONLY_ENTITIES = new Set(["projects"]);
 
 export function isTypesEntitySupportedByPrismaClient(typesEntity: string): boolean {
   const typesEntityEnum = Prisma.dmmf.datamodel.enums.find(

@@ -1,5 +1,6 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 export class ConvertToProjectController {
     async handle(req: Request, res: Response) {
@@ -169,6 +170,11 @@ export class ConvertToProjectController {
                     }
                 }
             })
+            fireAndForgetUpsertEstimateToQBO(
+                estimate.project.company_id,
+                (req as any).userId,
+                estimateId
+            );
 
             return res.status(200).json({
                 message: "Estimate converted to project successfully"

@@ -2,6 +2,7 @@ import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 type Fields = {
     description?: string | null
@@ -52,6 +53,11 @@ export class UpdateEstimateFieldsController {
                         lineTotal: true,
                         originalUnitPrice: true,
                         originalLineTotal: true,
+                    }
+                },
+                project: {
+                    select: {
+                        company_id: true,
                     }
                 }
             }
@@ -154,6 +160,8 @@ export class UpdateEstimateFieldsController {
                     }
                 })
             }
+
+            fireAndForgetUpsertEstimateToQBO(estimate.project?.company_id, (req as any).userId, estimateId);
 
             return res.status(200).json({
                 message: "Estimate fields updated successfully",

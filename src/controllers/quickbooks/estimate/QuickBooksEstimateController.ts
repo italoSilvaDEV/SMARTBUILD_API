@@ -133,6 +133,17 @@ function buildEstimateNumber(qboEstimate: any): string {
   return `QBO-${docNumber || qboId}`;
 }
 
+function buildEstimateNumberCandidates(qboEstimate: any): string[] {
+  const candidates = new Set<string>();
+  const qboNumber = buildEstimateNumber(qboEstimate);
+  const docNumber = String(qboEstimate?.DocNumber || "").trim();
+
+  if (qboNumber) candidates.add(qboNumber);
+  if (docNumber) candidates.add(docNumber);
+
+  return Array.from(candidates);
+}
+
 function cleanQboServiceName(value: unknown, fallback: string): string {
   const rawName = typeof value === "string" ? value.trim() : "";
   const name = rawName || fallback;
@@ -443,7 +454,7 @@ async function createOrUpdateEstimateFromQbo(params: {
   const serviceLines = buildEstimateServiceLines(qboEstimate);
   const financials = buildEstimateFinancials(qboEstimate, serviceLines);
   const number = buildEstimateNumber(qboEstimate);
-  const existing = await (prisma as any).estimate.findFirst({
+  let existing = await (prisma as any).estimate.findFirst({
     where: {
       projectId: project.projectId,
       idQuickbooks: qboId,
@@ -453,6 +464,46 @@ async function createOrUpdateEstimateFromQbo(params: {
       { date_update: "desc" },
     ],
   });
+
+  if (!existing) {
+    const existingByNumber = await (prisma as any).estimate.findFirst({
+      where: {
+        projectId: project.projectId,
+        number: { in: buildEstimateNumberCandidates(qboEstimate) },
+      },
+      orderBy: [
+        { date_update: "desc" },
+      ],
+    });
+
+    if (existingByNumber?.idQuickbooks && existingByNumber.idQuickbooks !== qboId) {
+      await (prisma as any).estimate.update({
+        where: { id: existingByNumber.id },
+        data: {
+          quickbooksRaw: jsonSafe(qboEstimate),
+          quickbooksUpdatedAt: qbUpdatedAt,
+        },
+      }).catch(() => null);
+
+      await createSyncLog({
+        entity: "estimates",
+        action: "Skipped",
+        entityId: existingByNumber.id,
+        companyId,
+        details: jsonSafe({
+          reason: "QBO estimate matches a local number already linked to another QBO estimate",
+          number: existingByNumber.number,
+          existingQboEstimateId: existingByNumber.idQuickbooks,
+          qboEstimateId: qboId,
+        }),
+        syncExecutionId,
+      });
+
+      return { action: "skipped" as const, estimate: existingByNumber };
+    }
+
+    existing = existingByNumber;
+  }
 
   if (existing?.quickbooksUpdatedAt && qbUpdatedAt && qbUpdatedAt <= existing.quickbooksUpdatedAt) {
     await createSyncLog({
@@ -539,7 +590,7 @@ async function createOrUpdateEstimateFromQbo(params: {
   const numberCollision = await (prisma as any).estimate.findFirst({
     where: {
       projectId: project.projectId,
-      number,
+      number: { in: buildEstimateNumberCandidates(qboEstimate) },
     },
     select: {
       id: true,

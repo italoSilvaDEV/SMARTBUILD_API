@@ -7,7 +7,7 @@ import {
   shouldNormalizeProjectsSyncType,
 } from "./syncPreferenceUtils";
 
-const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects", "estimates"];
+const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects"];
 
 export class SyncPreferencesController {
   constructor() {

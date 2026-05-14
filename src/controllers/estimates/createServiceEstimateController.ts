@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 interface ServicePayload {
     estimateId: string
@@ -51,6 +52,11 @@ export class CreateServiceEstimateController {
             },
             select: {
                 id: true,
+                project: {
+                    select: {
+                        company_id: true,
+                    }
+                }
             }
         })
 
@@ -105,6 +111,8 @@ export class CreateServiceEstimateController {
             const createdService = await prisma.estimateServiceProject.findUnique({
                 where: { id: newServiceId }
             })
+
+            fireAndForgetUpsertEstimateToQBO(estimate.project?.company_id, (req as any).userId, estimate.id);
 
             return res.status(201).json({
                 message: "Service created successfully",

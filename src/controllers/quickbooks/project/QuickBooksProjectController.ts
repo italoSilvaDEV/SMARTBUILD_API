@@ -549,7 +549,7 @@ async function fetchQuickBooksProjectShells(
   const { qb, account } = await getQbClientWithAccountOrThrow(userId, companyId);
   const api = qboClientForAccount(account.id);
   const query = "SELECT * FROM Customer WHERE Job = true MAXRESULTS 1000";
-  const minorversion = 40;
+  const minorversion = 75;
   const data = await runQboQuery(api, query, minorversion);
 
   const customers = Array.isArray(data?.QueryResponse?.Customer)
