@@ -967,6 +967,7 @@ export class ContractController {
         });
       }
 
+      await addTimeline(db, contract.id, "Contract viewed");
       latestContract = await ensureContractDocumentArtifacts(latestContract);
 
       return res.json({
@@ -1000,6 +1001,7 @@ export class ContractController {
         });
       }
 
+      await addTimeline(db, contract.id, "Contract viewed");
       latestContract = await ensureContractDocumentArtifacts(latestContract);
 
       return res.json({
