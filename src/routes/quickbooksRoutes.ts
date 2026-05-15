@@ -8,6 +8,7 @@ import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncO
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
 import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
 import { QuickBooksEstimateController } from "../controllers/quickbooks/estimate/QuickBooksEstimateController";
+import { QuickBooksInvoiceImportController } from "../controllers/quickbooks/invoice/QuickBooksInvoiceImportController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -18,6 +19,7 @@ const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
 const quickBooksProjectController = new QuickBooksProjectController();
 const quickBooksEstimateController = new QuickBooksEstimateController();
+const quickBooksInvoiceImportController = new QuickBooksInvoiceImportController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
@@ -32,6 +34,9 @@ quickbooksRoutes.post("/quickbooks/projects/sync/qbo-to-smart/:companyId/:userId
 quickbooksRoutes.get("/quickbooks/projects-graphql/:companyId/:userId", checkToken, quickBooksProjectController.listProjectsGraphql);
 quickbooksRoutes.post("/quickbooks/estimates/import/:companyId/:userId", checkToken, quickBooksEstimateController.importEstimatesToSmartBuild.bind(quickBooksEstimateController));
 quickbooksRoutes.post("/quickbooks/estimates/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksEstimateController.syncEstimatesQboToSmartBuild.bind(quickBooksEstimateController));
+
+quickbooksRoutes.post("/quickbooks/invoices/import/:companyId/:userId", checkToken, quickBooksInvoiceImportController.importInvoicesToSmartBuild.bind(quickBooksInvoiceImportController));
+quickbooksRoutes.post("/quickbooks/invoices/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksInvoiceImportController.syncInvoicesQboToSmartBuild.bind(quickBooksInvoiceImportController));
 
 //  NOVAS: Rotas de desconexão
 quickbooksRoutes.delete("/quickbooks/disconnect/:userId/:companyId", checkToken, quickbooksController.disconnect);

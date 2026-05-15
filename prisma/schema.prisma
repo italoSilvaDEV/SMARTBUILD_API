@@ -1401,6 +1401,7 @@ model Invoice {
   // Campos específicos para QuickBooks
   externalDocNumber String?
   idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
+  qboCustomerRef    String? // CustomerRef original do QBO: pode ser Customer pai ou QBO Project
 
   // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
   idQuickbookContabio         String? // ID do invoice no QuickBooks criado via Stripe
@@ -1455,6 +1456,7 @@ model Invoice {
   imagesAttachments ImagesAttachments[]
 
   @@index([externalInvoiceId, invoiceType])
+  @@index([companyId, qboCustomerRef])
 }
 
 model InvoiceSendHistory {

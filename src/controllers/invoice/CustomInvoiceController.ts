@@ -327,7 +327,8 @@ export class CustomInvoiceController {
                 where: { id: newInvoice.id },
                 data: {
                   idQuickbookContabio: quickBooksResult.quickbooksId,
-                  docNumberQuickBooksContabio: quickBooksResult.docNumber || null
+                  docNumberQuickBooksContabio: quickBooksResult.docNumber || null,
+                  qboCustomerRef: quickBooksResult.qboCustomerRef || null
                 }
               });
             }
@@ -1601,6 +1602,7 @@ export class CustomInvoiceController {
                   docNumberQuickBooksContabio: createResult.docNumber || null,
                   idQuickBooksRef: createResult.quickbooksId,
                   externalDocNumber: createResult.docNumber || null,
+                  qboCustomerRef: createResult.qboCustomerRef || null,
                 },
               });
 
@@ -1647,6 +1649,15 @@ export class CustomInvoiceController {
             });
 
             console.log("Invoice atualizado no QuickBooks com sucesso:", quickBooksUpdateResult?.quickbooksId);
+
+            if (quickBooksUpdateResult?.qboCustomerRef) {
+              await prisma.invoice.update({
+                where: { id: invoiceId },
+                data: {
+                  qboCustomerRef: quickBooksUpdateResult.qboCustomerRef,
+                },
+              });
+            }
 
             // Adicionar evento na timeline sobre sucesso no QuickBooks
             await prisma.invoiceTimeline.create({
@@ -1722,6 +1733,7 @@ export class CustomInvoiceController {
                     docNumberQuickBooksContabio: createResult.docNumber || null,
                     idQuickBooksRef: createResult.quickbooksId,
                     externalDocNumber: createResult.docNumber || null,
+                    qboCustomerRef: createResult.qboCustomerRef || null,
                   },
                 });
               }

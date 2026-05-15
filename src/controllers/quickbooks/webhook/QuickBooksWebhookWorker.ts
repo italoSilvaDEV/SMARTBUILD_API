@@ -670,6 +670,7 @@ export class QuickBooksWebhookWorker {
           totalAmountPaidQbo: isVoidOperation ? 0 : totalPaid, // Se void, não há pagamento
           amountChangedAfterPayment: amountChanged,
           docNumberQuickBooksContabio: qbInvoice.DocNumber || localInvoice.docNumberQuickBooksContabio,
+          qboCustomerRef: qbInvoice?.CustomerRef?.value ? String(qbInvoice.CustomerRef.value) : localInvoice.qboCustomerRef,
           updatedAt: new Date()
         }
       });

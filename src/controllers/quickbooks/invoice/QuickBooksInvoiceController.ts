@@ -47,6 +47,11 @@ interface InvoiceLineItem {
   // Adicione outros campos que você espera que o item tenha
 } 
 
+type InvoiceQboCustomerRefResolution = {
+  value: string;
+  source: "qbo_project" | "client" | "client_fallback_after_project_error";
+};
+
 export class QuickBooksInvoiceController {
 
   /**
@@ -207,6 +212,56 @@ export class QuickBooksInvoiceController {
   }
 
   // Método interno para criação de invoice sem req/res
+  private async findQboProjectRefForInvoice(project: {
+    id: string;
+    company_id?: string | null;
+  }): Promise<string | null> {
+    try {
+      const marker = await prisma.projectPastes.findFirst({
+        where: {
+          projectId: project.id,
+          ...(project.company_id ? { companyId: project.company_id } : {}),
+          name: {
+            startsWith: "QBO_PROJECT:",
+          },
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      const qboProjectRef = String(marker?.name || "").replace("QBO_PROJECT:", "").trim();
+      return qboProjectRef || null;
+    } catch (error: any) {
+      console.warn(
+        `[QuickBooksInvoice] Could not resolve QBO project ref for project ${project.id}. Falling back to customer ref.`,
+        error?.message || error
+      );
+      return null;
+    }
+  }
+
+  private async resolveInvoiceCustomerRefForQbo(
+    project: { id: string; company_id?: string | null },
+    fallbackClientRef: string
+  ): Promise<InvoiceQboCustomerRefResolution> {
+    const qboProjectRef = await this.findQboProjectRefForInvoice(project);
+
+    if (qboProjectRef) {
+      console.log(`[QuickBooksInvoice] Using QBO project CustomerRef ${qboProjectRef} for project ${project.id}`);
+      return {
+        value: qboProjectRef,
+        source: "qbo_project",
+      };
+    }
+
+    console.log(`[QuickBooksInvoice] No QBO project ref found for project ${project.id}; using client CustomerRef ${fallbackClientRef}`);
+    return {
+      value: fallbackClientRef,
+      source: "client",
+    };
+  }
+
   async createInvoiceInternal(params: {  
     projectId: string;
     showPaymentMethods?: boolean;
@@ -493,6 +548,8 @@ export class QuickBooksInvoiceController {
         });
         console.log(` Cliente QuickBooks confirmado - ID: ${clientId}`);
 
+        let invoiceCustomerRef = await this.resolveInvoiceCustomerRefForQbo(project, clientId);
+
         // Verificar se há itens processados
         if (processedLineItems.length === 0) {
           throw new Error("No valid items to include in the invoice. Please check the services data.");
@@ -514,7 +571,7 @@ export class QuickBooksInvoiceController {
         const invoiceData = {
           Line: cleanLineItems, // Usar itens limpos sem campos internos
           CustomerRef: {
-            value: clientId
+            value: invoiceCustomerRef.value
           },
           BillEmail: { 
             Address: recipientEmail // CRÍTICO: necessário para gerar InvoiceLink
@@ -530,12 +587,37 @@ export class QuickBooksInvoiceController {
 
 
         // 1) Criar a fatura
-        const invoiceResult = await new Promise((resolve, reject) => {
-          qb.createInvoice(invoiceData, (err: any, data: any) => {
-            if (err) return reject(err);
-            resolve(data);
+        let invoiceResult;
+        try {
+          invoiceResult = await new Promise((resolve, reject) => {
+            qb.createInvoice(invoiceData, (err: any, data: any) => {
+              if (err) return reject(err);
+              resolve(data);
+            });
           });
-        });
+        } catch (error: any) {
+          if (invoiceCustomerRef.source !== "qbo_project") {
+            throw error;
+          }
+
+          console.warn(
+            `[QuickBooksInvoice] Failed to create invoice with QBO project CustomerRef ${invoiceCustomerRef.value}. Retrying with client CustomerRef ${clientId}.`,
+            error?.message || error
+          );
+
+          invoiceCustomerRef = {
+            value: clientId,
+            source: "client_fallback_after_project_error",
+          };
+          invoiceData.CustomerRef = { value: invoiceCustomerRef.value };
+
+          invoiceResult = await new Promise((resolve, reject) => {
+            qb.createInvoice(invoiceData, (err: any, data: any) => {
+              if (err) return reject(err);
+              resolve(data);
+            });
+          });
+        }
 
         // 2) Normalize o objeto retornado (alguns SDKs retornam { Invoice: {...} })
         const created = (invoiceResult as any)?.Invoice ?? (invoiceResult as any);
@@ -595,6 +677,7 @@ export class QuickBooksInvoiceController {
             quickbooksId: inv.Id,
             docNumber: inv.DocNumber,
             invoiceUrl: invoiceUrl, // Incluir URL de pagamento
+            qboCustomerRef: invoiceCustomerRef.value,
             totalAmount: Number(inv?.TotalAmt ?? totalAmount),
             status: deriveQboInvoicePaymentStatus(inv)
           };
@@ -630,6 +713,7 @@ export class QuickBooksInvoiceController {
               externalDocNumber: inv.DocNumber,
               idQuickbookContabio: inv.Id, // ID real do QuickBooks
               idQuickBooksRef: inv.Id, // Referência duplicada
+              qboCustomerRef: invoiceCustomerRef.value,
               docNumberQuickBooksContabio: inv.DocNumber, // DocNumber do QB
               status: deriveQboInvoicePaymentStatus(inv), // Status real do QB
               totalAmount: Number(inv?.TotalAmt ?? totalAmount),
@@ -1066,6 +1150,8 @@ export class QuickBooksInvoiceController {
       });
       console.log(` Cliente QuickBooks para update - ID: ${clientIdUpdate}`);
 
+      let invoiceCustomerRefUpdate = await this.resolveInvoiceCustomerRefForQbo(project, clientIdUpdate);
+
       // Obter email do destinatário para garantir que o BillEmail esteja configurado
       const workContext = project.workContext;
       const recipientEmail = workContext?.Email || project.client?.email || currentInvoice.BillEmail?.Address || "noemail@example.com";
@@ -1077,7 +1163,7 @@ export class QuickBooksInvoiceController {
         Id: quickBooksInvoiceId,
         SyncToken: currentInvoice.SyncToken,
         Line: cleanLineItemsUpdate, // Usar itens limpos sem campos internos
-        CustomerRef: { value: clientIdUpdate },
+        CustomerRef: { value: invoiceCustomerRefUpdate.value },
         BillEmail: { 
           Address: recipientEmail //  necessário para gerar InvoiceLink
         },
@@ -1091,7 +1177,9 @@ export class QuickBooksInvoiceController {
       // Atualizar a fatura usando SDK
       console.log("Atualizando fatura no QuickBooks usando SDK...");
 
-      const updateResult = await new Promise((resolve, reject) => {
+      let updateResult;
+      try {
+        updateResult = await new Promise((resolve, reject) => {
         qb.updateInvoice(updateInvoiceData, (err: any, data: any) => {
           if (err) {
             console.error("Erro na atualização do QuickBooks:", err);
@@ -1099,7 +1187,33 @@ export class QuickBooksInvoiceController {
           }
           resolve(data);
         });
-      });
+        });
+      } catch (error: any) {
+        if (invoiceCustomerRefUpdate.source !== "qbo_project") {
+          throw error;
+        }
+
+        console.warn(
+          `[QuickBooksInvoice] Failed to update invoice with QBO project CustomerRef ${invoiceCustomerRefUpdate.value}. Retrying with client CustomerRef ${clientIdUpdate}.`,
+          error?.message || error
+        );
+
+        invoiceCustomerRefUpdate = {
+          value: clientIdUpdate,
+          source: "client_fallback_after_project_error",
+        };
+        updateInvoiceData.CustomerRef = { value: invoiceCustomerRefUpdate.value };
+
+        updateResult = await new Promise((resolve, reject) => {
+          qb.updateInvoice(updateInvoiceData, (err: any, data: any) => {
+            if (err) {
+              console.error("Erro na atualizaÃ§Ã£o do QuickBooks apÃ³s fallback:", err);
+              return reject(err);
+            }
+            resolve(data);
+          });
+        });
+      }
 
       // Normalize o objeto retornado
       const updated = (updateResult as any)?.Invoice ?? (updateResult as any);
@@ -1148,6 +1262,7 @@ export class QuickBooksInvoiceController {
           message: "QuickBooks invoice updated successfully",
           quickbooksId: updatedInv.Id,
           docNumber: updatedInv.DocNumber,
+          qboCustomerRef: invoiceCustomerRefUpdate.value,
           totalAmount: Number(updatedInv?.TotalAmt ?? calculatedTotal),
           status: deriveQboInvoicePaymentStatus(updatedInv)
         };
@@ -1169,6 +1284,7 @@ export class QuickBooksInvoiceController {
               dueDate: updatedInv?.DueDate ? new Date(updatedInv.DueDate) : dueDateObj,
               description: description || localInvoice.description,
               invoiceUrl: invoiceUrl, // Atualizar URL do invoice
+              qboCustomerRef: invoiceCustomerRefUpdate.value,
               updatedAt: new Date()
             }
           });
@@ -2234,6 +2350,7 @@ export class QuickBooksInvoiceController {
             docNumberQuickBooksContabio: qboResult.docNumber || null,
             externalDocNumber: qboResult.docNumber || null, // Preencher DocNumber externo
             invoiceUrl: qboResult.invoiceUrl || null,
+            qboCustomerRef: qboResult.qboCustomerRef || null,
             status: qboResult.status || invoice.status,
             totalAmount: calculatedTotalAmount || invoice.totalAmount,
             showPaymentMethods: showPaymentMethods ?? true,
