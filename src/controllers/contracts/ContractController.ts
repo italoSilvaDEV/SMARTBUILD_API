@@ -31,6 +31,7 @@ interface ContractPayload {
   authCode?: string | null;
   expirationDays?: number;
   fields?: ContractFieldInput[];
+  companySignatureText?: string | null;
 }
 
 interface ContractFieldInput {
@@ -199,6 +200,11 @@ function validateAuth(payload: ContractPayload) {
   };
 }
 
+function normalizeSignatureText(value: unknown) {
+  if (typeof value !== "string") return null;
+  return value.trim() || null;
+}
+
 function normalizeNumber(value: unknown, fieldName: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -351,6 +357,7 @@ async function formatContract(contract: any, publicView = false) {
   if (publicView) {
     delete formatted.authCode;
     delete formatted.multi_emails;
+    delete formatted.companySignatureText;
   }
 
   return formatted;
@@ -388,11 +395,12 @@ function renderDocumentsForPdf(contract: any): ContractDocumentRender[] {
     id: document.id,
     originalFileName: document.originalFileName,
     uri: document.uri,
+    preparedUri: document.preparedUri,
     fields: (document.fields || contract.fields || []).filter((field: any) => field.documentId === document.id),
   }));
 }
 
-async function prepareContractDocuments(contractId: string) {
+async function prepareContractDocuments(contractId: string, companySignatureText?: string | null) {
   const contract = await db.contract.findUnique({
     where: { id: contractId },
     include: contractInclude(),
@@ -404,6 +412,9 @@ async function prepareContractDocuments(contractId: string) {
 
   const documents = renderDocumentsForPdf(contract);
   const prepared: Array<{ documentId: string; buffer: Buffer; fileName: string }> = [];
+  const signatureText = companySignatureText === undefined
+    ? normalizeSignatureText(contract.companySignatureText)
+    : normalizeSignatureText(companySignatureText);
 
   for (const document of documents) {
     const originalBuffer = await fetchContractPdfBuffer(document.uri);
@@ -413,6 +424,7 @@ async function prepareContractDocuments(contractId: string) {
       {
         companyName: contract.company?.name || "Company",
         companySignature: contract.company?.signature || null,
+        companySignatureText: signatureText,
         clientName: contract.client?.name || "Customer",
       },
       {
@@ -438,7 +450,28 @@ async function prepareContractDocuments(contractId: string) {
   return prepared;
 }
 
-async function finalizeContractDocuments(contractId: string, signature: string, signedAt: Date) {
+async function getPreparedDocumentsForEmail(contract: any) {
+  const documents = renderDocumentsForPdf(contract);
+
+  if (documents.some((document) => !document.preparedUri)) {
+    return prepareContractDocuments(contract.id);
+  }
+
+  return Promise.all(
+    documents.map(async (document) => ({
+      documentId: document.id,
+      buffer: await fetchContractPdfBuffer(document.preparedUri!),
+      fileName: document.originalFileName || `contract_${contract.number}.pdf`,
+    }))
+  );
+}
+
+async function finalizeContractDocuments(
+  contractId: string,
+  signature: string | null,
+  signedAt: Date,
+  clientSignatureText?: string | null
+) {
   const contract = await db.contract.findUnique({
     where: { id: contractId },
     include: contractInclude(),
@@ -451,19 +484,26 @@ async function finalizeContractDocuments(contractId: string, signature: string, 
   const documents = renderDocumentsForPdf(contract);
 
   for (const document of documents) {
-    const originalBuffer = await fetchContractPdfBuffer(document.uri);
+    const sourceUri = document.preparedUri || document.uri;
+    const sourceBuffer = await fetchContractPdfBuffer(sourceUri);
+    const fields = document.preparedUri
+      ? document.fields.filter((field) => field.signer === "client")
+      : document.fields;
     const stampedBuffer = await stampContractPdf(
-      originalBuffer,
-      document.fields,
+      sourceBuffer,
+      fields,
       {
         companyName: contract.company?.name || "Company",
         companySignature: contract.company?.signature || null,
+        companySignatureText: normalizeSignatureText(contract.companySignatureText),
         clientName: contract.client?.name || "Customer",
         signedAt,
       },
       {
         includeClientSignature: true,
         clientSignature: signature,
+        clientSignatureText: normalizeSignatureText(clientSignatureText),
+        clearClientFields: Boolean(document.preparedUri),
       }
     );
 
@@ -599,6 +639,7 @@ export class ContractController {
       await ensureCompanyAccess(req, payload.companyId);
 
       const expirationDays = normalizeExpirationDays(payload.expirationDays);
+      const companySignatureText = normalizeSignatureText(payload.companySignatureText);
       const uploadedDocuments = await uploadContractDocuments(files, getRequestUserId(req) || payload.companyId);
 
       const contract = await db.$transaction(async (tx: any) => {
@@ -614,6 +655,7 @@ export class ContractController {
             expirationDays,
             expiresAt: buildExpiresAt(expirationDays),
             createdById: getRequestUserId(req) || null,
+            companySignatureText,
           },
         });
 
@@ -688,6 +730,10 @@ export class ContractController {
       const uploadedDocuments = files.length > 0
         ? await uploadContractDocuments(files, getRequestUserId(req) || existing.companyId)
         : [];
+      const hasCompanySignatureText = Object.prototype.hasOwnProperty.call(payload, "companySignatureText");
+      const companySignatureText = hasCompanySignatureText
+        ? normalizeSignatureText(payload.companySignatureText)
+        : normalizeSignatureText(existing.companySignatureText);
 
       await db.$transaction(async (tx: any) => {
         await tx.contract.update({
@@ -700,6 +746,7 @@ export class ContractController {
             expirationDays,
             expiresAt: buildExpiresAt(expirationDays, existing.date_creation),
             status: existing.status === "expired" ? "draft" : existing.status,
+            companySignatureText,
           },
         });
 
@@ -793,7 +840,7 @@ export class ContractController {
         return res.status(400).json({ error: "Recipient email is required" });
       }
 
-      const preparedDocuments = await prepareContractDocuments(contract.id);
+      const preparedDocuments = await getPreparedDocumentsForEmail(contract);
       const attachments = preparedDocuments.map((document) => ({
         filename: document.fileName,
         content: document.buffer.toString("base64"),
@@ -1034,19 +1081,22 @@ export class ContractController {
       }
 
       const signature = String(req.body.signature || "");
-      if (!signature.startsWith("data:image/")) {
+      const clientSignatureText = normalizeSignatureText(req.body.clientSignatureText);
+      const shouldUseTypedSignature = Boolean(clientSignatureText);
+
+      if (!shouldUseTypedSignature && !signature.startsWith("data:image/")) {
         return res.status(400).json({ error: "Signature is required" });
       }
 
       const signedAt = new Date();
-      await finalizeContractDocuments(contract.id, signature, signedAt);
+      await finalizeContractDocuments(contract.id, shouldUseTypedSignature ? null : signature, signedAt, clientSignatureText);
 
       const updated = await db.contract.update({
         where: { id: contract.id },
         data: {
           status: "signed",
           signedAt,
-          clientSignature: signature,
+          clientSignature: shouldUseTypedSignature ? null : signature,
         },
         include: contractInclude(),
       });

@@ -22,12 +22,14 @@ export interface ContractDocumentRender {
   id: string;
   originalFileName?: string | null;
   uri: string;
+  preparedUri?: string | null;
   fields: ContractFieldRender[];
 }
 
 export interface ContractPdfContext {
   companyName: string;
   companySignature?: string | null;
+  companySignatureText?: string | null;
   clientName: string;
   signedAt?: Date;
 }
@@ -35,12 +37,15 @@ export interface ContractPdfContext {
 interface StampOptions {
   includeClientSignature: boolean;
   clientSignature?: string | null;
+  clientSignatureText?: string | null;
   drawClientPlaceholders?: boolean;
+  clearClientFields?: boolean;
 }
 
 const TEXT_COLOR = rgb(0.05, 0.05, 0.05);
 const MUTED_COLOR = rgb(0.42, 0.42, 0.42);
 const BORDER_COLOR = rgb(0.73, 0.61, 0.42);
+const WHITE_COLOR = rgb(1, 1, 1);
 
 interface PdfPageBox {
   x: number;
@@ -126,6 +131,10 @@ function looksLikeImageSignature(value?: string | null) {
   return Boolean(value && /^data:image\/[a-z]+;base64,/.test(value));
 }
 
+function normalizeSignatureText(value?: string | null) {
+  return value?.trim() || "";
+}
+
 function flattenFillableFields(pdfDoc: PDFDocument) {
   try {
     const form = pdfDoc.getForm();
@@ -149,6 +158,12 @@ async function drawSignatureField(
   fonts: { italic: PDFFont; regular: PDFFont }
 ) {
   if (field.signer === "company") {
+    const companySignatureText = normalizeSignatureText(context.companySignatureText);
+    if (companySignatureText) {
+      drawFittedText(page, fonts.italic, companySignatureText, box, true);
+      return;
+    }
+
     if (looksLikeImageSignature(context.companySignature)) {
       const image = await embedSignature(pdfDoc, context.companySignature!);
       page.drawImage(image, {
@@ -161,6 +176,22 @@ async function drawSignatureField(
     }
 
     drawFittedText(page, fonts.italic, context.companyName || "Company", box, true);
+    return;
+  }
+
+  const clientSignatureText = normalizeSignatureText(options.clientSignatureText);
+  if (options.includeClientSignature && (clientSignatureText || options.clientSignature) && options.clearClientFields) {
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      color: WHITE_COLOR,
+    });
+  }
+
+  if (options.includeClientSignature && clientSignatureText) {
+    drawFittedText(page, fonts.italic, clientSignatureText, box, true);
     return;
   }
 
@@ -210,6 +241,15 @@ function drawDateField(
   }
 
   const value = field.signer === "client" ? context.signedAt : field.dateValue;
+  if (field.signer === "client" && options.includeClientSignature && options.clearClientFields) {
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      color: WHITE_COLOR,
+    });
+  }
   drawFittedText(page, font, formatDate(value), box);
 }
 

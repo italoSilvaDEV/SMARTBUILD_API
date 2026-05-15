@@ -835,6 +835,7 @@ model Contract {
   signedAt       DateTime?
   canceledAt     DateTime?
   clientSignature String?         @db.LongText
+  companySignatureText String?    @db.Text
   multi_emails   String?          @db.Text
   createdById    String?
 
