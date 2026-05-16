@@ -1,173 +1,122 @@
 import type { KnowledgePlaybook } from "../types";
+import { assistantWhatsappEnv } from "../config/env";
 import { normalizeText } from "../utils/text";
+
+const appUrl = (assistantWhatsappEnv.publicAppUrl || "the SmartBuild app").replace(/\/$/, "");
+const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the SmartBuild login page";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
-    id: "clients-list",
-    module: "clients",
-    intent: "find clients list",
-    terms: ["clients", "client list", "lista de clientes", "onde ficam os clientes", "ver clientes", "customer"],
-    route: "/seller/clients",
-    uiLocation: "Sidebar > Workflow > Clients",
+    id: "account-login",
+    module: "account",
+    intent: "login to SmartBuild",
+    terms: ["login", "log in", "entrar", "acessar", "sign in", "senha", "email e senha", "credenciais invalidas", "invalid credentials"],
+    route: "/login",
+    uiLocation: loginUrl,
     directAnswer:
-      "Para ver os clients, va em Workflow > Clients. Ali voce consegue pesquisar, abrir detalhes do client e acessar os locations/work contexts vinculados a ele.",
-    prerequisites: ["O usuario precisa ter a permissao Clients."],
+      `Para entrar no SmartBuild, acesse ${loginUrl} e informe o email da company cadastrada e a senha cadastrada. Se nao entrar, normalmente e credencial invalida ou o sistema esta fora do ar.`,
+    prerequisites: ["A company precisa existir no SmartBuild.", "O usuario precisa informar exatamente o email cadastrado da company e a senha correta."],
     commonMistakes: [
-      "Procurar clients dentro de Financials; o item principal fica em Workflow.",
-      "Confundir client com location/work context. Um client pode ter mais de um location.",
+      "Usar um email que nao e o email da company cadastrada.",
+      "Digitar senha errada ou senha antiga.",
+      "Confundir cadastro novo com login de uma company que ainda nao foi ativada no checkout.",
     ],
-    bugSignals: ["A tela de Clients abre vazia mesmo com clients cadastrados.", "A busca nao retorna um client que aparece sem filtro."],
+    bugSignals: [
+      "O email existe no banco e o usuario ja redefiniu a senha, mas ainda nao consegue entrar.",
+      "A tela de login nao carrega para varios usuarios ao mesmo tempo.",
+      "O sistema retorna erro inesperado diferente de credenciais invalidas.",
+    ],
     supportEscalationNote:
-      "Tratar como possivel falha quando o usuario esta em Workflow > Clients, tem permissao e mesmo assim a lista ou busca nao funciona.",
+      "Se o email existe e a senha foi recuperada corretamente, mas ainda nao entra, tratar como possivel indisponibilidade ou falha tecnica.",
   },
   {
-    id: "clients-create",
-    module: "clients",
-    intent: "create client",
-    terms: ["create client", "new client", "add client", "criar cliente", "novo cliente", "adicionar cliente", "criar customer"],
-    route: "/seller/clients",
-    uiLocation: "Sidebar > Workflow > Clients > New Client",
+    id: "account-login-email-check",
+    module: "account",
+    intent: "check company email for login support",
+    terms: ["email correto", "email cadastrado", "nao consigo entrar mesmo com senha correta", "meu email existe", "verificar email", "company email"],
+    route: "/login",
+    uiLocation: loginUrl,
     directAnswer:
-      "Para criar um client, va em Workflow > Clients e clique em New Client. Preencha os dados principais do client e pelo menos um location/work context quando o fluxo pedir endereco/local.",
-    prerequisites: ["O usuario precisa ter permissao Clients.", "Email e location podem ser necessarios em fluxos que depois enviam documentos."],
+      "Se voce tem certeza que a senha esta correta e mesmo assim nao entra, me informe o email da company usado no cadastro. Eu verifico se ele esta registrado e te digo o proximo passo.",
+    prerequisites: ["O usuario precisa informar o email exato da company."],
     commonMistakes: [
-      "Cadastrar so o nome do client e esquecer o location quando o proximo fluxo depende de endereco.",
-      "Tentar criar o client dentro do Estimate quando queria gerenciar o cadastro completo.",
+      "Enviar email com typo.",
+      "Enviar email pessoal quando a conta foi criada com email da company.",
+      "Pedir para procurar email parecido; isso nao deve ser feito por seguranca.",
     ],
-    bugSignals: ["O botao New Client nao abre.", "O client salva mas nao aparece na lista depois de atualizar.", "Erro ao salvar com campos validos."],
+    bugSignals: [
+      "Email existe, usuario redefiniu senha pelo fluxo de forgot password e ainda recebe credenciais invalidas.",
+    ],
     supportEscalationNote:
-      "Tratar como possivel falha quando os campos obrigatorios estao preenchidos e o sistema nao salva ou nao exibe o client criado.",
+      "Se o email existe e forgot password nao resolve, tratar como possivel falha tecnica. Se nao existe, orientar o usuario a conferir o email informado ou realizar cadastro.",
   },
   {
-    id: "clients-edit",
-    module: "clients",
-    intent: "edit client",
-    terms: ["edit client", "editar cliente", "alterar cliente", "mudar email cliente", "editar location", "work context"],
-    route: "/seller/clients",
-    uiLocation: "Sidebar > Workflow > Clients > open client details",
+    id: "account-forgot-password",
+    module: "account",
+    intent: "recover password",
+    terms: ["forgot password", "esqueci senha", "recuperar senha", "reset password", "trocar senha", "senha errada"],
+    route: "/login",
+    uiLocation: `${loginUrl} > link below password input`,
     directAnswer:
-      "Para editar um client, abra Workflow > Clients, clique no client desejado e edite os dados no detalhe. Se a duvida for endereco, procure a area de location/work context dentro do client.",
-    prerequisites: ["O usuario precisa ter permissao Clients."],
+      `Para recuperar a senha, va em ${loginUrl} e clique em Forgot password logo abaixo do input de password. Informe o email da company cadastrada e siga o fluxo de recuperacao.`,
+    prerequisites: ["O email precisa ser o email da company cadastrada no SmartBuild."],
     commonMistakes: [
-      "Editar o client certo, mas o location errado quando o client tem mais de um endereco.",
-      "Esperar que a mudanca altere documentos antigos ja enviados; normalmente ela vale para novos fluxos.",
+      "Tentar recuperar senha com email diferente do cadastro.",
+      "Digitar o email com erro.",
+      "Voltar para login antes de concluir o fluxo de recuperacao.",
     ],
-    bugSignals: ["Alteracao salva visualmente mas volta ao valor antigo ao recarregar.", "Location editado nao aparece no fluxo de Estimate."],
+    bugSignals: [
+      "Email existe, mas o fluxo de recuperacao nao envia ou nao conclui.",
+      "Link/codigo de recuperacao falha mesmo usando o email correto.",
+    ],
     supportEscalationNote:
-      "Tratar como possivel falha quando a edicao confirma sucesso mas nao persiste depois de recarregar ou nao reflete nos fluxos novos.",
+      "Se o email existe e o fluxo de forgot password nao funciona, tratar como possivel falha tecnica.",
   },
   {
-    id: "estimate-list",
-    module: "estimates",
-    intent: "find estimates",
-    terms: ["estimates", "estimate list", "lista de estimates", "orcamentos", "financials estimates"],
-    route: "/seller/estimates",
-    uiLocation: "Sidebar > Financials > Estimates",
+    id: "account-signup",
+    module: "account",
+    intent: "sign up create SmartBuild account",
+    terms: ["sign up", "signup", "cadastro", "cadastrar", "criar conta", "registrar", "nova company", "nova conta"],
+    route: "/login",
+    uiLocation: `${loginUrl} > Sign up`,
     directAnswer:
-      "Para ver os estimates, va em Financials > Estimates. A listagem mostra os estimates existentes e permite pesquisar, filtrar, abrir actions e criar um novo estimate.",
-    prerequisites: ["O usuario precisa ter permissao Estimates."],
-    commonMistakes: ["Procurar Estimate dentro de Workflow; ele fica em Financials."],
-    bugSignals: ["A tabela nao carrega.", "Filtros quebram a listagem.", "Actions nao abrem."],
+      `Para criar uma conta, acesse ${loginUrl} e clique em Sign up. Primeiro escolha um plano mensal, quarterly ou anual. Depois preencha nome da company, seu nome, email da company, senha e confirmacao de senha. Se ja estiver no formulario e quiser trocar o plano, clique em Change plan para voltar uma tela e escolher outro plano. Apos criar a conta, voce precisa concluir o checkout para ativar e acessar.`,
+    prerequisites: ["Nao existe plano free nesse passo.", "O checkout precisa ser concluido para ativar a conta."],
+    commonMistakes: [
+      "Usar email invalido.",
+      "Digitar senha e confirmacao de senha diferentes.",
+      "Tentar criar conta com email de company que ja existe.",
+      "Achar que precisa sair do cadastro para trocar o plano; no formulario existe Change plan.",
+      "Criar a conta e nao concluir o checkout.",
+    ],
+    bugSignals: [
+      "Formulario valido nao avanca.",
+      "Checkout nao abre apos criar a conta.",
+      "Erro inesperado fora de email invalido, senha sem match ou email ja existente.",
+    ],
     supportEscalationNote:
-      "Tratar como possivel falha quando o usuario esta em Financials > Estimates com permissao e a listagem/actions nao respondem.",
+      "Se o erro nao for email invalido, senha/confirmacao sem match, email ja existente ou checkout pendente, tratar como possivel falha tecnica.",
   },
   {
-    id: "estimate-create-manual",
-    module: "estimates",
-    intent: "create manual estimate",
-    terms: ["new estimate", "manual estimate", "manual builder", "criar estimate", "novo estimate", "criar orcamento"],
-    route: "/seller/new-estimate/type-estimate",
-    uiLocation: "Financials > Estimates > New Estimate > Manual Builder",
+    id: "account-signup-plans",
+    module: "account",
+    intent: "pricing and available plans",
+    terms: ["planos", "preco", "precos", "pricing", "price", "mensal", "quarterly", "anual", "plano", "beneficios", "limites"],
+    route: "/login",
+    uiLocation: `${loginUrl} > Sign up > plan selection`,
     directAnswer:
-      "Para criar um estimate manual, va em Financials > Estimates, clique em New Estimate e escolha Manual Builder. Depois selecione client/location, adicione servicos, revise o summary e salve ou envie.",
-    prerequisites: ["Permissao Estimates.", "Um client/location precisa ser selecionado antes de montar os servicos."],
+      "No cadastro, depois de clicar em Sign up, voce escolhe um plano mensal, quarterly ou anual. Quando o usuario perguntar preco, beneficios ou limites, consulte os planos ativos no banco e responda somente com os dados disponiveis.",
+    prerequisites: ["Os precos e limites podem mudar, entao devem vir da tool de planos ativos.", "Nao inventar beneficios ou limites ausentes no banco."],
     commonMistakes: [
-      "Entrar no Smart Builder quando queria montar manualmente.",
-      "Nao selecionar location depois do client, deixando o proximo passo bloqueado.",
+      "Esperar plano free nessa etapa; nao existe plano free nesse fluxo.",
+      "Confundir quarterly com mensal. Quarterly e cobranca trimestral quando existir plano com essa duracao.",
     ],
-    bugSignals: ["New Estimate nao abre.", "Manual Builder nao avanca.", "O fluxo trava mesmo com client/location selecionados."],
+    bugSignals: [
+      "Nenhum plano ativo aparece na tela de cadastro.",
+      "Plano ativo no banco nao aparece na selecao.",
+    ],
     supportEscalationNote:
-      "Tratar como possivel falha quando o usuario selecionou client/location corretamente e mesmo assim o fluxo nao avanca ou fica carregando.",
-  },
-  {
-    id: "estimate-select-client-location",
-    module: "estimates",
-    intent: "select client and location for estimate",
-    terms: ["select client estimate", "selecionar cliente estimate", "location estimate", "work context estimate", "nao avanca client", "nao avanca cliente"],
-    route: "/seller/new-estimate/client-data",
-    uiLocation: "New Estimate > Client data",
-    directAnswer:
-      "No estimate, primeiro selecione o client e depois selecione o location/work context desse client. O fluxo so deve avancar quando os dois estiverem definidos.",
-    prerequisites: ["O client precisa existir.", "O client precisa ter um location/work context valido."],
-    commonMistakes: [
-      "Selecionar apenas o client e esquecer o location.",
-      "Criar client novo sem location e tentar avancar no estimate.",
-    ],
-    bugSignals: ["Client e location aparecem selecionados, mas o botao de avancar continua bloqueado.", "Location criado nao aparece no seletor."],
-    supportEscalationNote:
-      "Tratar como possivel falha quando client e location estao selecionados corretamente e o botao continua bloqueado.",
-  },
-  {
-    id: "estimate-add-catalog-service",
-    module: "estimates",
-    intent: "add catalog service to estimate",
-    terms: ["add service", "adicionar servico", "servico catalogo", "catalog service", "selecionar servico", "service estimate"],
-    route: "/seller/new-estimate/services/:id",
-    uiLocation: "New Estimate > Services",
-    directAnswer:
-      "Para adicionar um servico do catalogo no estimate, entre no step Services, escolha a categoria/servico, ajuste quantidade/preco se o modal permitir e confirme para adicionar ao estimate.",
-    prerequisites: ["Client/location ja selecionados.", "O catalogo precisa ter servicos cadastrados para aparecerem na busca."],
-    commonMistakes: [
-      "Procurar servico antes de escolher categoria ou sem usar a busca.",
-      "Confundir servico do catalogo com Custom Service.",
-    ],
-    bugSignals: ["Servico selecionado nao entra no estimate.", "Preco/quantidade nao atualiza.", "Busca nao encontra servico existente."],
-    supportEscalationNote:
-      "Tratar como possivel falha quando o servico existe no catalogo, o usuario confirma a selecao e ele nao e adicionado ao estimate.",
-  },
-  {
-    id: "estimate-add-custom-service",
-    module: "estimates",
-    intent: "add custom service to estimate",
-    terms: [
-      "custom service",
-      "add custom service",
-      "servico personalizado",
-      "adicionar servico manual",
-      "add service manually",
-      "servico manual",
-    ],
-    route: "/seller/new-estimate/services/:id",
-    uiLocation: "New Estimate > Services > Custom service",
-    directAnswer:
-      "Para adicionar um custom service, entre no estimate builder no step Services e clique em Custom service. Preencha nome, descricao, quantidade e preco, depois confirme para inserir esse item no estimate.",
-    prerequisites: ["Voce precisa ja ter selecionado client/location e estar dentro do builder do estimate."],
-    commonMistakes: [
-      "Procurar Custom service na listagem de estimates; ele fica dentro do builder, no step Services.",
-      "Tentar usar servico do catalogo quando precisa criar um item unico/manual.",
-      "Deixar preco ou nome vazio quando o modal exige esses campos.",
-    ],
-    bugSignals: ["Botao Custom service nao abre modal.", "Modal nao salva com nome, quantidade e preco preenchidos.", "O item some ao ir para o summary."],
-    supportEscalationNote:
-      "Tratar como possivel falha quando o usuario esta no step Services, preencheu os campos necessarios e o custom service nao salva ou desaparece.",
-  },
-  {
-    id: "estimate-save-send",
-    module: "estimates",
-    intent: "save or send estimate",
-    terms: ["save estimate", "send estimate", "enviar estimate", "salvar estimate", "mandar orcamento", "enviar orcamento"],
-    route: "/seller/new-estimate/services-summary/:id",
-    uiLocation: "New Estimate > Summary",
-    directAnswer:
-      "Para salvar ou enviar, va ate o Summary do estimate. Use Save para deixar salvo sem enviar, ou Send/Send Estimate para abrir o modal de email e enviar ao client.",
-    prerequisites: ["O estimate precisa ter client/location e pelo menos os itens necessarios para gerar o summary.", "Para envio, o client precisa ter email valido."],
-    commonMistakes: [
-      "Achar que Save envia email; Save apenas salva.",
-      "Tentar enviar sem email do client ou sem revisar os destinatarios no modal.",
-    ],
-    bugSignals: ["Save fica carregando sem concluir.", "Modal de envio nao abre.", "Email retorna erro mesmo com destinatario valido."],
-    supportEscalationNote:
-      "Tratar como possivel falha quando o estimate esta completo e o save/send falha sem uma validacao clara para corrigir.",
+      "Se os planos ativos nao aparecem para o usuario, tratar como possivel falha tecnica no cadastro/checkout.",
   },
 ];
 
@@ -208,4 +157,3 @@ export function searchPlaybooks(query: string, limit = 4) {
     .slice(0, limit)
     .map((item) => item.playbook);
 }
-

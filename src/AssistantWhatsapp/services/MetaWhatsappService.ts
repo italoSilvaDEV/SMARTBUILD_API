@@ -37,6 +37,28 @@ export class MetaWhatsappService {
     return responses;
   }
 
+  async markMessageAsRead(messageId: string) {
+    assertMetaSendConfig();
+
+    const response = await axios.post(
+      this.messagesUrl(),
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${assistantWhatsappEnv.metaAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    return response.data;
+  }
+
   extractTextMessages(payload: any): MetaWhatsappTextMessage[] {
     const messages: MetaWhatsappTextMessage[] = [];
     const entries = Array.isArray(payload?.entry) ? payload.entry : [];
@@ -88,4 +110,3 @@ export class MetaWhatsappService {
     return `https://graph.facebook.com/${assistantWhatsappEnv.metaGraphApiVersion}/${assistantWhatsappEnv.metaPhoneNumberId}/messages`;
   }
 }
-

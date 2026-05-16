@@ -25,6 +25,8 @@ export class AssistantWhatsappMessageService {
       rawPayload: message.raw,
     });
 
+    await this.markIncomingMessageAsRead(message.id);
+
     if (isCloseConversationRequest(message.text)) {
       const closingText =
         "Perfeito, vou encerrar por aqui. Se precisar de ajuda de novo, é só mandar uma nova mensagem.";
@@ -69,5 +71,15 @@ export class AssistantWhatsappMessageService {
       toolsUsed: aiResult.toolsUsed.map((tool) => tool.tool),
     };
   }
-}
 
+  private async markIncomingMessageAsRead(messageId: string) {
+    try {
+      await this.metaService.markMessageAsRead(messageId);
+    } catch (error) {
+      console.error("[AssistantWhatsappMessageService.markIncomingMessageAsRead]", {
+        metaMessageId: messageId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}

@@ -9,6 +9,7 @@ export const assistantWhatsappEnv = {
   openAiModel: process.env.ASSISTANT_WHATSAPP_OPENAI_MODEL || "gpt-5.4-mini",
   sessionInactivityMinutes: Number(process.env.ASSISTANT_WHATSAPP_SESSION_TIMEOUT_MINUTES || 60),
   maxWhatsappTextLength: Number(process.env.ASSISTANT_WHATSAPP_MAX_TEXT_LENGTH || 3500),
+  publicAppUrl: process.env.API_URL || process.env.URL_API || process.env.FRONTEND_URL || "",
 };
 
 export function assertMetaWebhookConfig() {
@@ -34,4 +35,3 @@ export function assertMetaSignatureConfig() {
     throw new Error("META_APP_SECRET is not configured");
   }
 }
-
