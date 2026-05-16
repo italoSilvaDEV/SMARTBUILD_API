@@ -837,6 +837,8 @@ model Contract {
   canceledAt     DateTime?
   clientSignature String?         @db.LongText
   companySignatureText String?    @db.Text
+  companySignatureFontKey String  @default("classic") @db.VarChar(64)
+  clientSignatureFontKey  String  @default("classic") @db.VarChar(64)
   multi_emails   String?          @db.Text
   createdById    String?
 

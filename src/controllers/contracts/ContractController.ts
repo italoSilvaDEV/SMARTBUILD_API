@@ -13,6 +13,7 @@ import {
   stampContractPdf,
   uploadBufferToS3,
 } from "../../utils/contracts/contractPdf";
+import { normalizeContractSignatureFontKey } from "../../utils/contracts/signatureFonts";
 
 const db = prisma as any;
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -32,6 +33,8 @@ interface ContractPayload {
   expirationDays?: number;
   fields?: ContractFieldInput[];
   companySignatureText?: string | null;
+  companySignatureFontKey?: string | null;
+  clientSignatureFontKey?: string | null;
 }
 
 interface ContractFieldInput {
@@ -203,6 +206,10 @@ function validateAuth(payload: ContractPayload) {
 function normalizeSignatureText(value: unknown) {
   if (typeof value !== "string") return null;
   return value.trim() || null;
+}
+
+function normalizeSignatureFont(value: unknown, fieldName: string) {
+  return normalizeContractSignatureFontKey(value, fieldName);
 }
 
 function normalizeNumber(value: unknown, fieldName: string) {
@@ -425,7 +432,9 @@ async function prepareContractDocuments(contractId: string, companySignatureText
         companyName: contract.company?.name || "Company",
         companySignature: contract.company?.signature || null,
         companySignatureText: signatureText,
+        companySignatureFontKey: contract.companySignatureFontKey,
         clientName: contract.client?.name || "Customer",
+        clientSignatureFontKey: contract.clientSignatureFontKey,
       },
       {
         includeClientSignature: false,
@@ -496,7 +505,9 @@ async function finalizeContractDocuments(
         companyName: contract.company?.name || "Company",
         companySignature: contract.company?.signature || null,
         companySignatureText: normalizeSignatureText(contract.companySignatureText),
+        companySignatureFontKey: contract.companySignatureFontKey,
         clientName: contract.client?.name || "Customer",
+        clientSignatureFontKey: contract.clientSignatureFontKey,
         signedAt,
       },
       {
@@ -640,6 +651,8 @@ export class ContractController {
 
       const expirationDays = normalizeExpirationDays(payload.expirationDays);
       const companySignatureText = normalizeSignatureText(payload.companySignatureText);
+      const companySignatureFontKey = normalizeSignatureFont(payload.companySignatureFontKey, "Company signature font");
+      const clientSignatureFontKey = normalizeSignatureFont(payload.clientSignatureFontKey, "Client signature font");
       const uploadedDocuments = await uploadContractDocuments(files, getRequestUserId(req) || payload.companyId);
 
       const contract = await db.$transaction(async (tx: any) => {
@@ -656,6 +669,8 @@ export class ContractController {
             expiresAt: buildExpiresAt(expirationDays),
             createdById: getRequestUserId(req) || null,
             companySignatureText,
+            companySignatureFontKey,
+            clientSignatureFontKey,
           },
         });
 
@@ -734,6 +749,14 @@ export class ContractController {
       const companySignatureText = hasCompanySignatureText
         ? normalizeSignatureText(payload.companySignatureText)
         : normalizeSignatureText(existing.companySignatureText);
+      const companySignatureFontKey = normalizeSignatureFont(
+        payload.companySignatureFontKey ?? existing.companySignatureFontKey,
+        "Company signature font"
+      );
+      const clientSignatureFontKey = normalizeSignatureFont(
+        payload.clientSignatureFontKey ?? existing.clientSignatureFontKey,
+        "Client signature font"
+      );
 
       await db.$transaction(async (tx: any) => {
         await tx.contract.update({
@@ -747,6 +770,8 @@ export class ContractController {
             expiresAt: buildExpiresAt(expirationDays, existing.date_creation),
             status: existing.status === "expired" ? "draft" : existing.status,
             companySignatureText,
+            companySignatureFontKey,
+            clientSignatureFontKey,
           },
         });
 

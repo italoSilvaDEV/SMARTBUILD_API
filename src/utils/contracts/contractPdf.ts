@@ -1,7 +1,12 @@
 import crypto from "crypto";
+import fs from "fs";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { getPresignedUrl } from "../S3/getPresignedUrl";
+import {
+  getContractSignatureFontPath,
+} from "./signatureFonts";
 
 export type ContractSignerValue = "company" | "client";
 export type ContractFieldTypeValue = "signature" | "signature_date" | "initials";
@@ -30,7 +35,9 @@ export interface ContractPdfContext {
   companyName: string;
   companySignature?: string | null;
   companySignatureText?: string | null;
+  companySignatureFontKey?: string | null;
   clientName: string;
+  clientSignatureFontKey?: string | null;
   signedAt?: Date;
 }
 
@@ -102,19 +109,22 @@ function toPdfBox(field: ContractFieldRender, pageBox: PdfPageBox) {
   return { x, y, width, height };
 }
 
-function drawFittedText(page: any, font: PDFFont, text: string, box: ReturnType<typeof toPdfBox>, italic = false) {
-  const baseSize = italic ? 12 : 10;
+function drawFittedText(page: any, font: PDFFont, text: string, box: ReturnType<typeof toPdfBox>, signatureStyle = false) {
+  const baseSize = signatureStyle ? 20 : 10;
   const minSize = 6;
-  let size = Math.min(baseSize, Math.max(minSize, box.height * 0.45));
+  let size = Math.min(baseSize, Math.max(minSize, box.height * (signatureStyle ? 0.72 : 0.45)));
   while (size > minSize && font.widthOfTextAtSize(text, size) > box.width - 8) {
     size -= 0.5;
   }
+  const textHeight = typeof font.heightAtSize === "function"
+    ? font.heightAtSize(size, { descender: false })
+    : size;
   page.drawText(text, {
     x: box.x + 4,
-    y: box.y + Math.max(3, (box.height - size) / 2),
+    y: box.y + Math.max(3, (box.height - textHeight) / 2),
     size,
     font,
-    color: italic ? TEXT_COLOR : MUTED_COLOR,
+    color: signatureStyle ? TEXT_COLOR : MUTED_COLOR,
   });
 }
 
@@ -179,12 +189,12 @@ async function drawSignatureField(
   field: ContractFieldRender,
   context: ContractPdfContext,
   options: StampOptions,
-  fonts: { italic: PDFFont; regular: PDFFont }
+  fonts: { companySignature: PDFFont; clientSignature: PDFFont; regular: PDFFont }
 ) {
   if (field.signer === "company") {
     const companySignatureText = normalizeSignatureText(context.companySignatureText);
     if (companySignatureText) {
-      drawFittedText(page, fonts.italic, companySignatureText, box, true);
+      drawFittedText(page, fonts.companySignature, companySignatureText, box, true);
       return;
     }
 
@@ -199,7 +209,7 @@ async function drawSignatureField(
       return;
     }
 
-    drawFittedText(page, fonts.italic, context.companyName || "Company", box, true);
+    drawFittedText(page, fonts.companySignature, context.companyName || "Company", box, true);
     return;
   }
 
@@ -209,7 +219,7 @@ async function drawSignatureField(
   }
 
   if (options.includeClientSignature && clientSignatureText) {
-    drawFittedText(page, fonts.italic, clientSignatureText, box, true);
+    drawFittedText(page, fonts.clientSignature, clientSignatureText, box, true);
     return;
   }
 
@@ -271,7 +281,7 @@ function drawInitialsField(
   field: ContractFieldRender,
   context: ContractPdfContext,
   options: StampOptions,
-  fonts: { italic: PDFFont; regular: PDFFont }
+  fonts: { companySignature: PDFFont; clientSignature: PDFFont; regular: PDFFont }
 ) {
   if (field.signer === "client" && !options.includeClientSignature && options.drawClientPlaceholders) {
     page.drawRectangle({
@@ -293,7 +303,23 @@ function drawInitialsField(
   const name = field.signer === "company" ? context.companyName : context.clientName;
   const initials = getNameInitials(name);
   if (initials) {
-    drawFittedText(page, fonts.italic, initials, box, true);
+    const font = field.signer === "company" ? fonts.companySignature : fonts.clientSignature;
+    drawFittedText(page, font, initials, box, true);
+  }
+}
+
+async function embedContractSignatureFont(pdfDoc: PDFDocument, fontKey?: string | null) {
+  const fontPath = getContractSignatureFontPath(fontKey);
+  if (!fontPath) {
+    return pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  }
+
+  try {
+    pdfDoc.registerFontkit(fontkit);
+    return pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: true });
+  } catch (error) {
+    console.warn(`[contracts.pdf] Could not embed signature font "${fontKey}", using classic fallback`, error);
+    return pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   }
 }
 
@@ -318,7 +344,8 @@ export async function stampContractPdf(
   const pages = pdfDoc.getPages();
   const fonts = {
     regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    italic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+    companySignature: await embedContractSignatureFont(pdfDoc, context.companySignatureFontKey),
+    clientSignature: await embedContractSignatureFont(pdfDoc, context.clientSignatureFontKey),
   };
 
   for (const field of fields) {
