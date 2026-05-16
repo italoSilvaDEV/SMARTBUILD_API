@@ -58,16 +58,19 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     route: "/login",
     uiLocation: `${loginUrl} > link below password input`,
     directAnswer:
-      `Para recuperar a senha, va em ${loginUrl} e clique em Forgot password logo abaixo do input de password. Informe o email da company cadastrada e siga o fluxo de recuperacao.`,
+      `Para recuperar a senha, va em ${loginUrl} e clique em Forgot password logo abaixo do input de password. A pagina de recuperacao vai pedir o email; depois de informar, sera enviado um codigo para esse email. Digite o codigo recebido, confirme, e entao o sistema libera os campos para cadastrar a nova senha.`,
     prerequisites: ["O email precisa ser o email da company cadastrada no SmartBuild."],
     commonMistakes: [
       "Tentar recuperar senha com email diferente do cadastro.",
       "Digitar o email com erro.",
+      "Nao conferir o codigo enviado para o email antes de tentar criar a nova senha.",
+      "Informar codigo errado ou expirado.",
       "Voltar para login antes de concluir o fluxo de recuperacao.",
     ],
     bugSignals: [
-      "Email existe, mas o fluxo de recuperacao nao envia ou nao conclui.",
-      "Link/codigo de recuperacao falha mesmo usando o email correto.",
+      "Email existe, mas o codigo de recuperacao nao chega.",
+      "Codigo correto nao confirma.",
+      "A tela nao libera o cadastro da nova senha depois de confirmar o codigo.",
     ],
     supportEscalationNote:
       "Se o email existe e o fluxo de forgot password nao funciona, tratar como possivel falha tecnica.",
