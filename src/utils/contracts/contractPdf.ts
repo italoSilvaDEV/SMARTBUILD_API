@@ -6,8 +6,10 @@ import fontkit from "@pdf-lib/fontkit";
 import { getPresignedUrl } from "../S3/getPresignedUrl";
 import {
   DEFAULT_CONTRACT_SIGNATURE_FONT_KEY,
+  getContractSignatureFontCandidatePaths,
   getContractSignatureFontPath,
   normalizeContractSignatureFontKey,
+  resolveContractSignatureFontPath,
 } from "./signatureFonts";
 
 export type ContractSignerValue = "company" | "client";
@@ -331,7 +333,13 @@ async function embedContractSignatureFont(pdfDoc: PDFDocument, fontKey?: string 
   } catch {
     normalizedFontKey = DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
   }
-  const fontPath = getContractSignatureFontPath(fontKey);
+  let fontPath = getContractSignatureFontPath(fontKey);
+  if (!fontPath && normalizedFontKey !== DEFAULT_CONTRACT_SIGNATURE_FONT_KEY) {
+    if (FONT_DEBUG_ENABLED) {
+      console.warn(`[contracts.pdf.font] local font not found key="${fontKey || ""}" searched=${JSON.stringify(getContractSignatureFontCandidatePaths(fontKey))}`);
+    }
+    fontPath = await resolveContractSignatureFontPath(fontKey);
+  }
   if (!fontPath) {
     if (FONT_DEBUG_ENABLED && normalizedFontKey !== DEFAULT_CONTRACT_SIGNATURE_FONT_KEY) {
       console.warn(`[contracts.pdf.font] fallback=classic reason=font_not_found key="${fontKey || ""}" cwd="${process.cwd()}" dirname="${__dirname}"`);

@@ -8,36 +8,43 @@ export const CONTRACT_SIGNATURE_FONTS = [
     key: "classic",
     label: "Classic",
     fileName: null,
+    sourceUrl: null,
   },
   {
     key: "great_vibes",
     label: "Great Vibes",
     fileName: "great-vibes.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/greatvibes/GreatVibes-Regular.ttf",
   },
   {
     key: "allura",
     label: "Allura",
     fileName: "allura.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/allura/Allura-Regular.ttf",
   },
   {
     key: "parisienne",
     label: "Parisienne",
     fileName: "parisienne.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/parisienne/Parisienne-Regular.ttf",
   },
   {
     key: "pacifico",
     label: "Pacifico",
     fileName: "pacifico.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/pacifico/Pacifico-Regular.ttf",
   },
   {
     key: "sacramento",
     label: "Sacramento",
     fileName: "sacramento.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/sacramento/Sacramento-Regular.ttf",
   },
   {
     key: "marck_script",
     label: "Marck Script",
     fileName: "marck-script.ttf",
+    sourceUrl: "https://raw.githubusercontent.com/google/fonts/main/ofl/marckscript/MarckScript-Regular.ttf",
   },
 ] as const;
 
@@ -75,17 +82,45 @@ export function getContractSignatureFontDefinition(value?: string | null) {
   return FONT_BY_KEY.get(key)!;
 }
 
-export function getContractSignatureFontPath(value?: string | null) {
+export function getContractSignatureFontCandidatePaths(value?: string | null) {
   const definition = getContractSignatureFontDefinition(value);
-  if (!definition.fileName) return null;
+  if (!definition.fileName) return [];
 
-  const candidatePaths = [
+  return [
     path.resolve(process.cwd(), "public", "fonts", "signatures", definition.fileName),
     path.resolve(process.cwd(), "dist", "public", "fonts", "signatures", definition.fileName),
+    path.resolve(process.cwd(), "tmp", "contract-signature-fonts", definition.fileName),
     path.resolve(__dirname, "../../public/fonts/signatures", definition.fileName),
     path.resolve(__dirname, "../../../../public/fonts/signatures", definition.fileName),
     path.resolve(__dirname, "../../../public/fonts/signatures", definition.fileName),
   ];
+}
 
-  return candidatePaths.find((fontPath) => fs.existsSync(fontPath)) || null;
+export function getContractSignatureFontPath(value?: string | null) {
+  return getContractSignatureFontCandidatePaths(value).find((fontPath) => fs.existsSync(fontPath)) || null;
+}
+
+export async function resolveContractSignatureFontPath(value?: string | null) {
+  const existingPath = getContractSignatureFontPath(value);
+  if (existingPath) return existingPath;
+
+  const definition = getContractSignatureFontDefinition(value);
+  if (!definition.fileName || !definition.sourceUrl) return null;
+
+  const cachePath = path.resolve(process.cwd(), "tmp", "contract-signature-fonts", definition.fileName);
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    const response = await fetch(definition.sourceUrl);
+    if (!response.ok) {
+      console.warn(`[contracts.font] Could not download signature font key="${definition.key}" status=${response.status} url="${definition.sourceUrl}"`);
+      return null;
+    }
+
+    fs.writeFileSync(cachePath, Buffer.from(await response.arrayBuffer()));
+    console.info(`[contracts.font] downloaded signature font key="${definition.key}" path="${cachePath}"`);
+    return cachePath;
+  } catch (error) {
+    console.warn(`[contracts.font] Could not download signature font key="${definition.key}" url="${definition.sourceUrl}"`, error);
+    return null;
+  }
 }
