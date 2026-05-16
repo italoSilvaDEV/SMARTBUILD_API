@@ -17,6 +17,7 @@ import { normalizeContractSignatureFontKey } from "../../utils/contracts/signatu
 
 const db = prisma as any;
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const CONTRACT_FONT_DEBUG_ENABLED = process.env.CONTRACT_SIGNATURE_FONT_DEBUG !== "false";
 const REQUIRED_FIELD_KEYS = [
   "company:signature",
   "company:signature_date",
@@ -423,6 +424,10 @@ async function prepareContractDocuments(contractId: string, companySignatureText
     ? normalizeSignatureText(contract.companySignatureText)
     : normalizeSignatureText(companySignatureText);
 
+  if (CONTRACT_FONT_DEBUG_ENABLED) {
+    console.info(`[contracts.font] prepare contract=${contract.id} number=${contract.number} companyKey="${contract.companySignatureFontKey || ""}" clientKey="${contract.clientSignatureFontKey || ""}" fields=${contract.fields?.length || 0}`);
+  }
+
   for (const document of documents) {
     const originalBuffer = await fetchContractPdfBuffer(document.uri);
     const stampedBuffer = await stampContractPdf(
@@ -653,6 +658,9 @@ export class ContractController {
       const companySignatureText = normalizeSignatureText(payload.companySignatureText);
       const companySignatureFontKey = normalizeSignatureFont(payload.companySignatureFontKey, "Company signature font");
       const clientSignatureFontKey = normalizeSignatureFont(payload.clientSignatureFontKey, "Client signature font");
+      if (CONTRACT_FONT_DEBUG_ENABLED) {
+        console.info(`[contracts.font] create payload companyKey="${payload.companySignatureFontKey || ""}" normalizedCompanyKey="${companySignatureFontKey}" clientKey="${payload.clientSignatureFontKey || ""}" normalizedClientKey="${clientSignatureFontKey}"`);
+      }
       const uploadedDocuments = await uploadContractDocuments(files, getRequestUserId(req) || payload.companyId);
 
       const contract = await db.$transaction(async (tx: any) => {
@@ -757,6 +765,9 @@ export class ContractController {
         payload.clientSignatureFontKey ?? existing.clientSignatureFontKey,
         "Client signature font"
       );
+      if (CONTRACT_FONT_DEBUG_ENABLED) {
+        console.info(`[contracts.font] update contract=${existing.id} payloadCompanyKey="${payload.companySignatureFontKey || ""}" normalizedCompanyKey="${companySignatureFontKey}" payloadClientKey="${payload.clientSignatureFontKey || ""}" normalizedClientKey="${clientSignatureFontKey}"`);
+      }
 
       await db.$transaction(async (tx: any) => {
         await tx.contract.update({

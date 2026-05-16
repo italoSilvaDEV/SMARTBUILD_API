@@ -35,20 +35,29 @@ export const CONTRACT_SIGNATURE_FONTS = [
     fileName: "sacramento.ttf",
   },
   {
-    key: "alex_brush",
-    label: "Alex Brush",
-    fileName: "alex-brush.ttf",
+    key: "marck_script",
+    label: "Marck Script",
+    fileName: "marck-script.ttf",
   },
 ] as const;
 
 export type ContractSignatureFontKey = typeof CONTRACT_SIGNATURE_FONTS[number]["key"];
 
 const FONT_BY_KEY = new Map(CONTRACT_SIGNATURE_FONTS.map((font) => [font.key, font]));
+const LEGACY_FONT_ALIASES = new Map<string, ContractSignatureFontKey>([
+  ["alex_brush", "marck_script"],
+]);
 
-export function normalizeContractSignatureFontKey(value: unknown, fieldName = "Signature font") {
-  const key = typeof value === "string" && value.trim()
+function resolveContractSignatureFontKey(value?: string | null) {
+  const rawKey = typeof value === "string" && value.trim()
     ? value.trim()
     : DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
+
+  return LEGACY_FONT_ALIASES.get(rawKey) || rawKey;
+}
+
+export function normalizeContractSignatureFontKey(value: unknown, fieldName = "Signature font") {
+  const key = resolveContractSignatureFontKey(typeof value === "string" ? value : null);
 
   if (!FONT_BY_KEY.has(key as ContractSignatureFontKey)) {
     throw new Error(`${fieldName} is invalid`);
@@ -58,8 +67,9 @@ export function normalizeContractSignatureFontKey(value: unknown, fieldName = "S
 }
 
 export function getContractSignatureFontDefinition(value?: string | null) {
-  const key = typeof value === "string" && FONT_BY_KEY.has(value as ContractSignatureFontKey)
-    ? (value as ContractSignatureFontKey)
+  const resolvedKey = resolveContractSignatureFontKey(value);
+  const key = FONT_BY_KEY.has(resolvedKey as ContractSignatureFontKey)
+    ? (resolvedKey as ContractSignatureFontKey)
     : DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
 
   return FONT_BY_KEY.get(key)!;

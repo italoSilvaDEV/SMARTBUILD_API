@@ -56,6 +56,7 @@ const MUTED_COLOR = rgb(0.42, 0.42, 0.42);
 const BORDER_COLOR = rgb(0.73, 0.61, 0.42);
 const WHITE_COLOR = rgb(1, 1, 1);
 const CLEAR_PADDING = 2;
+const FONT_DEBUG_ENABLED = process.env.CONTRACT_SIGNATURE_FONT_DEBUG !== "false";
 
 interface PdfPageBox {
   x: number;
@@ -324,16 +325,29 @@ function drawInitialsField(
 }
 
 async function embedContractSignatureFont(pdfDoc: PDFDocument, fontKey?: string | null) {
+  let normalizedFontKey = DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
+  try {
+    normalizedFontKey = normalizeContractSignatureFontKey(fontKey);
+  } catch {
+    normalizedFontKey = DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
+  }
   const fontPath = getContractSignatureFontPath(fontKey);
   if (!fontPath) {
+    if (FONT_DEBUG_ENABLED && normalizedFontKey !== DEFAULT_CONTRACT_SIGNATURE_FONT_KEY) {
+      console.warn(`[contracts.pdf.font] fallback=classic reason=font_not_found key="${fontKey || ""}" cwd="${process.cwd()}" dirname="${__dirname}"`);
+    }
     return pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   }
 
   try {
     pdfDoc.registerFontkit(fontkit);
-    return pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: true });
+    const font = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: true });
+    if (FONT_DEBUG_ENABLED) {
+      console.info(`[contracts.pdf.font] embedded key="${normalizedFontKey}" originalKey="${fontKey || ""}" path="${fontPath}"`);
+    }
+    return font;
   } catch (error) {
-    console.warn(`[contracts.pdf] Could not embed signature font "${fontKey}", using classic fallback`, error);
+    console.warn(`[contracts.pdf.font] fallback=classic reason=embed_error key="${fontKey || ""}" path="${fontPath}"`, error);
     return pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   }
 }
@@ -357,6 +371,9 @@ export async function stampContractPdf(
   flattenFillableFields(pdfDoc);
 
   const pages = pdfDoc.getPages();
+  if (FONT_DEBUG_ENABLED) {
+    console.info(`[contracts.pdf.font] context companyKey="${context.companySignatureFontKey || ""}" clientKey="${context.clientSignatureFontKey || ""}" fields=${fields.length}`);
+  }
   const fonts = {
     regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
     companySignature: await embedContractSignatureFont(pdfDoc, context.companySignatureFontKey),
