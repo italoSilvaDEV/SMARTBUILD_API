@@ -5,7 +5,9 @@ import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { getPresignedUrl } from "../S3/getPresignedUrl";
 import {
+  DEFAULT_CONTRACT_SIGNATURE_FONT_KEY,
   getContractSignatureFontPath,
+  normalizeContractSignatureFontKey,
 } from "./signatureFonts";
 
 export type ContractSignerValue = "company" | "client";
@@ -169,6 +171,14 @@ function normalizeSignatureText(value?: string | null) {
   return value?.trim() || "";
 }
 
+function hasCustomSignatureFont(value?: string | null) {
+  try {
+    return normalizeContractSignatureFontKey(value) !== DEFAULT_CONTRACT_SIGNATURE_FONT_KEY;
+  } catch {
+    return false;
+  }
+}
+
 function flattenFillableFields(pdfDoc: PDFDocument) {
   try {
     const form = pdfDoc.getForm();
@@ -195,6 +205,11 @@ async function drawSignatureField(
     const companySignatureText = normalizeSignatureText(context.companySignatureText);
     if (companySignatureText) {
       drawFittedText(page, fonts.companySignature, companySignatureText, box, true);
+      return;
+    }
+
+    if (hasCustomSignatureFont(context.companySignatureFontKey)) {
+      drawFittedText(page, fonts.companySignature, context.companyName || "Company", box, true);
       return;
     }
 

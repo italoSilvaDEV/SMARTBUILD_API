@@ -69,6 +69,11 @@ export function getContractSignatureFontPath(value?: string | null) {
   const definition = getContractSignatureFontDefinition(value);
   if (!definition.fileName) return null;
 
-  const fontPath = path.resolve(process.cwd(), "public", "fonts", "signatures", definition.fileName);
-  return fs.existsSync(fontPath) ? fontPath : null;
+  const candidatePaths = [
+    path.resolve(process.cwd(), "public", "fonts", "signatures", definition.fileName),
+    path.resolve(__dirname, "../../../../public/fonts/signatures", definition.fileName),
+    path.resolve(__dirname, "../../../public/fonts/signatures", definition.fileName),
+  ];
+
+  return candidatePaths.find((fontPath) => fs.existsSync(fontPath)) || null;
 }
