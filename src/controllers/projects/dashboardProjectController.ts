@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import dayjs from "dayjs";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 export class DashboardProjectController {
     async handle(req: Request, res: Response) {
@@ -65,11 +66,8 @@ export class DashboardProjectController {
         const userId = (req as any).userId as string | undefined;
         let projectFilterBySeller: any = {};
         if (userId) {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { projectEditAll: true },
-            });
-            if (user?.projectEditAll !== true) {
+            const canEditAll = await userHasFullAccess(userId, "projectEditAll", companyId);
+            if (!canEditAll) {
                 // Ver projetos onde o usuário é seller OU project manager
                 projectFilterBySeller = {
                     OR: [

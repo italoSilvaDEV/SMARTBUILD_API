@@ -88,6 +88,7 @@ async function main() {
         { description: "Projects" },
         { description: "Activities" },
         { description: "Estimates" },
+        { description: "Contracts" },
         { description: "Invoice" },
         { description: "Time Cards" },
         { description: "Catalog" },

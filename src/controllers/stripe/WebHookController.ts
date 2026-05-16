@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
 import { StripeSubscriptionItemService } from "../../services/StripeSubscriptionItemService";
+import { grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 
 const stripe = stripeConfig.getClient();
 
@@ -72,6 +73,7 @@ async function syncAllOfficePermissionsOnPlanChange(
     // No real plan change (e.g. card update, billing update) — do not touch permissions
     if (oldPlanId === newPlanId) {
         console.log("     Plan unchanged (same planId), skipping permission sync.");
+        await grantOwnerFullAccessForCompany(companyId);
         return;
     }
 
@@ -133,6 +135,7 @@ async function syncAllOfficePermissionsOnPlanChange(
 
         // console.log(`     Office "${office.name}": +${toAdd.length} added, -${toRemove.length} removed (existing: ${existingPermIds.size})`);
     }
+    await grantOwnerFullAccessForCompany(companyId);
     // console.log(`     Permissions synced for ${offices.length} office(s) on plan "${newPlan.name}"`);
 }
 

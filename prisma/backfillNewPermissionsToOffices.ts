@@ -39,6 +39,7 @@ const NEW_PERMISSION_DESCRIPTIONS = [
   "Notification",
   "Email Reminders",
   "Create Invoice From Project in Invoice All",
+  "Contracts",
   "Project Details - Tab Tasks",
   "Project Details - Tab Schedule",
   "Time Cards - Projects",

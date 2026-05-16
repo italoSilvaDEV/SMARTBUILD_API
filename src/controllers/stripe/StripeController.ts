@@ -6,6 +6,7 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import dotenv from "dotenv";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 dotenv.config();
 
@@ -1102,21 +1103,18 @@ export class StripeController {
         const userId = (req as any).userId as string | undefined;
         let invoiceFilterByUser: any = {};
         if (userId) {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { invoiceEditAll: true },
-            });
 
             // Verificar se o usuário é project manager deste projeto
             const project = await prisma.project.findUnique({
                 where: { id: projectId },
-                select: { project_manager_id: true },
+                select: { project_manager_id: true, company_id: true },
             });
 
             const isProjectManager = project?.project_manager_id === userId;
+            const canEditAll = await userHasFullAccess(userId, "invoiceEditAll", project?.company_id);
 
             // Se não tem invoiceEditAll E não é project manager do projeto, filtrar por permissões
-            if (user?.invoiceEditAll !== true && !isProjectManager) {
+            if (!canEditAll && !isProjectManager) {
                 // Ver apenas invoices criadas pelo usuário OU onde ele é project manager do invoice
                 invoiceFilterByUser = {
                     OR: [
@@ -1316,11 +1314,8 @@ export class StripeController {
         const userId = (req as any).userId as string | undefined;
         let invoiceFilterByUser: any = {};
         if (userId) {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { invoiceEditAll: true },
-            });
-            if (user?.invoiceEditAll !== true) {
+            const canEditAll = await userHasFullAccess(userId, "invoiceEditAll", companyId);
+            if (!canEditAll) {
                 // Ver invoices criadas pelo usuário OU onde o usuário é project manager do projeto OU do invoice
                 invoiceFilterByUser = {
                     OR: [

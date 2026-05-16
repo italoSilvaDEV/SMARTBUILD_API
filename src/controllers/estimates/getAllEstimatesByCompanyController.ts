@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import dayjs from "dayjs";
 import { getEstimateEffectiveTotal } from "../../utils/estimateDiscount";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -100,11 +101,8 @@ export class GetAllEstimatesByCompanyController {
         const userId = (req as any).userId as string | undefined;
         let projectFilterBySeller: { seller_user_id?: string } = {};
         if (userId) {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { estimateEditAll: true },
-            });
-            if (user?.estimateEditAll !== true) {
+            const canEditAll = await userHasFullAccess(userId, "estimateEditAll", companyId);
+            if (!canEditAll) {
                 projectFilterBySeller = { seller_user_id: userId };
             }
         }
