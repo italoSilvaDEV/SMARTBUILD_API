@@ -13,6 +13,7 @@ import { setupTrackingHealthJob } from './jobs/trackingHealthJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
 import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
 import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeService';
+import { assistantWhatsappWebhookRoutes } from './routes/assistantWhatsappRoutes';
 const cors = require('cors');
 
 dotenv.config();
@@ -49,7 +50,8 @@ app.post('/webhook/connect',
   (req, res) => stripeConnectWebhookController.handleConnectWebhook(req, res)
 );
 
-//  QuickBooks webhooks: aplicar express.raw para /webhooks/*
+//  WhatsApp/QuickBooks webhooks: aplicar express.raw para /webhooks/*
+app.use('/webhooks', express.raw({ type: '*/*' }), assistantWhatsappWebhookRoutes);
 app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
 
 //  DEPOIS registrar o express.json para as outras rotas

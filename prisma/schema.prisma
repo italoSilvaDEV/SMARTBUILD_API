@@ -244,6 +244,47 @@ model AIAssistantMessage {
   @@map("ai_assistant_messages")
 }
 
+model AssistantWhatsappSession {
+  id                   String  @id @default(uuid())
+  phoneNumber          String  @db.VarChar(32)
+  displayName          String?
+  status               String  @default("active") @db.VarChar(32)
+  openaiConversationId String?
+  lastResponseId       String?
+  closedReason         String? @db.VarChar(64)
+  metadata             Json?
+
+  messages AssistantWhatsappMessage[]
+
+  lastActivityAt DateTime  @default(now())
+  closedAt       DateTime?
+  date_creation  DateTime  @default(now())
+  date_update    DateTime  @updatedAt
+
+  @@index([phoneNumber, status, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@map("assistant_whatsapp_sessions")
+}
+
+model AssistantWhatsappMessage {
+  id            String  @id @default(uuid())
+  sessionId     String
+  role          String  @db.VarChar(32)
+  direction     String  @db.VarChar(16)
+  content       String  @db.Text
+  metaMessageId String? @unique
+  rawPayload    Json?
+  toolData      Json?
+
+  session AssistantWhatsappSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([role])
+  @@map("assistant_whatsapp_messages")
+}
+
 model Audit {
   id            String   @id @default(uuid())
   action        String   @db.Text
