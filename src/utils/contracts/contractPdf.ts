@@ -46,6 +46,7 @@ const TEXT_COLOR = rgb(0.05, 0.05, 0.05);
 const MUTED_COLOR = rgb(0.42, 0.42, 0.42);
 const BORDER_COLOR = rgb(0.73, 0.61, 0.42);
 const WHITE_COLOR = rgb(1, 1, 1);
+const CLEAR_PADDING = 2;
 
 interface PdfPageBox {
   x: number;
@@ -131,6 +132,16 @@ function looksLikeImageSignature(value?: string | null) {
   return Boolean(value && /^data:image\/[a-z]+;base64,/.test(value));
 }
 
+function clearStampedField(page: any, box: ReturnType<typeof toPdfBox>) {
+  page.drawRectangle({
+    x: box.x - CLEAR_PADDING,
+    y: box.y - CLEAR_PADDING,
+    width: box.width + CLEAR_PADDING * 2,
+    height: box.height + CLEAR_PADDING * 2,
+    color: WHITE_COLOR,
+  });
+}
+
 function normalizeSignatureText(value?: string | null) {
   return value?.trim() || "";
 }
@@ -181,13 +192,7 @@ async function drawSignatureField(
 
   const clientSignatureText = normalizeSignatureText(options.clientSignatureText);
   if (options.includeClientSignature && (clientSignatureText || options.clientSignature) && options.clearClientFields) {
-    page.drawRectangle({
-      x: box.x,
-      y: box.y,
-      width: box.width,
-      height: box.height,
-      color: WHITE_COLOR,
-    });
+    clearStampedField(page, box);
   }
 
   if (options.includeClientSignature && clientSignatureText) {
@@ -242,13 +247,7 @@ function drawDateField(
 
   const value = field.signer === "client" ? context.signedAt : field.dateValue;
   if (field.signer === "client" && options.includeClientSignature && options.clearClientFields) {
-    page.drawRectangle({
-      x: box.x,
-      y: box.y,
-      width: box.width,
-      height: box.height,
-      color: WHITE_COLOR,
-    });
+    clearStampedField(page, box);
   }
   drawFittedText(page, font, formatDate(value), box);
 }
