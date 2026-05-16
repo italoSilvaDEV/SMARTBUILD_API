@@ -4,7 +4,7 @@ import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
 import { getPresignedUrl } from "../S3/getPresignedUrl";
 
 export type ContractSignerValue = "company" | "client";
-export type ContractFieldTypeValue = "signature" | "signature_date";
+export type ContractFieldTypeValue = "signature" | "signature_date" | "initials";
 
 export interface ContractFieldRender {
   id?: string;
@@ -132,6 +132,19 @@ function looksLikeImageSignature(value?: string | null) {
   return Boolean(value && /^data:image\/[a-z]+;base64,/.test(value));
 }
 
+function getNameInitials(name?: string | null) {
+  const words = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return "";
+
+  const first = words[0]?.[0] || "";
+  const last = words.length > 1 ? words[words.length - 1]?.[0] || "" : "";
+  return `${first}${last}`.toUpperCase();
+}
+
 function clearStampedField(page: any, box: ReturnType<typeof toPdfBox>) {
   page.drawRectangle({
     x: box.x - CLEAR_PADDING,
@@ -252,6 +265,38 @@ function drawDateField(
   drawFittedText(page, font, formatDate(value), box);
 }
 
+function drawInitialsField(
+  page: any,
+  box: ReturnType<typeof toPdfBox>,
+  field: ContractFieldRender,
+  context: ContractPdfContext,
+  options: StampOptions,
+  fonts: { italic: PDFFont; regular: PDFFont }
+) {
+  if (field.signer === "client" && !options.includeClientSignature && options.drawClientPlaceholders) {
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      borderWidth: 1,
+      borderColor: BORDER_COLOR,
+    });
+    drawFittedText(page, fonts.regular, "Initials", box);
+    return;
+  }
+
+  if (field.signer === "client" && options.includeClientSignature && options.clearClientFields) {
+    clearStampedField(page, box);
+  }
+
+  const name = field.signer === "company" ? context.companyName : context.clientName;
+  const initials = getNameInitials(name);
+  if (initials) {
+    drawFittedText(page, fonts.italic, initials, box, true);
+  }
+}
+
 export async function fetchContractPdfBuffer(uri: string) {
   const pdfUrl = /^https?:\/\//i.test(uri) ? uri : await getPresignedUrl(uri);
   const pdfResponse = await fetch(pdfUrl);
@@ -284,8 +329,10 @@ export async function stampContractPdf(
 
     if (field.type === "signature") {
       await drawSignatureField(pdfDoc, page, box, field, context, options, fonts);
-    } else {
+    } else if (field.type === "signature_date") {
       drawDateField(page, box, field, context, options, fonts.regular);
+    } else {
+      drawInitialsField(page, box, field, context, options, fonts);
     }
   }
 

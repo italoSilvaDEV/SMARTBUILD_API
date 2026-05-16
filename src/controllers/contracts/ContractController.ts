@@ -38,7 +38,7 @@ interface ContractFieldInput {
   documentId?: string;
   documentIndex?: number;
   signer: "company" | "client";
-  type: "signature" | "signature_date";
+  type: "signature" | "signature_date" | "initials";
   pageNumber: number;
   x: number;
   y: number;
@@ -217,7 +217,7 @@ function normalizeFieldInput(field: ContractFieldInput, documentId: string) {
   if (!["company", "client"].includes(field.signer)) {
     throw new Error("Invalid contract field signer");
   }
-  if (!["signature", "signature_date"].includes(field.type)) {
+  if (!["signature", "signature_date", "initials"].includes(field.type)) {
     throw new Error("Invalid contract field type");
   }
 

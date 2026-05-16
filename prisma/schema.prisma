@@ -806,6 +806,7 @@ enum ContractSigner {
 enum ContractFieldType {
   signature
   signature_date
+  initials
 }
 
 model ContractNumberSequence {
