@@ -37,7 +37,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     route: "/login",
     uiLocation: loginUrl,
     directAnswer:
-      "Se voce tem certeza que a senha esta correta e mesmo assim nao entra, me informe o email da company usado no cadastro. Eu verifico se ele esta registrado e te digo o proximo passo.",
+      "Me manda o email da company usado no cadastro que eu verifico o proximo passo. Se o email estiver registrado, o caminho mais provavel e recuperar a senha pelo Forgot password na tela de login.",
     prerequisites: ["O usuario precisa informar o email exato da company."],
     commonMistakes: [
       "Enviar email com typo.",

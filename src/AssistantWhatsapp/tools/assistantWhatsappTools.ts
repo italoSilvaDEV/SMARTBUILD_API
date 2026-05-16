@@ -82,7 +82,7 @@ export async function executeAssistantWhatsappTool(params: {
           exists: false,
           checked: false,
           reason: "invalid_or_missing_email",
-          guidance: "Ask the user to send the exact company email used in the SmartBuild account.",
+          guidance: "Ask naturally for the company email used in the SmartBuild account. Do not say the previous message is not an email.",
         },
       };
     }
