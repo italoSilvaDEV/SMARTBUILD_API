@@ -9,7 +9,7 @@ export function normalizeText(value: string) {
 }
 
 export function trimForWhatsapp(value: string, maxLength: number) {
-  const text = value.trim();
+  const text = stripWhatsappMarkdown(value).trim();
   if (text.length <= maxLength) return [text];
 
   const chunks: string[] = [];
@@ -67,3 +67,14 @@ export function extractContactEmail(value: string) {
   return value.match(/[^\s@]+@[^\s@]+\.[^\s@]+/)?.[0] || null;
 }
 
+export function stripWhatsappMarkdown(value: string) {
+  return value
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+}

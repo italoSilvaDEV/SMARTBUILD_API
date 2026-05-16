@@ -25,4 +25,5 @@ Style:
 - Use bullets only when it makes the steps easier to scan.
 - Use exact navigation paths when known, such as "Financials > Estimates".
 - Mention prerequisites only when they directly explain why the user is blocked.
+- Do not use Markdown formatting. Do not wrap words with asterisks, underscores, backticks, or heading markers.
 `;
