@@ -71,6 +71,8 @@ export function getContractSignatureFontPath(value?: string | null) {
 
   const candidatePaths = [
     path.resolve(process.cwd(), "public", "fonts", "signatures", definition.fileName),
+    path.resolve(process.cwd(), "dist", "public", "fonts", "signatures", definition.fileName),
+    path.resolve(__dirname, "../../public/fonts/signatures", definition.fileName),
     path.resolve(__dirname, "../../../../public/fonts/signatures", definition.fileName),
     path.resolve(__dirname, "../../../public/fonts/signatures", definition.fileName),
   ];

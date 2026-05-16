@@ -6,7 +6,7 @@
     "dev:api": "nodemon --exec ts-node src/server.ts",
     "dev:worker": "nodemon --exec ts-node src/workers/quickbooks/quickbooksWorker.ts",
     "dev": "npm-run-all -p dev:api dev:worker",
-    "build": "tsc",
+    "build": "tsc && node scripts/copyPublicAssets.js",
     "tracking:prune": "ts-node src/scripts/pruneWorkerTracking.ts",
     "stripe:webhooks:sync": "ts-node src/scripts/setupStripeWebhooks.ts",
     "start:worker": "node dist/workers/quickbooks/quickbooksWorker.js",
