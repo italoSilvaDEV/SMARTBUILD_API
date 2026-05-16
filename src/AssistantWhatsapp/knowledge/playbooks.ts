@@ -2,20 +2,20 @@ import type { KnowledgePlaybook } from "../types";
 import { assistantWhatsappEnv } from "../config/env";
 import { normalizeText } from "../utils/text";
 
-const appUrl = (assistantWhatsappEnv.publicAppUrl || "the SmartBuild app").replace(/\/$/, "");
-const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the SmartBuild login page";
+const appUrl = (assistantWhatsappEnv.publicAppUrl || "the system").replace(/\/$/, "");
+const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the system login page";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "account-login",
     module: "account",
-    intent: "login to SmartBuild",
+    intent: "login to the system",
     terms: ["login", "log in", "entrar", "acessar", "sign in", "senha", "email e senha", "credenciais invalidas", "invalid credentials"],
     route: "/login",
     uiLocation: loginUrl,
     directAnswer:
-      `Para entrar no SmartBuild, acesse ${loginUrl} e informe o email da company cadastrada e a senha cadastrada. Se nao entrar, normalmente e credencial invalida ou o sistema esta fora do ar.`,
-    prerequisites: ["A company precisa existir no SmartBuild.", "O usuario precisa informar exatamente o email cadastrado da company e a senha correta."],
+      `Para entrar no sistema, acesse ${loginUrl} e informe o email da company cadastrada e a senha cadastrada. Se nao entrar, normalmente e credencial invalida ou o sistema esta fora do ar.`,
+    prerequisites: ["A company precisa existir no sistema.", "O usuario precisa informar exatamente o email cadastrado da company e a senha correta."],
     commonMistakes: [
       "Usar um email que nao e o email da company cadastrada.",
       "Digitar senha errada ou senha antiga.",
@@ -37,7 +37,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     route: "/login",
     uiLocation: loginUrl,
     directAnswer:
-      "Me manda o email da company usado no cadastro que eu verifico o proximo passo. Se o email estiver registrado, o caminho mais provavel e recuperar a senha pelo Forgot password na tela de login.",
+      "Me manda o email da company usado no cadastro que eu verifico o proximo passo. Se o email estiver registrado no sistema, o caminho mais provavel e recuperar a senha pelo Forgot password na tela de login.",
     prerequisites: ["O usuario precisa informar o email exato da company."],
     commonMistakes: [
       "Enviar email com typo.",
@@ -59,7 +59,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     uiLocation: `${loginUrl} > link below password input`,
     directAnswer:
       `Para recuperar a senha, va em ${loginUrl} e clique em Forgot password logo abaixo do input de password. A pagina de recuperacao vai pedir o email; depois de informar, sera enviado um codigo para esse email. Digite o codigo recebido, confirme, e entao o sistema libera os campos para cadastrar a nova senha.`,
-    prerequisites: ["O email precisa ser o email da company cadastrada no SmartBuild."],
+    prerequisites: ["O email precisa ser o email da company cadastrada no sistema."],
     commonMistakes: [
       "Tentar recuperar senha com email diferente do cadastro.",
       "Digitar o email com erro.",
@@ -78,7 +78,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "account-signup",
     module: "account",
-    intent: "sign up create SmartBuild account",
+    intent: "sign up create system account",
     terms: ["sign up", "signup", "cadastro", "cadastrar", "criar conta", "registrar", "nova company", "nova conta"],
     route: "/login",
     uiLocation: `${loginUrl} > Sign up`,

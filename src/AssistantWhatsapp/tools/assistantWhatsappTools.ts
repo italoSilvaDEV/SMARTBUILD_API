@@ -9,7 +9,7 @@ export function getAssistantWhatsappTools() {
       type: "function",
       name: "searchSmartBuildKnowledge",
       description:
-        "Search SmartBuild usability playbooks for Clients and Estimates. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
+        "Search system usability playbooks for account access, Clients and Estimates. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
       parameters: {
         type: "object",
         properties: {
@@ -37,7 +37,7 @@ export function getAssistantWhatsappTools() {
       type: "function",
       name: "listActivePlans",
       description:
-        "List active SmartBuild sign-up plans with available names, prices, billing periods, employee limits, descriptions and features. Use when the user asks about prices, plans, benefits or limits.",
+        "List active system sign-up plans with available names, prices, billing periods, employee limits, descriptions and features. Use when the user asks about prices, plans, benefits or limits.",
       parameters: {
         type: "object",
         properties: {},
@@ -82,7 +82,7 @@ export async function executeAssistantWhatsappTool(params: {
           exists: false,
           checked: false,
           reason: "invalid_or_missing_email",
-          guidance: "Ask naturally for the company email used in the SmartBuild account. Do not say the previous message is not an email.",
+          guidance: "Ask naturally for the company email used in the system account. Do not say the previous message is not an email.",
         },
       };
     }
@@ -102,8 +102,8 @@ export async function executeAssistantWhatsappTool(params: {
         exactMatchOnly: true,
         loginUrl: getLoginUrl(),
         guidance: rows.length > 0
-          ? `The exact company email exists. If the user cannot log in, guide them to Forgot password below the password input at ${getLoginUrl()}.`
-          : "The company email was not found. Ask the user to confirm the email used in the SmartBuild sign-up, without mentioning internal matching rules.",
+          ? `The company email exists in the system. If the user cannot log in, guide them to Forgot password below the password input at ${getLoginUrl()}.`
+          : "The company email was not found in the system. Ask the user to confirm the email used during sign-up, without mentioning internal matching rules.",
       },
     };
   }
@@ -174,7 +174,7 @@ function describePlanPeriod(validityType: string, validityDuration: number) {
 
 function getLoginUrl() {
   const appUrl = assistantWhatsappEnv.publicAppUrl.replace(/\/$/, "");
-  return appUrl ? `${appUrl}/login` : "the SmartBuild login page";
+  return appUrl ? `${appUrl}/login` : "the system login page";
 }
 
 function safeParseArgs(value: string): Record<string, unknown> {
