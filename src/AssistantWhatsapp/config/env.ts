@@ -9,7 +9,13 @@ export const assistantWhatsappEnv = {
   openAiModel: process.env.ASSISTANT_WHATSAPP_OPENAI_MODEL || "gpt-5.4-mini",
   sessionInactivityMinutes: Number(process.env.ASSISTANT_WHATSAPP_SESSION_TIMEOUT_MINUTES || 60),
   maxWhatsappTextLength: Number(process.env.ASSISTANT_WHATSAPP_MAX_TEXT_LENGTH || 3500),
-  publicAppUrl: process.env.API_URL || process.env.URL_API || process.env.FRONTEND_URL || "",
+  publicAppUrl:
+    process.env.ASSISTANT_WHATSAPP_APP_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.URL_FRONT ||
+    process.env.WEB_FRONT_URL ||
+    process.env.APP_URL ||
+    "",
 };
 
 export function assertMetaWebhookConfig() {
