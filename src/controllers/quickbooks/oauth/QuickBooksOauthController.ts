@@ -144,8 +144,12 @@ export class QuickBooksController {
       }
 
       if (account) {
-        // Verificar se está tentando conectar uma empresa QuickBooks diferente
-        if (account.realmId !== String(realmId)) {
+        const isSwitchingRealm = account.realmId !== String(realmId);
+
+        // Se a conta anterior foi desconectada localmente, permitimos vincular
+        // outro realmId (útil para homologação/sandbox e trocas controladas).
+        // Mantemos o bloqueio apenas quando a conexão atual ainda está ativa.
+        if (isSwitchingRealm && !account.isDisabled) {
           console.log("Empresa ja conectada a outra empresa: ", account.companyName)
           return res.redirect(
             `${process.env.URL_FRONT}/stripe-config?error=different_company&msg=${encodeURIComponent(
