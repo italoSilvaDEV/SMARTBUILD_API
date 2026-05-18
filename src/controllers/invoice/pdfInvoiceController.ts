@@ -5,6 +5,7 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
 import { invoicePaidReceiptEmail } from "../../templateEmail/invoicePaidReceipt";
+import { generateAndStorePaidInvoicePdf } from "../../services/invoicePaidPdfService";
 
 export class PdfInvoicePaidController {
     private static async verifySMTPConfig() {
@@ -213,6 +214,32 @@ export class PdfInvoicePaidController {
         }
     }
 
+    async regenerate(req: Request, res: Response) {
+        const { invoiceId } = req.params;
+
+        if (!invoiceId) {
+            return res.status(400).json({
+                error: "Invoice ID is required"
+            });
+        }
+
+        try {
+            const result = await generateAndStorePaidInvoicePdf(invoiceId);
+
+            return res.status(200).json({
+                message: "Paid invoice PDF regenerated successfully",
+                data: result.pdfInvoicePaid,
+                summary: result.summary
+            });
+        } catch (error: any) {
+            console.error("[PdfInvoicePaid] REGENERATE - Error:", error);
+            return res.status(500).json({
+                error: "Internal server error",
+                details: error instanceof Error ? error.message : "Unknown error"
+            });
+        }
+    }
+
     async setChecked(req: Request, res: Response) {
         const {
             invoiceId,
@@ -252,18 +279,9 @@ export class PdfInvoicePaidController {
             })
 
             try {
-                const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-                    where: {
-                        invoiceId: invoiceId
-                    }
-                })
-
-                if (!pdfInvoicePaid || !pdfInvoicePaid.uri) {
-                    console.log("PDF invoice paid not found, skipping email send");
-                    return res.status(200).json({
-                        message: "Invoice checked successfully",
-                    })
-                }
+                const regeneratedPaidPdf = await generateAndStorePaidInvoicePdf(invoiceId, {
+                    paymentAmount: Number(invoice.totalAmount),
+                });
 
                 const invoiceWithDetails = await prisma.invoice.findUnique({
                     where: { id: invoiceId },
@@ -315,14 +333,6 @@ export class PdfInvoicePaidController {
                     ? await getPresignedUrl(company.avatar)
                     : ""
 
-                const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
-                const pdfResponse = await fetch(pdfUrl);
-                if (!pdfResponse.ok) {
-                    throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`);
-                }
-                const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-                const fileName = pdfInvoicePaid.original_file_name || `invoice_paid_${invoice.externalInvoiceId}.pdf`;
-
                 const paymentDate = invoiceWithDetails.payment?.paidAt
                     || invoiceWithDetails.payment?.createdAt
                     || invoiceWithDetails.updatedAt
@@ -341,16 +351,10 @@ export class PdfInvoicePaidController {
 
                 await sendEmail({
                     to: client.email || "",
+                    replyTo: company?.email || undefined,
                     subject: emailSubject,
                     html: emailHtml,
-                    attachments: [
-                        {
-                            filename: fileName,
-                            content: pdfBuffer.toString('base64'),
-                            type: 'application/pdf',
-                            disposition: 'attachment'
-                        }
-                    ]
+                    attachments: [regeneratedPaidPdf.attachment]
                 })
 
                 console.log(`Payment receipt email sent to ${client.email}`);

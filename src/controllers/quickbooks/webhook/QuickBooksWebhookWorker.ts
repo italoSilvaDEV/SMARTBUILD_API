@@ -11,6 +11,7 @@ import { createSyncLog } from "../customer/FireAndForgetUpsertToQBO";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
 import { importQuickBooksProjectToSmartBuild } from "../project/QuickBooksProjectController";
 import { importQuickBooksEstimateToSmartBuild } from "../estimate/QuickBooksEstimateController";
+import { generateAndStorePaidInvoicePdf } from "../../../services/invoicePaidPdfService";
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1100 });
 const MINOR_VERSION = 40;
@@ -1219,11 +1220,6 @@ export class QuickBooksWebhookWorker {
       }
 
       // Buscar o PDF de invoice pago (opcional - pode não existir)
-      const pdfInvoicePaid = await prisma.pdfInvoicePaid.findUnique({
-        where: {
-          invoiceId: invoice.id
-        }
-      });
 
       const companyAvatar = company?.avatar
         ? await getPresignedUrl(company.avatar)
@@ -1231,6 +1227,18 @@ export class QuickBooksWebhookWorker {
 
       // Buscar o PDF do S3 (apenas se existir)
       const attachments = [];
+      try {
+        const paidPdf = await generateAndStorePaidInvoicePdf(invoice.id, {
+          paymentAmount: Number(qbInvoice.TotalAmt || invoice.totalAmount),
+          paidAt: new Date(),
+          paymentMethod: "QuickBooks Payment",
+        });
+        attachments.push(paidPdf.attachment);
+        console.log(`[QBO Webhook] PDF paid regenerado e anexado ao email: ${paidPdf.fileName}`);
+      } catch (error) {
+        console.warn("[QBO Webhook] Erro ao regenerar PDF invoice paid, enviando email sem anexo:", error);
+      }
+      /* Legacy S3 fetch disabled; the paid PDF is regenerated above.
       if (pdfInvoicePaid?.uri) {
         try {
           const pdfUrl = await getPresignedUrl(pdfInvoicePaid.uri);
@@ -1253,6 +1261,8 @@ export class QuickBooksWebhookWorker {
       } else {
         console.log("[QBO Webhook] PDF invoice paid não encontrado, enviando email sem anexo");
       }
+
+      */
 
       const paymentDate = new Date();
       const totalAmount = Number(qbInvoice.TotalAmt || invoice.totalAmount);

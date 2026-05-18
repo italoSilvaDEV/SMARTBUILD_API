@@ -196,6 +196,7 @@ export class SendEmailChangeOrderController {
 
                 await sendEmail({
                     to: toEmails || [clientEmail],
+                    replyTo: project?.company?.email || undefined,
                     subject: emailSubject,
                     html: changeOrderEmail(
                         clientName,

@@ -238,7 +238,8 @@ export class GalleryProjectController {
                     company: {
                         select: {
                             avatar: true,
-                            name: true
+                            name: true,
+                            email: true
                         }
                     }
                 }
@@ -355,7 +356,7 @@ export class GalleryProjectController {
 
                 await sendEmail({
                     to: dataEmail.to,
-                    replyTo: dataEmail.from,
+                    replyTo: project.company?.email || dataEmail.from,
                     subject: dataEmail.subject || 'Gallery Shared',
                     html: galleryEmail(
                         project.client?.name || '',

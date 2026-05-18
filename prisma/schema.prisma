@@ -244,6 +244,47 @@ model AIAssistantMessage {
   @@map("ai_assistant_messages")
 }
 
+model AssistantWhatsappSession {
+  id                   String  @id @default(uuid())
+  phoneNumber          String  @db.VarChar(32)
+  displayName          String?
+  status               String  @default("active") @db.VarChar(32)
+  openaiConversationId String?
+  lastResponseId       String?
+  closedReason         String? @db.VarChar(64)
+  metadata             Json?
+
+  messages AssistantWhatsappMessage[]
+
+  lastActivityAt DateTime  @default(now())
+  closedAt       DateTime?
+  date_creation  DateTime  @default(now())
+  date_update    DateTime  @updatedAt
+
+  @@index([phoneNumber, status, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@map("assistant_whatsapp_sessions")
+}
+
+model AssistantWhatsappMessage {
+  id            String  @id @default(uuid())
+  sessionId     String
+  role          String  @db.VarChar(32)
+  direction     String  @db.VarChar(16)
+  content       String  @db.Text
+  metaMessageId String? @unique
+  rawPayload    Json?
+  toolData      Json?
+
+  session AssistantWhatsappSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([role])
+  @@map("assistant_whatsapp_messages")
+}
+
 model Audit {
   id            String   @id @default(uuid())
   action        String   @db.Text
@@ -271,6 +312,7 @@ model Company {
   workEndTime           String? // Format: "HH:mm" (24-hour)
   attendanceMode        AttendanceMode @default(manual)
   projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
+  accentColor String?
   isActive              Boolean        @default(true) // false = arquivado (master)
   createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
 
@@ -295,6 +337,8 @@ model Company {
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
   NotesContrac ContractNotes[]
+  contracts    Contract[]
+  contractNumberSequences ContractNumberSequence[]
 
   stripeCustomerId String?
 
@@ -781,6 +825,162 @@ model ContractProject {
   @@map("contract_project")
 }
 
+enum ContractStatus {
+  draft
+  sent
+  viewed
+  signed
+  canceled
+  expired
+}
+
+enum ContractAuthType {
+  none
+  code
+}
+
+enum ContractSigner {
+  company
+  client
+}
+
+enum ContractFieldType {
+  signature
+  signature_date
+  initials
+}
+
+model ContractNumberSequence {
+  id         String   @id @default(uuid())
+  companyId String   @unique
+  nextNumber Int     @default(1000)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@map("contract_number_sequence")
+}
+
+model Contract {
+  id             String           @id @default(uuid())
+  number         Int
+  status         ContractStatus   @default(draft)
+  authType       ContractAuthType @default(none)
+  authCode       String?          @db.VarChar(9)
+  publicToken    String           @unique @default(uuid())
+  expirationDays Int              @default(7)
+  expiresAt      DateTime
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  signedAt       DateTime?
+  canceledAt     DateTime?
+  clientSignature String?         @db.LongText
+  companySignatureText String?    @db.Text
+  companySignatureFontKey String  @default("classic") @db.VarChar(64)
+  clientSignatureFontKey  String  @default("classic") @db.VarChar(64)
+  multi_emails   String?          @db.Text
+  createdById    String?
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+
+  workContext   WorkContext? @relation(fields: [workContextId], references: [id], onDelete: SetNull)
+  workContextId String?
+
+  documents      ContractDocument[]
+  fields         ContractField[]
+  emailLogs      ContractEmailLog[]
+  timelineEvents ContractTimeline[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@index([clientId])
+  @@index([workContextId])
+  @@map("contract")
+}
+
+model ContractDocument {
+  id               String  @id @default(uuid())
+  originalFileName String?
+  uri              String  @db.Text
+  preparedUri      String? @db.Text
+  signedUri        String? @db.Text
+  fileSize         Int?
+  pageCount        Int?
+  position         Int     @default(0)
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  fields ContractField[]
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([contractId])
+  @@map("contract_document")
+}
+
+model ContractField {
+  id         String            @id @default(uuid())
+  signer     ContractSigner
+  type       ContractFieldType
+  pageNumber Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  dateValue  DateTime?
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  document   ContractDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId String
+
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  @@index([contractId])
+  @@index([documentId])
+  @@map("contract_field")
+}
+
+model ContractEmailLog {
+  id           String   @id @default(uuid())
+  recipient    String
+  status       String
+  errorMessage String?  @db.Text
+  sentAt       DateTime @default(now())
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  @@index([contractId])
+  @@map("contract_email_log")
+}
+
+model ContractTimeline {
+  id            String   @id @default(uuid())
+  description   String   @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId String
+
+  @@index([contractId])
+  @@map("contract_timeline")
+}
+
 model ServiceStages {
   id            String   @id @default(uuid())
   description   String
@@ -910,6 +1110,7 @@ model Client {
   idQuickbooks          String?
   QuickBooksCustomerRaw QuickBooksCustomerRaw[]
   workContexts          WorkContext[]
+  contracts             Contract[]
 
   @@unique([idQuickbooks, company_id])
   @@unique([email, company_id])
@@ -954,6 +1155,7 @@ model WorkContext {
   isActive Boolean @default(true)
 
   projects Project[]
+  contracts Contract[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1633,6 +1835,7 @@ model Estimate {
 
   emailLogs  EstimateEmailLog[]
   PdfProject PdfProject[]
+  aiSession  EstimateAiSession?
 
   // Relacionamento com fildsPdfProject
   fildsPdfProjects       fildsPdfProject[]
@@ -1667,6 +1870,7 @@ model EstimateServiceProject {
   originalUnitPrice Decimal?
   originalLineTotal Decimal?
   notes             String?  @db.Text
+  pos               Int      @default(0)
 
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])
@@ -1683,6 +1887,68 @@ model EstimateServiceProject {
   serviceProject ServiceProject?
 
   @@index([estimateId, idQuickbooks])
+}
+
+model EstimateAiSession {
+  id            String   @id @default(uuid())
+  estimateId    String?  @unique
+  companyId     String?
+  createdById   String?
+  status        String   @default("active")
+  title         String?
+  lastResponseId String?
+  modelSimple   String?
+  modelDocument String?
+  metadata      Json?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  estimate    Estimate?              @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  messages    EstimateAiMessage[]
+  attachments EstimateAiAttachment[]
+
+  @@index([companyId])
+  @@index([createdById])
+  @@map("estimate_ai_session")
+}
+
+model EstimateAiMessage {
+  id            String   @id @default(uuid())
+  sessionId     String
+  role          String
+  content       String   @db.LongText
+  payload       Json?
+  responseId    String?
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  session     EstimateAiSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attachments EstimateAiAttachment[]
+
+  @@index([sessionId, date_creation])
+  @@map("estimate_ai_message")
+}
+
+model EstimateAiAttachment {
+  id            String   @id @default(uuid())
+  sessionId     String
+  messageId     String?
+  fileName      String   @db.Text
+  originalName  String   @db.Text
+  mimeType      String?
+  size          Int?
+  s3Key         String?  @db.Text
+  extractedText String?  @db.LongText
+  summary       String?  @db.Text
+  date_creation DateTime @default(now())
+  date_update   DateTime @updatedAt
+
+  session EstimateAiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message EstimateAiMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([messageId])
+  @@map("estimate_ai_attachment")
 }
 
 model Permissions {

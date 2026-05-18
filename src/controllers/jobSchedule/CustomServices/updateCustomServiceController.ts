@@ -161,6 +161,7 @@ export class UpdateCustomServiceController {
                 location: projectLocation,
                 googleMapsLink: googleMapsLink,
                 companyName: company.name || "",
+                companyReplyToEmail: company.email || "",
                 startDateFormatted: formatDateForEmail(startDateOnly ?? customService.start_date ?? undefined),
                 deadlineFormatted: formatDateForEmail(deadlineOnly ?? customService.deadline ?? undefined),
                 description: body.description ? removeHtml(body.description) : customService.description ? removeHtml(customService.description) : "",

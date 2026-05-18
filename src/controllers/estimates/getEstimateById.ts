@@ -111,9 +111,11 @@ export class GetEstimateByProjectIdController {
                         },
                     },
                     serviceProjects: {
-                        orderBy: {
-                            date_creation: "asc",
-                        },
+                        orderBy: [
+                            { pos: "asc" },
+                            { date_creation: "asc" },
+                            { id: "asc" },
+                        ],
                         select: {
                             id: true,
                             name: true,
@@ -124,6 +126,7 @@ export class GetEstimateByProjectIdController {
                             originalUnitPrice: true,
                             originalLineTotal: true,
                             notes: true,
+                            pos: true,
                             date_creation: true,
                             date_update: true,
                         }
@@ -224,13 +227,14 @@ export class GetEstimateByProjectIdController {
                     finalAmount: estimate.finalAmount !== null && estimate.finalAmount !== undefined ? Number(estimate.finalAmount) : null,
                     PdfProject: pdfProjectData,
                     imagesAttachments: imagesAttachmentsData,
-                    serviceProjects: estimate.serviceProjects.map((service) => ({
+                    serviceProjects: estimate.serviceProjects.map((service, index) => ({
                         ...service,
                         quantity: Number(service.quantity),
                         unitPrice: Number(service.unitPrice),
                         lineTotal: Number(service.lineTotal),
                         originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
                         originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+                        pos: Number(service.pos ?? index),
                     })),
                     project: {
                         ...estimate.project,

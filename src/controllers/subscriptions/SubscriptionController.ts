@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
+import { grantOwnerFullAccessForCompany } from '../../utils/ownerFullAccess';
 
 /** Applies given permission IDs to an office (replaces existing UserPermissions for that office). */
 async function applyPermissionsToOffice(officeId: string, permissionIds: string[]): Promise<void> {
@@ -92,6 +93,7 @@ export class SubscriptionController {
       if (ownerOffice) {
         await applyPermissionsToOffice(ownerOffice.id, permissionIds);
       }
+      await grantOwnerFullAccessForCompany(companyId);
 
       await prisma.office.create({
         data: { name: 'Worker', company_id: companyId }

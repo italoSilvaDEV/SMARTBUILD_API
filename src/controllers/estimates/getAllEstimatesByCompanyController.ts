@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import dayjs from "dayjs";
 import { getEstimateEffectiveTotal } from "../../utils/estimateDiscount";
+import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -100,11 +101,8 @@ export class GetAllEstimatesByCompanyController {
         const userId = (req as any).userId as string | undefined;
         let projectFilterBySeller: { seller_user_id?: string } = {};
         if (userId) {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { estimateEditAll: true },
-            });
-            if (user?.estimateEditAll !== true) {
+            const canEditAll = await userHasFullAccess(userId, "estimateEditAll", companyId);
+            if (!canEditAll) {
                 projectFilterBySeller = { seller_user_id: userId };
             }
         }
@@ -253,9 +251,11 @@ export class GetAllEstimatesByCompanyController {
                         },
                     },
                     serviceProjects: {
-                        orderBy: {
-                            date_creation: "asc",
-                        },
+                        orderBy: [
+                            { pos: "asc" },
+                            { date_creation: "asc" },
+                            { id: "asc" },
+                        ],
                         select: {
                             id: true,
                             name: true,
@@ -266,6 +266,7 @@ export class GetAllEstimatesByCompanyController {
                             originalUnitPrice: true,
                             originalLineTotal: true,
                             notes: true,
+                            pos: true,
                             date_creation: true,
                             date_update: true,
                         }
@@ -390,7 +391,7 @@ export class GetAllEstimatesByCompanyController {
                     },
                     PdfProject: pdfProjectData,
                     imagesAttachments: imagesAttachmentsData,
-                    serviceProjects: estimate.serviceProjects.map((service) => {
+                    serviceProjects: estimate.serviceProjects.map((service, index) => {
                         return {
                             ...service,
                             lineTotal: Number(service.lineTotal),
@@ -398,6 +399,7 @@ export class GetAllEstimatesByCompanyController {
                             quantity: Number(service.quantity),
                             originalUnitPrice: service.originalUnitPrice !== null && service.originalUnitPrice !== undefined ? Number(service.originalUnitPrice) : null,
                             originalLineTotal: service.originalLineTotal !== null && service.originalLineTotal !== undefined ? Number(service.originalLineTotal) : null,
+                            pos: Number(service.pos ?? index),
                         }
                     }),
                 }

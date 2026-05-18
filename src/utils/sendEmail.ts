@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { prisma } from './prisma';
 
 interface SendEmailData {
     to: string | string[];
@@ -7,6 +8,7 @@ interface SendEmailData {
     text?: string;
     from?: string;
     replyTo?: string;
+    companyId?: string | null;
     templateId?: string;
     dynamicTemplateData?: { [key: string]: any };
     attachments?: Array<{
@@ -26,6 +28,7 @@ export async function sendEmail({
     text,
     from,
     replyTo,
+    companyId,
     templateId,
     dynamicTemplateData,
     attachments,
@@ -34,10 +37,11 @@ export async function sendEmail({
 }: SendEmailData) {
     const recipients = Array.isArray(to) ? to : [to];
     const contextLabel = debugContext || 'sendEmail';
+    const resolvedReplyTo = await resolveReplyTo(replyTo, companyId, dynamicTemplateData);
     const msg = {
         to,
         from: from || process.env.EMAIL_SMTP || 'no-reply@prosmartbuild.com',
-        replyTo,
+        ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
         subject,
         text: text || subject || '',
         html: html || '',
@@ -73,7 +77,48 @@ export async function sendEmail({
         }
 
         if (throwOnError) {
-            throw error;
-        }
+        throw error;
     }
+}
+
+function normalizeEmail(value?: string | null) {
+    const email = value?.trim();
+    return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined;
+}
+
+function getReplyToFromTemplateData(dynamicTemplateData?: { [key: string]: any }) {
+    if (!dynamicTemplateData) return undefined;
+
+    return normalizeEmail(
+        dynamicTemplateData.companyReplyToEmail ||
+        dynamicTemplateData.companyEmail ||
+        dynamicTemplateData.company_email ||
+        dynamicTemplateData.replyToEmail
+    );
+}
+
+async function resolveReplyTo(replyTo?: string, companyId?: string | null, dynamicTemplateData?: { [key: string]: any }) {
+    const explicitReplyTo = normalizeEmail(replyTo);
+    if (explicitReplyTo) return explicitReplyTo;
+
+    const templateReplyTo = getReplyToFromTemplateData(dynamicTemplateData);
+    if (templateReplyTo) return templateReplyTo;
+
+    if (!companyId) return undefined;
+
+    try {
+        const company = await prisma.company.findUnique({
+            where: { id: companyId },
+            select: { email: true }
+        });
+
+        return normalizeEmail(company?.email);
+    } catch (error) {
+        console.error("[sendEmail] Failed to resolve company replyTo", {
+            companyId,
+            message: error instanceof Error ? error.message : String(error)
+        });
+        return undefined;
+    }
+}
 }

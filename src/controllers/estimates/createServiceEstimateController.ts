@@ -16,6 +16,7 @@ interface ServicePayload {
     price?: number
     start_date?: string
     deadline?: string
+    pos?: number
 }
 
 const DISCOUNT_ERRORS = new Set([
@@ -37,7 +38,8 @@ export class CreateServiceEstimateController {
             hours,
             price,
             start_date,
-            deadline
+            deadline,
+            pos
         } = req.body as ServicePayload
 
         if (!estimateId) {
@@ -84,6 +86,13 @@ export class CreateServiceEstimateController {
             let newServiceId = ""
 
             await prisma.$transaction(async (smartbuild) => {
+                const nextPosition = pos !== undefined && pos !== null
+                    ? Number(pos)
+                    : ((await smartbuild.estimateServiceProject.aggregate({
+                        where: { estimateId: estimate.id },
+                        _max: { pos: true },
+                    }))._max.pos ?? -1) + 1
+
                 const newService = await smartbuild.estimateServiceProject.create({
                     data: {
                         estimateId: estimate.id,
@@ -99,7 +108,8 @@ export class CreateServiceEstimateController {
                         hours: hours,
                         price: price,
                         start_date,
-                        deadline
+                        deadline,
+                        pos: Number.isFinite(nextPosition) ? nextPosition : 0,
                     }
                 })
 

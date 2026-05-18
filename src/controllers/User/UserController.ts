@@ -16,6 +16,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
 import { stripeConfig } from "../../config/stripe";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 
 
 export class UserController {
@@ -95,12 +96,17 @@ export class UserController {
       }
 
 
-      const office = await prisma.user.findMany({ where: { office_id: data.office_id } });
+      const officeRecord = await prisma.office.findUnique({
+        where: { id: data.office_id },
+        select: { name: true },
+      });
 
-      if (!office) {
+      if (!officeRecord) {
         this.deleteFiles(req.file?.filename?.split(".")[0] + ".webp", req.file?.filename);
         return res.status(400).json({ error: "office invalid" });
       }
+
+      const isOwnerOffice = isOwnerOfficeName(officeRecord.name);
 
       // Verifica se o email existe
       const userExists = await prisma.user.findUnique({ where: { email: data.email } });
@@ -147,6 +153,13 @@ export class UserController {
         const uc = await prisma.userCompany.create({
           data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
         });
+
+        if (isOwnerOffice) {
+          await prisma.user.update({
+            where: { id: userExists.id },
+            data: OWNER_FULL_ACCESS_DATA,
+          });
+        }
 
         // Buscar informações da empresa para o email
         const company = await prisma.company.findUnique({
@@ -237,10 +250,10 @@ export class UserController {
           canEditTimeCard: (data as any).canEditTimeCard === 'true' || (data as any).canEditTimeCard === true,
           dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
           defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
-          projectVisibilityMode: (data as any).projectVisibilityMode || "allActive",
-          invoiceEditAll: data.invoiceEditAll === "true" || data.invoiceEditAll === true,
-          projectEditAll: data.projectEditAll === "true" || data.projectEditAll === true,
-          estimateEditAll: data.estimateEditAll === "true" || data.estimateEditAll === true,
+          projectVisibilityMode: isOwnerOffice ? "allActive" : (data as any).projectVisibilityMode || "allActive",
+          invoiceEditAll: isOwnerOffice || data.invoiceEditAll === "true" || data.invoiceEditAll === true,
+          projectEditAll: isOwnerOffice || data.projectEditAll === "true" || data.projectEditAll === true,
+          estimateEditAll: isOwnerOffice || data.estimateEditAll === "true" || data.estimateEditAll === true,
           isExtraPaidUser: isExtraPaidUser,
           ...(!isMultiCompany && { company_id: data.company_id })
         },
@@ -740,10 +753,20 @@ export class UserController {
         }
       }
 
-      // Buscar permissões do office para validar os campos editAll
-      let finalInvoiceEditAll = invoiceEditAll || false;
-      let finalProjectEditAll = projectEditAll || false;
-      let finalEstimateEditAll = estimateEditAll || false;
+      // Buscar permissões do office para validar os campos editAll.
+      // Requests antigos podem não enviar esses campos; nesses casos preservamos
+      // o valor atual para evitar "capar" permissões acidentalmente.
+      const toBoolean = (value: any) => value === true || value === "true";
+      const hasInvoiceEditAllInput = invoiceEditAll !== undefined;
+      const hasProjectEditAllInput = projectEditAll !== undefined;
+      const hasEstimateEditAllInput = estimateEditAll !== undefined;
+      const requestedInvoiceEditAll = hasInvoiceEditAllInput ? toBoolean(invoiceEditAll) : user.invoiceEditAll === true;
+      const requestedProjectEditAll = hasProjectEditAllInput ? toBoolean(projectEditAll) : user.projectEditAll === true;
+      const requestedEstimateEditAll = hasEstimateEditAllInput ? toBoolean(estimateEditAll) : user.estimateEditAll === true;
+
+      let finalInvoiceEditAll = requestedInvoiceEditAll;
+      let finalProjectEditAll = requestedProjectEditAll;
+      let finalEstimateEditAll = requestedEstimateEditAll;
 
       if (office && company_id) {
         // Buscar o office com suas permissões
@@ -772,9 +795,14 @@ export class UserController {
 
           // Ajustar os valores baseado nas permissões do office
           // Se o office não tem a permissão, forçar false
-          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
-          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
-          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+          finalInvoiceEditAll = hasInvoicePermission ? requestedInvoiceEditAll : false;
+          finalProjectEditAll = hasProjectPermission ? requestedProjectEditAll : false;
+          finalEstimateEditAll = hasEstimatePermission ? requestedEstimateEditAll : false;
+          if (isOwnerOfficeName(officeWithPermissions.name)) {
+            finalInvoiceEditAll = true;
+            finalProjectEditAll = true;
+            finalEstimateEditAll = true;
+          }
         }
 
         // Atualizar office_id na tabela UserCompany
@@ -822,9 +850,14 @@ export class UserController {
           );
 
           // Ajustar os valores baseado nas permissões do office atual
-          finalInvoiceEditAll = hasInvoicePermission ? (invoiceEditAll || false) : false;
-          finalProjectEditAll = hasProjectPermission ? (projectEditAll || false) : false;
-          finalEstimateEditAll = hasEstimatePermission ? (estimateEditAll || false) : false;
+          finalInvoiceEditAll = hasInvoicePermission ? requestedInvoiceEditAll : false;
+          finalProjectEditAll = hasProjectPermission ? requestedProjectEditAll : false;
+          finalEstimateEditAll = hasEstimatePermission ? requestedEstimateEditAll : false;
+          if (isOwnerOfficeName(currentOffice.name)) {
+            finalInvoiceEditAll = true;
+            finalProjectEditAll = true;
+            finalEstimateEditAll = true;
+          }
         }
       }
 
@@ -859,7 +892,7 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
-            projectVisibilityMode,
+            projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
             estimateEditAll: finalEstimateEditAll,
@@ -882,7 +915,7 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
-            projectVisibilityMode,
+            projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
             estimateEditAll: finalEstimateEditAll,

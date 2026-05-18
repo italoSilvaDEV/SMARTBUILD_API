@@ -59,6 +59,7 @@ import { chatRoutes } from './chatRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
+import contractRoutes from './contractRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -123,6 +124,9 @@ router.use(projectFeedRoutes)
 router.use(publicFeedLinkRoutes)
 router.use("/changeorder", changeOrderRoutes)
 router.use(pdfInvoicePaidRoutes)
+// Keep contract public signing routes before tutorialRoutes, which installs
+// checkToken at router level and would otherwise intercept /contracts/public.
+router.use("/contracts", contractRoutes)
 router.use(tutorialRoutes)
 router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)

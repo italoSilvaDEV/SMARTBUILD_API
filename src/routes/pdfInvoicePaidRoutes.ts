@@ -18,6 +18,9 @@ fileRoutes.put("/invoice/pdfpaid/update", checkToken, uploadFile.single("file"),
 fileRoutes.delete("/invoice/pdfpaid/delete/:pdfId", checkToken, pdfInvoicePaidController.delete.bind(pdfInvoicePaidController)
 );
 
+fileRoutes.post("/invoice/:invoiceId/pdfpaid/regenerate", checkToken, pdfInvoicePaidController.regenerate.bind(pdfInvoicePaidController)
+);
+
 fileRoutes.put("/invoice/pdfpaid/set-checked", checkToken, pdfInvoicePaidController.setChecked.bind(pdfInvoicePaidController)
 );
 

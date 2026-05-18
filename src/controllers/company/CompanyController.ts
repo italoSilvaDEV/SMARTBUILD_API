@@ -10,6 +10,7 @@ import bcrypt from "bcrypt";
 import { NewUser } from "../../templateEmail/newUser";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import { OWNER_FULL_ACCESS_DATA } from "../../utils/ownerFullAccess";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
@@ -128,7 +129,8 @@ export class CompanyController {
                     password: hashedPassword,
                     profession: data.profession,
                     company_id: company.id,
-                    onBoardingCompleted: false
+                    onBoardingCompleted: false,
+                    ...OWNER_FULL_ACCESS_DATA
                 },
             });
 
@@ -223,7 +225,8 @@ export class CompanyController {
                     password: hashedPassword,
                     profession: null,
                     company_id: company.id,
-                    onBoardingCompleted: false
+                    onBoardingCompleted: false,
+                    ...OWNER_FULL_ACCESS_DATA
                 },
             });
 
@@ -406,6 +409,7 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
+                        ...OWNER_FULL_ACCESS_DATA,
                     },
                 });
                 await prisma.userCompany.create({
@@ -428,7 +432,8 @@ export class CompanyController {
                         office_id: String(office?.id),
                         password: hashedPassword,
                         profession: data.profession,
-                        company_id: company.id
+                        company_id: company.id,
+                        ...OWNER_FULL_ACCESS_DATA
                     }
                 });
             }
@@ -577,6 +582,75 @@ export class CompanyController {
             return response.json(formattedCompany);
         } catch (error) {
             console.error('Error searching for company:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    async getAccentColor(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    accentColor: true,
+                }
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            return response.json({
+                companyId: company.id,
+                accentColor: company.accentColor,
+            });
+        } catch (error) {
+            console.error('Error fetching company accent color:', error);
+            return response.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+    async updateAccentColor(request: Request, response: Response) {
+        try {
+            const { id } = request.params;
+            const { accentColor } = request.body;
+
+            if (
+                accentColor !== null &&
+                accentColor !== undefined &&
+                !/^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(String(accentColor))
+            ) {
+                return response.status(400).json({ error: "Invalid accent color" });
+            }
+
+            const company = await prisma.company.findUnique({
+                where: { id },
+                select: { id: true }
+            });
+
+            if (!company) {
+                return response.status(404).json({ error: "Company not found!" });
+            }
+
+            const updatedCompany = await prisma.company.update({
+                where: { id },
+                data: {
+                    accentColor: accentColor ?? null,
+                },
+                select: {
+                    id: true,
+                    accentColor: true,
+                }
+            });
+
+            return response.json({
+                companyId: updatedCompany.id,
+                accentColor: updatedCompany.accentColor,
+            });
+        } catch (error) {
+            console.error('Error updating company accent color:', error);
             return response.status(500).json({ error: "Internal server error" });
         }
     }
