@@ -6,6 +6,9 @@ import { SyncPreferencesController } from "../controllers/quickbooks/syncPrefere
 import { QuickBooksClientController } from "../controllers/quickbooks/customer/QuickBooksCustomerController";
 import { SyncOrchestratorController } from "../controllers/quickbooks/sync/SyncOrchestratorController";
 import { QuickBooksCustomerOutboundController } from "../controllers/quickbooks/customer/QuickbooksCustomerOutboundController";
+import { QuickBooksProjectController } from "../controllers/quickbooks/project/QuickBooksProjectController";
+import { QuickBooksEstimateController } from "../controllers/quickbooks/estimate/QuickBooksEstimateController";
+import { QuickBooksInvoiceImportController } from "../controllers/quickbooks/invoice/QuickBooksInvoiceImportController";
 
 const quickbooksRoutes = Router();
 const quickbooksController = new QuickBooksController();
@@ -14,12 +17,26 @@ const quickbooksSyncPreferenceController = new SyncPreferencesController();
 const quickbooksClientController = new QuickBooksClientController();
 const syncOrchestratorController = new SyncOrchestratorController();
 const qbOutbound = new QuickBooksCustomerOutboundController();
+const quickBooksProjectController = new QuickBooksProjectController();
+const quickBooksEstimateController = new QuickBooksEstimateController();
+const quickBooksInvoiceImportController = new QuickBooksInvoiceImportController();
 
 // Rotas de autorização
 quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId/:companyId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId/:companyId", checkToken, quickbooksController.refreshToken);
+quickbooksRoutes.get("/quickbooks/projects/pre-check/:companyId/:userId", checkToken, quickBooksProjectController.preCheck);
+quickbooksRoutes.get("/quickbooks/projects/debug-count/:companyId/:userId", checkToken, quickBooksProjectController.debugProjectCount);
+quickbooksRoutes.get("/quickbooks/projects/:companyId/:userId", checkToken, quickBooksProjectController.listProjects);
+quickbooksRoutes.post("/quickbooks/projects/import/:companyId/:userId", checkToken, quickBooksProjectController.importProjectsToSmartBuild);
+quickbooksRoutes.post("/quickbooks/projects/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksProjectController.syncProjectsQboToSmartBuild);
+quickbooksRoutes.get("/quickbooks/projects-graphql/:companyId/:userId", checkToken, quickBooksProjectController.listProjectsGraphql);
+quickbooksRoutes.post("/quickbooks/estimates/import/:companyId/:userId", checkToken, quickBooksEstimateController.importEstimatesToSmartBuild.bind(quickBooksEstimateController));
+quickbooksRoutes.post("/quickbooks/estimates/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksEstimateController.syncEstimatesQboToSmartBuild.bind(quickBooksEstimateController));
+
+quickbooksRoutes.post("/quickbooks/invoices/import/:companyId/:userId", checkToken, quickBooksInvoiceImportController.importInvoicesToSmartBuild.bind(quickBooksInvoiceImportController));
+quickbooksRoutes.post("/quickbooks/invoices/sync/qbo-to-smart/:companyId/:userId", checkToken, quickBooksInvoiceImportController.syncInvoicesQboToSmartBuild.bind(quickBooksInvoiceImportController));
 
 //  NOVAS: Rotas de desconexão
 quickbooksRoutes.delete("/quickbooks/disconnect/:userId/:companyId", checkToken, quickbooksController.disconnect);
@@ -41,7 +58,7 @@ quickbooksRoutes.put("/quickbooks/invoices/:invoiceId/payment", checkToken, quic
 
 // Rotas de syncPreference
 quickbooksRoutes.get("/quickbooks/sync-preferences/:companyId", checkToken, quickbooksSyncPreferenceController.listByCompany);
-quickbooksRoutes.get("/quickbooks/sync-preferences/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
+quickbooksRoutes.get("/quickbooks/sync-preferences/user/:userId", checkToken, quickbooksSyncPreferenceController.listByUser);
 quickbooksRoutes.post("/quickbooks/sync-preferences", checkToken, quickbooksSyncPreferenceController.create);
 quickbooksRoutes.put("/quickbooks/sync-preferences/:id", checkToken, quickbooksSyncPreferenceController.update);
 quickbooksRoutes.patch("/quickbooks/sync-preferences/:id/disable", checkToken, quickbooksSyncPreferenceController.updateIsDisable);

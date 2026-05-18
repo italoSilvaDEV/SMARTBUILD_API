@@ -4,6 +4,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { addManualApprovalClientSignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 export class ManualApprovalEstimateController {
   async handle(req: Request, res: Response) {
@@ -38,7 +39,9 @@ export class ManualApprovalEstimateController {
       where: { estimate_id: estimate.id },
     });
 
-    if (!pdfProject?.uri) {
+    const canSkipPdfSignature = Boolean(estimate.idQuickbooks);
+
+    if (!pdfProject?.uri && !canSkipPdfSignature) {
       return res.status(404).json({ error: "PDF Project not found or has no URI" });
     }
 
@@ -116,7 +119,8 @@ export class ManualApprovalEstimateController {
       });
     }
 
-    try {
+    if (pdfProject?.uri) {
+      try {
       const pdfUrl = await getPresignedUrl(pdfProject.uri);
       const pdfResponse = await fetch(pdfUrl);
       if (!pdfResponse.ok) {
@@ -155,17 +159,23 @@ export class ManualApprovalEstimateController {
         where: { id: pdfProject.id },
         data: { uri: newFileName },
       });
-    } catch (err) {
-      console.error("[manualApproval] Error applying signature to PDF:", err);
-      return res.status(500).json({
-        error: "Failed to apply manual approval signature to PDF",
-      });
+      } catch (err) {
+        console.error("[manualApproval] Error applying signature to PDF:", err);
+        return res.status(500).json({
+          error: "Failed to apply manual approval signature to PDF",
+        });
+      }
     }
 
     const updated = await prisma.estimate.findUnique({
       where: { id },
       include: { project: { select: { contract_number: true } } },
     });
+    fireAndForgetUpsertEstimateToQBO(
+      estimate.project?.company_id,
+      (req as any).userId || estimate.project?.seller_user_id,
+      estimate.id
+    );
 
     return res.status(200).json({
       message: "Manual approval applied successfully",
