@@ -222,12 +222,12 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "estimates-main-export",
     module: "estimates",
-    intent: "export estimates pdf excel selection mode report visible selected estimates",
-    terms: ["export estimates", "exportar estimates", "exporto estimates", "como exporto estimates", "exportar estimates em excel", "exporto estimates em excel", "como exporto estimates em excel", "exportar em excel", "export pdf estimates", "export excel estimates", "excel estimates", "relatorio excel", "pdf estimates", "relatorio estimates", "selecionar estimates export", "export pegou estimates errados"],
+    intent: "export estimates pdf excel selection mode report visible selected estimates file format",
+    terms: ["export estimates", "exportar estimates", "exporto estimates", "como exporto estimates", "export estimates pdf ou excel", "export estimates excel ou pdf", "qual arquivo export estimates", "qual formato export estimates", "formato do export estimates", "arquivo export estimates", "exportar estimates em pdf", "exportar estimates em excel", "exporto estimates em excel", "como exporto estimates em excel", "exportar em excel", "export pdf estimates", "export excel estimates", "excel estimates", "relatorio excel", "pdf estimates", "relatorio estimates", "selecionar estimates export", "export pegou estimates errados"],
     route: "/seller/estimates",
     uiLocation: "Financials > Estimates > Export Estimates",
     directAnswer:
-      "Para exportar, clique em Export Estimates e escolha PDF ou Excel. O primeiro clique entra em modo selecao e ja marca os estimates visiveis pelo filtro atual. Ajuste a selecao se precisar e confirme novamente para gerar o relatorio.",
+      "Export Estimates pode gerar dois tipos de arquivo: PDF ou Excel. Clique em Export Estimates, escolha PDF ou Excel, selecione/ajuste os estimates visiveis pelo filtro atual e confirme para gerar o relatorio.",
     prerequisites: ["Precisa ter pelo menos um estimate selecionado.", "A exportacao usa a lista visivel/selecionada no momento."],
     commonMistakes: [
       "Achar que Export PDF baixa cada PDF individual; ele gera um relatorio da lista selecionada.",
@@ -752,17 +752,25 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "save changes",
       "save and send",
       "view estimate editar",
+      "editar estimate aprovado",
+      "estimate aprovado assinatura",
+      "estimate aprovado perde assinatura",
+      "estimate approved signature",
+      "estimate pending signature",
+      "pendente de assinatura estimate",
+      "estimate volta para pending",
     ],
     route: "/seller/estimates",
     uiLocation: "Financials > Estimates > click estimate row",
     directAnswer:
-      "Para editar um estimate existente, clique na linha dele na tabela. O editor completo abre com as mesmas ideias do builder: services, sections, template, terms, discount, images e preview podem ser ajustados quando disponiveis. View Estimate e apenas visualizacao rapida, nao edicao.",
-    prerequisites: ["O estimate precisa estar visivel na lista/filtros.", "Alteracoes so persistem depois de Save Changes ou Save And Send."],
+      "Para editar um estimate existente, clique na linha dele na tabela. O editor completo abre com as mesmas ideias do builder: services, sections, template, terms, discount, images e preview podem ser ajustados quando disponiveis. Se um estimate aprovado for alterado em partes importantes, o status continua Approved, mas ele pode ficar com pendencia de assinatura e remover a assinatura do cliente.",
+    prerequisites: ["O estimate precisa estar visivel na lista/filtros.", "Alteracoes so persistem depois de Save Changes ou Save And Send.", "Estimate aprovado editado em partes importantes nao volta para status Pending; ele continua Approved, mas pode exigir nova assinatura."],
     commonMistakes: [
       "Abrir Actions > View Estimate tentando editar.",
       "Editar services/terms/discount/images e fechar sem salvar.",
       "Achar que Save And Send envia direto; ele salva e abre o modal de email.",
       "Esperar que mudancas no editor alterem o catalogo em Management > Services.",
+      "Achar que editar estimate aprovado muda o status para Pending; o que pode voltar e a pendencia de assinatura.",
     ],
     bugSignals: [
       "Clicar na linha nao abre o editor.",
@@ -1536,12 +1544,12 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "projects-export-delete-actions",
     module: "projects",
-    intent: "projects export pdf excel actions status delete project",
-    terms: ["export projects", "exportar projetos", "export financial", "baixar projeto", "pdf project", "excel project", "delete project", "deletar projeto", "excluir projeto", "change status project", "mudar status projeto", "actions project"],
+    intent: "projects export pdf excel file format actions status delete project",
+    terms: ["export projects", "export project", "exportar projetos", "exportar projeto", "export project pdf ou excel", "export projects pdf ou excel", "qual arquivo export project", "qual arquivo export projects", "qual arquivo exportar projetos", "qual formato export project", "qual formato export projects", "formato do export project", "formato do export projects", "arquivo export project", "arquivo export projects", "export financial", "baixar projeto", "pdf project", "pdf projects", "excel project", "excel projects", "delete project", "deletar projeto", "excluir projeto", "change status project", "mudar status projeto", "actions project"],
     route: "/seller/projects",
     uiLocation: "Projects > Export / Actions",
     directAnswer:
-      "Em Projects, Export PDF ou Excel gera um relatorio dos projetos visiveis ou selecionados; nao baixa PDFs individuais de cada projeto. Nas actions da lista, voce pode mudar o status. Delete project remove o projeto de forma permanente e deve ser usado com cuidado.",
+      "Em Projects, os formatos de export sao PDF ou Excel. O export gera um relatorio dos projetos visiveis ou selecionados; nao baixa PDFs individuais de cada projeto. Nas actions da lista, voce pode mudar o status. Delete project remove o projeto de forma permanente e deve ser usado com cuidado.",
     prerequisites: ["Para exportar, selecione os projetos desejados no modo de export.", "Para mudar status ou deletar, o usuario precisa conseguir acessar a lista de Projects."],
     commonMistakes: [
       "Achar que export baixa todos os arquivos individuais do projeto.",
@@ -1652,12 +1660,12 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "project-schedule-tab",
     module: "projects",
-    intent: "project schedule service custom subservice workers subcontractors reminders complete",
-    terms: ["project schedule", "schedule do projeto", "agendar servico", "add service schedule", "custom service schedule", "sub service", "subservice", "worker schedule", "subcontractor schedule", "reminder schedule", "mark completed", "set time", "deadline schedule", "dispatch calendar"],
+    intent: "what is project details schedule service custom subservice workers subcontractors reminders complete",
+    terms: ["project schedule", "schedule do projeto", "schedule project details", "project details schedule", "schedule em project details", "aba schedule", "tab schedule", "o que e schedule", "schedule e oq", "schedule e o que", "esse schedule", "pra que serve schedule", "agendamento do projeto", "agenda dos services", "agendar servico", "add service schedule", "custom service schedule", "custom service no schedule", "sub service", "subservice", "worker schedule", "subcontractor schedule", "reminder schedule", "mark completed", "set time", "deadline schedule", "dispatch calendar"],
     route: "/seller/project/details/:id?tab=Schedule",
     uiLocation: "Project Details > Schedule",
     directAnswer:
-      "A Schedule dentro do Project agenda services daquele projeto. Voce pode adicionar Service, Custom Service ou Sub Service, definir start/deadline, horarios, workers, subcontractors, descricao, reminders, editar, deletar e marcar como completed. Sub Service precisa ficar ligado a um service/custom service pai ja agendado.",
+      "Em Project Details, a tab Schedule e a agenda dos services daquele projeto. Ela serve para definir quando cada service, custom service ou sub service vai acontecer, quem vai executar, start/deadline, horarios, descricao, reminders, edit/delete e mark completed. Nao e o mesmo Schedule global: aqui o foco e organizar os services dentro de um projeto especifico.",
     prerequisites: ["Precisa ter pelo menos um worker ou subcontractor atribuido para criar/editar o agendamento.", "Sub Service depende de um service/custom service pai."],
     commonMistakes: [
       "Confundir Schedule global com Schedule dentro do Project.",
@@ -1701,15 +1709,15 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     id: "project-estimates-tab",
     module: "projects",
     intent: "project estimates multiple estimates approval signature cancel restore manual approval remove signature invoice",
-    terms: ["estimate dentro do project", "project estimate", "estimates do projeto", "varios estimates", "manual approval", "remove signature", "restore estimate", "cancel estimate project", "assinatura sumiu", "pending approval", "editar estimate aprovado", "convert project estimate to invoice", "pdf needs update"],
+    terms: ["estimate dentro do project", "project estimate", "estimates do projeto", "varios estimates", "manual approval", "remove signature", "restore estimate", "cancel estimate project", "assinatura sumiu", "pending signature", "pendente de assinatura", "editar estimate aprovado", "convert project estimate to invoice", "pdf needs update"],
     route: "/seller/project/details/:id?tab=Estimate",
     uiLocation: "Project Details > Estimate",
     directAnswer:
-      "Na tab Estimate do projeto, voce pode ter varios estimates. Estimates aprovados somam no valor e services do projeto. Criar ou editar estimate ali usa o mesmo builder de Estimates. Se um estimate aprovado for alterado em partes importantes, como services, intro letter ou terms, ele pode voltar a exigir aprovacao e a assinatura do cliente pode ser removida.",
-    prerequisites: ["Aprovacao do estimate e o que leva os services para o projeto.", "Convert to invoice pode ficar bloqueado quando o projeto ja esta fully paid."],
+      "Na tab Estimate do projeto, voce pode ter varios estimates. Estimates aprovados somam no valor e services do projeto. Criar ou editar estimate ali usa o mesmo builder de Estimates. Se um estimate aprovado for alterado em partes importantes, como services, intro letter ou terms, o status continua Approved, mas ele pode ficar com pendencia de assinatura e a assinatura do cliente pode ser removida.",
+    prerequisites: ["Aprovacao do estimate e o que leva os services para o projeto.", "Estimate aprovado editado em partes importantes nao volta para status Pending; ele continua Approved, mas pode exigir nova assinatura.", "Convert to invoice pode ficar bloqueado quando o projeto ja esta fully paid."],
     commonMistakes: [
       "Achar que View Estimate e o editor completo.",
-      "Editar estimate aprovado e nao perceber que ele voltou a ficar pendente.",
+      "Editar estimate aprovado e achar que o status volta para Pending; o que pode voltar e a pendencia de assinatura.",
       "Confundir Manual Approval com assinatura real do cliente.",
       "Achar que Cancel e Delete tem o mesmo efeito.",
     ],
@@ -1796,7 +1804,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     id: "projects-common-issues",
     module: "projects",
     intent: "common project issues permissions filters converted estimate financial stale pdf schedule confusion",
-    terms: ["nao vejo projects", "projeto nao aparece", "project nao aparece", "estimate sumiu", "financial view errado", "schedule confuso", "estimate voltou pending", "assinatura removida", "change order pdf antigo", "project bug", "problema project", "erro projeto"],
+    terms: ["nao vejo projects", "projeto nao aparece", "project nao aparece", "estimate sumiu", "financial view errado", "schedule confuso", "estimate pendente assinatura", "estimate pending signature", "assinatura removida", "change order pdf antigo", "project bug", "problema project", "erro projeto"],
     route: "/seller/projects",
     uiLocation: "Projects / Project Details",
     directAnswer:
@@ -1804,7 +1812,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     prerequisites: ["Permissao Projects para acessar projetos.", "Filtros ativos podem esconder projetos.", "Algumas tabs e actions dependem de status, assinatura, saldo ou permissao."],
     commonMistakes: [
       "Confundir project schedule, global schedule e dispatch.",
-      "Achar que edit em estimate aprovado nunca remove assinatura.",
+      "Achar que edit em estimate aprovado muda o status para Pending; o status continua Approved, mas pode exigir nova assinatura.",
       "Comparar Financial View sem conferir costs e invoices.",
       "Usar Change Order e esperar PDF do estimate atualizar imediatamente.",
     ],
@@ -1855,6 +1863,34 @@ export function searchPlaybooks(query: string, limit = 4) {
         /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)
       ) {
         score += 8;
+      }
+      if (
+        playbook.id === "projects-export-delete-actions" &&
+        /\b(export|exportar|arquivo|formato|pdf|excel)\b/.test(normalizedQuery) &&
+        /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)
+      ) {
+        score += 8;
+      }
+      if (
+        playbook.id === "estimates-main-export" &&
+        /\b(export|exportar|arquivo|formato|pdf|excel)\b/.test(normalizedQuery) &&
+        /\b(estimate|estimates|orcamento|orcamentos)\b/.test(normalizedQuery)
+      ) {
+        score += 8;
+      }
+      if (
+        (playbook.id === "estimates-editor-existing-estimate" || playbook.id === "project-estimates-tab") &&
+        /\b(estimate|estimates|orcamento|orcamentos)\b/.test(normalizedQuery) &&
+        /\b(assinatura|signature|assinado|approved|aprovado|editar|edit|pending|pendente)\b/.test(normalizedQuery)
+      ) {
+        score += 12;
+      }
+      if (
+        playbook.id === "project-schedule-tab" &&
+        /\b(schedule|agenda|agendamento|agendar|subservice|sub service)\b/.test(normalizedQuery) &&
+        /\b(project|projects|projeto|projetos|details|detalhes)\b/.test(normalizedQuery)
+      ) {
+        score += 12;
       }
       return { playbook, score };
     })
