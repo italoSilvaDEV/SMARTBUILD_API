@@ -1,12 +1,49 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
+import {
+  buildUnsupportedTypesEntityError,
+  isTypesEntitySupportedByPrismaClient,
+  normalizeSyncTypeForEntity,
+  shouldNormalizeProjectsSyncType,
+} from "./syncPreferenceUtils";
 
+const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects"];
 
 export class SyncPreferencesController {
+  constructor() {
+    this.listByCompany = this.listByCompany.bind(this);
+    this.listByUser = this.listByUser.bind(this);
+    this.create = this.create.bind(this);
+    this.update = this.update.bind(this);
+    this.delete = this.delete.bind(this);
+    this.updateIsDisable = this.updateIsDisable.bind(this);
+  }
+
+  private async normalizeQboToSmartOnlyPreferences(where: { companyId?: string; userId?: string }) {
+    for (const typesEntity of QBO_TO_SMART_ONLY_SYNC_ENTITIES) {
+      if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+        continue;
+      }
+
+      await (prisma as any).syncPreferences.updateMany({
+        where: {
+          ...where,
+          typesEntity,
+          NOT: { typeSync: "QuickBooksToSmartBuild" },
+        },
+        data: {
+          typeSync: "QuickBooksToSmartBuild",
+        },
+      });
+    }
+  }
+
   async listByCompany(req: Request, res: Response) {
     const { companyId } = req.params;
 
     try {
+      await this.normalizeQboToSmartOnlyPreferences({ companyId });
+
       const prefs = await prisma.syncPreferences.findMany({
         where: { companyId },
         include: {
@@ -25,6 +62,8 @@ export class SyncPreferencesController {
     const { userId } = req.params;
 
     try {
+      await this.normalizeQboToSmartOnlyPreferences({ userId });
+
       const prefs = await prisma.syncPreferences.findMany({
         where: { userId },
         include: { company: { select: { id: true, name: true } } },
@@ -40,7 +79,21 @@ export class SyncPreferencesController {
   async create(req: Request, res: Response) {
     const { typesEntity, typeSync, userId, companyId } = req.body;
 
+    if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+      const error = buildUnsupportedTypesEntityError(typesEntity);
+      return res.status(409).json({
+        error: "QuickBooks sync setup is not ready",
+        details: error.message,
+        code: (error as any).code,
+        typesEntity,
+      });
+    }
+
     try {
+      if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+        throw buildUnsupportedTypesEntityError(typesEntity);
+      }
+
       const existing = await prisma.syncPreferences.findFirst({
         where: { typesEntity, userId, companyId },
       });
@@ -49,10 +102,12 @@ export class SyncPreferencesController {
         return res.status(400).json({ error: "Preferência já cadastrada para essa entidade." });
       }
 
+      const normalizedTypeSync = normalizeSyncTypeForEntity(typesEntity, typeSync);
+
       const created = await prisma.syncPreferences.create({
         data: {
           typesEntity,
-          typeSync,
+          typeSync: normalizedTypeSync,
           userId,
           companyId,
         },
@@ -70,9 +125,19 @@ export class SyncPreferencesController {
     const { typeSync } = req.body;
 
     try {
+      const existing = await prisma.syncPreferences.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "PreferÃªncia nÃ£o encontrada" });
+      }
+
+      const normalizedTypeSync = normalizeSyncTypeForEntity(existing.typesEntity, typeSync);
+
       const updated = await prisma.syncPreferences.update({
         where: { id },
-        data: { typeSync },
+        data: { typeSync: normalizedTypeSync },
       });
 
       return res.json(updated);
@@ -103,9 +168,25 @@ export class SyncPreferencesController {
     }
 
     try {
+      const existing = await prisma.syncPreferences.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "PreferÃªncia nÃ£o encontrada" });
+      }
+
+      const data: { isDisable: boolean; typeSync?: "QuickBooksToSmartBuild" } = {
+        isDisable,
+      };
+
+      if (shouldNormalizeProjectsSyncType(existing.typesEntity, existing.typeSync)) {
+        data.typeSync = "QuickBooksToSmartBuild";
+      }
+
       const updated = await prisma.syncPreferences.update({
         where: { id },
-        data: { isDisable },
+        data,
       });
 
       return res.json(updated);

@@ -7,6 +7,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import { buildEstimateFinancialFields, EstimateDiscountType } from "../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 type payloadCreateEstimate = {
     approvedAt: Date;
@@ -251,6 +252,8 @@ export class CreateNewEstimateController {
                     console.error("[createNewEstimate] Error adding company signature to PDF:", pdfErr);
                 }
             }
+
+            fireAndForgetUpsertEstimateToQBO(project.company_id, (req as any).userId, createEstimate.id);
 
             return res.status(201).json({
                 message: "Estimate created successfully",

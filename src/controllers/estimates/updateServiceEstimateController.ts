@@ -1,6 +1,7 @@
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 type Fields = {
     name?: string
@@ -49,6 +50,17 @@ export class UpdateServiceEstimateController {
         const serviceEstimate = await prisma.estimateServiceProject.findUnique({
             where: {
                 id: serviceId
+            },
+            include: {
+                estimate: {
+                    select: {
+                        project: {
+                            select: {
+                                company_id: true,
+                            }
+                        }
+                    }
+                }
             }
         })
 
@@ -135,6 +147,8 @@ export class UpdateServiceEstimateController {
                         where: { id: serviceId }
                     })
                 })
+
+                fireAndForgetUpsertEstimateToQBO(serviceEstimate.estimate?.project?.company_id, (req as any).userId, serviceEstimate.estimateId);
 
                 return res.status(200).json({
                     message: "Service estimate updated successfully",

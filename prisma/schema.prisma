@@ -1603,6 +1603,7 @@ model Invoice {
   // Campos específicos para QuickBooks
   externalDocNumber String?
   idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
+  qboCustomerRef    String? // CustomerRef original do QBO: pode ser Customer pai ou QBO Project
 
   // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
   idQuickbookContabio         String? // ID do invoice no QuickBooks criado via Stripe
@@ -1657,6 +1658,7 @@ model Invoice {
   imagesAttachments ImagesAttachments[]
 
   @@index([externalInvoiceId, invoiceType])
+  @@index([companyId, qboCustomerRef])
 }
 
 model InvoiceSendHistory {
@@ -1816,6 +1818,11 @@ model Estimate {
   canceledById       String?
   cancellationReason String?   @db.Text
 
+  idQuickbooks        String?
+  quickbooksSyncToken String?
+  quickbooksUpdatedAt DateTime?
+  quickbooksRaw       Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
@@ -1872,10 +1879,14 @@ model EstimateServiceProject {
   price      Decimal?
   start_date String?
   deadline   String?
+  idQuickbooks String?
+  quickbooksRaw Json?
 
   date_creation  DateTime        @default(now())
   date_update    DateTime        @updatedAt
   serviceProject ServiceProject?
+
+  @@index([estimateId, idQuickbooks])
 }
 
 model EstimateAiSession {
@@ -2237,6 +2248,8 @@ model SyncPreferences {
 
 enum TypesEntity {
   customers
+  projects
+  estimates
   invoices
   payments
 }
