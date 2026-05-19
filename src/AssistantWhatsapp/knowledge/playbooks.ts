@@ -6,6 +6,7 @@ const appUrl = (assistantWhatsappEnv.publicAppUrl || "the system").replace(/\/$/
 const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the system login page";
 const settingsUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/stripe-config` : "Management > Settings";
 const userManagementUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/users` : "Management > User Management";
+const servicesUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/services` : "Management > Services";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
@@ -574,6 +575,268 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     ],
     supportEscalationNote:
       "Se o office nao e protegido, nao tem usuarios vinculados e mesmo assim nao deleta ou nao salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-overview",
+    module: "services",
+    intent: "navigate services materials catalog categories",
+    terms: ["services", "materials", "catalogo", "catalog", "management services", "tela services", "aba services", "aba materials", "categorias", "category", "categoria", "lista services", "onde fica services"],
+    route: "/services",
+    uiLocation: `Management > Services (${servicesUrl})`,
+    directAnswer:
+      `Services fica em Management > Services. Nessa tela o sistema mostra as abas Services e Materials, com categorias, imagem, nome, status e actions. Use a busca para localizar uma categoria, clique em New para criar uma nova, ou clique em uma categoria para abrir os detalhes.`,
+    prerequisites: ["O usuario precisa ter permissao Services para ver essa tela."],
+    commonMistakes: [
+      "Procurar Services dentro de Settings; o caminho correto e Management > Services.",
+      "Nao ver a tela por falta da permissao Services.",
+      "Confundir a aba Materials do catalogo com Cost of materials dentro de um projeto.",
+    ],
+    bugSignals: [
+      "Usuario tem permissao Services e mesmo assim nao ve o menu.",
+      "A lista de categorias nao carrega mesmo apos atualizar a tela.",
+      "Clicar em uma categoria nao abre os detalhes.",
+    ],
+    supportEscalationNote:
+      "Se o usuario tem permissao correta e a tela nao abre ou nao carrega categorias, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-create-category",
+    module: "services",
+    intent: "create service or material category",
+    terms: ["new category", "create category", "criar categoria", "nova categoria", "categoria de material", "categoria de service", "category image", "imagem categoria", "materials new", "services new"],
+    route: "/services",
+    uiLocation: "Management > Services > New",
+    directAnswer:
+      "Para criar categoria, va em Management > Services, clique em New, escolha se ela fica em Services ou Materials, informe o nome e adicione uma imagem. Depois confirme a criacao.",
+    prerequisites: ["Nome da categoria e obrigatorio.", "Imagem da categoria e obrigatoria.", "A imagem precisa ser um arquivo de imagem valido e ter ate 5MB."],
+    commonMistakes: [
+      "Criar sem imagem.",
+      "Usar arquivo que nao e imagem ou arquivo grande demais.",
+      "Criar uma categoria com nome que ja existe na mesma aba.",
+      "Criar em Materials quando queria que aparecesse como Services, ou o contrario.",
+    ],
+    bugSignals: [
+      "Nome e imagem validos, mas a categoria nao salva.",
+      "Categoria criada nao aparece depois de atualizar a lista.",
+      "Upload de imagem valida ate 5MB falha repetidamente.",
+    ],
+    supportEscalationNote:
+      "Se nome, aba e imagem estao corretos e mesmo assim nao salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-edit-category-status",
+    module: "services",
+    intent: "edit category image name status enabled disabled",
+    terms: ["edit category", "editar categoria", "trocar imagem categoria", "status category", "enabled", "disabled", "ativar categoria", "desativar categoria", "ligar categoria", "desligar categoria"],
+    route: "/category/:id",
+    uiLocation: "Management > Services > category details",
+    directAnswer:
+      "Para editar uma categoria, abra Management > Services, clique na categoria e use a opcao de editar para alterar nome ou imagem. Na tela de detalhes tambem existe o switch de status, que muda a categoria entre Enabled e Disabled.",
+    prerequisites: ["A categoria precisa existir.", "Imagem nova, se enviada, precisa ser imagem valida ate 5MB."],
+    commonMistakes: [
+      "Achar que desativar e o mesmo que deletar; status apenas muda o estado exibido da categoria.",
+      "Tentar salvar nome igual ao de outra categoria da mesma aba.",
+      "Trocar por uma imagem invalida ou grande demais.",
+    ],
+    bugSignals: [
+      "Categoria com dados validos nao atualiza.",
+      "Status muda na tela, mas volta ao valor antigo ao atualizar.",
+      "Imagem valida nao atualiza.",
+    ],
+    supportEscalationNote:
+      "Se editar nome, imagem ou status com dados validos e a mudanca nao permanece, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-subcategories",
+    module: "services",
+    intent: "create edit delete subcategories inside category",
+    terms: ["subcategory", "sub category", "subcategoria", "add subcategory", "criar subcategoria", "editar subcategoria", "deletar subcategoria", "remove subcategory"],
+    route: "/category/:id",
+    uiLocation: "Management > Services > category details > Add Subcategory",
+    directAnswer:
+      "Para criar subcategoria, abra a categoria em Management > Services e clique em Add Subcategory. Informe o nome e salve. Pela propria subcategoria voce tambem pode editar ou deletar.",
+    prerequisites: ["A categoria precisa existir.", "Nome da subcategoria e obrigatorio."],
+    commonMistakes: [
+      "Criar subcategoria sem nome.",
+      "Usar nome que ja existe dentro da mesma categoria.",
+      "Deletar subcategoria achando que os itens dentro dela ficarao salvos; ao deletar a subcategoria, os services/materials dentro dela tambem sao removidos.",
+    ],
+    bugSignals: [
+      "Subcategoria com nome valido nao salva.",
+      "Subcategoria deletada continua aparecendo apos atualizar.",
+      "Subcategoria nao abre ou nao mostra os itens dentro dela.",
+    ],
+    supportEscalationNote:
+      "Se a subcategoria tem nome valido e mesmo assim nao salva, edita ou deleta, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-create-edit-service",
+    module: "services",
+    intent: "create edit delete service material item fixed variable price measurement product",
+    terms: ["add service", "create service", "new service", "criar service", "criar servico", "editar service", "delete service", "fixed price", "variable price", "minimum price", "maximum price", "measurement", "product", "price type", "preco fixo", "preco variavel"],
+    route: "/category/:id",
+    uiLocation: "Management > Services > category details > subcategory > Add Service",
+    directAnswer:
+      "Para criar um item, abra a categoria, entre na subcategoria e clique em Add Service. Informe Service Name, escolha Service Type entre Measurement ou Product, escolha Price Type entre Fixed ou Variable e preencha os valores. Description e opcional.",
+    prerequisites: [
+      "O item precisa estar dentro de uma subcategoria.",
+      "Service Name e obrigatorio.",
+      "Fixed precisa de fixed price.",
+      "Variable precisa de minimum price e maximum price, com maximum maior que minimum.",
+    ],
+    commonMistakes: [
+      "Tentar criar service direto na categoria, sem subcategoria.",
+      "Nao selecionar Service Type ou Price Type.",
+      "Usar variable price com maximum menor ou igual ao minimum.",
+      "Confundir Description com campo obrigatorio; ela e opcional.",
+    ],
+    bugSignals: [
+      "Item com nome, tipo e preco validos nao salva.",
+      "Edicao confirma, mas o item volta ao valor antigo.",
+      "Item deletado continua aparecendo apos atualizar.",
+    ],
+    supportEscalationNote:
+      "Se os campos obrigatorios estao corretos e o item nao salva, edita ou deleta, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-vs-materials",
+    module: "services",
+    intent: "difference between services tab materials tab and project cost materials",
+    terms: ["services vs materials", "materials", "material", "cost of materials", "custo de material", "catalogo de material", "material no catalogo", "material no projeto", "lancar material", "material cost"],
+    route: "/services",
+    uiLocation: "Management > Services > Services/Materials",
+    directAnswer:
+      "A aba Services e a aba Materials em Management > Services sao catalogos reutilizaveis. Esses itens podem ser selecionados depois em estimates e projects. Ja Cost of materials dentro de um projeto e para registrar compras, custos ou creditos reais daquele projeto.",
+    prerequisites: ["Para criar catalogo, use Management > Services.", "Para lancar custo real, use Project Details > Cost of materials."],
+    commonMistakes: [
+      "Criar material no catalogo esperando que isso registre custo real em um projeto.",
+      "Lancar custo em Cost of materials esperando que isso crie item reutilizavel no catalogo.",
+      "Procurar custo real dentro da aba Materials do catalogo.",
+    ],
+    bugSignals: [
+      "Material criado no catalogo nao aparece para selecao em estimate/project mesmo com categoria, subcategoria e item preenchidos.",
+      "Custo real salvo em projeto nao aparece na tabela de custos do projeto.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta no fluxo correto e o item/custo nao aparece apos atualizar, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-in-estimates",
+    module: "services",
+    intent: "use catalog services materials custom service in estimate builder",
+    terms: ["estimate services", "new estimate service", "servico no estimate", "material no estimate", "custom service", "custom service estimate", "custom service catalogo", "custom service salva", "custom service salva no catalogo", "adicionar custom service", "services step estimate", "buscar categoria estimate", "variable price estimate", "safety margin", "photos estimate"],
+    route: "/seller/new-estimate/services/:id",
+    uiLocation: "Financials > Estimates > New Estimate > Services",
+    directAnswer:
+      "No estimate manual, va ate a etapa Services. Voce pode buscar categorias, filtrar entre Services e Materials, abrir uma categoria, escolher o item dentro da subcategoria e configurar quantidade/preco antes de adicionar ao estimate.",
+    prerequisites: ["Para avancar no estimate, precisa ter pelo menos um item selecionado.", "Itens do catalogo precisam existir com categoria, subcategoria e service/material dentro."],
+    commonMistakes: [
+      "Procurar um material com o filtro em Services, ou um service com o filtro em Materials.",
+      "Achar que Custom service cria item no catalogo; ele vale apenas para aquele estimate.",
+      "Tentar completar o estimate sem nenhum item selecionado.",
+      "Para item com preco variavel, nao ajustar o valor dentro da faixa mostrada.",
+    ],
+    bugSignals: [
+      "Categoria com itens validos nao aparece no estimate mesmo com filtro correto.",
+      "Item selecionado nao entra no estimate apos configurar quantidade/preco.",
+      "Custom service com nome, quantidade e preco validos nao adiciona.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta na etapa correta, com filtro certo e campos validos, mas o item nao aparece ou nao adiciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-in-projects",
+    module: "services",
+    intent: "use services materials custom services in projects and project details",
+    terms: ["project services", "new project service", "servico no project", "material no project", "custom service project", "estimate virou project", "servicos do projeto", "project details services", "status service", "responsible service", "stages service"],
+    route: "/seller/new-project/services/:id",
+    uiLocation: "Projects > New Project > Services / Project Details > Services",
+    directAnswer:
+      "No projeto manual, a escolha de Services e Materials funciona como no estimate: abrir categoria, escolher item e configurar antes de adicionar. Quando um estimate vira projeto, os itens selecionados no estimate passam a compor os services do projeto.",
+    prerequisites: ["Para criar projeto manual com itens, precisa selecionar pelo menos um service/material ou custom service.", "Para acompanhar depois, abra Project Details > Services."],
+    commonMistakes: [
+      "Esperar que editar o catalogo altere automaticamente itens ja adicionados em projetos antigos.",
+      "Confundir services do projeto com categorias do catalogo.",
+      "Procurar custos reais de materiais na aba Services do projeto; custos ficam em Cost of materials.",
+    ],
+    bugSignals: [
+      "Estimate aprovado/conversao nao levou os itens para o projeto.",
+      "Service do projeto nao abre detalhes.",
+      "Status, responsavel ou datas do service nao permanecem apos salvar.",
+    ],
+    supportEscalationNote:
+      "Se o projeto foi criado corretamente e os services nao aparecem ou nao salvam alteracoes, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-material-costs",
+    module: "services",
+    intent: "project cost of materials actual purchases credits files",
+    terms: ["cost of materials", "material cost", "custo de materiais", "custo real de material", "lancar custo real de material", "lancar custo material", "purchase", "compras", "credit material", "invoice material", "anexo material", "export material cost", "project material cost"],
+    route: "/seller/details/:idproject",
+    uiLocation: "Project Details > Cost of materials",
+    directAnswer:
+      "Para lancar custo real de material, abra o projeto e va em Cost of materials. Clique em New cost, informe material, tipo Cost ou Credit, preco, quantidade, service relacionado e anexo opcional. Tambem da para adicionar mais de uma compra, editar, deletar e exportar.",
+    prerequisites: ["O custo precisa estar dentro de um projeto.", "Material, preco, quantidade e service relacionado precisam ser preenchidos."],
+    commonMistakes: [
+      "Criar material em Management > Services achando que isso lanca custo real no projeto.",
+      "Nao selecionar o service relacionado ao custo.",
+      "Anexar arquivo fora dos formatos aceitos ou grande demais.",
+      "Confundir Credit com Cost.",
+    ],
+    bugSignals: [
+      "Custo com campos validos nao salva.",
+      "Anexo valido nao aparece depois de salvar.",
+      "Exportacao nao inclui custos que aparecem na tabela.",
+    ],
+    supportEscalationNote:
+      "Se o custo tem dados validos e mesmo assim nao salva, edita, deleta ou exporta corretamente, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-subcontractor-usage",
+    module: "services",
+    intent: "services categories used in subcontractor cost schedule categories",
+    terms: ["subcontractor services", "subcontractor cost", "categoria subcontractor", "subcontractor category", "from schedule", "all categories", "new category subcontractor", "schedule category", "custo subcontractor"],
+    route: "/seller/details/:idproject",
+    uiLocation: "Project Details > Subcontractor Cost",
+    directAnswer:
+      "Em Subcontractor Cost, a categoria serve para organizar ou relacionar o custo com itens do projeto. O seletor pode mostrar itens From Schedule e All Categories, e quando o fluxo oferecer a opcao, voce pode criar uma nova categoria dali.",
+    prerequisites: ["O custo de subcontractor precisa estar dentro de um projeto.", "Para usar categorias do catalogo, elas precisam existir em Management > Services."],
+    commonMistakes: [
+      "Achar que selecionar categoria em Subcontractor Cost cria ou edita um service completo no catalogo.",
+      "Procurar services do catalogo dentro da tela de subcontractor em vez de Management > Services.",
+      "Nao selecionar subcontractor, datas ou valor ao criar custo.",
+    ],
+    bugSignals: [
+      "Categoria existente nao aparece no seletor de custo.",
+      "Custo de subcontractor com dados validos nao salva.",
+      "Item From Schedule nao aparece mesmo existindo no schedule do projeto.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta no projeto correto e os dados estao validos, mas categoria ou custo nao funciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "services-common-issues",
+    module: "services",
+    intent: "common services materials catalog issues permissions missing items wrong flow",
+    terms: ["nao vejo services", "services nao aparece", "categoria nao aparece", "material nao aparece", "service nao aparece", "custom service catalogo", "custom service nao salva catalogo", "nao consigo criar service", "nao consigo criar categoria", "nao consigo salvar material", "erro services", "problema services"],
+    route: "/services",
+    uiLocation: "Management > Services",
+    directAnswer:
+      "Se Services nao aparece, confira se seu usuario tem permissao Services. Se uma categoria ou item nao aparece em estimate/project, confira se ele foi criado na aba correta, se a categoria tem subcategoria e se existe um service/material dentro dela.",
+    prerequisites: ["Permissao Services para acessar o catalogo.", "Categoria, subcategoria e item precisam estar criados para aparecerem nos fluxos de estimate/project."],
+    commonMistakes: [
+      "Estar na aba ou filtro errado.",
+      "Criar apenas categoria, mas nao criar subcategoria e item.",
+      "Procurar custo real de material no catalogo em vez de Project Details > Cost of materials.",
+      "Achar que Custom service salvo em estimate/project vira item do catalogo.",
+    ],
+    bugSignals: [
+      "Usuario tem permissao correta, categoria completa e filtro correto, mas o item nao aparece.",
+      "Campos obrigatorios estao validos e mesmo assim o sistema nao salva.",
+      "Alteracoes aparecem salvas, mas somem apos atualizar a tela.",
+    ],
+    supportEscalationNote:
+      "Se o fluxo esta correto e mesmo assim nao funciona, orientar como possivel falha tecnica, sem criar ticket automatico nesta V1.",
   },
 ];
 

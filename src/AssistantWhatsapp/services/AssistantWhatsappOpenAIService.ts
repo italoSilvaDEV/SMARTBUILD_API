@@ -116,7 +116,7 @@ export class AssistantWhatsappOpenAIService {
     if (!match) {
       return {
         text:
-          "Nesta V1 eu consigo ajudar com acesso/cadastro, Clients, Estimates, Settings e User Management. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
+          "Nesta V1 eu consigo ajudar com acesso/cadastro, Clients, Estimates, Settings, User Management e Services/Materials. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
         responseId,
         toolsUsed: existingTools,
       };
