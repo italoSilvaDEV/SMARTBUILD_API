@@ -4,9 +4,12 @@ import { normalizeText } from "../utils/text";
 
 const appUrl = (assistantWhatsappEnv.publicAppUrl || "the system").replace(/\/$/, "");
 const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the system login page";
+const estimatesUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/seller/estimates` : "Financials > Estimates";
 const settingsUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/stripe-config` : "Management > Settings";
 const userManagementUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/users` : "Management > User Management";
 const servicesUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/services` : "Management > Services";
+const projectsUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/seller/projects` : "Projects";
+const newProjectUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/seller/new-project/type-project` : "Projects > New Project";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
@@ -125,6 +128,652 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "Se os planos ativos nao aparecem para o usuario, tratar como possivel falha tecnica no cadastro/checkout.",
   },
   {
+    id: "estimates-main-overview",
+    module: "estimates",
+    intent: "estimates main page overview navigation dashboard filters table export actions",
+    terms: ["orcamentos", "financials estimates", "seller estimates", "pagina estimates", "lista estimates", "main estimates", "onde vejo estimates", "onde vejo meus estimates", "pagina principal estimates", "lista principal estimates"],
+    route: "/seller/estimates",
+    uiLocation: `Financials > Estimates (${estimatesUrl})`,
+    directAnswer:
+      `A pagina principal de estimates fica em Financials > Estimates. Ali o sistema mostra filtros, dashboard, busca, tabela de estimates, exportacao, actions e o botao New Estimate. Depois que um estimate e convertido para project, o acompanhamento principal passa a ser em Projects.`,
+    prerequisites: ["O usuario precisa ter permissao Estimates para ver a tela.", "A lista principal mostra estimates da area de estimates; projects convertidos devem ser acompanhados em Projects."],
+    commonMistakes: [
+      "Procurar estimate convertido dentro da lista principal em vez de Projects.",
+      "Nao ver a tela por falta da permissao Estimates.",
+      "Achar que New Estimate e a unica forma de acessar um estimate existente; clicar na linha abre o editor do estimate.",
+    ],
+    bugSignals: [
+      "Usuario tem permissao Estimates e mesmo assim nao ve o menu.",
+      "A pagina carrega, mas dashboard e tabela ficam vazios com filtros padrao mesmo havendo estimates.",
+      "Clicar em uma linha nao abre o editor.",
+    ],
+    supportEscalationNote:
+      "Se o usuario tem permissao correta e a tela ou tabela nao carrega, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-main-filters-search-sort",
+    module: "estimates",
+    intent: "filter search sort estimates list by period date range status number client",
+    terms: ["filter estimates", "filtros estimates", "status filter", "period filter", "date range", "custom date range", "this year", "this quarter", "last 3 months", "last month", "this month", "last 30 days", "all period", "clear all", "search estimate", "buscar estimate", "search por endereco", "ordenar estimates", "sort estimates"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Filters / Search / Table headers",
+    directAnswer:
+      "Na lista de estimates, use Period para filtrar por tempo, o date range para um intervalo personalizado e Status para Approved, Pending ou Canceled. A busca encontra estimate number ou nome do client. A tabela tambem permite ordenar por Number, Client/Address, Price e Status.",
+    prerequisites: ["Custom date range tem prioridade quando estiver preenchido.", "Search foi feito para number ou client name."],
+    commonMistakes: [
+      "Buscar por address, seller ou price esperando resultado; a busca da tela usa number ou client name.",
+      "Esquecer um status desmarcado e achar que o estimate sumiu.",
+      "Usar date range antigo e nao clicar Clear All.",
+    ],
+    bugSignals: [
+      "Clear All nao volta os filtros ao padrao.",
+      "Estimate aparece sem search, mas desaparece mesmo buscando pelo numero correto.",
+      "Ordenacao nao muda quando clica no titulo da coluna.",
+    ],
+    supportEscalationNote:
+      "Se filtros, search ou ordenacao nao respondem com dados claramente visiveis, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-main-dashboard",
+    module: "estimates",
+    intent: "estimates dashboard chart total estimates average value monthly sales filters",
+    terms: ["estimate dashboard", "dashboard estimates", "grafico estimates", "total estimates", "average value", "monthly sales", "dashboard vazio", "grafico vazio", "cards estimates", "o dashboard conta quantidade"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Estimates Dashboard",
+    directAnswer:
+      "O dashboard de estimates fica acima da tabela e respeita os filtros da tela. Ele mostra o grafico mensal e permite alternar entre Total Estimates e Average Value. Esses cards sao valores financeiros dos estimates, nao apenas contagem de linhas.",
+    prerequisites: ["Os filtros de periodo, date range e status afetam o dashboard.", "Se nao houver estimates dentro do filtro atual, o grafico pode ficar vazio."],
+    commonMistakes: [
+      "Interpretar Total Estimates como quantidade simples em vez de valor total.",
+      "Achar que o dashboard ignora filtros da tabela.",
+      "Manter um date range/status restrito e achar que o grafico esta com erro.",
+    ],
+    bugSignals: [
+      "Tabela mostra estimates no filtro atual, mas dashboard fica zerado.",
+      "Trocar filtros nao atualiza o grafico.",
+      "O card Average Value aparece inconsistente com a lista filtrada.",
+    ],
+    supportEscalationNote:
+      "Se filtros e dados estao corretos e o dashboard nao atualiza, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-main-table",
+    module: "estimates",
+    intent: "estimates table columns row click status price seller client address",
+    terms: ["tabela estimates", "table estimates", "colunas estimates", "number date", "client address", "price seller status actions", "clicar na linha", "abrir estimate", "status badge", "preco estimate", "seller estimate"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Estimates table",
+    directAnswer:
+      "A tabela mostra Number com data, Client/Address, Price, Seller, Status e Actions. O Price mostra o total efetivo do estimate, considerando ajustes como desconto/final amount quando existirem. Ao clicar na linha, o sistema abre o editor completo do estimate.",
+    prerequisites: ["O estimate precisa estar dentro dos filtros atuais para aparecer.", "Para conferir sem editar, use Actions > View Estimate."],
+    commonMistakes: [
+      "Clicar na linha esperando abrir apenas visualizacao; a linha abre o editor.",
+      "Comparar price da tabela com subtotal antigo sem considerar desconto ou total final.",
+      "Procurar um project convertido nessa tabela em vez de Projects.",
+    ],
+    bugSignals: [
+      "Price da tabela nao bate com o total efetivo mostrado no estimate.",
+      "Status aparece errado apos atualizar a pagina.",
+      "Actions nao abre para uma linha visivel.",
+    ],
+    supportEscalationNote:
+      "Se as informacoes da tabela nao batem com o estimate aberto, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-main-export",
+    module: "estimates",
+    intent: "export estimates pdf excel selection mode report visible selected estimates",
+    terms: ["export estimates", "exportar estimates", "exporto estimates", "como exporto estimates", "exportar estimates em excel", "exporto estimates em excel", "como exporto estimates em excel", "exportar em excel", "export pdf estimates", "export excel estimates", "excel estimates", "relatorio excel", "pdf estimates", "relatorio estimates", "selecionar estimates export", "export pegou estimates errados"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Export Estimates",
+    directAnswer:
+      "Para exportar, clique em Export Estimates e escolha PDF ou Excel. O primeiro clique entra em modo selecao e ja marca os estimates visiveis pelo filtro atual. Ajuste a selecao se precisar e confirme novamente para gerar o relatorio.",
+    prerequisites: ["Precisa ter pelo menos um estimate selecionado.", "A exportacao usa a lista visivel/selecionada no momento."],
+    commonMistakes: [
+      "Achar que Export PDF baixa cada PDF individual; ele gera um relatorio da lista selecionada.",
+      "Esquecer filtros ativos antes de exportar.",
+      "Cancelar o modo selecao antes de confirmar a exportacao.",
+    ],
+    bugSignals: [
+      "Export com estimates selecionados nao gera arquivo.",
+      "Relatorio exportado nao respeita a selecao atual.",
+      "Botao fica travado em modo export.",
+    ],
+    supportEscalationNote:
+      "Se ha estimates selecionados e a exportacao nao gera PDF/Excel, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-row-editor",
+    module: "estimates",
+    intent: "open estimate row editor save changes save and send discard close preview edit services terms discount location",
+    terms: ["editar estimate", "abrir estimate", "clicar estimate", "row editor", "editor estimate", "save changes", "save and send", "discard changes", "close estimate", "preview estimate", "editar services estimate", "editar desconto estimate", "project location estimate"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > click estimate row",
+    directAnswer:
+      "Para editar um estimate existente, clique na linha dele. O editor abre com preview e permite ajustar conteudo, services, custom service, secoes, terms, desconto e project location quando disponivel. Save Changes salva; Save And Send salva e abre o envio por email.",
+    prerequisites: ["So existem botoes de salvar quando ha alteracoes pendentes.", "Close fecha o editor; Discard Changes desfaz alteracoes nao salvas."],
+    commonMistakes: [
+      "Usar View Estimate tentando editar; View Estimate e apenas visualizacao rapida.",
+      "Fechar sem salvar depois de alterar.",
+      "Esperar Save And Send enviar direto sem passar pelo modal de email.",
+    ],
+    bugSignals: [
+      "Alteracoes salvas somem depois de atualizar.",
+      "Save Changes fica desabilitado mesmo apos editar.",
+      "Save And Send salva mas nao abre o modal de email.",
+    ],
+    supportEscalationNote:
+      "Se o usuario edita corretamente e as alteracoes nao persistem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-view-estimate",
+    module: "estimates",
+    intent: "view estimate modal information client summary services subtotal discount total",
+    terms: ["view estimate", "view estimate mostra o que", "o que mostra view estimate", "visualizar estimate", "ver estimate", "modal view estimate", "client information estimate", "estimate summary", "services details", "subtotal discount total", "view mostra o que"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > View Estimate",
+    directAnswer:
+      "View Estimate abre uma visualizacao rapida. Ela mostra client information, email, phone, project address, total amount, status, services details, subtotal, discount e total. Nao e o editor; para editar, clique na linha do estimate.",
+    prerequisites: ["O estimate precisa estar visivel na tabela.", "Use a action de tres pontos para abrir View Estimate."],
+    commonMistakes: [
+      "Tentar editar dentro de View Estimate.",
+      "Confundir View Estimate com Download PDF.",
+      "Procurar timeline dentro de View Estimate; timeline tem action propria.",
+    ],
+    bugSignals: [
+      "View Estimate abre sem services que existem no editor.",
+      "Total ou discount nao bate com a tabela.",
+      "Modal nao abre ao clicar na action.",
+    ],
+    supportEscalationNote:
+      "Se View Estimate mostra dados diferentes do editor, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-timeline",
+    module: "estimates",
+    intent: "estimate timeline drawer events created viewed approved rejected canceled email sent failed",
+    terms: ["timeline estimate", "timeline estimates", "historico estimate", "activity timeline", "eventos estimate", "created viewed approved rejected canceled email sent failed", "drawer timeline", "timeline mostra o que"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Timeline",
+    directAnswer:
+      "Timeline abre um drawer lateral com os eventos do estimate em ordem cronologica. Ela pode mostrar created, viewed, approved, rejected, canceled, email sent e failed quando esses eventos acontecerem.",
+    prerequisites: ["Eventos aparecem conforme acoes acontecem no estimate.", "Estimates novos podem ter poucos eventos."],
+    commonMistakes: [
+      "Esperar eventos que ainda nao aconteceram.",
+      "Confundir Timeline com View Estimate.",
+      "Achar que timeline vazia significa que o estimate nao existe.",
+    ],
+    bugSignals: [
+      "Email enviado com sucesso nao aparece na timeline.",
+      "Cancelamento ou aprovacao nao registra evento.",
+      "Timeline nao abre para nenhum estimate.",
+    ],
+    supportEscalationNote:
+      "Se uma acao aconteceu e a timeline nao registra depois de atualizar, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-download-pdf",
+    module: "estimates",
+    intent: "download estimate pdf pdf not available current pdf",
+    terms: ["download pdf estimate", "baixar pdf estimate", "pdf estimate", "pdf not available", "download pdf indisponivel", "pdf nao baixa", "pdf nao disponivel", "baixar estimate"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Download PDF",
+    directAnswer:
+      "Download PDF baixa o PDF atual daquele estimate. Se aparecer PDF Not Available, o estimate ainda nao tem PDF disponivel para download ou houve falha na geracao/salvamento. Se voce acabou de editar, abra o estimate e salve/gere novamente antes de tentar baixar.",
+    prerequisites: ["O estimate precisa ter um PDF disponivel.", "O link do PDF pode expirar e ser renovado quando a lista recarrega."],
+    commonMistakes: [
+      "Confundir Export Estimates com Download PDF individual.",
+      "Tentar baixar PDF antes de salvar o estimate.",
+      "Esperar PDF em um estimate que ainda nao teve PDF gerado.",
+    ],
+    bugSignals: [
+      "PDF existe no estimate, mas Download PDF continua indisponivel.",
+      "Download inicia mas baixa arquivo vazio.",
+      "PDF baixado nao reflete a ultima versao salva.",
+    ],
+    supportEscalationNote:
+      "Se o estimate foi salvo e ainda assim nao ha PDF ou o arquivo vem incorreto, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-send-email",
+    module: "estimates",
+    intent: "send estimate by email modal recipients body copy attachments preview automatic pdf",
+    terms: ["send by email estimate", "enviar estimate por email", "send estimate", "email estimate", "modal send estimate", "recipient emails", "send me a copy", "email body", "attachments estimate", "automatic attachment", "email preview", "multiplos emails"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Send By Email",
+    directAnswer:
+      "Send By Email abre o modal de envio. O PDF do estimate vai como anexo automatico. Voce pode editar destinatarios, body do email, marcar Send me a copy, adicionar anexos extras e ver preview. Para multiplos emails, separe por virgula.",
+    prerequisites: ["Precisa informar pelo menos um destinatario valido.", "A action fica desabilitada para estimate canceled.", "Arquivos extras muito grandes ou bloqueados pelo email podem ser recusados."],
+    commonMistakes: [
+      "Nao informar destinatario.",
+      "Separar multiplos emails sem virgula.",
+      "Achar que precisa anexar manualmente o PDF do estimate; ele ja vai automatico.",
+      "Tentar enviar estimate canceled.",
+    ],
+    bugSignals: [
+      "Email valido nao envia.",
+      "Preview abre, mas o envio falha para todos os destinatarios.",
+      "PDF automatico nao vai no email.",
+    ],
+    supportEscalationNote:
+      "Se os emails estao validos e o estimate nao esta canceled, mas o envio falha, tratar como possivel falha tecnica ou problema de entrega de email.",
+  },
+  {
+    id: "estimates-action-convert-to-invoice",
+    module: "estimates",
+    intent: "convert estimate to invoice payment customize percentage fixed stripe quickbooks fully paid canceled",
+    terms: ["convert to invoice", "converter para invoice", "estimate to invoice", "criar invoice do estimate", "fully paid", "payment tab", "customize tab", "percentage invoice", "fixed invoice", "due date invoice", "stripe invoice", "quickbooks invoice", "save invoice", "create and send"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Convert > Convert to Invoice",
+    directAnswer:
+      "Para gerar invoice a partir de um estimate, abra Actions > Convert > Convert to Invoice. O modal tem Payment e Customize. Em Payment voce define recipients, custom creation date opcional, due date, amount por percentage ou fixed e payment method. Save Invoice salva; Create & Send cria e envia.",
+    prerequisites: ["Nao fica disponivel para estimate canceled.", "Se o estimate ja esta fully paid, nao ha balance due para criar nova invoice.", "Stripe e QuickBooks precisam estar configurados para aparecerem disponiveis."],
+    commonMistakes: [
+      "Tentar converter estimate canceled.",
+      "Tentar criar invoice quando o estimate ja esta fully paid.",
+      "Selecionar Stripe ou QuickBooks sem configurar antes em Settings.",
+      "Nao preencher due date ou valor valido.",
+    ],
+    bugSignals: [
+      "Estimate nao canceled e com saldo, mas Convert to Invoice fica bloqueado.",
+      "Stripe ou QuickBooks configurado aparece como Setup required.",
+      "Save Invoice ou Create & Send falha com dados validos.",
+    ],
+    supportEscalationNote:
+      "Se o estimate tem saldo, nao esta canceled e os campos estao validos, mas a invoice nao cria, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-convert-to-project",
+    module: "estimates",
+    intent: "convert estimate to project approved pre-start services move to projects irreversible",
+    terms: ["convert to project", "converter para project", "estimate to project", "virar projeto", "estimate sumiu", "sumiu depois de converter", "pre-start", "approved automatico", "servicos viram projeto", "nao pode desfazer"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Convert > Convert to Project",
+    directAnswer:
+      "Convert to Project transforma o estimate em projeto. O sistema mostra uma confirmacao avisando que a acao nao pode ser desfeita. Se o estimate ainda nao estava approved, ele passa a approved durante a conversao. Depois disso, acompanhe em Projects.",
+    prerequisites: ["Nao fica disponivel para estimate canceled.", "Depois da conversao, os services do estimate passam a compor os services do project."],
+    commonMistakes: [
+      "Procurar o estimate convertido na lista principal de estimates.",
+      "Converter antes de revisar, esquecendo que a acao nao pode ser desfeita pela tela.",
+      "Achar que os services precisam ser recriados no project; eles sao levados na conversao.",
+    ],
+    bugSignals: [
+      "Conversao confirma, mas o projeto nao aparece em Projects.",
+      "Services do estimate nao aparecem no project convertido.",
+      "Estimate nao canceled nao permite abrir Convert to Project.",
+    ],
+    supportEscalationNote:
+      "Se a conversao confirma e o project ou services nao aparecem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-cancel",
+    module: "estimates",
+    intent: "cancel estimate keep history block send convert approved signed estimate",
+    terms: ["cancel estimate", "cancelar estimate", "cancelar orcamento", "estimate canceled", "canceled estimate", "cancel mantem historico", "cancelar aprovado", "cancelar assinado", "bloqueia send convert"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Cancel",
+    directAnswer:
+      "Cancel marca o estimate como canceled e mantem o historico/timeline. Depois de canceled, enviar por email e converter ficam bloqueados. Se o estimate estava approved/assinado, o sistema remove o efeito da aprovacao/assinatura no estimate e marca como canceled.",
+    prerequisites: ["A action aparece quando o estimate ainda nao esta canceled.", "Use Cancel quando precisa manter registro historico."],
+    commonMistakes: [
+      "Usar Delete quando queria apenas cancelar e manter historico.",
+      "Esperar converter ou enviar estimate depois de canceled.",
+      "Achar que cancelar apaga o estimate da mesma forma que delete.",
+    ],
+    bugSignals: [
+      "Cancelamento confirma, mas o status nao muda.",
+      "Timeline nao registra cancelamento.",
+      "Estimate canceled ainda permite send/convert.",
+    ],
+    supportEscalationNote:
+      "Se cancelar confirma e o estimate continua ativo, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-action-delete",
+    module: "estimates",
+    intent: "delete estimate permanent approved not allowed cancel instead related data",
+    terms: ["delete estimate", "deletar estimate", "apagar estimate", "delete permanente", "delete approved estimate", "deletar approved", "delete ou cancel", "remover estimate", "confirm deletion"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Delete",
+    directAnswer:
+      "Delete remove o estimate de forma permanente e pode remover dados relacionados, como services, costs, schedule, photos, documents e history. Ele so aparece quando o estimate nao esta approved. Se o objetivo e manter historico, use Cancel.",
+    prerequisites: ["Estimate approved nao pode ser deletado pela action; nesse caso, o caminho e cancelar.", "Delete e permanente."],
+    commonMistakes: [
+      "Deletar quando queria apenas cancelar.",
+      "Esperar recuperar dados depois do delete.",
+      "Tentar deletar estimate approved.",
+    ],
+    bugSignals: [
+      "Estimate nao approved nao mostra Delete.",
+      "Delete confirma, mas o estimate continua na lista apos atualizar.",
+      "Modal de confirmacao nao abre.",
+    ],
+    supportEscalationNote:
+      "Se o estimate nao e approved e mesmo assim nao deleta, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-main-common-issues",
+    module: "estimates",
+    intent: "common estimates main page issues permission missing search dashboard export pdf convert cancel delete",
+    terms: ["nao vejo estimates", "estimates nao aparece", "estimate sumiu", "dashboard vazio", "search nao encontra", "export errado", "pdf nao baixa", "convert bloqueado", "converter bloqueado", "cancelar deletar", "problema estimates", "erro estimates"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates",
+    directAnswer:
+      "Se Estimates nao aparece, confira a permissao Estimates. Se um estimate sumiu apos Convert to Project, procure em Projects. Se search nao encontra, busque por number ou client name. Para dashboard vazio, revise period, status e date range.",
+    prerequisites: ["Permissao Estimates para acessar a tela.", "Filtros ativos afetam dashboard, tabela e export.", "Algumas actions ficam bloqueadas para canceled, approved ou fully paid conforme o caso."],
+    commonMistakes: [
+      "Buscar por address ou seller no search.",
+      "Exportar com filtros ou selecao errada.",
+      "Confundir Export Estimates com Download PDF individual.",
+      "Tentar Convert to Invoice em estimate canceled ou fully paid.",
+      "Tentar Delete em estimate approved.",
+    ],
+    bugSignals: [
+      "Fluxo correto com permissao correta ainda falha.",
+      "Dados somem ou nao atualizam apos refresh.",
+      "Action fica bloqueada sem motivo aparente para um estimate elegivel.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta fazendo o fluxo correto e mesmo assim nao funciona, responder como possivel falha tecnica, sem criar ticket automatico.",
+  },
+  {
+    id: "estimates-builder-entry-and-types",
+    module: "estimates",
+    intent: "new estimate entry manual builder smart ai builder choose flow",
+    terms: ["new estimate", "criar estimate", "novo estimate", "type estimate", "manual builder", "manual buildwer", "smart builder", "smart ai builder", "smartbuilder", "fluxo manual", "fluxo ia", "builder estimate", "diferenca manual smart"],
+    route: "/seller/new-estimate/type-estimate",
+    uiLocation: "Financials > Estimates > New Estimate",
+    directAnswer:
+      "Para criar um estimate, va em Financials > Estimates e clique em New Estimate. O sistema abre a escolha entre Manual Builder e Smart AI Builder: Manual e para montar os itens manualmente pelo catalogo/custom service; Smart AI Builder e para descrever o escopo, enviar arquivos ou audio e revisar uma proposta de line items antes de salvar.",
+    prerequisites: ["O usuario precisa ter permissao Estimates.", "Nenhum dos dois fluxos salva o estimate antes da tela final de builder/resumo."],
+    commonMistakes: [
+      "Escolher Smart AI achando que ele ja salva ou envia automaticamente.",
+      "Escolher Manual e esperar que o sistema gere itens sozinho.",
+      "Achar que a escolha do builder substitui a selecao de client e property location; ambos continuam necessarios.",
+    ],
+    bugSignals: [
+      "New Estimate nao abre a tela de escolha.",
+      "Selecionar Manual ou Smart AI nao leva para Select Client.",
+      "Usuario tem permissao Estimates e mesmo assim nao consegue iniciar o fluxo.",
+    ],
+    supportEscalationNote:
+      "Se o usuario tem permissao Estimates e nao consegue iniciar nenhum builder, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-builder-client-location",
+    module: "estimates",
+    intent: "select client work context create new client property location before services",
+    terms: [
+      "select client estimate",
+      "selecionar client estimate",
+      "cliente no estimate",
+      "client dentro do estimate",
+      "new client estimate",
+      "new client dentro estimate",
+      "criar cliente no estimate",
+      "criar client dentro do estimate",
+      "posso criar client dentro do estimate",
+      "adicionar client estimate",
+      "work context estimate",
+      "property location",
+      "location estimate",
+      "mapa estimate",
+      "nao consigo avancar client",
+      "criar cliente durante estimate",
+    ],
+    route: "/seller/new-estimate/client-data",
+    uiLocation: "Financials > Estimates > New Estimate > Select Client / Property Location",
+    directAnswer:
+      "Depois de escolher o builder, selecione um client e uma property location. Se o client ainda nao existe, clique em New Client nessa mesma tela; ao criar ali, o novo client/work context ja fica selecionado no estimate.",
+    prerequisites: ["Client selecionado e property location selecionada sao necessarios para avancar.", "Se o client tiver work contexts, o sistema usa o contato escolhido para nome, email, phone e office address do estimate."],
+    commonMistakes: [
+      "Tentar avancar sem selecionar location no mapa.",
+      "Criar client em outra tela achando que precisa sair do estimate; o fluxo tem New Client proprio.",
+      "Selecionar o client correto, mas escolher o work context errado.",
+      "Achar que property location e o mesmo que office address do client.",
+    ],
+    bugSignals: [
+      "Novo client criado no modal nao fica selecionado no estimate.",
+      "Location aparece selecionada, mas o botao continua bloqueado.",
+      "Work context escolhido nao leva email/phone corretos para o resumo.",
+    ],
+    supportEscalationNote:
+      "Se client e location estao preenchidos e o fluxo nao avanca, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-manual-services-step",
+    module: "estimates",
+    intent: "manual builder services step catalog search filters categories subcategories to complete",
+    terms: ["services step estimate", "etapa services estimate", "manual services estimate", "buscar service estimate", "filter by type estimate", "services materials estimate", "categoria estimate", "subcategoria estimate", "to complete", "adicionar service no estimate", "material no estimate", "service do catalogo estimate"],
+    route: "/seller/new-estimate/services/:id",
+    uiLocation: "Financials > Estimates > New Estimate > Manual Builder > Services",
+    directAnswer:
+      "No Manual Builder, a etapa Services mostra categorias do catalogo. Use search para achar categoria, Filter by type para alternar Services/Materials, abra a categoria, escolha o item dentro da subcategoria e configure quantidade/preco. Depois de adicionar pelo menos um item, clique em To complete para ir ao builder/resumo.",
+    prerequisites: ["Para aparecer nessa etapa, o item precisa existir no catalogo com categoria, subcategoria e service/material.", "Para ir ao resumo, precisa ter pelo menos um item selecionado."],
+    commonMistakes: [
+      "Procurar material com o filtro em Services, ou service com o filtro em Materials.",
+      "Criar so categoria no catalogo, sem subcategoria e item, e esperar aparecer no estimate.",
+      "Clicar To complete sem nenhum item no estimate.",
+      "Confundir esta etapa com Management > Services, que e onde o catalogo e criado/editado.",
+    ],
+    bugSignals: [
+      "Categoria completa do catalogo nao aparece com filtro correto.",
+      "Item selecionado nao abre o modal de configuracao.",
+      "Item configurado nao entra no cart/estimate.",
+    ],
+    supportEscalationNote:
+      "Se o catalogo esta correto, filtro correto e o item nao aparece ou nao adiciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-catalog-service-configuration",
+    module: "estimates",
+    intent: "configure selected catalog service fixed variable price quantity safety margin photos",
+    terms: ["fixed service estimate", "variable service estimate", "preco fixo estimate", "preco variavel estimate", "price range estimate", "slider price", "quantity service estimate", "safety margin", "margin safe", "margem seguranca", "fotos service estimate", "photo gallery service", "10 imagens", "5mb image"],
+    route: "/seller/new-estimate/services/:id",
+    uiLocation: "Financials > Estimates > New Estimate > Services > selected service modal",
+    directAnswer:
+      "Ao escolher um item do catalogo, o sistema abre o modal de configuracao. Informe quantity e price. Se o item for Variable, aparece a faixa de preco e um slider para ajustar dentro do minimo e maximo. Opcionalmente, use Safety Margin para somar uma margem de 1% a 20% e anexe fotos do service.",
+    prerequisites: ["Quantity maior que zero e necessaria para adicionar.", "Fotos aceitam imagens JPEG, PNG ou GIF, ate 5MB cada, com limite de 10 imagens no service."],
+    commonMistakes: [
+      "Nao informar quantity.",
+      "Nao perceber que service Variable pode ter preco ajustado dentro da faixa.",
+      "Achar que Safety Margin altera o item no catalogo; ele afeta o item naquele estimate.",
+      "Anexar arquivo que nao e imagem ou arquivo acima de 5MB.",
+    ],
+    bugSignals: [
+      "Quantity e price validos, mas Add Service continua bloqueado.",
+      "Slider de variable price nao respeita a faixa exibida.",
+      "Imagem valida nao faz upload ou nao aparece depois de adicionada.",
+    ],
+    supportEscalationNote:
+      "Se dados validos nao adicionam o service ou fotos validas nao sobem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-custom-service-builder",
+    module: "estimates",
+    intent: "custom service in estimate builder not saved to catalog ai description enhance",
+    terms: ["custom service estimate", "custom service", "servico custom estimate", "custom service salva no catalogo", "custom service catalogo", "generate step by step", "generate description", "enhance description", "ai description service", "add custom service estimate"],
+    route: "/seller/new-estimate/services/:id",
+    uiLocation: "Estimate builder > Custom Service / Add Service > Custom Service",
+    directAnswer:
+      "Custom service cria um item apenas para aquele estimate. Ele nao cria nem edita item no catalogo em Management > Services. No modal, informe nome, description, quantity e price; se quiser, use Generate Step-by-step ou Enhance para ajudar no texto da description.",
+    prerequisites: ["Service name, quantity maior que zero e price preenchido sao necessarios para adicionar.", "Para criar item reutilizavel no catalogo, use Management > Services."],
+    commonMistakes: [
+      "Achar que Custom service vira item do catalogo.",
+      "Tentar adicionar sem nome, quantity ou price.",
+      "Usar Custom service quando queria criar uma categoria/subcategoria reutilizavel.",
+      "Achar que AI description salva sozinha; ainda precisa adicionar o service e salvar/criar o estimate.",
+    ],
+    bugSignals: [
+      "Custom service com campos validos nao adiciona.",
+      "Generate/Enhance de description falha repetidamente.",
+      "Custom service adicionado some antes de salvar sem o usuario sair do fluxo.",
+    ],
+    supportEscalationNote:
+      "Se os campos estao validos e o custom service nao adiciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-smartbuilder-flow",
+    module: "estimates",
+    intent: "smartbuilder ai estimate chat upload audio proposal line items apply services",
+    terms: ["smartbuilder estimate", "smart builder estimate", "smart ai estimate", "ia estimate", "ai builder estimate", "upload scope", "audio smartbuilder", "view proposal", "apply to line items", "proposta smartbuilder", "line items smartbuilder", "editar proposta smartbuilder"],
+    route: "/seller/new-estimate/smart-builder/:id",
+    uiLocation: "Financials > Estimates > New Estimate > Smart AI Builder",
+    directAnswer:
+      "No Smart AI Builder, descreva o escopo, envie arquivos ou grave audio. O sistema monta uma proposta de line items; abra View Proposal, revise, edite se precisar e clique em Apply To Line Items. Nada e salvo no estimate ate aplicar a proposta e depois salvar ou criar/enviar no builder.",
+    prerequisites: ["Client e property location continuam obrigatorios antes do SmartBuilder.", "A proposta precisa ser aplicada aos line items para ir ao builder/resumo."],
+    commonMistakes: [
+      "Achar que o SmartBuilder envia o estimate automaticamente.",
+      "Fechar a proposta sem Apply To Line Items.",
+      "Nao revisar quantity, price e description antes de salvar.",
+      "Achar que os itens gerados viram itens do catalogo automaticamente.",
+    ],
+    bugSignals: [
+      "Mensagem com escopo valido nao retorna proposta.",
+      "Arquivo aceito nao anexa ou nao e considerado.",
+      "Apply To Line Items nao leva os itens para o builder.",
+    ],
+    supportEscalationNote:
+      "Se a IA processa, mas a proposta nao aparece ou nao aplica, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-builder-summary-overview",
+    module: "estimates",
+    intent: "estimate builder summary sections preview template work context discount emails custom date",
+    terms: ["summary estimate", "services summary estimate", "resumo estimate", "builder resumo", "pdf template estimate", "classic template", "modern template", "work context no resumo", "additional emails estimate", "custom creation date", "discount estimate", "desconto estimate", "sections estimate", "preview estimate builder"],
+    route: "/seller/new-estimate/services-summary/:id",
+    uiLocation: "Estimate builder / summary",
+    directAnswer:
+      "No builder/resumo, voce revisa o estimate antes de salvar ou enviar. Ali da para escolher PDF Template, conferir o preview, trocar Work Context, aplicar desconto, ajustar additional emails, custom creation date e ligar/desligar sections como cover, services, terms e image attachments.",
+    prerequisites: ["Precisa existir pelo menos um service no estimate.", "Company details e property location precisam estar completos para salvar/criar."],
+    commonMistakes: [
+      "Achar que mudar preview ja salva o estimate; precisa clicar Save, Save Changes ou Create & Send.",
+      "Escolher work context errado e enviar para email errado.",
+      "Aplicar desconto invalido, como percentage acima de 100 ou fixed maior que subtotal.",
+      "Achar que custom creation date e obrigatoria; se vazio, o sistema usa a data atual.",
+    ],
+    bugSignals: [
+      "Template selecionado nao muda o preview.",
+      "Work context selecionado nao atualiza dados do client.",
+      "Desconto valido mostra erro ou nao recalcula total.",
+    ],
+    supportEscalationNote:
+      "Se dados validos nao atualizam preview/totais ou bloqueiam salvar, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-builder-letter-terms-variables",
+    module: "estimates",
+    intent: "introduction letter terms conditions variables from settings used in estimate",
+    terms: ["introduction letter estimate", "letter estimate", "terms conditions estimate", "terms and conditions estimate", "variables estimate", "{{clientName}}", "{{clientEmail}}", "{{projectLocation}}", "policies terms estimate", "settings terms estimate"],
+    route: "/seller/new-estimate/services-summary/:id",
+    uiLocation: "Estimate builder > Introduction Letter / Terms & Conditions",
+    directAnswer:
+      "Introduction Letter e Terms & Conditions vem de Settings > Policies & Terms. As variaveis clientName, clientEmail e projectLocation sao substituidas no estimate pelos dados do client e da property location. Voce pode editar o texto no builder antes de salvar.",
+    prerequisites: ["Os textos padrao precisam estar configurados em Settings > Policies & Terms para aparecerem automaticamente.", "As variaveis dependem dos dados selecionados no estimate."],
+    commonMistakes: [
+      "Editar o texto no estimate achando que altera o padrao em Settings; isso muda apenas aquele estimate.",
+      "Esperar variavel ser preenchida sem client/email/location disponivel.",
+      "Achar que Classic Template sempre mostra Introduction Letter; nesse template a intro pode ficar desabilitada.",
+    ],
+    bugSignals: [
+      "Texto configurado em Settings nao carrega no builder.",
+      "Variaveis nao sao substituidas mesmo com client/email/location preenchidos.",
+      "Salvar letter/terms no builder nao reflete no preview.",
+    ],
+    supportEscalationNote:
+      "Se Settings esta configurado e os dados existem, mas letter/terms nao carregam ou nao substituem variaveis, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-builder-line-items-and-images",
+    module: "estimates",
+    intent: "line items edit delete reorder add service image attachments service photos standalone photos",
+    terms: ["line items estimate", "quoted items estimate", "editar service no builder", "deletar service estimate", "reordenar services", "add service builder", "image attachments estimate", "fotos no pdf estimate", "standalone photos estimate", "service photos estimate", "imagens anexadas estimate"],
+    route: "/seller/new-estimate/services-summary/:id",
+    uiLocation: "Estimate builder > Services & Items / Image Attachments",
+    directAnswer:
+      "No builder, Services & Items permite editar, deletar e reordenar os line items. As fotos adicionadas nos services aparecem em Image Attachments, e voce tambem pode adicionar fotos standalone nessa section. Essas imagens entram no PDF quando a section esta habilitada.",
+    prerequisites: ["A section Image Attachments precisa estar habilitada para aparecer no PDF.", "As fotos precisam estar adicionadas no service ou como standalone photos."],
+    commonMistakes: [
+      "Adicionar foto no service e desabilitar Image Attachments.",
+      "Editar/deletar/reordenar item e sair sem salvar.",
+      "Achar que editar item no estimate altera o service original no catalogo.",
+      "Adicionar muitas imagens e esperar que todas caibam no PDF/email sem limite.",
+    ],
+    bugSignals: [
+      "Fotos aparecem no builder, mas nao aparecem no preview com Image Attachments habilitado.",
+      "Reordenacao ou edicao de item nao persiste apos salvar.",
+      "Service deletado continua aparecendo depois de atualizar.",
+    ],
+    supportEscalationNote:
+      "Se sections, imagens ou line items estao corretos e o preview/salvamento nao reflete, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-builder-generate-pdf-save-send",
+    module: "estimates",
+    intent: "generate pdf preview save create send save changes save and send differences",
+    terms: ["generate pdf estimate", "gerar pdf estimate", "generate pdf envia", "save estimate", "save changes estimate", "save and send estimate", "create and send", "create & send", "save ou send", "pdf nao mudou", "pdf baixado nao mudou", "enviar estimate"],
+    route: "/seller/new-estimate/services-summary/:id",
+    uiLocation: "Estimate builder > Preview / action buttons",
+    directAnswer:
+      "Generate PDF serve para revisar como o PDF vai ficar; ele nao envia o estimate ao client. Save ou Save Changes salva sem enviar. Create & Send cria o estimate e abre o modal de email. Save And Send, na edicao, salva as alteracoes e abre o modal de email.",
+    prerequisites: ["Para salvar/criar, o estimate precisa ter services, email valido, company details e property location completos.", "Para enviar, o modal de email precisa ter destinatario valido."],
+    commonMistakes: [
+      "Achar que Generate PDF ja envia para o client.",
+      "Fechar a tela depois de editar sem Save/Save Changes.",
+      "Esperar PDF baixado refletir mudanca que ainda nao foi salva/gerada.",
+      "Achar que Create & Send envia sem passar pelo modal de email.",
+    ],
+    bugSignals: [
+      "Generate PDF falha com dados validos.",
+      "Save/Save Changes confirma, mas dados nao persistem.",
+      "Create & Send cria estimate, mas nao abre modal de email.",
+      "PDF gerado/baixado nao reflete dados salvos.",
+    ],
+    supportEscalationNote:
+      "Se o usuario salvou/gerou corretamente e o PDF continua antigo ou o envio nao abre, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "estimates-editor-existing-estimate",
+    module: "estimates",
+    intent: "edit existing estimate builder same rules as new estimate row click save changes save and send",
+    terms: [
+      "editar estimate existente",
+      "como edito estimate existente",
+      "como edito um estimate existente",
+      "edito estimate existente",
+      "alterar estimate existente",
+      "edit existing estimate",
+      "editar estimate da tabela",
+      "editar estimate existente pela tabela",
+      "clicar linha estimate",
+      "edicao estimate",
+      "isso vale editando",
+      "builder edit estimate",
+      "save changes",
+      "save and send",
+      "view estimate editar",
+    ],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > click estimate row",
+    directAnswer:
+      "Para editar um estimate existente, clique na linha dele na tabela. O editor completo abre com as mesmas ideias do builder: services, sections, template, terms, discount, images e preview podem ser ajustados quando disponiveis. View Estimate e apenas visualizacao rapida, nao edicao.",
+    prerequisites: ["O estimate precisa estar visivel na lista/filtros.", "Alteracoes so persistem depois de Save Changes ou Save And Send."],
+    commonMistakes: [
+      "Abrir Actions > View Estimate tentando editar.",
+      "Editar services/terms/discount/images e fechar sem salvar.",
+      "Achar que Save And Send envia direto; ele salva e abre o modal de email.",
+      "Esperar que mudancas no editor alterem o catalogo em Management > Services.",
+    ],
+    bugSignals: [
+      "Clicar na linha nao abre o editor.",
+      "Save Changes salva, mas ao atualizar volta ao valor antigo.",
+      "Save And Send nao abre modal de email.",
+      "SmartBuilder na edicao nao aplica proposta aos line items.",
+    ],
+    supportEscalationNote:
+      "Se o usuario abre o editor correto e salva, mas as mudancas nao persistem, tratar como possivel falha tecnica.",
+  },
+  {
     id: "settings-overview",
     module: "settings",
     intent: "settings overview tabs and navigation",
@@ -137,7 +786,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     commonMistakes: [
       "Procurar configuracoes financeiras dentro de Financials em vez de Management > Settings.",
       "Nao ver Email Reminders por falta da permissao especifica.",
-      "Achar que Settings mostra dados privados pelo WhatsApp; nesta V1 o assistant apenas orienta onde ver no sistema.",
+      "Achar que Settings mostra dados privados pelo WhatsApp; o assistant apenas orienta onde ver no sistema.",
     ],
     bugSignals: [
       "Usuario tem permissao Settings e mesmo assim nao ve o item Settings.",
@@ -184,7 +833,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     commonMistakes: [
       "Procurar assinatura na tab Payments; assinatura fica em Subscription.",
       "Esperar Open Portal em plano free; nesse caso aparece View Plans.",
-      "Pedir status privado da assinatura pelo WhatsApp nesta V1; o assistant ainda nao consulta dados da company.",
+      "Pedir status privado da assinatura pelo WhatsApp; o assistant nao consulta dados da company.",
     ],
     bugSignals: [
       "Open Portal nao abre para uma company com plano pago ativo.",
@@ -723,18 +1372,18 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
     id: "services-in-estimates",
     module: "services",
-    intent: "use catalog services materials custom service in estimate builder",
-    terms: ["estimate services", "new estimate service", "servico no estimate", "material no estimate", "custom service", "custom service estimate", "custom service catalogo", "custom service salva", "custom service salva no catalogo", "adicionar custom service", "services step estimate", "buscar categoria estimate", "variable price estimate", "safety margin", "photos estimate"],
+    intent: "difference between services catalog and using services materials inside estimate builder",
+    terms: ["estimate services catalogo", "usar catalogo no estimate", "servico no estimate catalogo", "material no estimate catalogo", "custom service catalogo", "custom service salva", "custom service salva no catalogo", "service do catalogo estimate", "material do catalogo estimate"],
     route: "/seller/new-estimate/services/:id",
-    uiLocation: "Financials > Estimates > New Estimate > Services",
+    uiLocation: "Management > Services / Financials > Estimates > New Estimate > Services",
     directAnswer:
-      "No estimate manual, va ate a etapa Services. Voce pode buscar categorias, filtrar entre Services e Materials, abrir uma categoria, escolher o item dentro da subcategoria e configurar quantidade/preco antes de adicionar ao estimate.",
-    prerequisites: ["Para avancar no estimate, precisa ter pelo menos um item selecionado.", "Itens do catalogo precisam existir com categoria, subcategoria e service/material dentro."],
+      "Management > Services e onde voce cria e edita o catalogo reutilizavel. No builder de estimate, voce apenas usa esses itens: busca categoria, filtra Services/Materials, escolhe o item e configura quantity/price para aquele estimate. Custom service vale so para aquele estimate e nao salva no catalogo.",
+    prerequisites: ["Para aparecer no estimate, o item do catalogo precisa ter categoria, subcategoria e service/material dentro.", "Para criar item reutilizavel, use Management > Services; para usar no estimate, use a etapa Services do builder."],
     commonMistakes: [
       "Procurar um material com o filtro em Services, ou um service com o filtro em Materials.",
       "Achar que Custom service cria item no catalogo; ele vale apenas para aquele estimate.",
-      "Tentar completar o estimate sem nenhum item selecionado.",
-      "Para item com preco variavel, nao ajustar o valor dentro da faixa mostrada.",
+      "Editar um item no estimate achando que alterou o item original do catalogo.",
+      "Criar so categoria no catalogo, sem subcategoria e item, e esperar aparecer no estimate.",
     ],
     bugSignals: [
       "Categoria com itens validos nao aparece no estimate mesmo com filtro correto.",
@@ -836,7 +1485,336 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "Alteracoes aparecem salvas, mas somem apos atualizar a tela.",
     ],
     supportEscalationNote:
-      "Se o fluxo esta correto e mesmo assim nao funciona, orientar como possivel falha tecnica, sem criar ticket automatico nesta V1.",
+      "Se o fluxo esta correto e mesmo assim nao funciona, orientar como possivel falha tecnica, sem criar ticket automatico.",
+  },
+  {
+    id: "projects-overview-list",
+    module: "projects",
+    intent: "projects list page filters search dashboard table new project",
+    terms: ["projects", "projetos", "project list", "lista de projetos", "onde vejo projetos", "search projects", "buscar projeto", "new project", "novo projeto", "pre-start", "in progress", "final walkthrough", "finished"],
+    route: "/seller/projects",
+    uiLocation: `Projects (${projectsUrl})`,
+    directAnswer:
+      `A lista de projetos fica em Projects. Nessa tela o sistema mostra filtros de periodo, data customizada e status, search, paginacao, ordenacao, dashboard, tabela, Financial View, export PDF/Excel e o botao New Project. Os status ativos mais comuns sao Pre-Start, In Progress, Final walkthrough e Finished.`,
+    prerequisites: ["O usuario precisa ter permissao Projects para ver a tela.", "Filtros ativos afetam dashboard, tabela e export."],
+    commonMistakes: [
+      "Procurar um project convertido ainda na lista principal de Estimates.",
+      "Nao limpar filtros de periodo, status ou data customizada.",
+      "Buscar por uma informacao que nao esta coberta pelo search da tela.",
+    ],
+    bugSignals: [
+      "Usuario tem permissao Projects e mesmo assim nao ve o menu.",
+      "Projeto aparece sem filtros, mas some com filtros corretos.",
+      "Tabela ou dashboard nao atualiza depois de mudar filtros.",
+    ],
+    supportEscalationNote:
+      "Se a permissao e os filtros estao corretos e o projeto ainda nao aparece, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "projects-dashboard-financial-view",
+    module: "projects",
+    intent: "projects dashboard financial view profit margin costs sales",
+    terms: ["financial view", "visao financeira", "profit balance", "profit margin", "project dashboard", "sales dashboard", "total sales", "average value", "conversion rate", "employee cost", "subcontractor cost", "material cost", "lucro projeto", "margem projeto"],
+    route: "/seller/projects",
+    uiLocation: "Projects > Dashboard / Financial View",
+    directAnswer:
+      "No Projects Dashboard, o sistema mostra Total Sales, Average Value, Conversion Rate e vendas mensais respeitando os filtros da tela. Ao ligar Financial View, a tabela passa a mostrar estimate value, employee cost, subcontractor cost, material cost, profit balance e profit margin.",
+    prerequisites: ["Os valores dependem de services, costs, invoices e pagamentos registrados no projeto.", "Filtros de data/status alteram os numeros exibidos."],
+    commonMistakes: [
+      "Interpretar o dashboard como contagem simples de projetos.",
+      "Comparar Financial View sem conferir custos de materiais, employee cost, subcontractor cost e invoices.",
+      "Esquecer que filtros ativos mudam os totais.",
+    ],
+    bugSignals: [
+      "Custos aparecem nas tabs do projeto, mas nao refletem na Financial View.",
+      "Dashboard continua vazio mesmo com projetos dentro do periodo correto.",
+      "Profit balance ou margin nao muda depois de atualizar custos e recarregar.",
+    ],
+    supportEscalationNote:
+      "Se os dados do projeto estao preenchidos e os filtros corretos, mas os numeros nao batem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "projects-export-delete-actions",
+    module: "projects",
+    intent: "projects export pdf excel actions status delete project",
+    terms: ["export projects", "exportar projetos", "export financial", "baixar projeto", "pdf project", "excel project", "delete project", "deletar projeto", "excluir projeto", "change status project", "mudar status projeto", "actions project"],
+    route: "/seller/projects",
+    uiLocation: "Projects > Export / Actions",
+    directAnswer:
+      "Em Projects, Export PDF ou Excel gera um relatorio dos projetos visiveis ou selecionados; nao baixa PDFs individuais de cada projeto. Nas actions da lista, voce pode mudar o status. Delete project remove o projeto de forma permanente e deve ser usado com cuidado.",
+    prerequisites: ["Para exportar, selecione os projetos desejados no modo de export.", "Para mudar status ou deletar, o usuario precisa conseguir acessar a lista de Projects."],
+    commonMistakes: [
+      "Achar que export baixa todos os arquivos individuais do projeto.",
+      "Deletar quando o objetivo era apenas manter historico ou mudar status.",
+      "Exportar com filtros ativos sem perceber que o relatorio segue a selecao atual.",
+    ],
+    bugSignals: [
+      "Export nao gera arquivo com projetos selecionados.",
+      "Status nao salva apos alteracao.",
+      "Delete falha mesmo apos confirmacao.",
+    ],
+    supportEscalationNote:
+      "Se a selecao e permissao estao corretas, mas export/status/delete falham, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "projects-new-project-flow",
+    module: "projects",
+    intent: "create new project direct manual smart builder client location services summary",
+    terms: ["new project", "novo projeto", "criar projeto", "manual builder project", "smart builder project", "smart ai project", "client no project", "property location project", "project summary", "create and send project", "new client project"],
+    route: "/seller/new-project/type-project",
+    uiLocation: `Projects > New Project (${newProjectUrl})`,
+    directAnswer:
+      "Para criar um projeto direto, va em Projects e clique em New Project. O sistema pede Manual Builder ou Smart AI Builder, depois client/work context, property location, services e summary. Se criar um New Client dentro desse fluxo, ele ja fica selecionado para o projeto.",
+    prerequisites: ["O usuario precisa ter permissao Projects.", "O fluxo precisa de client, location e pelo menos um service/material/custom service antes do resumo."],
+    commonMistakes: [
+      "Criar client fora do fluxo sem voltar e selecionar no projeto.",
+      "Pular property location.",
+      "Achar que Smart AI Builder salva automaticamente antes do resumo.",
+      "Confundir custom service do projeto com item reutilizavel do catalogo.",
+    ],
+    bugSignals: [
+      "New Client e criado, mas nao fica selecionado no fluxo.",
+      "Location preenchida nao permite avancar.",
+      "Service adicionado nao aparece no summary.",
+    ],
+    supportEscalationNote:
+      "Se client, location e services estao corretos e o fluxo nao avanca ou nao salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "projects-from-estimate-conversion",
+    module: "projects",
+    intent: "convert estimate to project approved estimate moved project services",
+    terms: ["convert to project", "converter para projeto", "estimate virou project", "estimate sumiu", "estimate convertido", "estimate aprovado virou projeto", "services do estimate no project", "estimate dentro do project"],
+    route: "/seller/estimates",
+    uiLocation: "Financials > Estimates > Actions > Convert > Convert to Project",
+    directAnswer:
+      "Convert to Project acontece a partir de Estimates. Depois da conversao, o estimate passa a ser acompanhado dentro do Project, e os services do estimate passam a compor os services do projeto. Se o estimate ainda nao estava approved, o sistema aprova durante a conversao.",
+    prerequisites: ["O estimate nao pode estar canceled.", "Depois de converter, acompanhe o trabalho na tela de Projects."],
+    commonMistakes: [
+      "Procurar o estimate convertido na lista principal de Estimates.",
+      "Achar que a conversao pode ser desfeita pela mesma action.",
+      "Esperar que services convertidos continuem apenas no estimate original.",
+    ],
+    bugSignals: [
+      "Conversao confirma, mas o project nao aparece em Projects.",
+      "Project abre, mas services do estimate nao aparecem.",
+      "Estimate convertido continua como se nao tivesse virado projeto.",
+    ],
+    supportEscalationNote:
+      "Se a conversao foi confirmada e o projeto ou services nao aparecem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-details-overview-header",
+    module: "projects",
+    intent: "project details tabs header actions cover photo duration manager seller client",
+    terms: ["project details", "detalhes do projeto", "tabs project", "cover photo", "foto capa", "adjust duration", "project manager", "change seller", "editar client project", "tab details", "schedule tab", "estimate tab project"],
+    route: "/seller/project/details/:id",
+    uiLocation: "Project Details",
+    directAnswer:
+      "Ao clicar em um projeto, o sistema abre Project Details. Ali ficam as tabs Details, Schedule, Tasks, Reports, Estimate, Invoice, ChangeOrders, Services, Cost, CostHours, SubcontractorCost e Files. No header, voce pode alterar foto de capa, duration, project manager, seller e editar o client quando estiver na tab Details.",
+    prerequisites: ["O usuario precisa ter acesso ao projeto.", "Algumas tabs tambem dependem de permissoes especificas, como Schedule e Tasks."],
+    commonMistakes: [
+      "Procurar todas as configuracoes do projeto apenas na lista de Projects.",
+      "Tentar editar client fora da tab Details.",
+      "Confundir tabs do projeto com paginas globais de Schedule, Reports ou Invoice.",
+    ],
+    bugSignals: [
+      "Projeto abre, mas tabs principais nao carregam.",
+      "Foto de capa valida nao salva.",
+      "Seller ou project manager alterado nao permanece apos salvar.",
+    ],
+    supportEscalationNote:
+      "Se o usuario tem acesso e a action correta nao salva ou nao carrega, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-details-metrics",
+    module: "projects",
+    intent: "project details metrics summary profit invoices balance location map",
+    terms: ["project summary", "resumo projeto", "profit analysis", "analise de lucro", "project value", "material cost", "labor cost", "employee labor", "subcontractor labor", "balance due", "paid invoices", "location project", "export project details"],
+    route: "/seller/project/details/:id?tab=Details",
+    uiLocation: "Project Details > Details",
+    directAnswer:
+      "Na tab Details, o sistema mostra resumo financeiro, location/map, profit analysis, informacoes do client/contract, seller, project manager, status e export PDF. Project value vem dos services; material cost vem dos custos reais; labor junta employee e subcontractor cost; profit e a diferenca entre valor do projeto e custos.",
+    prerequisites: ["Custos, services e invoices precisam estar registrados para os numeros ficarem completos.", "Location pode ser editada no bloco de mapa/location."],
+    commonMistakes: [
+      "Esperar que profit mude sem registrar custos ou invoices.",
+      "Confundir paid invoices com total de invoices criadas.",
+      "Procurar cost of materials dentro de Details em vez da tab Cost.",
+    ],
+    bugSignals: [
+      "Custos registrados nao aparecem no resumo apos recarregar.",
+      "Invoices pagas nao refletem no resumo.",
+      "Location salva, mas volta para a anterior.",
+    ],
+    supportEscalationNote:
+      "Se os dados existem nas tabs corretas e o resumo nao atualiza, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-schedule-tab",
+    module: "projects",
+    intent: "project schedule service custom subservice workers subcontractors reminders complete",
+    terms: ["project schedule", "schedule do projeto", "agendar servico", "add service schedule", "custom service schedule", "sub service", "subservice", "worker schedule", "subcontractor schedule", "reminder schedule", "mark completed", "set time", "deadline schedule", "dispatch calendar"],
+    route: "/seller/project/details/:id?tab=Schedule",
+    uiLocation: "Project Details > Schedule",
+    directAnswer:
+      "A Schedule dentro do Project agenda services daquele projeto. Voce pode adicionar Service, Custom Service ou Sub Service, definir start/deadline, horarios, workers, subcontractors, descricao, reminders, editar, deletar e marcar como completed. Sub Service precisa ficar ligado a um service/custom service pai ja agendado.",
+    prerequisites: ["Precisa ter pelo menos um worker ou subcontractor atribuido para criar/editar o agendamento.", "Sub Service depende de um service/custom service pai."],
+    commonMistakes: [
+      "Confundir Schedule global com Schedule dentro do Project.",
+      "Tentar criar Sub Service sem service pai agendado.",
+      "Criar service schedule sem worker/subcontractor ou sem datas.",
+      "Achar que Dispatch Calendar e o mesmo lugar de criacao dentro do Project.",
+    ],
+    bugSignals: [
+      "Datas e assignees validos, mas o schedule nao salva.",
+      "Reminder envia para destinatario errado ou nao envia.",
+      "Servico marcado completed volta ao status anterior.",
+    ],
+    supportEscalationNote:
+      "Se o schedule esta preenchido corretamente e nao salva, edita, envia reminder ou completa, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-tasks-reports-invoices",
+    module: "projects",
+    intent: "project tasks reports invoices global differences",
+    terms: ["tasks project", "tarefas projeto", "reports project", "feed project", "invoice project", "invoices projeto", "dispatch tasks", "global reports", "invoice all", "receive payment", "payment link", "timeline invoice", "public report link"],
+    route: "/seller/project/details/:id",
+    uiLocation: "Project Details > Tasks / Reports / Invoice",
+    directAnswer:
+      "Dentro do Project, Tasks, Reports e Invoice sao focados naquele projeto. Tasks cria/edita tarefas para workers; Reports cria posts do feed com service, texto e fotos; Invoice lista e cria invoices daquele projeto, com send, cancel, delete, receive payment, payment link, timeline, download e export.",
+    prerequisites: ["Tasks normalmente usa workers como assignees.", "Reports precisa selecionar um service para criar post.", "Invoices dependem do saldo/projeto e das regras de pagamento."],
+    commonMistakes: [
+      "Confundir Project Tasks com Dispatch Tasks global.",
+      "Tentar criar report sem service no projeto.",
+      "Confundir Project Invoice com Invoice All.",
+      "Tentar editar invoice paid ou cancelar invoice que ja esta paid/void.",
+    ],
+    bugSignals: [
+      "Task criada nao aparece no projeto.",
+      "Report com service e foto valida nao publica.",
+      "Invoice permitida pelo saldo nao cria ou nao envia.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta na tab correta e os dados sao validos, mas task/report/invoice nao funciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-estimates-tab",
+    module: "projects",
+    intent: "project estimates multiple estimates approval signature cancel restore manual approval remove signature invoice",
+    terms: ["estimate dentro do project", "project estimate", "estimates do projeto", "varios estimates", "manual approval", "remove signature", "restore estimate", "cancel estimate project", "assinatura sumiu", "pending approval", "editar estimate aprovado", "convert project estimate to invoice", "pdf needs update"],
+    route: "/seller/project/details/:id?tab=Estimate",
+    uiLocation: "Project Details > Estimate",
+    directAnswer:
+      "Na tab Estimate do projeto, voce pode ter varios estimates. Estimates aprovados somam no valor e services do projeto. Criar ou editar estimate ali usa o mesmo builder de Estimates. Se um estimate aprovado for alterado em partes importantes, como services, intro letter ou terms, ele pode voltar a exigir aprovacao e a assinatura do cliente pode ser removida.",
+    prerequisites: ["Aprovacao do estimate e o que leva os services para o projeto.", "Convert to invoice pode ficar bloqueado quando o projeto ja esta fully paid."],
+    commonMistakes: [
+      "Achar que View Estimate e o editor completo.",
+      "Editar estimate aprovado e nao perceber que ele voltou a ficar pendente.",
+      "Confundir Manual Approval com assinatura real do cliente.",
+      "Achar que Cancel e Delete tem o mesmo efeito.",
+    ],
+    bugSignals: [
+      "Estimate aprovado nao soma no projeto.",
+      "Manual approval nao remove pendencia.",
+      "Remove signature nao volta a exigir assinatura.",
+      "PDF nao atualiza depois de salvar/gerar novamente.",
+    ],
+    supportEscalationNote:
+      "Se o fluxo de estimate dentro do projeto esta correto e status, assinatura, servicos ou PDF nao atualizam, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-change-orders-tab",
+    module: "projects",
+    intent: "project change orders approved estimate changes services pdf update manual approval signature",
+    terms: ["change order", "change orders", "ordem de mudanca", "alteracao estimate aprovado", "adicionar servico estimate aprovado", "change order approved", "change order pdf", "manual approval change order", "remove signature change order", "estimate pdf antigo"],
+    route: "/seller/project/details/:id?tab=ChangeOrders",
+    uiLocation: "Project Details > ChangeOrders",
+    directAnswer:
+      "Change Order e o caminho recomendado para adicionar mudancas em estimates ja aprovados. Na tab ChangeOrders, selecione o estimate, adicione existing/custom services, revise o preview e salve ou crie/envie. Quando aprovado, os services entram no estimate/projeto e o PDF do estimate pode ficar pendente de atualizacao.",
+    prerequisites: ["A Change Order precisa estar ligada a um estimate do projeto.", "Para edit, normalmente a change order precisa estar pending."],
+    commonMistakes: [
+      "Editar diretamente um estimate aprovado quando o correto seria criar Change Order.",
+      "Esperar que PDF do estimate atualize instantaneamente depois da aprovacao da Change Order.",
+      "Achar que delete esta disponivel para qualquer status.",
+    ],
+    bugSignals: [
+      "Change Order aprovada nao adiciona services no estimate/projeto.",
+      "PDF do estimate continua antigo apos entrar na tab Estimate e aguardar atualizacao.",
+      "Manual approval ou remove signature nao muda a pendencia corretamente.",
+    ],
+    supportEscalationNote:
+      "Se a Change Order foi aprovada e os services ou PDF nao atualizam como esperado, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-services-service-details",
+    module: "projects",
+    intent: "project services service details general gallery history costs status responsible dates",
+    terms: ["project services", "services do projeto", "service details", "detalhes do servico", "status service", "responsible service", "start deadline service", "gallery service", "before after", "history service", "service costs", "activities service"],
+    route: "/seller/project/details/:id?tab=Services",
+    uiLocation: "Project Details > Services / Service Details",
+    directAnswer:
+      "Na tab Services, o sistema mostra os services do projeto com search, filtro de status, status inline, start/deadline, responsible e acesso aos detalhes. Em Service Details, as tabs General, Gallery, History e Costs permitem ajustar dados do service, imagens before/after, historico de horas e custos ligados ao service.",
+    prerequisites: ["Services precisam existir no projeto por criacao direta, estimate aprovado ou change order aprovada.", "Search de services pode exigir pelo menos alguns caracteres para filtrar."],
+    commonMistakes: [
+      "Procurar custo real de material na tab Services em vez da tab Cost.",
+      "Achar que New change order cria service diretamente; ele leva para ChangeOrders.",
+      "Esperar que service sem schedule apareca como job agendado.",
+    ],
+    bugSignals: [
+      "Status, responsible ou datas do service nao salvam.",
+      "Service abre, mas detalhes ficam vazios.",
+      "Gallery, history ou costs nao carregam dados existentes.",
+    ],
+    supportEscalationNote:
+      "Se o service existe e as alteracoes nao salvam ou detalhes nao carregam, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "project-costs-files",
+    module: "projects",
+    intent: "project cost materials employee cost subcontractor cost files folders uploads exports",
+    terms: ["cost of materials", "onde lanco custo de material no projeto", "custo de material no projeto", "custo de materiais no projeto", "lancar custo de material no projeto", "lancar custo material projeto", "cost materials project", "employee cost project", "costhours", "subcontractor cost project", "files project", "folder project", "upload file project", "rich text file", "material credit", "payment date subcontractor", "overtime employee"],
+    route: "/seller/project/details/:id",
+    uiLocation: "Project Details > Cost / CostHours / SubcontractorCost / Files",
+    directAnswer:
+      "Nos custos do projeto, Cost registra materiais como Cost ou Credit, CostHours mostra custos de employees e SubcontractorCost registra custos de subcontractors. Em Files, voce pode criar folders, subir arquivos, criar rich text file, visualizar, baixar, editar e deletar arquivos dentro do projeto.",
+    prerequisites: ["Custos precisam estar dentro de um projeto.", "Material cost precisa de material, tipo, preco, quantidade e service relacionado.", "Subcontractor cost precisa de subcontractor, categoria/datas/valor conforme o fluxo."],
+    commonMistakes: [
+      "Criar material no catalogo achando que isso registra custo real.",
+      "Nao selecionar service relacionado ao material cost.",
+      "Confundir employee cost com subcontractor cost.",
+      "Procurar arquivos do projeto fora da tab Files.",
+    ],
+    bugSignals: [
+      "Custo valido nao salva, edita, deleta ou exporta.",
+      "Arquivo valido nao sobe ou nao abre preview/download.",
+      "Total de custo nao reflete item criado apos recarregar.",
+    ],
+    supportEscalationNote:
+      "Se os dados estao validos e custos ou arquivos nao funcionam, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "projects-common-issues",
+    module: "projects",
+    intent: "common project issues permissions filters converted estimate financial stale pdf schedule confusion",
+    terms: ["nao vejo projects", "projeto nao aparece", "project nao aparece", "estimate sumiu", "financial view errado", "schedule confuso", "estimate voltou pending", "assinatura removida", "change order pdf antigo", "project bug", "problema project", "erro projeto"],
+    route: "/seller/projects",
+    uiLocation: "Projects / Project Details",
+    directAnswer:
+      "Se Projects nao aparece, confira a permissao Projects. Se um projeto nao aparece, revise filtros, status, periodo, search e acesso do usuario. Se um estimate sumiu apos conversao, procure em Projects. Se Change Order aprovou e o PDF do estimate parece antigo, entre na tab Estimate e aguarde ou gere a atualizacao.",
+    prerequisites: ["Permissao Projects para acessar projetos.", "Filtros ativos podem esconder projetos.", "Algumas tabs e actions dependem de status, assinatura, saldo ou permissao."],
+    commonMistakes: [
+      "Confundir project schedule, global schedule e dispatch.",
+      "Achar que edit em estimate aprovado nunca remove assinatura.",
+      "Comparar Financial View sem conferir costs e invoices.",
+      "Usar Change Order e esperar PDF do estimate atualizar imediatamente.",
+    ],
+    bugSignals: [
+      "Usuario esta no caminho correto e com dados validos, mas action nao salva.",
+      "Services, costs, invoices ou PDF nao atualizam apos recarregar/aguardar.",
+      "Permissao correta e filtros limpos, mas projeto ou tab nao aparece.",
+    ],
+    supportEscalationNote:
+      "Se o fluxo descrito esta correto e mesmo assim falha, orientar como possivel falha tecnica, sem criar ticket automatico.",
   },
 ];
 
@@ -870,6 +1848,14 @@ export function searchPlaybooks(query: string, limit = 4) {
       }
 
       if (normalizedQuery.includes(normalizeText(playbook.module))) score += 2;
+      if (playbook.module === "projects" && /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)) score += 4;
+      if (
+        playbook.id === "project-costs-files" &&
+        /\b(cost|costs|custo|custos|material|materiais|files|arquivos)\b/.test(normalizedQuery) &&
+        /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)
+      ) {
+        score += 8;
+      }
       return { playbook, score };
     })
     .filter((item) => item.score > 0)

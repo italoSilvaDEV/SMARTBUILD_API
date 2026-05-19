@@ -94,7 +94,7 @@ export class MetaWhatsappService {
             id,
             from,
             text:
-              "Recebi sua mensagem, mas nesta V1 eu consigo responder melhor por texto. Pode descrever sua dúvida sobre Clients ou Estimates em uma mensagem?",
+              "Recebi sua mensagem, mas eu consigo responder melhor por texto. Pode descrever sua duvida sobre o sistema em uma mensagem?",
             timestamp: rawMessage.timestamp ? String(rawMessage.timestamp) : undefined,
             contactName,
             raw: rawMessage,

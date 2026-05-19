@@ -5,6 +5,7 @@ import { searchPlaybooks } from "../knowledge/playbooks";
 import { ASSISTANT_WHATSAPP_SYSTEM_PROMPT } from "../prompts/systemPrompt";
 import type { AssistantWhatsappModelResult, AssistantWhatsappSession, AssistantWhatsappToolResult } from "../types";
 import { executeAssistantWhatsappTool, getAssistantWhatsappTools } from "../tools/assistantWhatsappTools";
+import { normalizeText } from "../utils/text";
 
 const openai = assistantWhatsappEnv.openAiApiKey
   ? new OpenAI({ apiKey: assistantWhatsappEnv.openAiApiKey })
@@ -15,6 +16,9 @@ export class AssistantWhatsappOpenAIService {
     session: AssistantWhatsappSession;
     userMessage: string;
   }): Promise<AssistantWhatsappModelResult> {
+    const guardedResponse = this.getGuardedResponse(params.userMessage);
+    if (guardedResponse) return guardedResponse;
+
     if (!openai) {
       return this.fallbackAnswer(params.userMessage);
     }
@@ -105,6 +109,159 @@ export class AssistantWhatsappOpenAIService {
       .trim();
   }
 
+  private getGuardedResponse(userMessage: string): AssistantWhatsappModelResult | null {
+    const normalized = normalizeText(userMessage);
+    if (!normalized) return null;
+
+    if (this.isPromptInjectionAttempt(normalized) || this.isClearlyOffTopic(normalized)) {
+      return {
+        text: this.buildScopeRedirect(userMessage),
+        responseId: null,
+        toolsUsed: [],
+      };
+    }
+
+    return null;
+  }
+
+  private isPromptInjectionAttempt(normalized: string) {
+    const phrases = [
+      "ignore previous",
+      "ignore all previous",
+      "ignore your instructions",
+      "ignore the instructions",
+      "forget previous instructions",
+      "system prompt",
+      "developer message",
+      "developer instructions",
+      "hidden instructions",
+      "show your prompt",
+      "reveal your prompt",
+      "print your prompt",
+      "what is your prompt",
+      "what are your instructions",
+      "tool names",
+      "available tools",
+      "internal tools",
+      "internal schema",
+      "act as",
+      "you are now",
+      "dan mode",
+      "jailbreak",
+      "bypass your rules",
+      "bypass restrictions",
+      "ignore as instrucoes",
+      "ignora as instrucoes",
+      "ignore suas instrucoes",
+      "ignora suas instrucoes",
+      "desconsidere as instrucoes",
+      "desconsidera as instrucoes",
+      "esqueca as instrucoes",
+      "instrucoes anteriores",
+      "regras anteriores",
+      "mensagem do sistema",
+      "prompt do sistema",
+      "mostre seu prompt",
+      "mostra seu prompt",
+      "qual e seu prompt",
+      "qual seu prompt",
+      "revele seu prompt",
+      "revelar seu prompt",
+      "modo desenvolvedor",
+      "voce agora e",
+      "finja que",
+      "finge que",
+      "aja como",
+      "faca de conta",
+      "burlar suas regras",
+      "hackear",
+      "ignora las instrucciones",
+      "olvida las instrucciones",
+      "instrucciones anteriores",
+      "mensaje del sistema",
+      "prompt del sistema",
+      "muestra tu prompt",
+      "revela tu prompt",
+      "actua como",
+      "haz de cuenta",
+    ];
+
+    return phrases.some((phrase) => this.includesPhrase(normalized, phrase));
+  }
+
+  private isClearlyOffTopic(normalized: string) {
+    const offTopicPhrases = [
+      "neymar",
+      "convocado",
+      "convocou",
+      "convocacao",
+      "selecao brasileira",
+      "cbf",
+      "futebol",
+      "soccer",
+      "placar",
+      "copa do mundo",
+      "libertadores",
+      "brasileirao",
+      "champions league",
+      "flamengo",
+      "corinthians",
+      "palmeiras",
+      "santos futebol",
+      "vasco",
+      "messi",
+      "cristiano ronaldo",
+      "nba",
+      "nfl",
+      "ufc",
+      "previsao do tempo",
+      "weather forecast",
+      "temperatura hoje",
+      "noticia de hoje",
+      "latest news",
+      "eleicao",
+      "politica",
+      "presidente do brasil",
+      "receita de",
+      "horoscopo",
+    ];
+
+    return offTopicPhrases.some((phrase) => this.includesPhrase(normalized, phrase));
+  }
+
+  private includesPhrase(normalized: string, phrase: string) {
+    const safePhrase = phrase.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|\\s)${safePhrase}(\\s|$)`).test(normalized);
+  }
+
+  private buildScopeRedirect(userMessage: string) {
+    const language = this.detectMessageLanguage(userMessage);
+
+    if (language === "en") {
+      return "I can help only with questions about the system. Tell me which screen or action you need help with.";
+    }
+
+    if (language === "es") {
+      return "Puedo ayudar solo con dudas sobre el sistema. Dime que pantalla o accion necesitas hacer.";
+    }
+
+    return "Eu consigo ajudar apenas com duvidas sobre o sistema. Me diga qual tela ou acao voce quer fazer.";
+  }
+
+  private detectMessageLanguage(userMessage: string): "pt" | "en" | "es" {
+    const normalized = normalizeText(userMessage);
+
+    if (/\b(ayuda|pantalla|accion|necesito|quiero|donde|como hago|contrasena)\b/.test(normalized)) {
+      return "es";
+    }
+
+    if (/\b(how|what|where|which|who|help|screen|action|password|sign up)\b/.test(normalized)) {
+      return "en";
+    }
+
+    return "pt";
+  }
+
   private fallbackAnswer(
     userMessage: string,
     responseId: string | null = null,
@@ -116,7 +273,7 @@ export class AssistantWhatsappOpenAIService {
     if (!match) {
       return {
         text:
-          "Nesta V1 eu consigo ajudar com acesso/cadastro, Clients, Estimates, Settings, User Management e Services/Materials. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
+          "Eu consigo ajudar com acesso/cadastro, Clients, Estimates, Projects, Settings, User Management e Services/Materials. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
         responseId,
         toolsUsed: existingTools,
       };
