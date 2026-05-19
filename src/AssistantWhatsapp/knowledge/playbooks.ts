@@ -5,6 +5,7 @@ import { normalizeText } from "../utils/text";
 const appUrl = (assistantWhatsappEnv.publicAppUrl || "the system").replace(/\/$/, "");
 const loginUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/login` : "the system login page";
 const settingsUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/stripe-config` : "Management > Settings";
+const userManagementUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/users` : "Management > User Management";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
@@ -356,6 +357,224 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     supportEscalationNote:
       "Se a permissao existe, a configuracao esta ativa, o invoice esta open com dueDate/email e mesmo assim nao envia no horario esperado, tratar como possivel falha tecnica.",
   },
+  {
+    id: "user-management-overview",
+    module: "user_management",
+    intent: "user management overview tabs navigation",
+    terms: ["user management", "usuarios", "users", "employees", "funcionarios", "active employees", "inactive employees", "extra employees", "offices", "office", "posicoes", "permissoes", "management user management", "gestion de usuarios", "empleados"],
+    route: "/users",
+    uiLocation: `Management > User Management (${userManagementUrl})`,
+    directAnswer:
+      `User Management fica em Management > User Management. A tela usa a rota ${userManagementUrl} e tem as abas Active Employees, Inactive Employees, Extra Employees e Offices. Nela voce pode buscar, atualizar a lista, ordenar usuarios e gerenciar usuarios, offices e permissoes.`,
+    prerequisites: ["O usuario precisa ter permissao User Management para ver essa tela."],
+    commonMistakes: [
+      "Procurar usuarios em Settings; o gerenciamento fica em Management > User Management.",
+      "Nao ver a tela por falta da permissao User Management.",
+      "Confundir Offices com office fisico; nessa tela Office representa o cargo/grupo de permissoes do usuario.",
+    ],
+    bugSignals: [
+      "Usuario tem permissao User Management e mesmo assim nao ve o menu.",
+      "A rota /users nao carrega.",
+      "As abas Active Employees, Inactive Employees, Extra Employees ou Offices nao aparecem.",
+    ],
+    supportEscalationNote:
+      "Se o usuario tem permissao correta e a tela nao aparece ou nao carrega, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-active-inactive-employees",
+    module: "user_management",
+    intent: "activate deactivate active inactive employee",
+    terms: ["active employees", "inactive employees", "ativo", "inativo", "desativar usuario", "ativar usuario", "employee inactive", "employee active", "status usuario", "status employee", "reactivate", "disable employee", "enable employee"],
+    route: "/users",
+    uiLocation: "Management > User Management > Active Employees / Inactive Employees",
+    directAnswer:
+      "Para ativar ou desativar um funcionario, va em Management > User Management, abra o menu do usuario ou clique nele para entrar nos detalhes, depois clique em Edit User. No modal, altere o switch Status e salve em Save Changes.",
+    prerequisites: ["Usuario inativo nao deve conseguir acessar o sistema.", "Para extra paid user, precisa existir extra seat disponivel para reativar."],
+    commonMistakes: [
+      "Procurar um usuario desativado em Active Employees em vez de Inactive Employees.",
+      "Alterar o status e fechar o modal sem clicar em Save Changes.",
+      "Tentar reativar extra paid user sem seat extra disponivel.",
+    ],
+    bugSignals: [
+      "Status foi salvo como Active, mas o usuario continua em Inactive Employees.",
+      "Usuario aparece ativo, mas recebe Access denied ao entrar.",
+      "Existe seat extra disponivel, mas o sistema bloqueia a reativacao.",
+    ],
+    supportEscalationNote:
+      "Se o usuario seguiu o fluxo correto e o status nao muda ou o acesso continua bloqueado, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-user-details",
+    module: "user_management",
+    intent: "user details services linked tasks resend edit user",
+    terms: ["user details", "detalhes usuario", "services linked", "tasks", "tarefas", "servicos vinculados", "unlink service", "desvincular servico", "view project", "delete task", "resend password", "edit user"],
+    route: "/user/:id",
+    uiLocation: "Management > User Management > click an employee",
+    directAnswer:
+      "Ao clicar em um funcionario na lista, o sistema abre os detalhes em /user/:id. Essa tela mostra foto, nome, office, status, email, telefone, location e hourly/daily rate. Ela tambem tem Edit User, Resend Password e as tabs Services Linked e Tasks.",
+    prerequisites: ["O usuario precisa existir na company atual.", "Para ver detalhes, precisa ter permissao User Management."],
+    commonMistakes: [
+      "Esperar editar todos os dados direto na lista; a edicao completa fica em Edit User.",
+      "Tentar remover um service link que ja tem attendance records; o sistema pode bloquear para preservar historico.",
+      "Procurar tasks do usuario na lista principal em vez da tab Tasks dentro dos detalhes.",
+    ],
+    bugSignals: [
+      "Clicar no usuario nao abre /user/:id.",
+      "Services Linked ou Tasks nao carregam mesmo havendo dados.",
+      "Unlink de service sem attendance records falha.",
+      "Delete task falha sem mensagem clara.",
+    ],
+    supportEscalationNote:
+      "Se os detalhes nao carregam ou uma acao valida falha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-add-edit-user",
+    module: "user_management",
+    intent: "add edit user required fields project visibility password office",
+    terms: ["new user", "add user", "create user", "criar usuario", "adicionar usuario", "adiciono usuario", "cadastrar usuario", "cadastrar funcionario", "novo usuario", "editar usuario", "edit user", "office role", "project visibility", "all active projects", "only assigned projects", "senha automatica", "senha manual", "manual password", "automatic password"],
+    route: "/users",
+    uiLocation: "Management > User Management > New User / Edit User",
+    directAnswer:
+      "Para adicionar usuario, va em Management > User Management e clique em New User. Preencha Full Name, Email Address, Phone Number, Location, Office Role e Project Visibility. Foto e opcional. Em Project Visibility, All Active Projects libera projetos ativos; Only Assigned Projects limita aos projetos atribuidos.",
+    prerequisites: ["A company precisa ter employee slot disponivel no plano ou em extra users.", "Office Role e Project Visibility sao obrigatorios.", "Telefone precisa bater com o pais selecionado."],
+    commonMistakes: [
+      "Deixar Office Role ou Project Visibility em branco.",
+      "Usar email invalido ou email ja cadastrado na mesma company.",
+      "Preencher phone em formato diferente do pais selecionado.",
+      "Achar que Owner segue a mesma regra dos outros offices; Owner sempre fica com acesso total e All Active Projects.",
+      "Tentar senha manual para usuario que ja pertence a outra company; nesse caso o sistema desabilita senha manual.",
+      "Atingir o limite de employees do plano sem comprar extra users.",
+    ],
+    bugSignals: [
+      "Todos os campos obrigatorios estao validos e o sistema nao cria o usuario.",
+      "Email disponivel e formato correto, mas o sistema acusa duplicidade.",
+      "Project Visibility esta selecionado e mesmo assim o modal nao salva.",
+      "Usuario criado nao recebe email de acesso automatico.",
+    ],
+    supportEscalationNote:
+      "Se os campos estao validos, existe slot disponivel e o sistema ainda nao cria ou salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-worker-time-card",
+    module: "user_management",
+    intent: "worker time card configuration attendance clock in clock out break overtime rates",
+    terms: ["worker", "time card", "timecard", "attendance", "clock in", "clock out", "manual", "automatic", "hourly rate", "daily rate", "break time", "break minutes", "overtime", "over time", "can edit time card", "employee app attendance mode"],
+    route: "/users",
+    uiLocation: "Management > User Management > New User/Edit User > Worker settings",
+    directAnswer:
+      "As configuracoes de Time Card ficam em User Management, dentro do usuario. Quando o Office Role e Worker, o modal mostra payment type Hourly ou Daily, rate, Clock In Mode, Clock Out Mode e Break Time. Em edicao tambem aparecem Status e Over Time.",
+    prerequisites: ["As opcoes especificas de time card aparecem quando o usuario e Worker.", "Break Time aceita minutos de 0 a 120."],
+    commonMistakes: [
+      "Tentar configurar Employee App Attendance Mode em Settings > Company; essa configuracao agora e por usuario em User Management.",
+      "Selecionar Office Role diferente de Worker e esperar ver as opcoes de time card.",
+      "Ativar break sem revisar os minutos.",
+      "Confundir canEditTimeCard com permissao geral de editar usuarios; ele permite edicao manual do time card pelo employee.",
+    ],
+    bugSignals: [
+      "Office Role e Worker, mas as configuracoes de Time Card nao aparecem.",
+      "Salvar Clock In/Out Mode ou Break Time e o valor voltar ao antigo.",
+      "Daily/Hourly Rate salvo nao aparece nos detalhes do usuario.",
+    ],
+    supportEscalationNote:
+      "Se o usuario e Worker e a configuracao nao aparece ou nao salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-password-reset-admin",
+    module: "user_management",
+    intent: "resend reset employee password admin",
+    terms: ["resend password", "reset password", "reenviar senha", "resetar senha", "send password", "update password", "senha usuario", "senha funcionario", "manual password", "automatic password", "multiple companies"],
+    route: "/user/:id",
+    uiLocation: "Management > User Management > user details > Resend Password",
+    directAnswer:
+      "Para reenviar ou resetar senha de um usuario, abra Management > User Management, clique no usuario e use Resend Password. No modo automatico o sistema gera uma senha e envia por email. No modo manual voce define a senha diretamente, sem envio de email.",
+    prerequisites: ["Senha manual precisa ter pelo menos 6 caracteres.", "Se o usuario pertence a multiplas companies, o sistema usa o modo automatico por seguranca."],
+    commonMistakes: [
+      "Esperar email quando usou modo manual; nesse modo nao ha envio.",
+      "Digitar senha manual com menos de 6 caracteres.",
+      "Nao perceber que usuario de multiplas companies nao permite senha manual.",
+      "Resetar senha e orientar o usuario a tentar senha antiga.",
+    ],
+    bugSignals: [
+      "Modo automatico confirma, mas email nao chega.",
+      "Senha manual com 6 ou mais caracteres falha sem motivo claro.",
+      "Usuario recebe nova senha e ainda nao consegue entrar.",
+    ],
+    supportEscalationNote:
+      "Se o reset foi concluido e o usuario nao recebe email ou nao consegue entrar com a nova senha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-extra-employees",
+    module: "user_management",
+    intent: "add extra employee users seats subscription limit",
+    terms: ["extra employee", "extra employees", "extra user", "extra users", "extra paid user", "o que e extra employee", "o que e extra user", "add extra users", "comprar extra user", "comprar seats", "employee limit", "limite funcionarios", "plan limit", "allowed employees", "extra seat", "mais usuarios", "subscription active"],
+    route: "/users",
+    uiLocation: "Management > User Management > Add Extra Users",
+    directAnswer:
+      "Extra user e um seat adicional para criar usuarios alem do limite do plano. Em Management > User Management, clique em Add Extra Users, escolha a quantidade e confirme. O modal mostra total users, plan limit, extra users e o valor mensal estimado.",
+    prerequisites: ["A subscription precisa estar ativa para comprar extra users.", "A cobranca aparece na proxima invoice.", "Usuarios criados acima do limite allowedEmployees passam a ser extra paid users."],
+    commonMistakes: [
+      "Tentar criar mais usuarios sem comprar extra users depois de atingir o limite do plano.",
+      "Esperar cobranca imediata separada; a mudanca aparece na proxima invoice.",
+      "Nao notar que Add Extra Users fica desabilitado quando a subscription nao esta ativa.",
+    ],
+    bugSignals: [
+      "Subscription ativa, mas Add Extra Users esta desabilitado.",
+      "Compra confirma, mas o limite de usuarios nao aumenta.",
+      "Novo usuario acima do limite nao aparece como extra user.",
+    ],
+    supportEscalationNote:
+      "Sem autenticacao da company, nao afirmar quantidade real de seats. Oriente o usuario a conferir no modal Add Extra Users.",
+  },
+  {
+    id: "user-management-reduce-extra-employees",
+    module: "user_management",
+    intent: "reduce extra employees seats disable selected extra users",
+    terms: ["reduce extras", "reduce extra users", "como reduzir extra users", "reduzir extra users", "remover extra employees", "unused seats", "assigned seats", "disable extra users", "cancelar extra users", "extra paid users"],
+    route: "/users",
+    uiLocation: "Management > User Management > Extra Employees > Reduce Extras",
+    directAnswer:
+      "Para reduzir extra users, va na aba Extra Employees e clique em Reduce Extras. Se houver unused seats, o sistema reduz sem afetar usuarios. Se voce reduzir seats ja atribuidos, precisa selecionar exatamente quais extra users serao desativados.",
+    prerequisites: ["A company precisa ter extra users contratados.", "Se a reducao afetar usuarios atribuidos, a selecao dos usuarios e obrigatoria."],
+    commonMistakes: [
+      "Tentar reduzir mais seats do que existem.",
+      "Nao selecionar a quantidade exata de usuarios quando o sistema pede.",
+      "Esperar que reduzir extra user apague usuario; o sistema desativa usuarios selecionados quando necessario.",
+      "Esperar efeito financeiro imediato; a mudanca impacta a proxima invoice.",
+    ],
+    bugSignals: [
+      "Existe unused seat, mas o sistema exige selecionar usuario.",
+      "Selecionou a quantidade correta e mesmo assim nao consegue reduzir.",
+      "Reducao confirma, mas a quantidade de extra users nao muda.",
+    ],
+    supportEscalationNote:
+      "Se a quantidade e a selecao estao corretas e a reducao falha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "user-management-offices",
+    module: "user_management",
+    intent: "create edit delete offices permissions user roles",
+    terms: ["offices", "office", "new office", "edit office", "delete office", "office permissions", "grant all permissions", "permissoes office", "cargo", "role", "position", "users count", "system offices", "office name"],
+    route: "/users",
+    uiLocation: "Management > User Management > Offices",
+    directAnswer:
+      "Offices ficam na aba Offices de User Management. Eles funcionam como cargos/grupos de permissao. Clique em New Office para criar, informe Office Name e selecione permissoes; Grant All Permissions marca todas as permissoes visiveis disponiveis no plano.",
+    prerequisites: ["Permissoes exibidas vem do plano ativo e precisam estar visiveis para offices.", "Office Name e obrigatorio.", "Office name precisa ser unico dentro da company."],
+    commonMistakes: [
+      "Criar office com nome que ja existe na mesma company.",
+      "Tentar editar nome de system office protegido.",
+      "Tentar deletar office do sistema ou office com usuarios vinculados.",
+      "Achar que mudar permissoes do office altera dados antigos; isso controla acesso de usuarios associados ao office.",
+      "Confundir users count com limite do plano; users count e a quantidade de usuarios ligados naquele office.",
+    ],
+    bugSignals: [
+      "Office novo com nome unico e permissoes validas nao salva.",
+      "Office sem usuarios vinculados e nao protegido nao deleta.",
+      "Permissoes visiveis do plano nao aparecem no modal.",
+      "Usuario continua sem acesso apos trocar para office com permissao correta e relogar.",
+    ],
+    supportEscalationNote:
+      "Se o office nao e protegido, nao tem usuarios vinculados e mesmo assim nao deleta ou nao salva, tratar como possivel falha tecnica.",
+  },
 ];
 
 export function searchPlaybooks(query: string, limit = 4) {
@@ -387,7 +606,7 @@ export function searchPlaybooks(query: string, limit = 4) {
         if (haystack.includes(word)) score += 1;
       }
 
-      if (normalizedQuery.includes(playbook.module)) score += 2;
+      if (normalizedQuery.includes(normalizeText(playbook.module))) score += 2;
       return { playbook, score };
     })
     .filter((item) => item.score > 0)

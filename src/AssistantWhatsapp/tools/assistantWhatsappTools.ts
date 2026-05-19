@@ -9,7 +9,7 @@ export function getAssistantWhatsappTools() {
       type: "function",
       name: "searchSmartBuildKnowledge",
       description:
-        "Search system usability playbooks for account access, Clients, Estimates and Settings. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
+        "Search system usability playbooks for account access, Clients, Estimates, Settings and User Management. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
       parameters: {
         type: "object",
         properties: {

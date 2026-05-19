@@ -59,7 +59,7 @@ export type MetaWhatsappTextMessage = {
 
 export type KnowledgePlaybook = {
   id: string;
-  module: "account" | "clients" | "estimates" | "settings";
+  module: "account" | "clients" | "estimates" | "settings" | "user_management";
   intent: string;
   terms: string[];
   route?: string;
