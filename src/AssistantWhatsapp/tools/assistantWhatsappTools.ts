@@ -1,7 +1,9 @@
-import { searchPlaybooks } from "../knowledge/playbooks";
 import type { AssistantWhatsappSession, AssistantWhatsappToolResult } from "../types";
 import { prisma } from "../../utils/prisma";
 import { assistantWhatsappEnv } from "../config/env";
+import { AssistantWhatsappKnowledgeService } from "../services/AssistantWhatsappKnowledgeService";
+
+const knowledgeService = new AssistantWhatsappKnowledgeService();
 
 export function getAssistantWhatsappTools() {
   return [
@@ -59,14 +61,30 @@ export async function executeAssistantWhatsappTool(params: {
     const query = typeof input.query === "string" && input.query.trim()
       ? input.query.trim()
       : params.userMessage;
-    const matches = searchPlaybooks(query);
+    const result = await knowledgeService.search({
+      query,
+      session: params.session,
+      limit: 5,
+    });
+
     return {
       tool: params.toolName,
       input: { query },
       output: {
-        matches,
+        matches: result.matches.map((match) => ({
+          id: match.playbook.id,
+          module: match.playbook.module,
+          intent: match.playbook.intent,
+          route: match.playbook.route,
+          uiLocation: match.playbook.uiLocation,
+          directAnswer: match.playbook.directAnswer,
+          prerequisites: match.playbook.prerequisites,
+          commonMistakes: match.playbook.commonMistakes,
+          bugSignals: match.playbook.bugSignals,
+          supportEscalationNote: match.playbook.supportEscalationNote,
+        })),
         guidance:
-          "Answer only the user's exact question. Mention a prerequisite or common mistake only when it directly applies. Do not turn this into a full tutorial unless the user asks for a full walkthrough.",
+          "Use these knowledge snippets as support context. Answer only the user's exact question. If multiple snippets are relevant, combine them naturally. Mention a prerequisite or common mistake only when it directly applies. Do not turn this into a full tutorial unless the user asks for a full walkthrough.",
       },
     };
   }

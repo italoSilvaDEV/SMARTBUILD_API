@@ -7,6 +7,7 @@ export const assistantWhatsappEnv = {
   webhookVerifyToken: process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || "",
   openAiApiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY || "",
   openAiModel: process.env.ASSISTANT_WHATSAPP_OPENAI_MODEL || "gpt-5.4-mini",
+  openAiEmbeddingModel: process.env.ASSISTANT_WHATSAPP_EMBEDDING_MODEL || "text-embedding-3-small",
   sessionInactivityMinutes: Number(process.env.ASSISTANT_WHATSAPP_SESSION_TIMEOUT_MINUTES || 60),
   maxWhatsappTextLength: Number(process.env.ASSISTANT_WHATSAPP_MAX_TEXT_LENGTH || 3500),
   publicAppUrl:

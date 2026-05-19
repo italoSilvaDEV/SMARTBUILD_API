@@ -592,7 +592,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
     id: "estimates-custom-service-builder",
     module: "estimates",
     intent: "custom service in estimate builder not saved to catalog ai description enhance",
-    terms: ["custom service estimate", "custom service", "servico custom estimate", "custom service salva no catalogo", "custom service catalogo", "generate step by step", "generate description", "enhance description", "ai description service", "add custom service estimate"],
+    terms: ["custom service estimate", "custom service no estimate", "custom service no estimate salva no catalogo", "custom service", "servico custom estimate", "custom service salva no catalogo", "custom service catalogo", "generate step by step", "generate description", "enhance description", "ai description service", "add custom service estimate"],
     route: "/seller/new-estimate/services/:id",
     uiLocation: "Estimate builder > Custom Service / Add Service > Custom Service",
     directAnswer:
@@ -1856,42 +1856,6 @@ export function searchPlaybooks(query: string, limit = 4) {
       }
 
       if (normalizedQuery.includes(normalizeText(playbook.module))) score += 2;
-      if (playbook.module === "projects" && /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)) score += 4;
-      if (
-        playbook.id === "project-costs-files" &&
-        /\b(cost|costs|custo|custos|material|materiais|files|arquivos)\b/.test(normalizedQuery) &&
-        /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)
-      ) {
-        score += 8;
-      }
-      if (
-        playbook.id === "projects-export-delete-actions" &&
-        /\b(export|exportar|arquivo|formato|pdf|excel)\b/.test(normalizedQuery) &&
-        /\b(project|projects|projeto|projetos)\b/.test(normalizedQuery)
-      ) {
-        score += 8;
-      }
-      if (
-        playbook.id === "estimates-main-export" &&
-        /\b(export|exportar|arquivo|formato|pdf|excel)\b/.test(normalizedQuery) &&
-        /\b(estimate|estimates|orcamento|orcamentos)\b/.test(normalizedQuery)
-      ) {
-        score += 8;
-      }
-      if (
-        (playbook.id === "estimates-editor-existing-estimate" || playbook.id === "project-estimates-tab") &&
-        /\b(estimate|estimates|orcamento|orcamentos)\b/.test(normalizedQuery) &&
-        /\b(assinatura|signature|assinado|approved|aprovado|editar|edit|pending|pendente)\b/.test(normalizedQuery)
-      ) {
-        score += 12;
-      }
-      if (
-        playbook.id === "project-schedule-tab" &&
-        /\b(schedule|agenda|agendamento|agendar|subservice|sub service)\b/.test(normalizedQuery) &&
-        /\b(project|projects|projeto|projetos|details|detalhes)\b/.test(normalizedQuery)
-      ) {
-        score += 12;
-      }
       return { playbook, score };
     })
     .filter((item) => item.score > 0)
