@@ -116,7 +116,7 @@ export class AssistantWhatsappOpenAIService {
     if (!match) {
       return {
         text:
-          "Nesta V1 eu consigo ajudar principalmente com Clients e Estimates. Me manda a dúvida com o nome da tela ou ação que você está tentando fazer que eu te guio no ponto certo.",
+          "Nesta V1 eu consigo ajudar com acesso/cadastro, Clients, Estimates e Settings. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
         responseId,
         toolsUsed: existingTools,
       };
@@ -136,4 +136,3 @@ export class AssistantWhatsappOpenAIService {
     };
   }
 }
-
