@@ -11,7 +11,7 @@ export function getAssistantWhatsappTools() {
       type: "function",
       name: "searchSmartBuildKnowledge",
       description:
-        "Search system usability playbooks for account access, Clients, Estimates including builder/new/edit flows, Projects including project details tabs, Settings, User Management, and Services/Materials. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
+        "Search system usability playbooks for account access, Clients, Estimates including builder/new/edit flows, Projects including project details tabs, Invoices including Invoice All/project/estimate/custom flows, Settings, User Management, and Services/Materials. Use this before answering how-to, navigation, workflow, permission, common mistake, or bug-signal questions.",
       parameters: {
         type: "object",
         properties: {

@@ -273,7 +273,7 @@ export class AssistantWhatsappOpenAIService {
     if (!match) {
       return {
         text:
-          "Eu consigo ajudar com acesso/cadastro, Clients, Estimates, Projects, Settings, User Management e Services/Materials. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
+          "Eu consigo ajudar com acesso/cadastro, Clients, Estimates, Projects, Invoices, Settings, User Management e Services/Materials. Me manda a duvida com o nome da tela ou acao que voce esta tentando fazer que eu te guio no ponto certo.",
         responseId,
         toolsUsed: existingTools,
       };

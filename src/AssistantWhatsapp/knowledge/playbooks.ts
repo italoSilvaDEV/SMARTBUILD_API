@@ -10,6 +10,7 @@ const userManagementUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/users` 
 const servicesUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/services` : "Management > Services";
 const projectsUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/seller/projects` : "Projects";
 const newProjectUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/seller/new-project/type-project` : "Projects > New Project";
+const invoicesUrl = assistantWhatsappEnv.publicAppUrl ? `${appUrl}/invoice-all` : "Financials > Invoices";
 
 export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
   {
@@ -474,7 +475,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "Action fica bloqueada sem motivo aparente para um estimate elegivel.",
     ],
     supportEscalationNote:
-      "Se o usuario esta fazendo o fluxo correto e mesmo assim nao funciona, responder como possivel falha tecnica, sem criar ticket automatico.",
+      "Se o usuario esta fazendo o fluxo correto e mesmo assim nao funciona, responder como possivel falha tecnica.",
   },
   {
     id: "estimates-builder-entry-and-types",
@@ -1493,7 +1494,7 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "Alteracoes aparecem salvas, mas somem apos atualizar a tela.",
     ],
     supportEscalationNote:
-      "Se o fluxo esta correto e mesmo assim nao funciona, orientar como possivel falha tecnica, sem criar ticket automatico.",
+      "Se o fluxo esta correto e mesmo assim nao funciona, orientar como possivel falha tecnica.",
   },
   {
     id: "projects-overview-list",
@@ -1822,7 +1823,408 @@ export const assistantWhatsappPlaybooks: KnowledgePlaybook[] = [
       "Permissao correta e filtros limpos, mas projeto ou tab nao aparece.",
     ],
     supportEscalationNote:
-      "Se o fluxo descrito esta correto e mesmo assim falha, orientar como possivel falha tecnica, sem criar ticket automatico.",
+      "Se o fluxo descrito esta correto e mesmo assim falha, orientar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-all-overview",
+    module: "invoices",
+    intent: "invoice all page overview dashboard filters search table new invoice custom invoice",
+    terms: ["invoice all", "invoices", "invoice-all", "pagina de invoices", "lista de invoices", "financials invoice", "recent invoices", "custom invoice", "new invoice", "onde vejo invoices", "faturas"],
+    route: "/invoice-all",
+    uiLocation: `Financials > Invoice All (${invoicesUrl})`,
+    directAnswer:
+      `A tela de invoices fica em Financials > Invoice All. Ali o sistema mostra filtros, cards de resumo, graficos, search, tabela Recent Invoices, export PDF/Excel, botao Custom invoice e botao Invoice para criar a partir de Project ou Estimate.`,
+    prerequisites: ["O usuario precisa ter permissao Invoice para ver a tela.", "Filtros ativos afetam os cards, graficos, tabela e export."],
+    commonMistakes: [
+      "Procurar invoice do projeto somente em Project Details e esquecer a lista geral Invoice All.",
+      "Achar que Custom invoice e a mesma coisa que Stripe ou QuickBooks; Custom/Other e tracking manual.",
+      "Criar invoice por Project/Estimate quando queria uma invoice standalone sem escolher projeto antes.",
+    ],
+    bugSignals: [
+      "Permissao Invoice existe, mas Invoice All nao aparece.",
+      "Tabela nao carrega mesmo sem filtros ativos.",
+      "Botoes de criacao nao abrem modal nenhum.",
+    ],
+    supportEscalationNote:
+      "Se a permissao esta correta e a tela nao carrega ou os botoes nao respondem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-filters-dashboard",
+    module: "invoices",
+    intent: "invoice all filters dashboard statistics revenue status distribution",
+    terms: ["filtros invoice", "invoice filters", "dashboard invoice", "stats invoice", "total invoices", "paid pending average invoice", "monthly revenue", "status distribution", "period invoice", "date range invoice", "type filter invoice"],
+    route: "/invoice-all",
+    uiLocation: "Financials > Invoice All > Filters / Dashboard",
+    directAnswer:
+      "Os filtros de Invoice All incluem Period, custom date range, Status e Type. Period pode ser This Year, This Quarter, Last 3 Months, Last Month, This Month, Last 30 Days ou All Period; custom date range vira o filtro principal de data. Status filtra Pending/Paid e Type filtra Stripe/Other.",
+    prerequisites: ["Dashboard e tabela respeitam os mesmos filtros.", "Other agrupa invoices que nao sao Stripe, principalmente Custom/Other."],
+    commonMistakes: [
+      "Dashboard vazio por causa de date range, status ou type filter ativo.",
+      "Esperar que Pending conte somente um status visual; no sistema Pending inclui invoices abertas ou em draft.",
+      "Confundir Monthly Revenue Trend com total geral; ele considera revenue mensal de invoices paid.",
+    ],
+    bugSignals: [
+      "Clear All nao volta para All Period com Pending/Paid e Stripe/Other.",
+      "Dashboard e tabela mostram dados incompativeis com os mesmos filtros apos recarregar.",
+      "Graficos nao carregam mesmo com invoices existentes e filtros limpos.",
+    ],
+    supportEscalationNote:
+      "Se filtros limpos e invoices existentes nao aparecem nos cards/graficos, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-table-search-export",
+    module: "invoices",
+    intent: "invoice all table columns search sort select export pdf excel",
+    terms: ["invoice table", "tabela invoice", "search invoice", "buscar invoice", "export invoice", "export invoices", "exportar invoices", "excel invoice", "pdf invoice report", "qual arquivo export invoices", "selecionar invoices"],
+    route: "/invoice-all",
+    uiLocation: "Financials > Invoice All > Recent Invoices",
+    directAnswer:
+      "A tabela mostra Invoice/date, Type, Client, Description, Amount, Status/Payment, Payment Date, Due Date e Actions. Search procura por invoice ID, client name, client email, address/location e description. Para exportar, marque as invoices na tabela e use Export PDF ou Export Excel; isso gera um relatorio da lista selecionada, nao baixa os PDFs individuais de cada invoice.",
+    prerequisites: ["E preciso selecionar pelo menos uma invoice para Export PDF ou Export Excel.", "A ordenacao existe em colunas como Invoice, Client, Amount, Status/Payment, Payment Date e Due Date."],
+    commonMistakes: [
+      "Tentar exportar sem selecionar invoices.",
+      "Achar que Export PDF baixa o PDF individual da invoice; ele gera relatorio.",
+      "Buscar por um campo que nao esta coberto pelo search atual.",
+    ],
+    bugSignals: [
+      "Invoice aparece na tela, mas nao entra no export selecionado.",
+      "Export PDF ou Excel falha com invoices selecionadas.",
+      "Search nao encontra por invoice ID ou client name exatos.",
+    ],
+    supportEscalationNote:
+      "Se ha invoices selecionadas e o export falha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-actions-overview",
+    module: "invoices",
+    intent: "invoice row actions view timeline download send payment link receive payment edit cancel delete",
+    terms: ["actions invoice", "acoes invoice", "view invoice", "timeline invoice", "download invoice", "send invoice email", "payment link invoice", "receive payment", "edit invoice", "cancel invoice", "delete invoice", "paid receipt", "download paid invoice"],
+    route: "/invoice-all",
+    uiLocation: "Invoice table > Actions",
+    directAnswer:
+      "Na tabela, o olho abre View invoice details e o lixo deleta quando permitido. No menu de tres pontos ficam Timeline, Link to Project para standalone, Send Invoices By Email quando existe PDF, envio pelo QuickBooks quando aplicavel, download, payment link, Receive Payment, Edit Invoice e Cancel Invoice conforme status/tipo.",
+    prerequisites: ["Acoes mudam por status e tipo: paid, void/canceled, partial, custom, Stripe e QuickBooks.", "Algumas acoes exigem PDF disponivel, email do client ou integracao configurada."],
+    commonMistakes: [
+      "Procurar Edit em invoice paid; invoice paid fica bloqueada para edicao.",
+      "Tentar cancelar ou deletar QuickBooks partial; o sistema bloqueia por ja ter pagamento parcial.",
+      "Esperar Download Paid Invoice antes do recibo pago existir.",
+      "Achar que Send Invoices By Email aparece mesmo sem PDF gerado.",
+    ],
+    bugSignals: [
+      "Action aparece habilitada, mas nao executa.",
+      "Timeline abre vazia depois de acoes reais de envio/pagamento.",
+      "PDF existe, mas download ou envio acusa PDF indisponivel.",
+    ],
+    supportEscalationNote:
+      "Se a action deveria estar disponivel pelo status/tipo e mesmo assim falha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-create-entry-points",
+    module: "invoices",
+    intent: "create invoice entry points invoice all project estimate project details estimate convert",
+    terms: ["criar invoice", "new invoice", "invoice de project", "invoice de estimate", "convert to invoice", "project details invoice", "custom invoice standalone", "select project estimate invoice", "invoice all create"],
+    route: "/invoice-all",
+    uiLocation: "Financials > Invoice All / Project Details > Invoice / Estimates > Convert to Invoice",
+    directAnswer:
+      "Voce pode criar invoice por tres caminhos principais: em Invoice All, clique Invoice e selecione um Project ou Estimate; em Invoice All, clique Custom invoice para criar uma invoice standalone; ou use Convert to Invoice em Estimates/Project Details. Dentro de Project Details > Invoice, a invoice ja nasce ligada ao projeto aberto.",
+    prerequisites: ["Para invoice por Project/Estimate, precisa existir saldo a faturar.", "Para Custom invoice standalone, selecione um client antes de salvar.", "Para Project Details > Invoice, o projeto nao pode estar fully paid para criar nova invoice."],
+    commonMistakes: [
+      "Selecionar um Project ou Estimate fully paid e achar que o botao esta quebrado.",
+      "Confundir Custom invoice standalone com invoice criada de um Project existente.",
+      "Procurar invoice convertida de estimate somente em Estimates; depois de criada ela aparece em Invoice All e, quando ligada, no projeto.",
+    ],
+    bugSignals: [
+      "Modal Select Project/Estimate nao lista itens mesmo com saldo e permissao.",
+      "Projeto nao fully paid aparece bloqueado como fully paid.",
+      "Invoice criada por Estimate nao aparece em Invoice All apos recarregar.",
+    ],
+    supportEscalationNote:
+      "Se o item tem saldo e permissao correta, mas a criacao fica bloqueada, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-custom-standalone",
+    module: "invoices",
+    intent: "custom standalone invoice client work context services link to project",
+    terms: ["custom invoice", "standalone invoice", "invoice sem projeto", "invoice avulsa", "select client invoice", "work context invoice", "link to project", "vincular invoice a project"],
+    route: "/invoice-all",
+    uiLocation: "Financials > Invoice All > Custom invoice",
+    directAnswer:
+      "Custom invoice cria uma invoice manual/Other. No modo standalone, selecione o client, escolha um Work Context se existir, adicione services/items e salve. Depois, se a invoice estiver standalone, a action Link to Project permite vincular essa invoice a um projeto ativo.",
+    prerequisites: ["Client e pelo menos um service/item sao necessarios para uma custom invoice util.", "Work Context e opcional no standalone e serve para usar os dados de contato daquele contexto.", "Link to Project aparece para invoices standalone."],
+    commonMistakes: [
+      "Achar que Custom invoice cria cobranca online automaticamente; ela e tracking manual.",
+      "Criar standalone sem client selecionado.",
+      "Esperar Link to Project em invoices que ja nasceram dentro de um projeto.",
+    ],
+    bugSignals: [
+      "Client selecionado nao fica aplicado no modal.",
+      "Link to Project nao aparece para invoice standalone.",
+      "Vincular a projeto confirma, mas invoice continua fora do projeto.",
+    ],
+    supportEscalationNote:
+      "Se standalone foi criada corretamente e Link to Project nao vincula, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-payment-details",
+    module: "invoices",
+    intent: "invoice payment details tab recipients custom date due date description manager amount percentage fixed",
+    terms: ["payment details invoice", "payment tab invoice", "email recipients invoice", "custom creation date invoice", "due date invoice", "invoice manager", "percentage invoice", "fixed amount invoice", "amount invoice", "descricao invoice"],
+    route: "/invoice-all",
+    uiLocation: "Create/Edit Invoice > Payment Details",
+    directAnswer:
+      "Na tab Payment Details, o usuario ajusta recipients por email, custom creation date opcional, due date, description, Invoice Manager opcional, amount por Percentage ou Fixed e Payment Method. O campo de emails aceita multiplos destinatarios separados por virgula.",
+    prerequisites: ["Due Date e amount valido sao necessarios para salvar.", "Percentage cobra uma parte do valor base; Fixed usa o valor exato digitado.", "Custom Creation Date nao pode ser uma data futura."],
+    commonMistakes: [
+      "Digitar valor fixed com formato errado; o campo orienta digitar numeros, exemplo 150000 para $1,500.00.",
+      "Usar percentage esperando que seja percentual do saldo restante quando o contexto mostra total de services/projeto.",
+      "Esquecer de conferir recipients antes de Create & Send.",
+      "Achar que Invoice Manager e obrigatorio; ele e opcional.",
+    ],
+    bugSignals: [
+      "Amount valido continua bloqueando Save.",
+      "Custom Creation Date valida nao salva.",
+      "Recipients validos separados por virgula sao rejeitados.",
+    ],
+    supportEscalationNote:
+      "Se os campos obrigatorios estao validos e o modal nao salva, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-payment-methods-stripe-qbo-custom",
+    module: "invoices",
+    intent: "invoice payment methods other custom stripe quickbooks setup required reauthorization payment link",
+    terms: ["payment method invoice", "stripe invoice", "quickbooks invoice", "other invoice", "manual tracking invoice", "setup required invoice", "reauthorization required", "qbo invoice", "payment link", "show pdf accepted payment methods", "diferenca custom stripe quickbooks invoice", "diferenca other stripe quickbooks invoice", "custom vs stripe vs quickbooks", "invoice type quickbooks stripe custom"],
+    route: "/invoice-all",
+    uiLocation: "Create/Edit Invoice > Payment Details > Payment Method",
+    directAnswer:
+      "Payment Method pode ser Other, Stripe ou QuickBooks dependendo do fluxo e das integracoes disponiveis. Other/Custom e controle manual no sistema. Stripe cria invoice com pagamento online/payment link quando Stripe esta configurado. QuickBooks cria/sincroniza invoice no QuickBooks e pode usar envio/link de pagamento do QBO quando a conta permite.",
+    prerequisites: ["Stripe precisa estar conectado em Settings > Payments.", "QuickBooks precisa estar conectado/autorizado em Settings > Integrations.", "Se aparecer Setup required ou Reauthorization required, configure antes em Settings."],
+    commonMistakes: [
+      "Selecionar Stripe sem concluir onboarding em Settings > Payments.",
+      "Selecionar QuickBooks com reauthorization pendente.",
+      "Achar que Show PDF accepted payment methods muda a cobranca; ele so mostra/oculta metodos aceitos no PDF.",
+      "Tentar enviar Stripe antigo pelo email da Stripe quando o fluxo atual usa payment link.",
+    ],
+    bugSignals: [
+      "Stripe ou QuickBooks esta conectado em Settings, mas continua Setup required no modal.",
+      "QuickBooks cria invoice sem link mesmo com pagamentos online habilitados na conta QBO.",
+      "Payment link nao copia ou nao abre para invoice elegivel.",
+    ],
+    supportEscalationNote:
+      "Se a integracao esta conectada e autorizada, mas o metodo aparece bloqueado ou falha, tratar como possivel falha tecnica ou necessidade de revisar a conta externa.",
+  },
+  {
+    id: "invoices-customize-services",
+    module: "invoices",
+    intent: "invoice customize tab services items existing custom ai image attachments pdf attachments preview",
+    terms: ["customize invoice", "services invoice", "items invoice", "existing service invoice", "custom service invoice", "ia service invoice", "image attachments invoice", "pdf attachments invoice", "preview invoice", "editar servico invoice"],
+    route: "/invoice-all",
+    uiLocation: "Create/Edit Invoice > Customize",
+    directAnswer:
+      "Na tab Customize, o usuario revisa Services & Items, adiciona Existing Service ou Custom Service, edita/deleta itens quando permitido, ativa Image Attachments e adiciona PDFs anexos. No Custom invoice standalone tambem existe IA Service. O preview do PDF fica ao lado no desktop.",
+    prerequisites: ["Services/items alimentam o valor e o PDF da invoice.", "Image Attachments precisa estar ligado para aparecer no PDF.", "PDF Attachments sao anexos adicionais, nao line items."],
+    commonMistakes: [
+      "Achar que Custom Service dentro da invoice cria item no catalogo de Management > Services.",
+      "Deletar item no Customize e esquecer de salvar a invoice.",
+      "Procurar Existing Service sem ter catalogo/categoria configurada.",
+      "Esperar editar items de QuickBooks partial; esses itens ficam bloqueados apos pagamento parcial.",
+    ],
+    bugSignals: [
+      "Item adicionado no Customize nao aparece no preview ou no PDF apos salvar.",
+      "Anexos validos nao sobem ou nao aparecem.",
+      "QuickBooks partial permite editar item mesmo com pagamento parcial aplicado.",
+    ],
+    supportEscalationNote:
+      "Se o usuario salva e os items/anexos nao persistem ou o preview/PDF nao atualiza, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-extra-work-balance",
+    module: "invoices",
+    intent: "invoice amount exceeds project estimate balance extra work overage fixed percentage balance due",
+    terms: ["extra work invoice", "valor maior que saldo", "invoice maior que projeto", "fixed alto invoice", "amount exceeds balance", "balance due invoice", "overdue amount invoice", "valor ultrapassa projeto", "invoice passando do total"],
+    route: "/invoice-all",
+    uiLocation: "Create/Edit Invoice > Payment Details / PDF Preview",
+    directAnswer:
+      "Se o amount da invoice ficar acima do balance due do Project ou Estimate, o sistema separa a diferenca como Extra Work/overage no contexto do PDF. Isso ajuda a mostrar que existe valor acima do saldo original; se nao era essa a intencao, reduza o Fixed amount ou ajuste a porcentagem antes de salvar/enviar.",
+    prerequisites: ["O sistema calcula a diferenca usando o valor da invoice contra o saldo restante do contexto.", "Fixed alto e porcentagem alta podem gerar Extra Work."],
+    commonMistakes: [
+      "Digitar Fixed amount com zeros a mais.",
+      "Cobrar percentual sobre um total maior do que o usuario esperava.",
+      "Ignorar o preview antes de Create & Send.",
+    ],
+    bugSignals: [
+      "Extra Work aparece mesmo quando invoice amount nao passa do saldo restante.",
+      "PDF nao mostra overage quando amount passa claramente do balance due.",
+      "Balance due usado na invoice parece diferente do projeto/estimate apos recarregar.",
+    ],
+    supportEscalationNote:
+      "Se o saldo restante esta correto e o Extra Work nao bate com o valor, tratar como possivel falha tecnica de calculo/preview.",
+  },
+  {
+    id: "invoices-save-send-edit",
+    module: "invoices",
+    intent: "save invoice create send update send edit paid void partial locks pdf generation email modal",
+    terms: ["save invoice", "create and send invoice", "save changes invoice", "update and send invoice", "editar invoice", "invoice paid nao edita", "partial quickbooks locked", "pdf invoice nao atualizou"],
+    route: "/invoice-all",
+    uiLocation: "Create/Edit Invoice footer",
+    directAnswer:
+      "Save Invoice ou Save Changes salva sem enviar. Create & Send ou Update & Send salva e abre/continua o fluxo de envio por email. Depois de salvar, o sistema gera o PDF normal e tambem prepara o PDF de paid receipt para quando a invoice for paga.",
+    prerequisites: ["Paid invoices nao podem ser editadas.", "Void/canceled invoices ficam bloqueadas para varias acoes.", "QuickBooks partial bloqueia amount, payment method e services/items; ainda pode permitir ajustes simples como due date/description conforme o modal."],
+    commonMistakes: [
+      "Fechar o modal achando que Create & Send nao salvou; primeiro ele salva e depois envia.",
+      "Editar services/amount e nao clicar Save Changes.",
+      "Tentar editar invoice paid.",
+      "Tentar cancelar/deletar invoice com pagamento parcial no QuickBooks.",
+    ],
+    bugSignals: [
+      "Save mostra sucesso, mas alteracao some apos recarregar.",
+      "Create & Send cria invoice mas nao gera PDF.",
+      "Invoice nao paid aparece bloqueada como paid/void sem motivo visivel.",
+    ],
+    supportEscalationNote:
+      "Se Save ou Update confirma, mas dados/PDF nao persistem, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-send-email-receipt",
+    module: "invoices",
+    intent: "send invoice email modal payment receipt email automatic attachment preview recipients body",
+    terms: ["send invoices by email", "send invoice email", "payment receipt invoice", "email preview invoice", "automatic attachment invoice", "send receipt", "comprovante pago invoice", "paid pdf invoice"],
+    route: "/invoice-all",
+    uiLocation: "Invoice Actions > Send Invoices By Email",
+    directAnswer:
+      "Send Invoices By Email abre um modal com Email Type, To, Email Body e preview. Invoice envia o PDF original automaticamente. Se a invoice esta paid e existe paid PDF, Payment Receipt envia o recibo de pagamento. O To aceita multiplos emails separados por virgula.",
+    prerequisites: ["Para enviar Invoice, precisa existir PDF normal.", "Para enviar Payment Receipt, a invoice precisa estar paid e ter paid PDF/receipt.", "Emails precisam ser validos."],
+    commonMistakes: [
+      "Tentar enviar recibo antes da invoice estar paid.",
+      "Tentar enviar email sem PDF gerado.",
+      "Colocar varios emails sem separar por virgula.",
+    ],
+    bugSignals: [
+      "PDF existe, mas o tipo de email fica desabilitado.",
+      "Email valido e PDF existente, mas envio falha.",
+      "Payment receipt nao gera depois de registrar pagamento.",
+    ],
+    supportEscalationNote:
+      "Se PDF e emails estao corretos e o envio falha, tratar como possivel falha tecnica de email/PDF.",
+  },
+  {
+    id: "invoices-receive-payment",
+    module: "invoices",
+    intent: "receive payment manual payment invoice payment method notes retroactive date paid status confirmation",
+    terms: ["receive payment", "receber pagamento invoice", "registrar pagamento invoice", "manual payment invoice", "retroactive payment date", "payment date invoice", "payment method invoice paid"],
+    route: "/invoice-all",
+    uiLocation: "Invoice Actions > Receive Payment",
+    directAnswer:
+      "Receive Payment registra um pagamento manual para uma invoice que ainda nao esta paid/void. O modal mostra a invoice e amount, pede Payment Method, permite Notes e tem opcao de Use retroactive payment date para salvar uma data de pagamento anterior. Ao processar, a invoice passa para paid ou partial conforme o tipo/valor suportado pelo fluxo.",
+    prerequisites: ["A invoice nao pode estar paid ou void/canceled.", "Payment Method e obrigatorio.", "Data retroativa nao pode ser futura."],
+    commonMistakes: [
+      "Tentar receber pagamento em invoice paid.",
+      "Nao selecionar Payment Method.",
+      "Usar data futura como payment date.",
+      "Confundir pagamento manual com pagamento online via Stripe/QuickBooks link.",
+    ],
+    bugSignals: [
+      "Pagamento valido nao muda status.",
+      "Paid PDF/receipt nao e gerado apos pagamento.",
+      "QuickBooks conectado nao reflete pagamento ou cai somente em registro local quando deveria sincronizar.",
+    ],
+    supportEscalationNote:
+      "Se o pagamento manual foi registrado corretamente mas status/receipt nao atualiza, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-project-details-tab",
+    module: "invoices",
+    intent: "project details invoice tab project scoped invoices search export create fully paid",
+    terms: ["project details invoice", "tab invoice projeto", "invoice no project", "invoice dentro do projeto", "project invoice tab", "fully paid project invoice", "export project invoices"],
+    route: "/seller/project/details/:id?tab=Invoice",
+    uiLocation: "Project Details > Invoice",
+    directAnswer:
+      "Em Project Details > Invoice, a tabela mostra apenas as invoices daquele projeto. Ali da para buscar, selecionar invoices, exportar PDF ou Excel da selecao, criar invoice para o projeto aberto e usar as mesmas actions principais. Se o projeto estiver fully paid, o botao de nova invoice fica bloqueado.",
+    prerequisites: ["O usuario precisa estar dentro de um Project Details.", "O projeto precisa ter balance due para criar nova invoice.", "Export PDF/Excel exige selecionar invoices."],
+    commonMistakes: [
+      "Comparar Invoice All com Project Details > Invoice sem lembrar que a tab do projeto e filtrada pelo projeto atual.",
+      "Tentar criar invoice nova em projeto fully paid.",
+      "Achar que export da tab baixa PDFs individuais em vez de relatorio.",
+    ],
+    bugSignals: [
+      "Invoice criada no projeto nao aparece na tab apos recarregar.",
+      "Botao bloqueia como fully paid, mas ha saldo claro.",
+      "Export com invoices selecionadas falha.",
+    ],
+    supportEscalationNote:
+      "Se o projeto tem saldo e a tab bloqueia criacao ou nao lista invoices, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-estimate-conversion",
+    module: "invoices",
+    intent: "convert estimate to invoice global estimate project estimate payment customize",
+    terms: ["convert to invoice", "converter estimate para invoice", "invoice de estimate", "estimate invoice", "project estimate invoice", "criar invoice do estimate", "modal convert invoice"],
+    route: "/seller/estimates",
+    uiLocation: "Estimates / Project Details > Estimate > Actions > Convert to Invoice",
+    directAnswer:
+      "Convert to Invoice cria invoice a partir de um estimate. O modal tem Payment Details e Customize: define Work Context, recipients, custom creation date, due date, description, Invoice Manager, amount por Percentage ou Fixed, metodo Other/QuickBooks/Stripe quando disponivel, services/items, image attachments e PDF attachments.",
+    prerequisites: ["Estimate canceled ou fully paid pode bloquear conversao.", "Stripe/QuickBooks precisam estar configurados para aparecerem habilitados.", "Alteracoes em Customize precisam ser salvas para entrar no PDF/invoice."],
+    commonMistakes: [
+      "Achar que View Estimate cria invoice; precisa usar Convert to Invoice.",
+      "Selecionar Stripe/QuickBooks sem configuracao em Settings.",
+      "Achar que custom service da invoice salva no catalogo.",
+      "Esperar que Generate/preview envie para o client; envio acontece em Create & Send ou Send By Email.",
+    ],
+    bugSignals: [
+      "Estimate com saldo nao abre Convert to Invoice.",
+      "Metodo configurado aparece bloqueado.",
+      "Invoice criada do estimate nao aparece em Invoice All.",
+    ],
+    supportEscalationNote:
+      "Se estimate tem saldo e status valido, mas Convert to Invoice falha, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-download-links-public",
+    module: "invoices",
+    intent: "invoice download pdf paid pdf payment link public invoice link stripe custom quickbooks",
+    terms: ["download invoice pdf", "download paid invoice", "generate payment link", "generate invoice link", "invoice public link", "pay invoice", "invoice link custom", "quickbooks payment link", "stripe payment link"],
+    route: "/invoice-all",
+    uiLocation: "Invoice Actions > Download / Payment Link",
+    directAnswer:
+      "Download Invoice baixa o PDF normal quando ele existe. Download Paid Invoice baixa o recibo pago quando a invoice esta paid e o paid PDF ja foi gerado. Generate Payment Link copia link de pagamento para Stripe ou QuickBooks quando aplicavel; Custom invoice usa Generate Invoice Link para abrir a pagina publica da invoice.",
+    prerequisites: ["PDF normal precisa ter sido gerado para download.", "Paid PDF so existe depois do pagamento/geracao do recibo.", "Stripe e QuickBooks payment link dependem do tipo da invoice e configuracao externa."],
+    commonMistakes: [
+      "Tentar baixar paid invoice antes de registrar pagamento.",
+      "Tentar gerar payment link em invoice paid ou void.",
+      "Esperar link de pagamento online em Custom/Other invoice.",
+    ],
+    bugSignals: [
+      "PDF gerado nao baixa.",
+      "Payment link copia vazio ou retorna indisponivel para invoice elegivel.",
+      "Pagina publica da custom invoice nao abre.",
+    ],
+    supportEscalationNote:
+      "Se a invoice e elegivel e o link/PDF nao funciona, tratar como possivel falha tecnica.",
+  },
+  {
+    id: "invoices-common-issues",
+    module: "invoices",
+    intent: "common invoice issues permissions filters payment methods pdf edit paid partial quickbooks export",
+    terms: ["problema invoice", "erro invoice", "nao vejo invoice", "invoice nao aparece", "nao consigo editar invoice", "nao consigo deletar invoice", "nao consigo cancelar invoice", "invoice pdf not available", "stripe disabled", "quickbooks disabled", "invoice bug", "nao consigo deletar quickbooks partial", "nao consigo cancelar quickbooks partial", "quickbooks partial delete", "qbo partial invoice bloqueada", "partial payment quickbooks invoice"],
+    route: "/invoice-all",
+    uiLocation: "Financials > Invoice All / Project Details > Invoice",
+    directAnswer:
+      "Se Invoice All nao aparece, confira permissao Invoice. Se invoice nao aparece, revise filtros, search, status/type e se voce esta na lista geral ou na tab de um projeto. Se Stripe ou QuickBooks estao disabled, confira Settings. Se uma QuickBooks invoice tem pagamento parcial, o sistema bloqueia editar amount/items, cancelar e deletar. Se PDF nao baixa/envia, gere/salve a invoice novamente ou confira se o PDF existe.",
+    prerequisites: ["Invoice actions dependem de status, tipo, PDF e configuracao externa.", "Paid e void/canceled bloqueiam varias acoes.", "QuickBooks partial bloqueia edicao de amount/items, cancel e delete."],
+    commonMistakes: [
+      "Confundir status Pending com Paid/void.",
+      "Usar filtros que escondem invoices.",
+      "Tentar deletar paid invoice; paid invoice nao pode ser deletada.",
+      "Tentar cancelar/deletar QuickBooks partial.",
+      "Confundir relatorio de export com download de PDF individual.",
+    ],
+    bugSignals: [
+      "Permissao correta e filtros limpos, mas invoices nao carregam.",
+      "Invoice nao paid/void fica bloqueada sem motivo claro.",
+      "Integracao aparece configurada em Settings mas bloqueada no modal.",
+      "PDF/link/email falha apesar de existir PDF e dados validos.",
+    ],
+    supportEscalationNote:
+      "Se o usuario esta no fluxo correto com dados validos e mesmo assim nao funciona, orientar como possivel falha tecnica.",
   },
 ];
 
