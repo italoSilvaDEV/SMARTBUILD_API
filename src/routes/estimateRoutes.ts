@@ -22,6 +22,7 @@ import { ClearUpdateController } from "../controllers/estimates/clearUpdateContr
 import { ManualApprovalEstimateController } from "../controllers/estimates/manualApprovalEstimateController";
 import { RemoveManualSignatureEstimateController } from "../controllers/estimates/removeManualSignatureEstimateController";
 import { SmartBuilderEstimateController } from "../controllers/estimates/smartBuilderEstimateController";
+import { MobileManualEstimateController } from "../controllers/estimates/mobileManualEstimateController";
 
 const estimateRoutes = Router();
 const estimateController = new EstimateController();
@@ -44,6 +45,7 @@ const clearUpdateController = new ClearUpdateController();
 const manualApprovalEstimateController = new ManualApprovalEstimateController();
 const removeManualSignatureEstimateController = new RemoveManualSignatureEstimateController();
 const smartBuilderEstimateController = new SmartBuilderEstimateController();
+const mobileManualEstimateController = new MobileManualEstimateController();
 
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
@@ -90,4 +92,6 @@ estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateControl
 estimateRoutes.post("/:id/resend", checkToken, estimateController.resendEmail);
 estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), estimateController.sendEmail);
 estimateRoutes.patch("/:estimateId/clear-pdf-flag", checkToken, clearUpdateController.handle);
+
+estimateRoutes.post("/mobile/manual", checkToken, mobileManualEstimateController.handle.bind(mobileManualEstimateController));
 export { estimateRoutes }; 
