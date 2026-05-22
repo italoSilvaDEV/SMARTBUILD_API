@@ -11,6 +11,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { prisma } from "../../utils/prisma";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
+import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
@@ -72,6 +73,7 @@ export class MobileManualEstimateController {
             id: true,
             name: true,
             phone: true,
+            signature: true,
             webSiteUrl: true,
           },
         }),
@@ -121,8 +123,11 @@ export class MobileManualEstimateController {
       });
 
       const pdfBuffer = await generatePdfBuffer(html);
+      const signedPdfBuffer = company.signature
+        ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, company.name)
+        : await addCompanySignatureToPdfBuffer(pdfBuffer, company.name, new Date());
       const pdfFileName = buildPdfFileName(payload.client.name, company.name, payload.dateCreation);
-      const pdfS3Key = await uploadBufferToS3(pdfBuffer, pdfFileName, "application/pdf");
+      const pdfS3Key = await uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf");
 
       const result = await prisma.$transaction(async (tx) => {
         let client = payload.client.id
@@ -272,7 +277,7 @@ export class MobileManualEstimateController {
           estimateId: result.estimate.id,
           estimateNumber: verifiedEstimateNumber,
           location: payload.location.address,
-          pdfBuffer,
+          pdfBuffer: signedPdfBuffer,
           pdfFileName,
           totalAmount,
         });
@@ -567,15 +572,17 @@ function buildClassicEstimateHtml(input: {
   const serviceRows = input.services
     .map(
       (service) => `
-        <tr>
-          <td>
-            <strong>${escapeHtml(service.name)}</strong>
-            ${service.description ? `<div class="description">${escapeHtml(service.description)}</div>` : ""}
-          </td>
+        <tr class="service-row">
+          <td><strong>${escapeHtml(service.name)}</strong></td>
           <td class="num">${formatNumber(service.quantity)}</td>
           <td class="num">${formatMoney(service.unitPrice)}</td>
           <td class="num amount">${formatMoney(service.lineTotal)}</td>
         </tr>
+        ${
+          service.description
+            ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
+            : ""
+        }
       `,
     )
     .join("");
@@ -589,6 +596,29 @@ function buildClassicEstimateHtml(input: {
       `,
     )
     .join("");
+  const termsSection = input.terms?.trim()
+    ? `
+      <section class="terms-page">
+        <h2 class="terms-title">TERMS & CONDITIONS</h2>
+        <div class="terms-content">${escapeHtml(input.terms || "")}</div>
+        <div class="contact-card">
+          <h3>CONTACT INFORMATION</h3>
+          <p>${escapeHtml(input.company.name)}</p>
+          <p>${escapeHtml(input.company.address || "")}</p>
+          <p>${escapeHtml(input.company.phone || "")}</p>
+          <p>${escapeHtml(input.company.email || "")}</p>
+        </div>
+      </section>
+    `
+    : "";
+  const imageSection = photoBlocks
+    ? `
+      <section class="images-page">
+        <h2 class="terms-title">IMAGE ATTACHMENTS</h2>
+        <div class="photos">${photoBlocks}</div>
+      </section>
+    `
+    : "";
 
   return `
     <!doctype html>
@@ -598,56 +628,70 @@ function buildClassicEstimateHtml(input: {
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { margin: 0; color: #252C37; font-family: Arial, Helvetica, sans-serif; background: #ffffff; }
-          .page { width: 794px; min-height: 1123px; padding: 44px 52px 52px; background: #fff; }
-          .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 0 10px; margin-bottom: 28px; }
+          body { margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
+          .pdf-document { width: 595px; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
+          .classic-cover { width: 100%; background: #fff; box-sizing: border-box; page-break-after: auto; overflow: visible; position: relative; }
+          .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 32px 10px; }
           .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
           .proposal-subtitle { color: #7a7a7a; font-size: 11px; }
           .proposal-brand { text-align: right; }
           .proposal-brand img { max-width: 44px; max-height: 26px; object-fit: contain; display: block; margin-left: auto; margin-bottom: 1px; }
           .proposal-fallback { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 1px; }
           .proposal-label { color: #B78A4F; font-size: 9px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
-          .top-meta { display: flex; justify-content: space-between; align-items: flex-start; }
-          .meta { text-align: right; font-size: 13px; line-height: 1.45; }
-          .meta-label { color: #B78A4F; font-size: 11px; text-transform: uppercase; font-weight: 800; }
-          .meta-value { color: #111C2B; font-weight: 800; margin-bottom: 8px; }
-          .title { margin: 14px 0 8px; text-align: center; color: #B78A4F; letter-spacing: 7px; font-size: 26px; font-weight: 800; }
-          .title-line { width: 230px; height: 1px; background: #B78A4F; margin: 0 auto; }
-          .prepared { text-align: center; text-transform: uppercase; color: #B78A4F; font-size: 11px; font-weight: 800; margin-top: 9px; }
-          .info { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 54px; }
-          .logo { max-width: 160px; max-height: 88px; object-fit: contain; margin-bottom: 16px; }
-          .fallback-logo { color: #B78A4F; font-size: 34px; font-weight: 900; margin-bottom: 18px; }
-          .company-name { font-size: 15px; text-transform: uppercase; font-weight: 900; margin-bottom: 8px; }
-          .small { color: #596273; font-size: 12px; line-height: 1.7; }
+          .cover-body { padding: 28px 24px 8px; background: #fff; }
+          .cover-title { text-align: center; color: rgba(183, 138, 79, 0.58); font-size: 11px; letter-spacing: 7px; text-transform: uppercase; margin-bottom: 20px; line-height: 1; }
+          .info { display: grid; grid-template-columns: 1fr 1fr; gap: 152px; align-items: start; }
+          .logo-shell { width: 190px; height: 68px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; background: #fff; }
+          .logo { max-height: 69.575px; width: auto; object-fit: contain; display: block; }
+          .fallback-logo { color: #B78A4F; font-size: 28px; font-weight: 700; }
+          .company-name { color: #1f1f1f; font-size: 14px; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+          .small { color: #555555; font-size: 11px; line-height: 1.7; }
+          .small .link { color: #B78A4F; text-decoration: underline; }
           .job { text-align: right; }
-          .gold-label { color: #B78A4F; font-size: 12px; text-transform: uppercase; font-weight: 900; margin-bottom: 10px; }
-          .job strong { display: block; font-size: 13px; margin-bottom: 4px; }
-          .job-table { border-top: 1px solid #DADDE4; margin-top: 18px; padding-top: 14px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; column-gap: 16px; font-size: 12px; }
-          .muted { color: #747B89; }
-          .bold { font-weight: 900; }
-          .section-line { height: 1px; background: #DADDE4; margin: 34px 0 20px; }
+          .gold-label { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+          .job-address { color: #3f3f3f; font-size: 11px; line-height: 1.6; }
+          .job-table { border-top: 1px solid #d8d8d8; margin-top: 18px; padding-top: 12px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; column-gap: 18px; align-items: center; font-size: 11px; }
+          .muted { color: #8b8b8b; }
+          .bold { color: #1f1f1f; font-weight: 700; }
+          .estimate-number { color: #B78A4F; font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
+          .services-section { padding: 20px 24px 24px; background: #fff; display: block; page-break-inside: auto; overflow: visible; }
+          .services-separator { padding-bottom: 18px; margin-bottom: 32px; border-bottom: 2px solid #e5e7eb; }
           h2 { color: #1a1a1a; font-size: 18px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 8px; }
           .section-title-line { width: 100%; height: 3px; background: #1a1a1a; margin-bottom: 20px; }
           table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; }
           th { color: #374151; background: #f8f9fa; font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; text-align: right; padding: 12px 16px; border-bottom: 1px solid #e9ecef; }
           th:first-child { text-align: left; }
           td { vertical-align: top; font-size: 12px; padding: 16px; border-bottom: 1px solid #f1f3f4; }
+          .service-row td { border-bottom: 0; }
+          .description-row td { padding: 0 16px 16px; border-bottom: 1px solid #f1f3f4; }
           tr:last-child td { border-bottom: 0; }
-          .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; margin-top: 9px; padding: 12px; white-space: pre-wrap; }
+          .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; padding: 12px; white-space: pre-wrap; width: 100%; }
           .num { text-align: right; white-space: nowrap; }
-          .amount { font-weight: 900; }
-          .total { margin-top: 30px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 900; }
-          .terms { white-space: pre-wrap; border: 1px solid #ECE8E2; border-radius: 8px; padding: 16px; min-height: 110px; color: #384153; font-size: 12px; line-height: 1.65; }
+          .amount { color: #1a1a1a; font-weight: 600; }
+          .total { margin-top: 30px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
+          .terms-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
+          .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
+          .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
+          .contact-card { margin-top: 40px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+          .contact-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
+          .contact-card p { margin: 4px 0; font-size: 12px; }
+          .images-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
           .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 12px; }
           .photo { border: 1px solid #ECE8E2; border-radius: 8px; overflow: hidden; font-size: 11px; font-weight: 700; color: #596273; }
           .photo img { width: 100%; height: 180px; object-fit: cover; display: block; }
           .photo div { padding: 9px; }
-          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; margin-top: 52px; }
-          .signature-line { border-top: 1px solid #252C37; padding-top: 9px; text-align: center; color: #596273; font-size: 11px; font-weight: 700; }
+          .signature-block { margin: 130px 48px 24px; page-break-inside: avoid; break-inside: avoid; }
+          .signature-table { width: 100%; border-collapse: collapse; table-layout: fixed; border: none; }
+          .signature-table td { width: 50%; vertical-align: bottom; border: none; padding: 0; }
+          .signature-table td:first-child { padding-right: 24px; }
+          .signature-table td:last-child { padding-left: 24px; }
+          .signature-box { min-height: 72px; display: flex; flex-direction: column; justify-content: flex-end; }
+          .signature-line { border-top: 1px solid #000; padding-top: 6px; margin-bottom: 4px; }
+          .signature-line p { font-size: 12px; text-align: center; margin: 0; font-weight: 600; }
         </style>
       </head>
       <body>
-        <main class="page">
+        <main class="pdf-document">
           <header class="proposal-header">
             <div>
               <div class="proposal-company">${escapeHtml(input.company.name)}</div>
@@ -662,69 +706,78 @@ function buildClassicEstimateHtml(input: {
               <div class="proposal-label">Estimate</div>
             </div>
           </header>
-          <div class="top-meta">
-            <div></div>
-            <div class="meta">
-              <div class="meta-label">Estimate #</div>
-              <div class="meta-value">${formatEstimateDisplayNumber(input.estimateNumber)}</div>
-              <div class="meta-label">Date</div>
-              <div class="meta-value">${formatDate(input.dateCreation)}</div>
-            </div>
-          </div>
-          <div class="title">ESTIMATE</div>
-          <div class="title-line"></div>
-          <div class="prepared">Prepared for ${escapeHtml(input.client.name)}</div>
-          <section class="info">
-            <div>
-              ${
-                input.company.logoUrl
-                  ? `<img class="logo" src="${input.company.logoUrl}" />`
-                  : `<div class="fallback-logo">SmartBuild</div>`
-              }
-              <div class="company-name">${escapeHtml(input.company.name)}</div>
-              <div class="small">${escapeHtml(input.company.address || "")}</div>
-              <div class="small">${escapeHtml(input.company.phone || "")}</div>
-              <div class="small">${escapeHtml(input.company.email || "")}</div>
-              <div class="small">${escapeHtml(input.company.webSiteUrl || "")}</div>
-            </div>
-            <div class="job">
-              <div class="gold-label">Job Location</div>
-              <strong>${escapeHtml(input.client.name)}</strong>
-              <div class="small">${escapeHtml(input.location.address)}</div>
-              <div class="job-table">
-                <div class="muted">Estimate #</div><div class="bold">${formatEstimateDisplayNumber(input.estimateNumber)}</div>
-                <div class="muted">Date</div><div class="bold">${formatDate(input.dateCreation)}</div>
-                <div class="muted">Salesperson</div><div class="bold">${escapeHtml(input.seller.name)}</div>
+          <section class="classic-cover">
+            <div class="cover-body">
+              <div class="cover-title">Estimate</div>
+              <div class="info">
+                <div>
+                  <div class="logo-shell">
+                    ${
+                      input.company.logoUrl
+                        ? `<img class="logo" src="${input.company.logoUrl}" />`
+                        : `<div class="fallback-logo">SB</div>`
+                    }
+                  </div>
+                  <div class="company-name">${escapeHtml(input.company.name)}</div>
+                  <div class="small">
+                    ${input.company.address ? `<div>${escapeHtml(input.company.address)}</div>` : ""}
+                    ${input.company.phone ? `<div>Phone: <span class="link">${escapeHtml(input.company.phone)}</span></div>` : ""}
+                    ${input.company.email ? `<div>Email: <span class="link">${escapeHtml(input.company.email)}</span></div>` : ""}
+                    ${input.company.webSiteUrl ? `<div>Web: <span class="link">${escapeHtml(input.company.webSiteUrl)}</span></div>` : ""}
+                  </div>
+                </div>
+                <div class="job">
+                  <div class="gold-label">Job Location</div>
+                  <div class="job-address">
+                    <div>${escapeHtml(input.client.name || "Client Name")}</div>
+                    <div>${escapeHtml(input.location.address)}</div>
+                  </div>
+                  <div class="job-table">
+                    <div class="muted">Estimate #</div><div class="estimate-number">${formatEstimateDisplayNumber(input.estimateNumber)}</div>
+                    <div class="muted">Date</div><div class="bold">${formatDate(input.dateCreation)}</div>
+                    <div class="muted">Salesperson</div><div class="bold">${escapeHtml(input.seller.name)}</div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
-          <div class="section-line"></div>
-          <h2>Scope of Work</h2>
-          <div class="section-title-line"></div>
-          <table>
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Quantity</th>
-                <th>Unit Price</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>${serviceRows}</tbody>
-          </table>
-          <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
-          <div class="section-line"></div>
-          <h2>Terms & Conditions</h2>
-          <div class="terms">${escapeHtml(input.terms || "")}</div>
-          ${
-            photoBlocks
-              ? `<div class="section-line"></div><h2>Image Attachments</h2><div class="photos">${photoBlocks}</div>`
-              : ""
-          }
-          <div class="signatures">
-            <div class="signature-line">Company Signature</div>
-            <div class="signature-line">Customer Signature</div>
-          </div>
+          <section class="services-section">
+            <div class="services-separator"></div>
+            <h2>Scope of Work</h2>
+            <div class="section-title-line"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Quantity</th>
+                  <th>Unit Price</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>${serviceRows}</tbody>
+            </table>
+            <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
+          </section>
+          ${termsSection}
+          ${imageSection}
+          <section class="signature-block">
+            <table role="presentation" class="signature-table">
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="signature-box">
+                      <div class="signature-line"><p>Company Signature</p></div>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="signature-box">
+                      <div class="signature-line"><p>Customer Signature</p></div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
         </main>
       </body>
     </html>
