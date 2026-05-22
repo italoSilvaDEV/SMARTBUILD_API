@@ -599,7 +599,14 @@ function buildClassicEstimateHtml(input: {
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
           body { margin: 0; color: #252C37; font-family: Arial, Helvetica, sans-serif; background: #ffffff; }
-          .page { width: 794px; min-height: 1123px; padding: 52px 58px; background: #fff; }
+          .page { width: 794px; min-height: 1123px; padding: 44px 52px 52px; background: #fff; }
+          .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 0 10px; margin-bottom: 28px; }
+          .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
+          .proposal-subtitle { color: #7a7a7a; font-size: 11px; }
+          .proposal-brand { text-align: right; }
+          .proposal-brand img { max-width: 44px; max-height: 26px; object-fit: contain; display: block; margin-left: auto; margin-bottom: 1px; }
+          .proposal-fallback { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 1px; }
+          .proposal-label { color: #B78A4F; font-size: 9px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
           .top-meta { display: flex; justify-content: space-between; align-items: flex-start; }
           .meta { text-align: right; font-size: 13px; line-height: 1.45; }
           .meta-label { color: #B78A4F; font-size: 11px; text-transform: uppercase; font-weight: 800; }
@@ -619,15 +626,17 @@ function buildClassicEstimateHtml(input: {
           .muted { color: #747B89; }
           .bold { font-weight: 900; }
           .section-line { height: 1px; background: #DADDE4; margin: 34px 0 20px; }
-          h2 { color: #B78A4F; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 14px; }
-          table { width: 100%; border-collapse: collapse; }
-          th { color: #252C37; font-size: 11px; text-transform: uppercase; text-align: right; padding: 8px 7px; border-bottom: 1px solid #DADDE4; }
+          h2 { color: #1a1a1a; font-size: 18px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 8px; }
+          .section-title-line { width: 100%; height: 3px; background: #1a1a1a; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; }
+          th { color: #374151; background: #f8f9fa; font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; text-align: right; padding: 12px 16px; border-bottom: 1px solid #e9ecef; }
           th:first-child { text-align: left; }
-          td { vertical-align: top; font-size: 12px; padding: 10px 7px; border-bottom: 1px solid #ECE8E2; }
-          .description { color: #747B89; font-size: 11px; line-height: 1.45; margin-top: 5px; white-space: pre-wrap; }
+          td { vertical-align: top; font-size: 12px; padding: 16px; border-bottom: 1px solid #f1f3f4; }
+          tr:last-child td { border-bottom: 0; }
+          .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; margin-top: 9px; padding: 12px; white-space: pre-wrap; }
           .num { text-align: right; white-space: nowrap; }
           .amount { font-weight: 900; }
-          .total { margin-top: 20px; padding-top: 16px; border-top: 2px solid #252C37; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 18px; font-weight: 900; }
+          .total { margin-top: 30px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 900; }
           .terms { white-space: pre-wrap; border: 1px solid #ECE8E2; border-radius: 8px; padding: 16px; min-height: 110px; color: #384153; font-size: 12px; line-height: 1.65; }
           .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 12px; }
           .photo { border: 1px solid #ECE8E2; border-radius: 8px; overflow: hidden; font-size: 11px; font-weight: 700; color: #596273; }
@@ -639,6 +648,20 @@ function buildClassicEstimateHtml(input: {
       </head>
       <body>
         <main class="page">
+          <header class="proposal-header">
+            <div>
+              <div class="proposal-company">${escapeHtml(input.company.name)}</div>
+              <div class="proposal-subtitle">Professional Estimate & Proposal</div>
+            </div>
+            <div class="proposal-brand">
+              ${
+                input.company.logoUrl
+                  ? `<img src="${input.company.logoUrl}" />`
+                  : `<div class="proposal-fallback">SB</div>`
+              }
+              <div class="proposal-label">Estimate</div>
+            </div>
+          </header>
           <div class="top-meta">
             <div></div>
             <div class="meta">
@@ -677,6 +700,7 @@ function buildClassicEstimateHtml(input: {
           </section>
           <div class="section-line"></div>
           <h2>Scope of Work</h2>
+          <div class="section-title-line"></div>
           <table>
             <thead>
               <tr>
