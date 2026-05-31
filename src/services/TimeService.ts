@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../utils/calculaHoraExtra";
+import { applyEffectiveBreaksToAttendances } from "../utils/attendanceBreaks";
 
 export interface AttendanceWithUser {
     check_in_time: Date | null;
@@ -13,6 +14,7 @@ export interface AttendanceWithUser {
         hourly_price: number | null;
         isOverTime: boolean | null;
         defaultBreakMinutes: number | null;
+        manualBreakEnabled?: boolean | null;
         dailyRate: any | null;
     };
     isOvertime?: boolean | null;
@@ -24,7 +26,7 @@ export class TimeService {
      * Agrupa por semana e aplica regras de overtime (40h).
      */
     calculatePeriodTotals(attendances: AttendanceWithUser[]) {
-        const attendancesByUser = this.groupByUser(attendances);
+        const attendancesByUser = this.groupByUser(applyEffectiveBreaksToAttendances(attendances as any[]) as any);
         const allFormatted: any[] = [];
 
         Object.values(attendancesByUser).forEach(userAttendances => {

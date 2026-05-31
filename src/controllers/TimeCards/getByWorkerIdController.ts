@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
+import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -229,6 +230,7 @@ export class getByWorkerIdController {
                     office: true,
                     isOverTime: true,
                     defaultBreakMinutes: true,
+                    manualBreakEnabled: true,
                     dailyRate: true
                 }
             });
@@ -296,8 +298,12 @@ export class getByWorkerIdController {
                             hourly_price: true,
                             isOverTime: true,
                             defaultBreakMinutes: true,
+                            manualBreakEnabled: true,
                             dailyRate: true
                         }
+                    },
+                    breakRecords: {
+                        orderBy: { startedAt: 'asc' }
                     },
                     UserServiceProject: {
                         include: {
@@ -324,8 +330,7 @@ export class getByWorkerIdController {
                 attendance.check_in_time
             ));
 
-            const dailyBreakMap = buildDailyBreakMap(attendances as any[]);
-            applyDailyBreakMap(attendances as any[], dailyBreakMap);
+            applyEffectiveBreaksToAttendances(attendances as any[]);
 
             const weeklyAttendances = new Map();
 
@@ -457,11 +462,13 @@ export class getByWorkerIdController {
                             name: attendance.user.name,
                             hourly_price: attendance.user.hourly_price,
                             dailyRate: attendance.user.dailyRate,
-                            isOverTime: finalOvertimeHours > 0
+                            isOverTime: finalOvertimeHours > 0,
+                            manualBreakEnabled: attendance.user.manualBreakEnabled
                         },
                         raw_hours_worked: parseFloat(((attendance.__rawDailyHours as number) || 0).toFixed(2)),
                         break_minutes: (attendance.__breakMinutesApplied as number) || 0,
                         break_hours: parseFloat((((attendance.__breakMinutesApplied as number) || 0) / 60).toFixed(2)),
+                        breaks: attendance.breakRecords || [],
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(dailyHours.toFixed(2)),
                         overtime_hours: 0,

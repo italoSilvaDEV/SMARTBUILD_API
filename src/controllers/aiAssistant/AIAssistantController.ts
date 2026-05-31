@@ -4526,8 +4526,12 @@ export class AIAssistantController {
             hourly_price: true,
             isOverTime: true,
             defaultBreakMinutes: true,
+            manualBreakEnabled: true,
             dailyRate: true,
           },
+        },
+        breakRecords: {
+          orderBy: { startedAt: "asc" },
         },
         UserServiceProject: {
           select: {
@@ -4953,7 +4957,11 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        manualBreakEnabled: true,
                       },
+                    },
+                    breakRecords: {
+                      orderBy: { startedAt: "asc" },
                     },
                   },
                 },

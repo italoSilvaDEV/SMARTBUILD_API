@@ -10,6 +10,8 @@ const userAttendanceRoutes = Router();
 
 userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn.bind(userAttendanceControlller));
 userAttendanceRoutes.post('/check-out/:id', checkToken, userAttendanceControlller.checkOut.bind(userAttendanceControlller));
+userAttendanceRoutes.post('/user-attendance/:attendanceId/break/start', checkToken, userAttendanceControlller.startBreak.bind(userAttendanceControlller));
+userAttendanceRoutes.post('/user-attendance/:attendanceId/break/end', checkToken, userAttendanceControlller.endBreak.bind(userAttendanceControlller));
 userAttendanceRoutes.post('/check-in-pending-service', checkToken, userAttendanceControlller.checkInPendingServiceSelection.bind(userAttendanceControlller));
 userAttendanceRoutes.get('/user-attendance/:userId', checkToken, userAttendanceControlller.getAllByUser.bind(userAttendanceControlller));
 

@@ -3,6 +3,7 @@ import { prisma } from "../../utils/prisma";
 import { TimeService } from "../../services/TimeService";
 import { getByWorkerIdController } from "../TimeCards/getByWorkerIdController";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
 
 const timeService = new TimeService();
 const timeCardsWorkerController = new getByWorkerIdController();
@@ -147,8 +148,11 @@ export class TimeController {
                     user: {
                         select: {
                             id: true, name: true, hourly_price: true, isOverTime: true,
-                            defaultBreakMinutes: true, dailyRate: true
+                            defaultBreakMinutes: true, manualBreakEnabled: true, dailyRate: true
                         }
+                    },
+                    breakRecords: {
+                        orderBy: { startedAt: 'asc' }
                     },
                     UserServiceProject: {
                         include: {
@@ -165,8 +169,7 @@ export class TimeController {
                 orderBy: { check_in_time: 'desc' }
             });
 
-            const dailyBreakMap = buildDailyBreakMap(allAttendances as any[]);
-            applyDailyBreakMap(allAttendances as any[], dailyBreakMap);
+            applyEffectiveBreaksToAttendances(allAttendances as any[]);
 
             const processed = timeService.calculatePeriodTotals(allAttendances as any);
             const indicators = this.calculateIndicators(processed);
