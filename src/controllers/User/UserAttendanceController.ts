@@ -181,7 +181,7 @@ export class UserAttendanceController {
                     check_out_time: null,
                 },
                 include: {
-                    user: { select: { id: true, name: true } },
+                    user: { select: { id: true, name: true, manualBreakEnabled: true } },
                     breakRecords: {
                         orderBy: { startedAt: 'asc' }
                     },
