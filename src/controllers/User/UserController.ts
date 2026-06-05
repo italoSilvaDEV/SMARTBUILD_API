@@ -250,6 +250,7 @@ export class UserController {
           canEditTimeCard: (data as any).canEditTimeCard === 'true' || (data as any).canEditTimeCard === true,
           dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
           defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
+          manualBreakEnabled: (data as any).manualBreakEnabled === 'true' || (data as any).manualBreakEnabled === true,
           projectVisibilityMode: isOwnerOffice ? "allActive" : (data as any).projectVisibilityMode || "allActive",
           invoiceEditAll: isOwnerOffice || data.invoiceEditAll === "true" || data.invoiceEditAll === true,
           projectEditAll: isOwnerOffice || data.projectEditAll === "true" || data.projectEditAll === true,
@@ -589,6 +590,7 @@ export class UserController {
           profession: user.profession,
           attendanceMode: user.attendanceMode,
           clockOutMode: user.clockOutMode,
+          manualBreakEnabled: user.manualBreakEnabled,
           projectVisibilityMode: user.projectVisibilityMode,
           company: {
             id: user.company?.id,
@@ -635,6 +637,7 @@ export class UserController {
       canEditTimeCard,
       dailyRate,
       defaultBreakMinutes,
+      manualBreakEnabled,
       projectVisibilityMode,
       invoiceEditAll,
       projectEditAll,
@@ -892,6 +895,7 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
+            manualBreakEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
@@ -915,6 +919,7 @@ export class UserController {
             canEditTimeCard,
             dailyRate,
             defaultBreakMinutes,
+            manualBreakEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
@@ -1048,6 +1053,7 @@ export class UserController {
           canEditTimeCard: true,
           dailyRate: true,
           defaultBreakMinutes: true,
+          manualBreakEnabled: true,
           projectVisibilityMode: true,
           invoiceEditAll: true,
           projectEditAll: true,
@@ -1138,6 +1144,7 @@ export class UserController {
           avatar: true,
           attendanceMode: true,
           clockOutMode: true,
+          manualBreakEnabled: true,
           projectVisibilityMode: true,
           id: true,
           office: {
@@ -2654,4 +2661,3 @@ export class UserController {
     }
   }
 }
-

@@ -7,6 +7,7 @@ const businessDashboardController = new BusinessDashboardController();
 
 // Cards
 businessDashboard.get("/cards", checkToken, businessDashboardController.dashboardCards);
+businessDashboard.get("/cards/sparklines", checkToken, businessDashboardController.cardSparklines);
 
 // Charts
 businessDashboard.get("/charts/sales", checkToken, businessDashboardController.salesChart);

@@ -51,6 +51,7 @@ model User {
   canEditTimeCard       Boolean? @default(false)
   dailyRate             Decimal? @db.Decimal(10, 2)
   defaultBreakMinutes   Int?     @default(0)
+  manualBreakEnabled    Boolean? @default(false)
   projectVisibilityMode String?  @default("allActive") // assignedOnly, allActive
 
   invoiceEditAll  Boolean? @default(false)
@@ -71,6 +72,7 @@ model User {
   projectId                    String?
   UserServiceProject           UserServiceProject[]
   UserAttendance               UserAttendance[]
+  attendanceBreaks             UserAttendanceBreak[]
   timeCardEditRequests         TimeCardEditRequest[] @relation("TimeCardEditRequestEmployee")
   reviewedTimeCardEditRequests TimeCardEditRequest[] @relation("TimeCardEditRequestReviewer")
   Activities                   Activities[]
@@ -242,6 +244,47 @@ model AIAssistantMessage {
 
   @@index([threadId, createdAt])
   @@map("ai_assistant_messages")
+}
+
+model AssistantWhatsappSession {
+  id                   String  @id @default(uuid())
+  phoneNumber          String  @db.VarChar(32)
+  displayName          String?
+  status               String  @default("active") @db.VarChar(32)
+  openaiConversationId String?
+  lastResponseId       String?
+  closedReason         String? @db.VarChar(64)
+  metadata             Json?
+
+  messages AssistantWhatsappMessage[]
+
+  lastActivityAt DateTime  @default(now())
+  closedAt       DateTime?
+  date_creation  DateTime  @default(now())
+  date_update    DateTime  @updatedAt
+
+  @@index([phoneNumber, status, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@map("assistant_whatsapp_sessions")
+}
+
+model AssistantWhatsappMessage {
+  id            String  @id @default(uuid())
+  sessionId     String
+  role          String  @db.VarChar(32)
+  direction     String  @db.VarChar(16)
+  content       String  @db.Text
+  metaMessageId String? @unique
+  rawPayload    Json?
+  toolData      Json?
+
+  session AssistantWhatsappSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([role])
+  @@map("assistant_whatsapp_messages")
 }
 
 model Audit {
@@ -1348,10 +1391,27 @@ model UserAttendance {
 
   isOvertime   Boolean?              @default(false)
   editRequests TimeCardEditRequest[]
+  breakRecords UserAttendanceBreak[]
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
   @@map("user_attendance")
+}
+
+model UserAttendanceBreak {
+  id           String         @id @default(uuid())
+  attendanceId String
+  attendance   UserAttendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt    DateTime
+  endedAt      DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([attendanceId], map: "user_attendance_break_attendance_id_fkey")
+  @@index([userId, startedAt], map: "user_attendance_break_user_day_idx")
+  @@map("user_attendance_break")
 }
 
 enum TimeCardEditRequestStatus {
@@ -1562,6 +1622,7 @@ model Invoice {
   // Campos específicos para QuickBooks
   externalDocNumber String?
   idQuickBooksRef   String? // ID do invoice no QuickBooks quando criado via integração
+  qboCustomerRef    String? // CustomerRef original do QBO: pode ser Customer pai ou QBO Project
 
   // Campos específicos para QuickBooks Contábil (quando chamado pelo StripeController)
   idQuickbookContabio         String? // ID do invoice no QuickBooks criado via Stripe
@@ -1616,6 +1677,7 @@ model Invoice {
   imagesAttachments ImagesAttachments[]
 
   @@index([externalInvoiceId, invoiceType])
+  @@index([companyId, qboCustomerRef])
 }
 
 model InvoiceSendHistory {
@@ -1775,6 +1837,11 @@ model Estimate {
   canceledById       String?
   cancellationReason String?   @db.Text
 
+  idQuickbooks        String?
+  quickbooksSyncToken String?
+  quickbooksUpdatedAt DateTime?
+  quickbooksRaw       Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
@@ -1831,10 +1898,14 @@ model EstimateServiceProject {
   price      Decimal?
   start_date String?
   deadline   String?
+  idQuickbooks String?
+  quickbooksRaw Json?
 
   date_creation  DateTime        @default(now())
   date_update    DateTime        @updatedAt
   serviceProject ServiceProject?
+
+  @@index([estimateId, idQuickbooks])
 }
 
 model EstimateAiSession {
@@ -2196,6 +2267,8 @@ model SyncPreferences {
 
 enum TypesEntity {
   customers
+  projects
+  estimates
   invoices
   payments
 }

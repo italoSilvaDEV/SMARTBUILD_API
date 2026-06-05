@@ -36,6 +36,7 @@ export class AttendanceService {
             where: { id: user_id },
             select: {
                 isOverTime: true,
+                manualBreakEnabled: true,
                 projectVisibilityMode: true,
                 company: {
                     select: {
@@ -180,6 +181,12 @@ export class AttendanceService {
                     company_id: project?.company_id || user.company?.id || null
                 },
                 include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    },
                     UserServiceProject: {
                         include: {
                             service_project: {
@@ -252,6 +259,12 @@ export class AttendanceService {
                     pending_project_radius: project.radius || null,
                 },
                 include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    },
                     UserServiceProject: {
                         include: {
                             service_project: {
@@ -332,6 +345,12 @@ export class AttendanceService {
                     pending_project_radius: null,
                 },
                 include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    },
                     UserServiceProject: {
                         include: {
                             service_project: {
@@ -352,21 +371,112 @@ export class AttendanceService {
     async processCheckOut(data: CheckOutData) {
         const { attendance_id, address, latitude, longitude } = data;
 
-        const attendance = await prisma.userAttendance.findUnique({
-            where: { id: attendance_id }
+        return await prisma.$transaction(async (tx) => {
+            const attendance = await tx.userAttendance.findUnique({
+                where: { id: attendance_id }
+            });
+
+            if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+            if (attendance.check_out_time) throw new Error('ALREADY_CHECKED_OUT');
+
+            const checkOutAt = new Date();
+
+            await tx.userAttendanceBreak.updateMany({
+                where: {
+                    attendanceId: attendance_id,
+                    endedAt: null
+                },
+                data: {
+                    endedAt: checkOutAt
+                }
+            });
+
+            return await tx.userAttendance.update({
+                where: { id: attendance_id },
+                data: {
+                    check_out_time: checkOutAt,
+                    check_out_address: address,
+                    check_out_latitude: latitude,
+                    check_out_longitude: longitude,
+                },
+            });
         });
+    }
 
-        if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
-        if (attendance.check_out_time) throw new Error('ALREADY_CHECKED_OUT');
+    async startBreak(attendanceId: string, userId?: string) {
+        return await prisma.$transaction(async (tx) => {
+            const attendance = await tx.userAttendance.findUnique({
+                where: { id: attendanceId },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    }
+                }
+            });
 
-        return await prisma.userAttendance.update({
-            where: { id: attendance_id },
-            data: {
-                check_out_time: new Date(),
-                check_out_address: address,
-                check_out_latitude: latitude,
-                check_out_longitude: longitude,
-            },
+            if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+            if (userId && attendance.user_id !== userId) throw new Error('ATTENDANCE_NOT_FOUND');
+            if (attendance.check_out_time) throw new Error('ALREADY_CHECKED_OUT');
+            if (!attendance.user?.manualBreakEnabled) throw new Error('MANUAL_BREAK_DISABLED');
+
+            const openBreak = await tx.userAttendanceBreak.findFirst({
+                where: {
+                    attendanceId,
+                    endedAt: null
+                }
+            });
+
+            if (openBreak) throw new Error('BREAK_ALREADY_OPEN');
+
+            return await tx.userAttendanceBreak.create({
+                data: {
+                    attendanceId,
+                    userId: attendance.user_id,
+                    startedAt: new Date()
+                }
+            });
+        });
+    }
+
+    async endBreak(attendanceId: string, userId?: string) {
+        return await prisma.$transaction(async (tx) => {
+            const attendance = await tx.userAttendance.findUnique({
+                where: { id: attendanceId },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    }
+                }
+            });
+
+            if (!attendance) throw new Error('ATTENDANCE_NOT_FOUND');
+            if (userId && attendance.user_id !== userId) throw new Error('ATTENDANCE_NOT_FOUND');
+            if (!attendance.user?.manualBreakEnabled) throw new Error('MANUAL_BREAK_DISABLED');
+
+            const openBreak = await tx.userAttendanceBreak.findFirst({
+                where: {
+                    attendanceId,
+                    endedAt: null
+                },
+                orderBy: {
+                    startedAt: 'desc'
+                }
+            });
+
+            if (!openBreak) throw new Error('BREAK_NOT_OPEN');
+
+            return await tx.userAttendanceBreak.update({
+                where: { id: openBreak.id },
+                data: {
+                    endedAt: attendance.check_out_time || new Date()
+                }
+            });
         });
     }
 

@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
+import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -310,8 +311,12 @@ export class getAllController {
                                                     hourly_price: true,
                                                     avatar: true,
                                                     defaultBreakMinutes: true,
+                                                    manualBreakEnabled: true,
                                                     dailyRate: true
                                                 }
+                                            },
+                                            breakRecords: {
+                                                orderBy: { startedAt: 'asc' }
                                             }
                                         },
                                         orderBy: {
@@ -381,8 +386,12 @@ export class getAllController {
                             isOverTime: true,
                             avatar: true,
                             defaultBreakMinutes: true,
+                            manualBreakEnabled: true,
                             dailyRate: true
                         }
+                    },
+                    breakRecords: {
+                        orderBy: { startedAt: 'asc' }
                     }
                 }
             });
@@ -423,22 +432,26 @@ export class getAllController {
                             hourly_price: true,
                             isOverTime: true,
                             defaultBreakMinutes: true,
+                            manualBreakEnabled: true,
                             dailyRate: true
                         }
+                    },
+                    breakRecords: {
+                        orderBy: { startedAt: 'asc' }
                     }
                 }
             });
 
-            const dailyBreakMap = buildDailyBreakMap(allAttendances as any[]);
-            applyDailyBreakMap(allAttendances as any[], dailyBreakMap);
-            applyDailyBreakMap(canceledProjectAttendances as any[], dailyBreakMap);
-            projects.forEach(project => {
-                project.serviceProject.forEach(service => {
-                    service.UserServiceProject.forEach(userService => {
-                        applyDailyBreakMap(userService.user_attendances as any[], dailyBreakMap);
-                    });
-                });
-            });
+            const nestedProjectAttendances = projects.flatMap(project =>
+                project.serviceProject.flatMap(service =>
+                    service.UserServiceProject.flatMap(userService => userService.user_attendances)
+                )
+            );
+            applyEffectiveBreaksToAttendances([
+                ...(allAttendances as any[]),
+                ...(canceledProjectAttendances as any[]),
+                ...(nestedProjectAttendances as any[])
+            ]);
 
             const weeklyAttendances = new Map();
 

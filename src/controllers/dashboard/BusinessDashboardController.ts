@@ -5,6 +5,18 @@ import dayjs from 'dayjs';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
 import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
 
+const validPeriods = [
+    "thisYear",
+    "thisQuarter",
+    "last3Months",
+    "lastMonth",
+    "thisMonth",
+    "last30Days",
+    "allPeriod"
+] as const;
+
+type DashboardPeriod = typeof validPeriods[number];
+
 async function validCompany(request: Request) {
     const authHeader = returnPayLoad(request)
     const { companyId } = request.query
@@ -94,6 +106,81 @@ function getDateRange(periodType: string) {
     }
 
     return { startDate, endDate };
+}
+
+type SparklineBucket = {
+    label: string;
+    endDate: Date;
+};
+
+function getPeriodEndDate(period: DashboardPeriod, endDate?: Date) {
+    if (endDate) {
+        return dayjs(endDate).endOf('day');
+    }
+
+    if (period === "thisYear") {
+        return dayjs().endOf('year');
+    }
+
+    return dayjs();
+}
+
+function buildSparklineBuckets(period: DashboardPeriod) {
+    const bucketCount = period === "thisYear" || period === "allPeriod" ? 12 : 8;
+
+    if (period === "thisYear") {
+        const firstMonth = dayjs().startOf('year');
+
+        return Array.from({ length: bucketCount }, (_, index) => {
+            const bucketEnd = firstMonth.add(index, 'month').endOf('month');
+
+            return {
+                label: bucketEnd.format('MMM'),
+                endDate: bucketEnd.toDate()
+            };
+        });
+    }
+
+    if (period === "allPeriod") {
+        const currentMonth = dayjs().startOf('month');
+        const firstBucketMonth = currentMonth.subtract(bucketCount - 1, 'month');
+
+        return Array.from({ length: bucketCount }, (_, index) => {
+            const bucketMonth = firstBucketMonth.add(index, 'month');
+            const bucketEnd = index === bucketCount - 1 ? dayjs() : bucketMonth.endOf('month');
+
+            return {
+                label: bucketEnd.format('MMM'),
+                endDate: bucketEnd.toDate()
+            };
+        });
+    }
+
+    const { startDate, endDate } = getDateRange(period);
+    const rangeStart = dayjs(startDate);
+    const rangeEnd = getPeriodEndDate(period, endDate);
+    const rangeDuration = Math.max(rangeEnd.valueOf() - rangeStart.valueOf(), 1);
+
+    return Array.from({ length: bucketCount }, (_, index) => {
+        const bucketEnd = rangeStart.add(rangeDuration * ((index + 1) / bucketCount), 'millisecond');
+
+        return {
+            label: bucketEnd.format('MMM D'),
+            endDate: bucketEnd.toDate()
+        };
+    });
+}
+
+function getCumulativeDateFilter(period: DashboardPeriod, bucket: SparklineBucket) {
+    const dateFilter: any = {
+        lte: bucket.endDate
+    };
+
+    if (period !== "allPeriod") {
+        dateFilter.gte = getDateRange(period).startDate;
+    }
+
+    return dateFilter;
 }
 
 export class BusinessDashboardController {
@@ -253,6 +340,98 @@ export class BusinessDashboardController {
             });
         } catch (error) {
             console.error("Error in dashboardCards:", error);
+            return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+        }
+    }
+
+    async cardSparklines(req: Request, res: Response) {
+        try {
+            const valid = await validCompany(req);
+
+            if (valid.status === 'error') {
+                return res.status(404).json({ error: valid.message });
+            }
+
+            const { period = "thisYear" } = req.query;
+
+            if (!(validPeriods as readonly string[]).includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`,
+                    validPeriods
+                });
+            }
+
+            const selectedPeriod = period as DashboardPeriod;
+            const buckets = buildSparklineBuckets(selectedPeriod);
+            const companyId = valid.response?.id;
+
+            const [
+                estimates,
+                projects,
+                customers,
+                employees
+            ] = await Promise.all([
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await prisma.estimate.count({
+                        where: {
+                            project: {
+                                company_id: companyId,
+                                status_project: {
+                                    in: ["Pending", "Accepted"]
+                                }
+                            },
+                            status: {
+                                in: ["approved", "pending", "canceled"]
+                            },
+                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
+                        }
+                    })
+                }))),
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await prisma.project.count({
+                        where: {
+                            company_id: companyId,
+                            status_project: {
+                                in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                            },
+                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
+                        }
+                    })
+                }))),
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await prisma.client.count({
+                        where: {
+                            company_id: companyId,
+                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
+                        }
+                    })
+                }))),
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await prisma.user.count({
+                        where: {
+                            company_id: companyId,
+                            isDisabled: false,
+                            office: {
+                                name: "Worker"
+                            },
+                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
+                        }
+                    })
+                })))
+            ]);
+
+            return res.json({
+                estimates,
+                projects,
+                customers,
+                employees
+            });
+        } catch (error) {
+            console.error("Error in cardSparklines:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
         }
     }

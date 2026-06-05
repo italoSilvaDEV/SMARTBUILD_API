@@ -15,6 +15,7 @@ import {
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
+import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 
 export class EstimateController {
@@ -696,6 +697,11 @@ export class EstimateController {
       // Usar a função utilitária
       const event = status === "rejected" ? "Rejected" : status;
       await EstimateController.addTimelineEvent(estimate.id, event);
+      fireAndForgetUpsertEstimateToQBO(
+        project.company_id,
+        (req as any).userId || project.user?.id,
+        estimate.id
+      );
 
       return res.json(estimate);
     } catch (error) {
@@ -942,6 +948,11 @@ export class EstimateController {
           error: clientEmailResult.reason,
         });
       }
+      fireAndForgetUpsertEstimateToQBO(
+        project.company_id,
+        (req as any).userId || project.user?.id,
+        estimate.id
+      );
 
       return res.json(estimate);
     } catch (error) {
@@ -972,6 +983,12 @@ export class EstimateController {
         },
         select: {
           status: true,
+          project: {
+            select: {
+              company_id: true,
+              seller_user_id: true,
+            }
+          },
           serviceProjects: {
             orderBy: [
               { pos: 'asc' },
@@ -1052,6 +1069,11 @@ export class EstimateController {
               date_creation: new Date()
             }
           });
+          fireAndForgetUpsertEstimateToQBO(
+            estimateExists.project?.company_id,
+            (req as any).userId || userId || estimateExists.project?.seller_user_id,
+            estimate.id
+          );
 
           return res.status(200).json({
             message: "Estimate canceled successfully"
@@ -1082,6 +1104,11 @@ export class EstimateController {
               date_creation: new Date()
             }
           });
+          fireAndForgetUpsertEstimateToQBO(
+            estimateExists.project?.company_id,
+            (req as any).userId || userId || estimateExists.project?.seller_user_id,
+            estimate.id
+          );
 
           return res.status(200).json({
             message: "Estimate canceled successfully"
@@ -1101,7 +1128,16 @@ export class EstimateController {
 
       const estimate = await prisma.estimate.findUnique({
         where: { id },
-        select: { id: true, status: true }
+        select: {
+          id: true,
+          status: true,
+          project: {
+            select: {
+              company_id: true,
+              seller_user_id: true,
+            }
+          }
+        }
       });
 
       if (!estimate) {
@@ -1124,6 +1160,11 @@ export class EstimateController {
           date_update: new Date()
         }
       });
+      fireAndForgetUpsertEstimateToQBO(
+        estimate.project?.company_id,
+        (req as any).userId || estimate.project?.seller_user_id,
+        estimate.id
+      );
 
       return res.status(200).json({
         message: "Estimate status restored to pending successfully"

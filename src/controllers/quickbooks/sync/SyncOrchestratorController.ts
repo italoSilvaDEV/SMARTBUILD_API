@@ -1,21 +1,39 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
-import { SyncPreferencesController } from "../syncPreference/syncPreferenceController";
 import { QuickBooksClientController } from "../customer/QuickBooksCustomerController";
 import { SyncStatus, SyncPreferences } from "@prisma/client";
 import { QuickBooksCustomerOutboundController } from "../customer/QuickbooksCustomerOutboundController";
 import { quickbooksQueue } from "../../../queue/quickbooksQueue";
+import { QuickBooksProjectController } from "../project/QuickBooksProjectController";
+import { QuickBooksEstimateController } from "../estimate/QuickBooksEstimateController";
+import { syncLocalEstimatesToQuickBooks } from "../estimate/QuickBooksEstimateOutboundService";
+import { QuickBooksInvoiceImportController } from "../invoice/QuickBooksInvoiceImportController";
+import {
+    buildUnsupportedTypesEntityError,
+    isTypesEntitySupportedByPrismaClient,
+    normalizeSyncTypeForEntity,
+} from "../syncPreference/syncPreferenceUtils";
 
+const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects"];
+
+function isPrismaTypesEntityEnumError(error: any): boolean {
+    const message = String(error?.message || error?.details || "");
+    return message.includes("Expected TypesEntity") && message.includes("Invalid value");
+}
 
 export class SyncOrchestratorController {
-    private syncPreferencesController: SyncPreferencesController;
     private quickBooksClientController: QuickBooksClientController;
     private quickBooksCustomerOutboundController: QuickBooksCustomerOutboundController;
+    private quickBooksProjectController: QuickBooksProjectController;
+    private quickBooksEstimateController: QuickBooksEstimateController;
+    private quickBooksInvoiceImportController: QuickBooksInvoiceImportController;
 
     constructor() {
-        this.syncPreferencesController = new SyncPreferencesController();
         this.quickBooksClientController = new QuickBooksClientController();
         this.quickBooksCustomerOutboundController = new QuickBooksCustomerOutboundController();
+        this.quickBooksProjectController = new QuickBooksProjectController();
+        this.quickBooksEstimateController = new QuickBooksEstimateController();
+        this.quickBooksInvoiceImportController = new QuickBooksInvoiceImportController();
 
         // Bind methods to preserve 'this' context
         this.orchestrateSync = this.orchestrateSync.bind(this);
@@ -29,6 +47,31 @@ export class SyncOrchestratorController {
         // bind extra
         this.executeCustomerExportToQuickBooks = this.executeCustomerExportToQuickBooks.bind(this);
         this.executeCustomerPushUpdatesToQuickBooks = this.executeCustomerPushUpdatesToQuickBooks.bind(this);
+        this.executeProjectSyncFromQuickBooks = this.executeProjectSyncFromQuickBooks.bind(this);
+        this.executeEstimateSyncFromQuickBooks = this.executeEstimateSyncFromQuickBooks.bind(this);
+        this.executeInvoiceSyncFromQuickBooks = this.executeInvoiceSyncFromQuickBooks.bind(this);
+    }
+
+    private async normalizeQboToSmartOnlyPreferences(companyId: string, userId: string) {
+        for (const typesEntity of QBO_TO_SMART_ONLY_SYNC_ENTITIES) {
+            if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+                continue;
+            }
+
+            await (prisma as any).syncPreferences.updateMany({
+                where: {
+                    companyId,
+                    userId,
+                    typesEntity,
+                    NOT: {
+                        typeSync: 'QuickBooksToSmartBuild',
+                    }
+                },
+                data: {
+                    typeSync: 'QuickBooksToSmartBuild',
+                }
+            });
+        }
     }
 
     /**
@@ -80,7 +123,7 @@ export class SyncOrchestratorController {
                 );
 
                 return res.status(202).json({
-                    message: "We are synchronizing your clients",
+                    message: "We are synchronizing your QuickBooks entities",
                     jobId: job.id,
                     preferences: createdPreferences,
                     // statusUrl: `/quickbooks/jobs/${job.id}`,
@@ -101,7 +144,16 @@ export class SyncOrchestratorController {
             }
         } catch (error: any) {
             console.error("Erro na orquestração de sincronização:", error);
-            return res.status(500).json({ error: "Internal error in orchestration", details: error.message });
+            const isSetupError = error?.statusCode === 409 || isPrismaTypesEntityEnumError(error);
+
+            return res.status(isSetupError ? 409 : 500).json({
+                error: isSetupError ? "QuickBooks sync setup is not ready" : "Internal error in orchestration",
+                details: isSetupError
+                    ? 'The "estimates" sync entity is not available in the generated Prisma Client yet. Apply the migration, run prisma generate, and restart the API.'
+                    : error.message,
+                code: error?.code,
+                typesEntity: error?.typesEntity,
+            });
         }
     }
 
@@ -120,6 +172,8 @@ export class SyncOrchestratorController {
 
         try {
             // Buscar preferências existentes
+            await this.normalizeQboToSmartOnlyPreferences(companyId, userId);
+
             const preferences = await prisma.syncPreferences.findMany({
                 where: {
                     companyId,
@@ -165,6 +219,8 @@ export class SyncOrchestratorController {
 
         try {
             // Buscar os status principais
+            await this.normalizeQboToSmartOnlyPreferences(companyId, userId);
+
             const syncStatuses = await (prisma as any).syncStatus.findMany({
                 where: {
                     companyId,
@@ -332,6 +388,12 @@ export class SyncOrchestratorController {
         for (const preference of syncPreferences) {
             const { typesEntity, typeSync, isDisable = false } = preference;
 
+            if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
+                throw buildUnsupportedTypesEntityError(typesEntity);
+            }
+
+            const normalizedTypeSync = normalizeSyncTypeForEntity(typesEntity, typeSync);
+
             // Verificar se já existe uma preferência para esta entidade
             const existing = await prisma.syncPreferences.findFirst({
                 where: {
@@ -345,7 +407,7 @@ export class SyncOrchestratorController {
                 // Atualizar existente
                 const updated = await prisma.syncPreferences.update({
                     where: { id: existing.id },
-                    data: { typeSync, isDisable }
+                    data: { typeSync: normalizedTypeSync, isDisable }
                 });
                 createdPreferences.push(updated);
             } else {
@@ -353,7 +415,7 @@ export class SyncOrchestratorController {
                 const created = await prisma.syncPreferences.create({
                     data: {
                         typesEntity,
-                        typeSync,
+                        typeSync: normalizedTypeSync,
                         isDisable,
                         userId,
                         companyId
@@ -377,7 +439,8 @@ export class SyncOrchestratorController {
         const syncResults = [];
 
         for (const preference of preferences) {
-            const { typesEntity, typeSync, isDisable } = preference;
+            const { typesEntity, isDisable } = preference;
+            const typeSync = normalizeSyncTypeForEntity(typesEntity, preference.typeSync);
 
             // Verificar se a sincronização está desabilitada
             if (isDisable) {
@@ -473,6 +536,54 @@ export class SyncOrchestratorController {
                     } else {
                         throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
                     }
+                } else if (String(typesEntity) === 'projects') {
+                    if (typeSync === 'QuickBooksToSmartBuild') {
+                        const inbound = await this.executeProjectSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'QBO->Local', inbound };
+                    } else {
+                        throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
+                    }
+                } else if (String(typesEntity) === 'estimates') {
+                    if (typeSync === 'QuickBooksToSmartBuild') {
+                        const inbound = await this.executeEstimateSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'QBO->Local', inbound };
+                    } else if (typeSync === 'SmartBuildToQuickBooks') {
+                        const exported = await syncLocalEstimatesToQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Local->QBO', exported };
+                    } else if (typeSync === 'bidirectional') {
+                        const exported = await syncLocalEstimatesToQuickBooks(companyId, userId, syncExecution.id);
+                        const inbound = await this.executeEstimateSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'Both', exported, inbound };
+                    } else {
+                        throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
+                    }
+                } else if (String(typesEntity) === 'invoices') {
+                    if (typeSync === 'QuickBooksToSmartBuild') {
+                        const inbound = await this.executeInvoiceSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = { direction: 'QBO->Local', inbound };
+                    } else if (typeSync === 'bidirectional') {
+                        const inbound = await this.executeInvoiceSyncFromQuickBooks(companyId, userId, syncExecution.id);
+                        syncResult = {
+                            direction: 'Both',
+                            inbound,
+                            exported: {
+                                message: 'SmartBuild -> QuickBooks invoice sync remains handled by the existing invoice create/update flow.',
+                                created: 0,
+                                updated: 0,
+                            },
+                        };
+                    } else if (typeSync === 'SmartBuildToQuickBooks') {
+                        syncResult = {
+                            direction: 'Local->QBO',
+                            exported: {
+                                message: 'SmartBuild -> QuickBooks invoice sync is already handled when invoices are created or updated.',
+                                created: 0,
+                                updated: 0,
+                            },
+                        };
+                    } else {
+                        throw new Error(`Tipo de sincronização não implementado: ${typesEntity} - ${typeSync}`);
+                    }
                 } else {
                     throw new Error(`Entidade não implementada: ${typesEntity}`);
                 }
@@ -488,8 +599,9 @@ export class SyncOrchestratorController {
                         completedAt: new Date(),
                         duration,
                         successRecords:
-                            (syncResult?.inbound?.synced || 0) +
-                            (syncResult?.exported?.created || 0),
+                            (syncResult?.inbound?.synced || syncResult?.inbound?.count || 0) +
+                            (syncResult?.exported?.created || syncResult?.exported?.createdCount || 0) +
+                            (syncResult?.exported?.updated || syncResult?.exported?.updatedCount || 0),
                         errorRecords: 0,
                         details: syncResult
                     }
@@ -711,4 +823,83 @@ export class SyncOrchestratorController {
         await this.quickBooksCustomerOutboundController.pushLocalUpdatesToQBO(mockRequest, mockResponse);
         return result; // { message, updated }
     }
+
+    private async executeProjectSyncFromQuickBooks(companyId: string, userId: string, syncExecutionId: string) {
+        const mockRequest = {
+            params: { companyId, userId },
+            syncExecutionId
+        } as unknown as Request;
+
+        let result: any = {};
+        const mockResponse = {
+            status: (code: number) => ({
+                json: (data: any) => {
+                    if (code === 200) {
+                        result = data;
+                    } else {
+                        const error = new Error(data.error || "Erro na sincronização de projetos");
+                        (error as any).details = data.details;
+                        (error as any).statusCode = code;
+                        throw error;
+                    }
+                }
+            })
+        } as unknown as Response;
+
+        await this.quickBooksProjectController.syncProjectsQboToSmartBuild(mockRequest, mockResponse);
+        return result;
+    }
+
+    private async executeEstimateSyncFromQuickBooks(companyId: string, userId: string, syncExecutionId: string) {
+        const mockRequest = {
+            params: { companyId, userId },
+            syncExecutionId
+        } as unknown as Request;
+
+        let result: any = {};
+        const mockResponse = {
+            status: (code: number) => ({
+                json: (data: any) => {
+                    if (code === 200) {
+                        result = data;
+                    } else {
+                        const error = new Error(data.error || "Erro na sincronização de estimates");
+                        (error as any).details = data.details;
+                        (error as any).statusCode = code;
+                        throw error;
+                    }
+                }
+            })
+        } as unknown as Response;
+
+        await this.quickBooksEstimateController.syncEstimatesQboToSmartBuild(mockRequest, mockResponse);
+        return result;
+    }
+
+    private async executeInvoiceSyncFromQuickBooks(companyId: string, userId: string, syncExecutionId: string) {
+        const mockRequest = {
+            params: { companyId, userId },
+            syncExecutionId
+        } as unknown as Request;
+
+        let result: any = {};
+        const mockResponse = {
+            status: (code: number) => ({
+                json: (data: any) => {
+                    if (code === 200) {
+                        result = data;
+                    } else {
+                        const error = new Error(data.error || "Erro na sincronização de invoices");
+                        (error as any).details = data.details;
+                        (error as any).statusCode = code;
+                        throw error;
+                    }
+                }
+            })
+        } as unknown as Response;
+
+        await this.quickBooksInvoiceImportController.syncInvoicesQboToSmartBuild(mockRequest, mockResponse);
+        return result;
+    }
+
 } 

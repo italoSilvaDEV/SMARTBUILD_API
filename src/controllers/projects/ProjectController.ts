@@ -59,6 +59,23 @@ function projectAttendanceTotals(attendances: Array<{
   };
 }
 
+function getPaidAmountFromProjectInvoice(invoice: any): number {
+  if (invoice.status === "paid") {
+    return Number(invoice.totalAmount || 0);
+  }
+
+  if (invoice.status === "partial" && invoice.invoiceType === "quickbooks") {
+    const appliedPayments = (invoice.paymentApplications || []).reduce(
+      (sum: number, payment: any) => sum + Number(payment.amountApplied || 0),
+      0
+    );
+
+    return appliedPayments || Number(invoice.totalAmountPaidQbo || 0);
+  }
+
+  return 0;
+}
+
 function getDateRange(periodType: string) {
   const now = new Date();
   let startDate: Date;
@@ -553,16 +570,7 @@ export class ProjectController {
 
         let totalAmountPaid = 0;
         for (const invoice of invoices) {
-          if (invoice.status === "paid") {
-            // Invoice totalmente pago - usar o totalAmount
-            totalAmountPaid += Number(invoice.totalAmount);
-          } else if (invoice.status === "partial" && invoice.invoiceType === "quickbooks") {
-            // Invoice parcialmente pago do QBO - somar os pagamentos registrados
-            const partialPayments = invoice.paymentApplications.reduce((sum: number, payment: any) => {
-              return sum + Number(payment.amountApplied);
-            }, 0);
-            totalAmountPaid += partialPayments;
-          }
+          totalAmountPaid += getPaidAmountFromProjectInvoice(invoice);
         }
 
         const balanceDue = priceProject - totalAmountPaid;
@@ -840,16 +848,7 @@ export class ProjectController {
 
         let totalAmountPaid = 0;
         for (const invoice of invoices) {
-          if (invoice.status === "paid") {
-            // Invoice totalmente pago - usar o totalAmount
-            totalAmountPaid += Number(invoice.totalAmount);
-          } else if (invoice.status === "partial" && invoice.invoiceType === "quickbooks") {
-            // Invoice parcialmente pago do QBO - somar os pagamentos registrados
-            const partialPayments = invoice.paymentApplications.reduce((sum: number, payment: any) => {
-              return sum + Number(payment.amountApplied);
-            }, 0);
-            totalAmountPaid += partialPayments;
-          }
+          totalAmountPaid += getPaidAmountFromProjectInvoice(invoice);
         }
 
         const balanceDue = priceProject - totalAmountPaid;

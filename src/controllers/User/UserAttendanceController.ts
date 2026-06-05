@@ -19,6 +19,7 @@ const emitLiveTrackingUpdate = (companyId: string | null | undefined, payload: R
 const formatActiveAttendance = (att: any) => {
     const serviceProject = att.UserServiceProject?.service_project;
     const project = serviceProject?.Project;
+    const breaks = att.breakRecords || [];
 
     return {
         ...att,
@@ -27,6 +28,9 @@ const formatActiveAttendance = (att: any) => {
         project_id: project?.id || att.pending_project_id || null,
         work_radius: project?.radius || att.pending_project_radius || null,
         pending_service_selection: att.service_selection_status === 'pending',
+        manualBreakEnabled: att.user?.manualBreakEnabled === true,
+        activeBreak: breaks.find((breakRecord: any) => !breakRecord.endedAt) || null,
+        breaks,
     };
 };
 
@@ -157,7 +161,7 @@ export class UserAttendanceController {
             const attendances = await prisma.userAttendance.findMany({
                 where: { user_id: userId },
                 include: {
-                    user: { select: { id: true, name: true } },
+                    user: { select: { id: true, name: true, manualBreakEnabled: true } },
                 },
             });
             res.status(200).json(attendances);
@@ -177,7 +181,10 @@ export class UserAttendanceController {
                     check_out_time: null,
                 },
                 include: {
-                    user: { select: { id: true, name: true } },
+                    user: { select: { id: true, name: true, manualBreakEnabled: true } },
+                    breakRecords: {
+                        orderBy: { startedAt: 'asc' }
+                    },
                     UserServiceProject: {
                         include: {
                             service_project: {
@@ -379,6 +386,42 @@ export class UserAttendanceController {
         }
     }
 
+    async startBreak(req: Request, res: Response) {
+        try {
+            const { attendanceId } = req.params;
+            const userId = (req as any).userId || (req as any).user?.id || req.body?.userId;
+
+            if (!attendanceId) {
+                return res.status(400).json({ error: 'Attendance ID is required.' });
+            }
+
+            const breakRecord = await attendanceService.startBreak(attendanceId, userId);
+            return res.status(201).json({ success: true, data: breakRecord });
+        } catch (error: any) {
+            console.error('[AttendanceController] Error in startBreak:', error);
+            const status = this.mapErrorToStatus(error.message);
+            return res.status(status).json({ error: error.message });
+        }
+    }
+
+    async endBreak(req: Request, res: Response) {
+        try {
+            const { attendanceId } = req.params;
+            const userId = (req as any).userId || (req as any).user?.id || req.body?.userId;
+
+            if (!attendanceId) {
+                return res.status(400).json({ error: 'Attendance ID is required.' });
+            }
+
+            const breakRecord = await attendanceService.endBreak(attendanceId, userId);
+            return res.status(200).json({ success: true, data: breakRecord });
+        } catch (error: any) {
+            console.error('[AttendanceController] Error in endBreak:', error);
+            const status = this.mapErrorToStatus(error.message);
+            return res.status(status).json({ error: error.message });
+        }
+    }
+
     // Clock In/Out unificado
     async clockInOut(req: Request, res: Response) {
         try {
@@ -508,6 +551,9 @@ export class UserAttendanceController {
             case 'SERVICE_PROJECT_MISMATCH': return 400;
             case 'ATTENDANCE_NOT_FOUND': return 404;
             case 'ALREADY_CHECKED_OUT': return 400;
+            case 'MANUAL_BREAK_DISABLED': return 403;
+            case 'BREAK_ALREADY_OPEN': return 400;
+            case 'BREAK_NOT_OPEN': return 400;
             default: return 500;
         }
     }
