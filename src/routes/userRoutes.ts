@@ -69,11 +69,16 @@ userRoutes.get('/user/local-subscription-status/:userId/:company_id', checkToken
 
 // rota com feature toggle para autenticação
 userRoutes.post("/auth", async (req, res) => {
-  const multiCompanyEnabled = await isMultiCompanyEnabled();
-  if (multiCompanyEnabled) {
-    return UserMultiCompany.authenticateMultiCompany(req, res);
-  } else {
-    return User.authenticate(req, res);
+  try {
+    const multiCompanyEnabled = await isMultiCompanyEnabled();
+    if (multiCompanyEnabled) {
+      return UserMultiCompany.authenticateMultiCompany(req, res);
+    } else {
+      return User.authenticate(req, res);
+    }
+  } catch (error) {
+    console.error("[userRoutes.auth] Failed to authenticate:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 });
 userRoutes.post("/auth/by-company", async (req, res) => {
