@@ -302,24 +302,53 @@ export class ListClientController {
                 return res.status(400).json({ error: "Company ID is required" });
             }
 
+            const pageParam = Number(req.query.page);
+            const limitParam = Number(req.query.limit);
+            const hasPagination = Number.isFinite(limitParam) && limitParam > 0;
+            const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.trunc(pageParam) : 1;
+            const limit = hasPagination ? Math.min(Math.max(Math.trunc(limitParam), 1), 50) : undefined;
+            const searchTerm = String(search).trim();
+
             // Filtro de busca
-            const searchFilter: Prisma.ClientWhereInput = search
+            const searchFilter: Prisma.ClientWhereInput = searchTerm
                 ? {
                     OR: [
-                        { name: { contains: String(search) } },
-                        { email: { contains: String(search) } },
-                        { location: { contains: String(search) } },
+                        { name: { contains: searchTerm } },
+                        { email: { contains: searchTerm } },
+                        { location: { contains: searchTerm } },
+                        { addressOffice: { contains: searchTerm } },
+                        {
+                            workContexts: {
+                                some: {
+                                    isActive: true,
+                                    OR: [
+                                        { Name: { contains: searchTerm } },
+                                        { Email: { contains: searchTerm } },
+                                        { location: { contains: searchTerm } },
+                                        { addressOffice: { contains: searchTerm } },
+                                    ],
+                                },
+                            },
+                        },
                     ],
                 }
                 : {};
 
+            const where: Prisma.ClientWhereInput = {
+                company_id: String(company_id),
+                ...searchFilter,
+            };
+
             // Buscar clientes com work contexts
             const clientsQuery = await prisma.client.findMany({
-                where: {
-                    company_id: String(company_id),
-                    ...searchFilter,
-                },
+                where,
                 orderBy: [{ name: "asc" }],
+                ...(hasPagination && limit
+                    ? {
+                        skip: (page - 1) * limit,
+                        take: limit,
+                    }
+                    : {}),
                 include: {
                     workContexts: {
                         where: {
@@ -354,9 +383,17 @@ export class ListClientController {
                 })),
             }));
 
+            const totalCount = await prisma.client.count({ where });
+
             return res.json({
                 clients: formattedClients,
-                total: clientsQuery.length,
+                total: totalCount,
+                ...(hasPagination && limit
+                    ? {
+                        page,
+                        limit,
+                    }
+                    : {}),
             });
         } catch (error) {
             console.error("Error listing clients with work contexts:", error);
