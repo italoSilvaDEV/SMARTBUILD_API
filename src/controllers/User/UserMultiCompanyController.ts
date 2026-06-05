@@ -95,11 +95,13 @@ export class UserMultiCompanyController {
         }
       );
 
+      const defaultOffice = user.office || user.companies[0]?.office || null;
+
       // Formatar resposta com array de companies
       return res.json({
         msg: "Authentication completed successfully!",
         token,
-        rules: user.office.name, // Adicionar rules para compatibilidade com frontend
+        rules: defaultOffice?.name || null, // Adicionar rules para compatibilidade com frontend
         user: {
           id: user.id,
           name: user.name,
@@ -115,7 +117,7 @@ export class UserMultiCompanyController {
           projectVisibilityMode: user.projectVisibilityMode,
           companies: companiesWithAvatarUrls, // Array de companies com avatarUrl
           last_acess: user.last_acess,
-          office: user.office
+          office: defaultOffice
         }
       });
     } catch (error) {
@@ -207,6 +209,10 @@ export class UserMultiCompanyController {
       let permissions: string[] = [];
 
       const selectedOffice = userCompany?.office;
+
+      if (!selectedOffice) {
+        return res.status(403).json({ error: "User has no office configured for this company" });
+      }
 
       // Buscar permissões do office do usuário
       if (selectedOffice?.id) {
