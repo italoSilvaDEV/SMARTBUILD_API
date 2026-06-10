@@ -626,10 +626,11 @@ function buildClassicEstimateHtml(input: {
       <head>
         <meta charset="utf-8" />
         <style>
-          @page { size: A4; margin: 0; }
+                    @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
-          .pdf-document { width: 595px; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
+          html { width: 100%; margin: 0; padding: 0; background: #ffffff; }
+          body { width: 100%; margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
+          .pdf-document { width: 100%; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
           .classic-cover { width: 100%; background: #fff; box-sizing: border-box; page-break-after: auto; overflow: visible; position: relative; }
           .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 32px 10px; }
           .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
