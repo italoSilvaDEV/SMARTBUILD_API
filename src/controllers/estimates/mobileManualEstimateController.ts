@@ -299,6 +299,211 @@ export class MobileManualEstimateController {
       return res.status(500).json({ error: message });
     }
   }
+
+  async regeneratePdf(req: Request, res: Response) {
+    const { estimateId } = req.params;
+
+    if (!estimateId) {
+      return res.status(400).json({ error: "Estimate ID is required" });
+    }
+
+    try {
+      const estimate = await prisma.estimate.findUnique({
+        where: { id: estimateId },
+        include: {
+          imagesAttachments: {
+            orderBy: { date_creation: "asc" },
+            select: {
+              id: true,
+              original_filename: true,
+              title: true,
+              url: true,
+            },
+          },
+          PdfProject: {
+            orderBy: { date_creation: "desc" },
+            take: 1,
+          },
+          project: {
+            include: {
+              client: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                },
+              },
+              company: {
+                select: {
+                  address: true,
+                  avatar: true,
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                  signature: true,
+                  webSiteUrl: true,
+                },
+              },
+              user: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                },
+              },
+              workContext: {
+                select: {
+                  Email: true,
+                  Name: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          serviceProjects: {
+            orderBy: [
+              { pos: "asc" },
+              { date_creation: "asc" },
+              { id: "asc" },
+            ],
+          },
+        },
+      });
+
+      if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+      if (!estimate.project) return res.status(400).json({ error: "Estimate has no project" });
+      if (!estimate.project.company) return res.status(400).json({ error: "Estimate has no company" });
+
+      const company = estimate.project.company;
+      const clientName = estimate.project.workContext?.Name || estimate.project.client?.name || "Customer";
+      const clientEmail = estimate.project.workContext?.Email || estimate.project.client?.email || "";
+      const clientPhone = estimate.project.workContext?.phone || estimate.project.client?.phone || "";
+      const seller = estimate.project.user || { email: "", id: "", name: "SmartBuild" };
+      const services = estimate.serviceProjects.map((service: any, index: number) => ({
+        catalogServiceId: service.id_service || null,
+        description: service.description || "",
+        lineTotal: roundMoney(Number(service.originalLineTotal ?? service.lineTotal ?? 0)),
+        name: String(service.name || "").trim(),
+        pos: Number.isFinite(Number(service.pos)) ? Number(service.pos) : index,
+        quantity: Number(service.quantity ?? service.hours ?? 1),
+        unitPrice: roundMoney(Number(service.originalUnitPrice ?? service.unitPrice ?? service.price ?? 0)),
+      }));
+
+      if (!services.length) {
+        return res.status(400).json({ error: "At least one service is required" });
+      }
+
+      const totalAmount = roundMoney(services.reduce((total, service) => total + service.lineTotal, 0));
+      const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+      const photos = (await Promise.all(
+        (estimate.imagesAttachments || []).flatMap((photo) =>
+          photo.url
+            ? [
+                imageAttachmentToPdfPhoto({
+                  filename: photo.original_filename || `estimate-image-${photo.id}.jpg`,
+                  title: photo.title || "Attached Image",
+                  url: photo.url,
+                }),
+              ]
+            : [],
+        ),
+      )).filter((photo) => photo.base64);
+      const dateCreation = estimate.date_creation
+        ? estimate.date_creation.toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const html = buildClassicEstimateHtml({
+        client: {
+          email: clientEmail,
+          id: estimate.project.client?.id,
+          name: clientName,
+          phone: clientPhone,
+        },
+        company: {
+          ...company,
+          logoUrl: companyLogoUrl,
+        },
+        dateCreation,
+        estimateNumber: estimate.number,
+        location: {
+          address: estimate.project.location || "",
+          lat: estimate.project.lat || "",
+          lng: estimate.project.log || "",
+          radius: String(estimate.project.radius || 100),
+        },
+        photos,
+        seller: {
+          email: seller.email || "",
+          name: seller.name || "SmartBuild",
+        },
+        services,
+        terms: estimate.terms || "",
+        totalAmount,
+      });
+
+      const pdfBuffer = await generatePdfBuffer(html);
+      const signedPdfBuffer = company.signature
+        ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, company.name)
+        : await addCompanySignatureToPdfBuffer(pdfBuffer, company.name, new Date());
+      const pdfFileName = buildPdfFileName(clientName, company.name, dateCreation);
+      const pdfS3Key = await uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf");
+      const existingPdf = Array.isArray(estimate.PdfProject) ? estimate.PdfProject[0] : null;
+
+      const pdfProject = existingPdf
+        ? await prisma.pdfProject.update({
+            where: { id: existingPdf.id },
+            data: {
+              original_file_name: pdfFileName,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          })
+        : await prisma.pdfProject.create({
+            data: {
+              estimate_id: estimate.id,
+              original_file_name: pdfFileName,
+              project_id: estimate.project.id,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          });
+
+      await prisma.estimate.update({
+        where: { id: estimate.id },
+        data: {
+          ...(estimate.status === "approved" ? { assignatureRequired: true } : {}),
+          balanceDue: totalAmount,
+          finalAmount: totalAmount,
+          totalAmount,
+        },
+      });
+
+      await prisma.estimateTimeline.create({
+        data: {
+          description: "PDF regenerated",
+          estimate: { connect: { id: estimate.id } },
+        },
+      });
+
+      fireAndForgetUpsertEstimateToQBO(company.id, (req as any).userId, estimate.id);
+
+      return res.status(200).json({
+        data: {
+          id: pdfProject.id,
+          original_file_name: pdfProject.original_file_name,
+          uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null,
+        },
+        message: "Estimate PDF regenerated successfully",
+      });
+    } catch (error) {
+      console.error("[MobileManualEstimateController] Error regenerating PDF:", error);
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return res.status(500).json({ error: message });
+    }
+  }
 }
 
 function validatePayload(payload: MobileManualEstimatePayload) {
@@ -456,6 +661,39 @@ async function uploadStandalonePhotos({
       },
     });
   }
+}
+
+async function imageAttachmentToPdfPhoto({
+  filename,
+  title,
+  url,
+}: {
+  filename: string;
+  title: string;
+  url: string;
+}) {
+  const presignedUrl = await getSafePresignedUrl(url);
+  if (!presignedUrl) {
+    return {
+      base64: "",
+      filename,
+      mimeType: "image/jpeg",
+      title,
+    };
+  }
+
+  const response = await axios.get<ArrayBuffer>(presignedUrl, {
+    responseType: "arraybuffer",
+    timeout: Number(process.env.PDFSHIFT_TIMEOUT_MS || 90000),
+  });
+  const mimeType = String(response.headers["content-type"] || "image/jpeg");
+
+  return {
+    base64: Buffer.from(response.data).toString("base64"),
+    filename,
+    mimeType,
+    title,
+  };
 }
 
 async function sendEstimateEmail({
@@ -626,11 +864,10 @@ function buildClassicEstimateHtml(input: {
       <head>
         <meta charset="utf-8" />
         <style>
-                    @page { size: A4; margin: 0; }
+          @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          html { width: 100%; margin: 0; padding: 0; background: #ffffff; }
-          body { width: 100%; margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
-          .pdf-document { width: 100%; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
+          body { margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
+          .pdf-document { width: 595px; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
           .classic-cover { width: 100%; background: #fff; box-sizing: border-box; page-break-after: auto; overflow: visible; position: relative; }
           .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 32px 10px; }
           .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }

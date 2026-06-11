@@ -73,6 +73,7 @@ estimateRoutes.post("/smartbuilder/draft/message", checkToken, uploadSmartBuilde
 estimateRoutes.get("/:estimateId/smartbuilder/session", checkToken, smartBuilderEstimateController.getSession);
 estimateRoutes.post("/:estimateId/smartbuilder/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), smartBuilderEstimateController.messageExisting);
 estimateRoutes.post("/:estimateId/smartbuilder/session/import", checkToken, smartBuilderEstimateController.importSession);
+estimateRoutes.post("/mobile/manual/:estimateId/regenerate-pdf", checkToken, mobileManualEstimateController.regeneratePdf.bind(mobileManualEstimateController));
 
 estimateRoutes.post("/", checkToken, estimateController.create);
 estimateRoutes.get("/project/:projectId", checkToken, estimateController.findByProject);
