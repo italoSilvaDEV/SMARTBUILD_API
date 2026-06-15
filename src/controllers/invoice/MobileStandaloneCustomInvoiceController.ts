@@ -959,8 +959,8 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
 </head>
 <body>
   <div class="pdf-container" style="width:100%;background:white;margin:0;padding:0;page-break-after:always;min-height:calc(297mm - 24mm);height:auto;box-sizing:border-box;overflow:visible;">
-    <div style="width:527px;margin:0 auto;">
-      <div style="width:527px;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;">
+    <div style="width:100%;margin:0 auto;">
+      <div style="width:100%;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;">
         <style>
           @page { size: A4; }
           .page-break-before { page-break-before: auto; }
@@ -1072,7 +1072,7 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
           }
         </div>
         <div style="margin-top:40px;">
-          <div style="width:527px;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;padding:24px 24px 24px 24px;display:block;page-break-inside:auto;overflow:visible;">
+          <div style="width:100%;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;padding:24px 24px 24px 24px;display:block;page-break-inside:auto;overflow:visible;">
             <div style="display:block;position:relative;z-index:1;">
               <h2 style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:16px;margin:0 0 16px 0;flex-shrink:0;letter-spacing:0.5px;">SERVICES</h2>
               <div style="display:flex;background-color:#f8f9fa;border:1px solid #e9ecef;border-radius:6px 6px 0 0;padding:12px 16px;font-size:11px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">
