@@ -4,8 +4,10 @@ import { checkToken } from "../middlewares/checkToken";
 
 const customInvoiceRoutes = Router();
 const customInvoiceController = new CustomInvoiceController();
+const mobileStandaloneCustomInvoiceController = new MobileStandaloneCustomInvoiceController();
 
 // Criar invoice personalizado
+customInvoiceRoutes.post("/custom/invoice/mobile/standalone", checkToken, mobileStandaloneCustomInvoiceController.handle.bind(mobileStandaloneCustomInvoiceController));
 customInvoiceRoutes.post("/custom/invoice/:projectId", checkToken, customInvoiceController.createInvoice.bind(customInvoiceController)); 
 customInvoiceRoutes.get("/custom/invoice/:projectId/generate-number", checkToken, customInvoiceController.generateNumber.bind(customInvoiceController));
 customInvoiceRoutes.get("/custom/invoice/global/:companyId/generate-number", checkToken, customInvoiceController.generateGlobalNumber.bind(customInvoiceController));
