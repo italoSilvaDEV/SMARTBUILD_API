@@ -1,210 +1,150 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import axios from "axios";
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { Request, Response } from "express";
 
-import { prisma } from "../../utils/prisma";
-import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
+import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
+import { prisma } from "../../utils/prisma";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
-import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
+import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
-type MobileStandaloneCustomInvoicePayload = {
+type MobileManualEstimatePayload = {
   action: "save" | "createAndSend";
-  additionalEmails?: string[];
-  amount: {
-    fixedValue?: number;
-    percentage?: number;
-    type: "fixed" | "percentage";
-  };
+  companyId: string;
+  sellerUserId: string;
+  estimateNumber: string;
+  dateCreation: string;
+  templateNumber: 1;
   client: {
-    address?: string | null;
-    email: string;
     id?: string;
     name: string;
+    email: string;
     phone?: string | null;
   };
-  companyId: string;
-  dateCreation: string;
-  description?: string;
-  dueDate: string;
-  invoiceNumber?: string;
-  paymentMethod?: "custom" | "quickbooks" | "stripe";
-  pdfTemplate?: "web-professional-invoice";
-  sellerUserId: string;
+  workContextId?: string;
+  location: {
+    address: string;
+    lat: string;
+    lng: string;
+    radius: string;
+  };
+  projectId?: string;
+  terms: string;
   services: Array<{
     catalogServiceId?: string;
+    name: string;
     description?: string;
-    lineTotal?: number;
-    name: string;
-    pos?: number;
-    quantity?: number;
-    unitPrice?: number;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+    pos: number;
   }>;
-  showPaymentMethods?: boolean;
-  workContextId?: string;
+  standalonePhotos?: Array<{
+    title?: string;
+    base64: string;
+    mimeType: string;
+    filename: string;
+  }>;
 };
 
-type NormalizedServiceLine = {
-  catalogServiceId?: string;
-  description: string;
-  lineTotal: number;
-  name: string;
-  pos: number;
-  quantity: number;
-  unitPrice: number;
-};
-
-type InvoicePdfInput = {
-  amountPaid?: number;
-  client: {
-    address?: string | null;
-    email?: string | null;
-    name: string;
-    phone?: string | null;
-  };
-  company: {
-    address?: string | null;
-    avatarUrl?: string | null;
-    email?: string | null;
-    name: string;
-    phone?: string | null;
-    webSiteUrl?: string | null;
-  };
-  dateCreation: Date;
-  description?: string | null;
-  dueDate: Date;
-  invoiceAmount: number;
-  invoiceNumber: string;
-  invoiceType: string;
-  isPaid?: boolean;
-  services: NormalizedServiceLine[];
-  showPaymentMethods: boolean;
-  totalInvoice: number;
-  workContext?: {
-    address?: string | null;
-    email?: string | null;
-    name?: string | null;
-    phone?: string | null;
-  } | null;
-};
-
-export class MobileStandaloneCustomInvoiceController {
-  private quickBooksController: QuickBooksInvoiceController;
-
-  constructor() {
-    this.quickBooksController = new QuickBooksInvoiceController();
-  }
-
+export class MobileManualEstimateController {
   async handle(req: Request, res: Response) {
-    const payload = req.body as MobileStandaloneCustomInvoicePayload;
+    const payload = req.body as MobileManualEstimatePayload;
+
+    const validationError = validatePayload(payload);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
 
     try {
-      const validationError = validatePayload(payload);
-      if (validationError) {
-        return res.status(400).json({ error: validationError });
-      }
+      const [company, seller] = await Promise.all([
+        prisma.company.findUnique({
+          where: { id: payload.companyId },
+          select: {
+            address: true,
+            avatar: true,
+            email: true,
+            id: true,
+            name: true,
+            phone: true,
+            signature: true,
+            webSiteUrl: true,
+          },
+        }),
+        prisma.user.findUnique({
+          where: { id: payload.sellerUserId },
+          select: { email: true, id: true, name: true },
+        }),
+      ]);
 
-      const services = normalizeServices(payload.services);
-      if (services.length === 0) {
-        return res.status(400).json({ error: "At least one valid service is required" });
-      }
+      if (!company) return res.status(404).json({ error: "Company not found" });
+      if (!seller) return res.status(404).json({ error: "Seller not found" });
 
-      const company = await prisma.company.findUnique({
-        where: { id: payload.companyId },
-      });
-
-      if (!company) {
-        return res.status(404).json({ error: "Company not found" });
-      }
-
-      const seller = await prisma.user.findFirst({
-        where: {
-          id: payload.sellerUserId,
-        },
-        select: {
-          email: true,
-          id: true,
-          name: true,
-        },
-      });
-
-      if (!seller) {
-        return res.status(404).json({ error: "Seller user not found" });
-      }
-
-      const workContext = payload.workContextId
-        ? await prisma.workContext.findFirst({
+      const existingProject = payload.projectId
+        ? await prisma.project.findFirst({
             where: {
-              companyId: payload.companyId,
-              id: payload.workContextId,
-              isActive: true,
+              company_id: payload.companyId,
+              id: payload.projectId,
+            },
+            select: {
+              client_id: true,
+              id: true,
             },
           })
         : null;
 
-      if (payload.workContextId && !workContext) {
-        return res.status(404).json({ error: "Work context not found" });
+      if (payload.projectId && !existingProject) {
+        return res.status(404).json({ error: "Project not found" });
       }
 
-      const servicesTotal = roundCurrency(
-        services.reduce((sum, service) => sum + service.lineTotal, 0),
+      const verifiedEstimateNumber = payload.projectId
+        ? await getVerifiedProjectEstimateNumber(payload.projectId, payload.estimateNumber)
+        : await getVerifiedEstimateNumber(payload.companyId, payload.estimateNumber);
+
+      const normalizedServices = payload.services.map((service, index) => ({
+        catalogServiceId: service.catalogServiceId || null,
+        description: service.description || "",
+        lineTotal: roundMoney(Number(service.lineTotal)),
+        name: service.name.trim(),
+        pos: Number.isFinite(service.pos) ? Number(service.pos) : index,
+        quantity: Number(service.quantity),
+        unitPrice: roundMoney(Number(service.unitPrice)),
+      }));
+
+      const totalAmount = roundMoney(
+        normalizedServices.reduce((total, service) => total + service.lineTotal, 0),
       );
-      const { coefficient, invoiceAmount, typeValue } = computeInvoiceAmount(payload.amount, servicesTotal);
-      const invoiceNumber = await getNextInvoiceNumber(payload.companyId, payload.invoiceNumber);
-      const projectNumber = await getNextProjectNumber(payload.companyId);
-      const estimateNumber = `${projectNumber}-01`;
-      const dateCreation = normalizeDate(payload.dateCreation);
-      const dueDate = normalizeDate(payload.dueDate);
-      const showPaymentMethods = payload.showPaymentMethods !== false;
-      const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
-      const companyAddress = formatCompanyAddress(company);
-      const workContextDetails = workContext
-        ? {
-            address: workContext.addressOffice || workContext.location || "",
-            email: workContext.Email || "",
-            name: workContext.Name || workContext.label || "",
-            phone: workContext.phone || "",
-          }
-        : null;
 
-      const pdfInput: InvoicePdfInput = {
-        client: {
-          address: payload.client.address || "",
-          email: payload.client.email,
-          name: payload.client.name,
-          phone: payload.client.phone || "",
-        },
+      const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+      const html = buildClassicEstimateHtml({
+        client: payload.client,
         company: {
-          address: companyAddress,
-          avatarUrl: companyAvatarUrl,
-          email: company.email || "",
-          name: company.name,
-          phone: company.phone || "",
-          webSiteUrl: company.webSiteUrl || "",
+          ...company,
+          logoUrl: companyLogoUrl,
         },
-        dateCreation,
-        description: payload.description || "",
-        dueDate,
-        invoiceAmount,
-        invoiceNumber,
-        invoiceType: "custom",
-        services,
-        showPaymentMethods,
-        totalInvoice: servicesTotal,
-        workContext: workContextDetails,
-      };
+        dateCreation: payload.dateCreation,
+        estimateNumber: verifiedEstimateNumber,
+        location: payload.location,
+        photos: payload.standalonePhotos || [],
+        seller,
+        services: normalizedServices,
+        terms: payload.terms,
+        totalAmount,
+      });
 
-      const normalPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml(pdfInput));
-      const paidPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml({ ...pdfInput, isPaid: true }));
-      const pdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}.pdf`;
-      const paidPdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}_PAID.pdf`;
-      const [pdfS3Key, paidPdfS3Key] = await Promise.all([
-        uploadBufferToS3(normalPdfBuffer, pdfFileName, "application/pdf"),
-        uploadBufferToS3(paidPdfBuffer, paidPdfFileName, "application/pdf"),
-      ]);
+      const pdfBuffer = await generatePdfBuffer(html);
+      const signedPdfBuffer = company.signature
+        ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, company.name)
+        : await addCompanySignatureToPdfBuffer(pdfBuffer, company.name, new Date());
+      const pdfFileName = buildPdfFileName(payload.client.name, company.name, payload.dateCreation);
+      const pdfS3Key = await uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf");
 
       const result = await prisma.$transaction(async (tx) => {
         let client = payload.client.id
@@ -220,8 +160,8 @@ export class MobileStandaloneCustomInvoiceController {
           client = await tx.client.findUnique({
             where: {
               email_company_id: {
-                company_id: payload.companyId,
                 email: payload.client.email,
+                company_id: payload.companyId,
               },
             },
           });
@@ -230,8 +170,7 @@ export class MobileStandaloneCustomInvoiceController {
         if (client) {
           client = await tx.client.update({
             where: { id: client.id },
-          data: {
-              addressOffice: payload.client.address || undefined,
+            data: {
               name: payload.client.name,
               phone: payload.client.phone || "",
             },
@@ -242,115 +181,57 @@ export class MobileStandaloneCustomInvoiceController {
               company_id: payload.companyId,
               email: payload.client.email,
               name: payload.client.name,
-              addressOffice: payload.client.address || "",
               phone: payload.client.phone || "",
             },
           });
         }
 
-        const project = await tx.project.create({
-          data: {
-            balanceDue: servicesTotal,
-            client_id: client.id,
-            company_id: payload.companyId,
-            contract_number: projectNumber,
-            lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
-            log: workContext?.longitude?.toString() || "",
-            price: servicesTotal,
-            radius: workContext?.radius || client.radius || null,
-            seller_user_id: payload.sellerUserId,
-            status_project: "Pending",
-            workContextId: workContext?.id || null,
-          },
-        });
-
-        const serviceProjects = [];
-        for (const service of services) {
-          const serviceProject = await tx.serviceProject.create({
-            data: {
-              company_id: payload.companyId,
-              description: service.description || "",
-              hours: service.quantity,
-              id_service: service.catalogServiceId || null,
-              name: service.name,
-              price: service.unitPrice,
-              projectId: project.id,
-            },
-          });
-          serviceProjects.push({ input: service, serviceProject });
-        }
-
-        const invoice = await tx.invoice.create({
-          data: {
-            companyId: payload.companyId,
-            createdAt: dateCreation,
-            description: payload.description || "",
-            dueDate,
-            externalInvoiceId: invoiceNumber,
-            invoiceType: "custom",
-            isStandaloneInvoice: true,
-            multi_emails: normalizeEmailList(payload.additionalEmails).join(","),
-            percentageCoefficient: coefficient,
-            projectId: project.id,
-            showPaymentMethods,
-            status: "open",
-            totalAmount: invoiceAmount,
-            type_invoicebase: "project",
-            type_value: typeValue,
-            user_id: payload.sellerUserId,
-          },
-        });
-
-        await tx.invoiceItem.createMany({
-          data: services.map((service) => ({
-            description: service.description,
-            invoiceId: invoice.id,
-            name: service.name,
-            price: service.unitPrice,
-            quantity: service.quantity,
-            totalAmount: roundCurrency(service.lineTotal * coefficient),
-          })),
-        });
+        const project = existingProject
+          ? existingProject
+          : await tx.project.create({
+              data: {
+                balanceDue: totalAmount,
+                client_id: client.id,
+                company_id: payload.companyId,
+                contract_number: Number(verifiedEstimateNumber),
+                lat: payload.location.lat,
+                location: payload.location.address,
+                log: payload.location.lng,
+                price: totalAmount,
+                radius: Number(payload.location.radius || 100),
+                seller_user_id: payload.sellerUserId,
+                status_project: "Pending",
+                workContextId: payload.workContextId || null,
+              },
+            });
 
         const pdfProject = await tx.pdfProject.create({
           data: {
-            invoice_id: invoice.id,
             original_file_name: pdfFileName,
             project_id: project.id,
-            templateNumber: 1,
-            type_pdf: "invoice",
+            templateNumber: payload.templateNumber,
+            type_pdf: "estimate",
             uri: pdfS3Key,
-          },
-        });
-
-        const paidPdfProject = await tx.pdfInvoicePaid.create({
-          data: {
-            invoiceId: invoice.id,
-            original_file_name: paidPdfFileName,
-            uri: paidPdfS3Key,
           },
         });
 
         const estimate = await tx.estimate.create({
           data: {
             amountPaid: 0,
-            approvedAt: dateCreation,
-            assignatureRequired: true,
-            balanceDue: servicesTotal,
-            date_creation: dateCreation,
-            description: payload.description || "",
-            finalAmount: servicesTotal,
-            isStandaloneEstimate: true,
+            balanceDue: totalAmount,
+            date_creation: payload.dateCreation ? new Date(payload.dateCreation) : new Date(),
+            description: "",
+            finalAmount: totalAmount,
             multi_emails: "",
-            number: estimateNumber,
+            number: verifiedEstimateNumber,
+            status: "pending",
+            terms: payload.terms,
+            totalAmount,
+            type_estimate: existingProject ? "estimateProject" : "estimate",
+            assignatureRequired: Boolean(existingProject),
             project: {
               connect: { id: project.id },
             },
-            status: "approved",
-            terms: "",
-            totalAmount: servicesTotal,
-            type_estimate: "estimateProject",
           },
         });
 
@@ -361,40 +242,30 @@ export class MobileStandaloneCustomInvoiceController {
           },
         });
 
-        for (const [index, item] of serviceProjects.entries()) {
-          await tx.estimateServiceProject.create({
-            data: {
-              description: item.input.description,
-              estimateId: estimate.id,
-              hours: item.input.quantity,
-              id_service: item.input.catalogServiceId || null,
-              lineTotal: item.input.lineTotal,
-              name: item.input.name,
-              originalLineTotal: item.input.lineTotal,
-              originalUnitPrice: item.input.unitPrice,
-              pos: index,
-              price: item.input.unitPrice,
-              quantity: item.input.quantity,
-              serviceProject: {
-                connect: { id: item.serviceProject.id },
+        await Promise.all(
+          normalizedServices.map((service) =>
+            tx.estimateServiceProject.create({
+              data: {
+                description: service.description,
+                estimateId: estimate.id,
+                hours: service.quantity,
+                id_service: service.catalogServiceId,
+                lineTotal: service.lineTotal,
+                name: service.name,
+                originalLineTotal: service.lineTotal,
+                originalUnitPrice: service.unitPrice,
+                pos: service.pos,
+                price: service.unitPrice,
+                quantity: service.quantity,
+                unitPrice: service.unitPrice,
               },
-              unitPrice: item.input.unitPrice,
-            },
-          });
-        }
-
-        await tx.invoiceTimeline.create({
-          data: {
-            description: `Created with total amount $${invoiceAmount.toFixed(2)}`,
-            invoice: {
-              connect: { id: invoice.id },
-            },
-          },
-        });
+            }),
+          ),
+        );
 
         await tx.estimateTimeline.create({
           data: {
-            description: "Standalone estimate created from mobile custom invoice",
+            description: payload.action === "createAndSend" ? "Created and sent" : "Created",
             estimate: {
               connect: { id: estimate.id },
             },
@@ -404,645 +275,343 @@ export class MobileStandaloneCustomInvoiceController {
         return {
           client,
           estimate,
-          invoice,
-          paidPdfProject,
           pdfProject,
           project,
         };
       });
 
-      let quickBooksResult = null;
-      let quickBooksError: string | null = null;
-
-      try {
-        const quickBooksConfig = await prisma.quickBooksConfig.findUnique({
-          where: {
-            configType_companyId: {
-              companyId: payload.companyId,
-              configType: "INVOICE_CREATION",
-            },
-          },
+      if (payload.standalonePhotos?.length) {
+        await uploadStandalonePhotos({
+          estimateId: result.estimate.id,
+          photos: payload.standalonePhotos,
+          projectId: result.project.id,
         });
+      }
 
-        if (quickBooksConfig?.isActive) {
-          const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-            where: { company_id: payload.companyId },
-          });
-
-          if (quickBooksAccount) {
-            quickBooksResult = await this.quickBooksController.createInvoiceInternal({
-              calledFromStripe: true,
-              coefficientPerfentage: coefficient,
-              date_creation: payload.dateCreation,
-              description: payload.description || `Invoice for Project ${projectNumber}`,
-              dueDate: payload.dueDate,
-              isStandaloneInvoice: true,
-              projectId: result.project.id,
-              services: services.map((service) => ({
-                description: service.description,
-                name: service.name,
-                price: service.unitPrice,
-                quantity: service.quantity,
-                total: service.lineTotal,
-              })),
-              showPaymentMethods,
-              totalAmountTarget: invoiceAmount,
-              type_invoicebase: "project",
-              type_value: typeValue,
-              userId: payload.sellerUserId,
-            });
-
-            if (quickBooksResult?.quickbooksId) {
-              await prisma.invoice.update({
-                where: { id: result.invoice.id },
-                data: {
-                  docNumberQuickBooksContabio: quickBooksResult.docNumber || null,
-                  idQuickbookContabio: quickBooksResult.quickbooksId,
-                  qboCustomerRef: quickBooksResult.qboCustomerRef || null,
-                },
-              });
-            }
-
-            await prisma.invoiceTimeline.create({
-              data: {
-                description: `QuickBooks invoice created successfully (ID: ${quickBooksResult?.quickbooksId}, DocNumber: ${quickBooksResult?.docNumber})`,
-                invoice: { connect: { id: result.invoice.id } },
-              },
-            });
-          } else {
-            await prisma.invoiceTimeline.create({
-              data: {
-                description: "QuickBooks invoice creation skipped (no QuickBooks account connected)",
-                invoice: { connect: { id: result.invoice.id } },
-              },
-            });
-          }
-        } else {
-          await prisma.invoiceTimeline.create({
-            data: {
-              description: "QuickBooks invoice creation skipped (feature disabled in company settings)",
-              invoice: { connect: { id: result.invoice.id } },
-            },
-          });
-        }
-      } catch (error: any) {
-        quickBooksError = error?.message || "Unknown QuickBooks error";
-        await prisma.invoiceTimeline.create({
-          data: {
-            description: `Failed to create QuickBooks invoice: ${quickBooksError}`,
-            invoice: { connect: { id: result.invoice.id } },
-          },
+      let emailSent = false;
+      if (payload.action === "createAndSend") {
+        await sendEstimateEmail({
+          clientEmail: payload.client.email,
+          clientName: payload.client.name,
+          company,
+          estimateId: result.estimate.id,
+          estimateNumber: verifiedEstimateNumber,
+          location: payload.location.address,
+          pdfBuffer: signedPdfBuffer,
+          pdfFileName,
+          totalAmount,
         });
+        emailSent = true;
       }
 
       fireAndForgetUpsertEstimateToQBO(payload.companyId, (req as any).userId, result.estimate.id);
 
-      let emailSent = false;
-      if (payload.action === "createAndSend") {
-        emailSent = await sendInvoiceEmail({
-          additionalEmails: payload.additionalEmails || [],
-          clientEmail: workContext?.Email || payload.client.email,
-          clientName: workContext?.Name || payload.client.name,
-          company: {
-            avatar: company.avatar,
-            email: company.email,
-            id: company.id,
-            name: company.name,
-          },
-          dueDate,
-          invoiceAmount,
-          invoiceDbId: result.invoice.id,
-          invoiceNumber,
-          pdfBuffer: normalPdfBuffer,
-          pdfFileName,
-          projectNumber,
-          userId: payload.sellerUserId,
-        });
-      }
-
       return res.status(201).json({
         emailSent,
         estimateId: result.estimate.id,
-        invoiceId: result.invoice.id,
-        number: invoiceNumber,
-        paidPdfProjectId: result.paidPdfProject.id,
-        pdfProjectId: result.pdfProject.id,
-        projectId: result.project.id,
-        quickBooks: {
-          error: quickBooksError,
-          result: quickBooksResult,
-          success: !!quickBooksResult,
-        },
-      });
-    } catch (error: any) {
-      console.error("[MobileStandaloneCustomInvoice] Error:", error);
-      return res.status(500).json({ error: error?.message || "Internal Server Error" });
-    }
-  }
-
-  async getForEdit(req: Request, res: Response) {
-    const { invoiceId } = req.params;
-
-    try {
-      const invoice = await prisma.invoice.findUnique({
-        where: { id: invoiceId },
-        include: {
-          InvoiceItems: true,
-          project: {
-            include: {
-              client: true,
-              company: true,
-              workContext: true,
-            },
-          },
-        },
-      });
-
-      if (!invoice) {
-        return res.status(404).json({ error: "Invoice not found" });
-      }
-
-      if (invoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
-      }
-
-      const project = invoice.project;
-      const client = project?.client;
-      const workContext = project?.workContext;
-      const servicesTotal = invoice.InvoiceItems.reduce(
-        (sum, item) => sum + Number(item.totalAmount || 0),
-        0,
-      );
-      const typeValue = invoice.type_value === "value" ? "fixed" : "percentage";
-      const coefficient = Number(invoice.percentageCoefficient || 0);
-
-      return res.json({
-        amount: {
-          fixedValue: typeValue === "fixed" ? Number(invoice.totalAmount || 0) : undefined,
-          percentage: typeValue === "percentage" ? roundPrecision((coefficient || 1) * 100, 2) : undefined,
-          type: typeValue,
-        },
-        client: {
-          address: client?.addressOffice || project?.location || "",
-          email: client?.email || "",
-          id: client?.id || "",
-          name: client?.name || "",
-          phone: client?.phone || "",
-        },
-        companyId: invoice.companyId || project?.company_id || "",
-        dateCreation: invoice.createdAt,
-        description: invoice.description || "",
-        dueDate: invoice.dueDate,
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.externalInvoiceId || "",
-        paymentMethod: "custom",
-        projectId: invoice.projectId,
-        services: invoice.InvoiceItems.map((item, index) => ({
-          description: item.description || "",
-          lineTotal: Number(item.totalAmount || 0),
-          name: item.name || "Service",
-          pos: index + 1,
-          quantity: Number(item.quantity || 1),
-          unitPrice: Number(item.price || 0),
-        })),
-        servicesTotal: roundCurrency(servicesTotal),
-        showPaymentMethods: invoice.showPaymentMethods !== false,
-        status: invoice.status,
-        workContextId: workContext?.id || null,
-      });
-    } catch (error: any) {
-      console.error("[MobileStandaloneCustomInvoice:getForEdit] Error:", error);
-      return res.status(500).json({ error: error?.message || "Internal Server Error" });
-    }
-  }
-
-  async update(req: Request, res: Response) {
-    const { invoiceId } = req.params;
-    const payload = req.body as MobileStandaloneCustomInvoicePayload;
-
-    try {
-      const validationError = validatePayload(payload);
-      if (validationError) {
-        return res.status(400).json({ error: validationError });
-      }
-
-      const existingInvoice = await prisma.invoice.findUnique({
-        where: { id: invoiceId },
-        include: {
-          InvoiceItems: true,
-          PdfProject: true,
-          pdfInvoicePaids: true,
-          project: {
-            include: {
-              client: true,
-              company: true,
-              workContext: true,
-            },
-          },
-        },
-      });
-
-      if (!existingInvoice) {
-        return res.status(404).json({ error: "Invoice not found" });
-      }
-
-      if (existingInvoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
-      }
-
-      if (["paid", "void"].includes(String(existingInvoice.status || "").toLowerCase())) {
-        return res.status(400).json({ error: "Paid or void invoices cannot be edited." });
-      }
-
-      const services = normalizeServices(payload.services);
-      if (services.length === 0) {
-        return res.status(400).json({ error: "At least one valid service is required" });
-      }
-
-      const company = await prisma.company.findUnique({
-        where: { id: payload.companyId },
-      });
-
-      if (!company) {
-        return res.status(404).json({ error: "Company not found" });
-      }
-
-      const seller = await prisma.user.findFirst({
-        where: { id: payload.sellerUserId },
-        select: { email: true, id: true, name: true },
-      });
-
-      if (!seller) {
-        return res.status(404).json({ error: "Seller user not found" });
-      }
-
-      const workContext = payload.workContextId
-        ? await prisma.workContext.findFirst({
-            where: {
-              companyId: payload.companyId,
-              id: payload.workContextId,
-              isActive: true,
-            },
-          })
-        : null;
-
-      if (payload.workContextId && !workContext) {
-        return res.status(404).json({ error: "Work context not found" });
-      }
-
-      const servicesTotal = roundCurrency(
-        services.reduce((sum, service) => sum + service.lineTotal, 0),
-      );
-      const { coefficient, invoiceAmount, typeValue } = computeInvoiceAmount(payload.amount, servicesTotal);
-      const invoiceNumber = payload.invoiceNumber || existingInvoice.externalInvoiceId || "";
-      const projectNumber = existingInvoice.project?.contract_number || Number.parseInt(invoiceNumber, 10) || 0;
-      const dateCreation = normalizeDate(payload.dateCreation);
-      const dueDate = normalizeDate(payload.dueDate);
-      const showPaymentMethods = payload.showPaymentMethods !== false;
-      const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
-      const companyAddress = formatCompanyAddress(company);
-      const workContextDetails = workContext
-        ? {
-            address: workContext.addressOffice || workContext.location || "",
-            email: workContext.Email || "",
-            name: workContext.Name || workContext.label || "",
-            phone: workContext.phone || "",
-          }
-        : null;
-
-      const pdfInput: InvoicePdfInput = {
-        client: {
-          address: payload.client.address || "",
-          email: payload.client.email,
-          name: payload.client.name,
-          phone: payload.client.phone || "",
-        },
-        company: {
-          address: companyAddress,
-          avatarUrl: companyAvatarUrl,
-          email: company.email || "",
-          name: company.name,
-          phone: company.phone || "",
-          webSiteUrl: company.webSiteUrl || "",
-        },
-        dateCreation,
-        description: payload.description || "",
-        dueDate,
-        invoiceAmount,
-        invoiceNumber,
-        invoiceType: "custom",
-        services,
-        showPaymentMethods,
-        totalInvoice: servicesTotal,
-        workContext: workContextDetails,
-      };
-
-      const normalPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml(pdfInput));
-      const paidPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml({ ...pdfInput, isPaid: true }));
-      const pdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}.pdf`;
-      const paidPdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}_PAID.pdf`;
-      const [pdfS3Key, paidPdfS3Key] = await Promise.all([
-        uploadBufferToS3(normalPdfBuffer, pdfFileName, "application/pdf"),
-        uploadBufferToS3(paidPdfBuffer, paidPdfFileName, "application/pdf"),
-      ]);
-
-      const result = await prisma.$transaction(async (tx) => {
-        const client = payload.client.id
-          ? await tx.client.update({
-              where: { id: payload.client.id },
-              data: {
-                addressOffice: payload.client.address || undefined,
-                email: payload.client.email,
-                name: payload.client.name,
-                phone: payload.client.phone || undefined,
-              },
-            })
-          : await tx.client.create({
-              data: {
-                addressOffice: payload.client.address || "",
-                company_id: payload.companyId,
-                email: payload.client.email,
-                lat: "",
-                location: payload.client.address || "",
-                log: "",
-                name: payload.client.name,
-                phone: payload.client.phone || "",
-              },
-            });
-
-        const project = await tx.project.update({
-          where: { id: existingInvoice.projectId },
-          data: {
-            balanceDue: servicesTotal,
-            client_id: client.id,
-            company_id: payload.companyId,
-            lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
-            log: workContext?.longitude?.toString() || "",
-            price: servicesTotal,
-            radius: workContext?.radius || client.radius || null,
-            seller_user_id: payload.sellerUserId,
-            workContextId: workContext?.id || null,
-          },
-        });
-
-        await tx.serviceProject.deleteMany({
-          where: { projectId: project.id },
-        });
-
-        const serviceProjects = await Promise.all(
-          services.map((service) =>
-            tx.serviceProject.create({
-              data: {
-                company_id: payload.companyId,
-                description: service.description,
-                hours: service.quantity,
-                id_service: service.catalogServiceId || null,
-                name: service.name,
-                price: service.unitPrice,
-                projectId: project.id,
-                status: "Approved",
-              },
-            }),
-          ),
-        );
-
-        const invoice = await tx.invoice.update({
-          where: { id: existingInvoice.id },
-          data: {
-            companyId: payload.companyId,
-            createdAt: dateCreation,
-            description: payload.description || "",
-            dueDate,
-            externalInvoiceId: invoiceNumber,
-            invoiceType: "custom",
-            percentageCoefficient: coefficient,
-            project_manager_id: undefined,
-            showPaymentMethods,
-            totalAmount: invoiceAmount,
-            type_value: typeValue,
-            updatedAt: new Date(),
-            user_id: payload.sellerUserId,
-          },
-        });
-
-        await tx.invoiceItem.deleteMany({
-          where: { invoiceId: invoice.id },
-        });
-
-        await tx.invoiceItem.createMany({
-          data: services.map((service) => ({
-            description: service.description,
-            invoiceId: invoice.id,
-            name: service.name,
-            price: service.unitPrice,
-            quantity: service.quantity,
-            totalAmount: service.lineTotal,
-          })),
-        });
-
-        const pdfProject = existingInvoice.PdfProject[0]
-          ? await tx.pdfProject.update({
-              where: { id: existingInvoice.PdfProject[0].id },
-              data: {
-                original_file_name: pdfFileName,
-                project_id: project.id,
-                templateNumber: 1,
-                type_pdf: "invoice",
-                uri: pdfS3Key,
-              },
-            })
-          : await tx.pdfProject.create({
-              data: {
-                invoice_id: invoice.id,
-                original_file_name: pdfFileName,
-                project_id: project.id,
-                templateNumber: 1,
-                type_pdf: "invoice",
-                uri: pdfS3Key,
-              },
-            });
-
-        const paidPdfProject = await tx.pdfInvoicePaid.upsert({
-          create: {
-            invoiceId: invoice.id,
-            original_file_name: paidPdfFileName,
-            uri: paidPdfS3Key,
-          },
-          update: {
-            original_file_name: paidPdfFileName,
-            uri: paidPdfS3Key,
-          },
-          where: { invoiceId: invoice.id },
-        });
-
-        await tx.invoiceTimeline.create({
-          data: {
-            description: `Invoice updated from mobile. Total amount ${formatCurrency(invoiceAmount)}.`,
-            invoice: { connect: { id: invoice.id } },
-          },
-        });
-
-        return { invoice, paidPdfProject, pdfProject, project, serviceProjects };
-      });
-
-      let emailSent = false;
-      if (payload.action === "createAndSend") {
-        emailSent = await sendInvoiceEmail({
-          additionalEmails: payload.additionalEmails || [],
-          clientEmail: workContext?.Email || payload.client.email,
-          clientName: workContext?.Name || payload.client.name,
-          company: {
-            avatar: company.avatar,
-            email: company.email,
-            id: company.id,
-            name: company.name,
-          },
-          dueDate,
-          invoiceAmount,
-          invoiceDbId: result.invoice.id,
-          invoiceNumber,
-          pdfBuffer: normalPdfBuffer,
-          pdfFileName,
-          projectNumber,
-          userId: payload.sellerUserId,
-        });
-      }
-
-      return res.json({
-        emailSent,
-        invoiceId: result.invoice.id,
-        number: invoiceNumber,
-        paidPdfProjectId: result.paidPdfProject.id,
+        number: verifiedEstimateNumber,
         pdfProjectId: result.pdfProject.id,
         projectId: result.project.id,
       });
-    } catch (error: any) {
-      console.error("[MobileStandaloneCustomInvoice:update] Error:", error);
-      return res.status(500).json({ error: error?.message || "Internal Server Error" });
+    } catch (error) {
+      console.error("[MobileManualEstimateController] Error creating manual estimate:", error);
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return res.status(500).json({ error: message });
     }
   }
-}
 
-function validatePayload(payload: MobileStandaloneCustomInvoicePayload) {
-  if (!payload) return "Request body is required";
-  if (!["save", "createAndSend"].includes(payload.action)) return "Invalid action";
-  if (!payload.companyId) return "Company ID is required";
-  if (!payload.sellerUserId) return "Seller user ID is required";
-  if (!payload.client?.name?.trim()) return "Client name is required";
-  if (!payload.client?.email?.trim()) return "Client email is required";
-  if (!isValidEmail(payload.client.email)) return "Client email is invalid";
-  if (!payload.dateCreation) return "Creation date is required";
-  if (!payload.dueDate) return "Due date is required";
-  if (!payload.amount?.type) return "Invoice amount type is required";
-  if (!Array.isArray(payload.services)) return "Services are required";
+  async regeneratePdf(req: Request, res: Response) {
+    const { estimateId } = req.params;
 
-  const invalidAdditionalEmail = normalizeEmailList(payload.additionalEmails).find((email) => !isValidEmail(email));
-  if (invalidAdditionalEmail) return `Invalid additional email: ${invalidAdditionalEmail}`;
+    if (!estimateId) {
+      return res.status(400).json({ error: "Estimate ID is required" });
+    }
 
-  return "";
-}
+    try {
+      const estimate = await prisma.estimate.findUnique({
+        where: { id: estimateId },
+        include: {
+          imagesAttachments: {
+            orderBy: { date_creation: "asc" },
+            select: {
+              id: true,
+              original_filename: true,
+              title: true,
+              url: true,
+            },
+          },
+          PdfProject: {
+            orderBy: { date_creation: "desc" },
+            take: 1,
+          },
+          project: {
+            include: {
+              client: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                },
+              },
+              company: {
+                select: {
+                  address: true,
+                  avatar: true,
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                  signature: true,
+                  webSiteUrl: true,
+                },
+              },
+              user: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                },
+              },
+              workContext: {
+                select: {
+                  Email: true,
+                  Name: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          serviceProjects: {
+            orderBy: [
+              { pos: "asc" },
+              { date_creation: "asc" },
+              { id: "asc" },
+            ],
+          },
+        },
+      });
 
-function normalizeServices(services: MobileStandaloneCustomInvoicePayload["services"]): NormalizedServiceLine[] {
-  return services
-    .map((service, index) => {
-      const quantity = Math.max(1, Number(service.quantity || 1));
-      const unitPrice = Math.max(0, Number(service.unitPrice || 0));
-      const computedLineTotal = roundCurrency(quantity * unitPrice);
-      const lineTotal = roundCurrency(Number(service.lineTotal || computedLineTotal));
+      if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+      if (!estimate.project) return res.status(400).json({ error: "Estimate has no project" });
+      if (!estimate.project.company) return res.status(400).json({ error: "Estimate has no company" });
 
-      return {
-        catalogServiceId: service.catalogServiceId,
-        description: String(service.description || "").trim(),
-        lineTotal,
+      const company = estimate.project.company;
+      const clientName = estimate.project.workContext?.Name || estimate.project.client?.name || "Customer";
+      const clientEmail = estimate.project.workContext?.Email || estimate.project.client?.email || "";
+      const clientPhone = estimate.project.workContext?.phone || estimate.project.client?.phone || "";
+      const seller = estimate.project.user || { email: "", id: "", name: "SmartBuild" };
+      const services = estimate.serviceProjects.map((service: any, index: number) => ({
+        catalogServiceId: service.id_service || null,
+        description: service.description || "",
+        lineTotal: roundMoney(Number(service.originalLineTotal ?? service.lineTotal ?? 0)),
         name: String(service.name || "").trim(),
         pos: Number.isFinite(Number(service.pos)) ? Number(service.pos) : index,
-        quantity,
-        unitPrice,
-      };
-    })
-    .filter((service) => service.name && service.quantity > 0 && service.unitPrice >= 0 && service.lineTotal > 0)
-    .sort((a, b) => a.pos - b.pos);
-}
+        quantity: Number(service.quantity ?? service.hours ?? 1),
+        unitPrice: roundMoney(Number(service.originalUnitPrice ?? service.unitPrice ?? service.price ?? 0)),
+      }));
 
-function computeInvoiceAmount(
-  amount: MobileStandaloneCustomInvoicePayload["amount"],
-  servicesTotal: number,
-) {
-  if (amount.type === "percentage") {
-    const rawPercentage = Number(amount.percentage || 0);
-    if (!Number.isFinite(rawPercentage) || rawPercentage <= 0) {
-      throw new Error("Please enter a valid percentage greater than zero.");
-    }
+      if (!services.length) {
+        return res.status(400).json({ error: "At least one service is required" });
+      }
 
-    const coefficient = rawPercentage > 1 ? rawPercentage / 100 : rawPercentage;
-    return {
-      coefficient,
-      invoiceAmount: roundCurrency(servicesTotal * coefficient),
-      typeValue: "percentage",
-    };
-  }
-
-  const fixedValue = Number(amount.fixedValue || 0);
-  if (!Number.isFinite(fixedValue) || fixedValue <= 0) {
-    throw new Error("Please enter a valid fixed amount greater than zero.");
-  }
-
-  return {
-    coefficient: servicesTotal > 0 ? roundPrecision(fixedValue / servicesTotal, 6) : 1,
-    invoiceAmount: roundCurrency(fixedValue),
-    typeValue: "value",
-  };
-}
-
-async function getNextInvoiceNumber(companyId: string, requested?: string) {
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      companyId,
-      externalInvoiceId: { not: null },
-    },
-    select: { externalInvoiceId: true },
-  });
-  const usedNumbers = invoices
-    .map((invoice) => Number.parseInt(invoice.externalInvoiceId || "", 10))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  const nextNumber = usedNumbers.length ? Math.max(...usedNumbers) + 1 : 1000;
-  const requestedNumber = Number.parseInt(requested || "", 10);
-
-  if (Number.isFinite(requestedNumber) && requestedNumber >= nextNumber && !usedNumbers.includes(requestedNumber)) {
-    return requestedNumber.toString();
-  }
-
-  return nextNumber.toString();
-}
-
-async function getNextProjectNumber(companyId: string) {
-  const [lastEstimate, lastProject] = await Promise.all([
-    prisma.estimate.findFirst({
-      orderBy: { number: "desc" },
-      select: { number: true },
-      where: {
-        project: {
-          company_id: companyId,
+      const totalAmount = roundMoney(services.reduce((total, service) => total + service.lineTotal, 0));
+      const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+      const photos = (await Promise.all(
+        (estimate.imagesAttachments || []).flatMap((photo) =>
+          photo.url
+            ? [
+                imageAttachmentToPdfPhoto({
+                  filename: photo.original_filename || `estimate-image-${photo.id}.jpg`,
+                  title: photo.title || "Attached Image",
+                  url: photo.url,
+                }),
+              ]
+            : [],
+        ),
+      )).filter((photo) => photo.base64);
+      const dateCreation = estimate.date_creation
+        ? estimate.date_creation.toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const html = buildClassicEstimateHtml({
+        client: {
+          email: clientEmail,
+          id: estimate.project.client?.id,
+          name: clientName,
+          phone: clientPhone,
         },
-      },
-    }),
-    prisma.project.findFirst({
-      orderBy: { contract_number: "desc" },
-      select: { contract_number: true },
-      where: {
-        company_id: companyId,
-        contract_number: { not: null },
-      },
-    }),
-  ]);
+        company: {
+          ...company,
+          logoUrl: companyLogoUrl,
+        },
+        dateCreation,
+        estimateNumber: estimate.number,
+        location: {
+          address: estimate.project.location || "",
+          lat: estimate.project.lat || "",
+          lng: estimate.project.log || "",
+          radius: String(estimate.project.radius || 100),
+        },
+        photos,
+        seller: {
+          email: seller.email || "",
+          name: seller.name || "SmartBuild",
+        },
+        services,
+        terms: estimate.terms || "",
+        totalAmount,
+      });
 
-  const lastEstimateNumber = Number.parseInt(String(lastEstimate?.number || "0").split(/[/-]/)[0] || "0", 10);
-  const lastProjectNumber = Number(lastProject?.contract_number || 0);
-  return Math.max(
-    Number.isFinite(lastEstimateNumber) ? lastEstimateNumber : 0,
-    Number.isFinite(lastProjectNumber) ? lastProjectNumber : 0,
-  ) + 1;
+      const pdfBuffer = await generatePdfBuffer(html);
+      const signedPdfBuffer = company.signature
+        ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, company.name)
+        : await addCompanySignatureToPdfBuffer(pdfBuffer, company.name, new Date());
+      const pdfFileName = buildPdfFileName(clientName, company.name, dateCreation);
+      const pdfS3Key = await uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf");
+      const existingPdf = Array.isArray(estimate.PdfProject) ? estimate.PdfProject[0] : null;
+
+      const pdfProject = existingPdf
+        ? await prisma.pdfProject.update({
+            where: { id: existingPdf.id },
+            data: {
+              original_file_name: pdfFileName,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          })
+        : await prisma.pdfProject.create({
+            data: {
+              estimate_id: estimate.id,
+              original_file_name: pdfFileName,
+              project_id: estimate.project.id,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          });
+
+      await prisma.estimate.update({
+        where: { id: estimate.id },
+        data: {
+          ...(estimate.status === "approved" ? { assignatureRequired: true } : {}),
+          balanceDue: totalAmount,
+          finalAmount: totalAmount,
+          totalAmount,
+        },
+      });
+
+      await prisma.estimateTimeline.create({
+        data: {
+          description: "PDF regenerated",
+          estimate: { connect: { id: estimate.id } },
+        },
+      });
+
+      fireAndForgetUpsertEstimateToQBO(company.id, (req as any).userId, estimate.id);
+
+      return res.status(200).json({
+        data: {
+          id: pdfProject.id,
+          original_file_name: pdfProject.original_file_name,
+          uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null,
+        },
+        message: "Estimate PDF regenerated successfully",
+      });
+    } catch (error) {
+      console.error("[MobileManualEstimateController] Error regenerating PDF:", error);
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return res.status(500).json({ error: message });
+    }
+  }
+}
+
+function validatePayload(payload: MobileManualEstimatePayload) {
+  if (!payload) return "Payload is required";
+  if (!["save", "createAndSend"].includes(payload.action)) return "Invalid action";
+  if (!payload.companyId) return "companyId is required";
+  if (!payload.sellerUserId) return "sellerUserId is required";
+  if (!payload.estimateNumber) return "estimateNumber is required";
+  if (!payload.client?.name || !payload.client?.email) return "Client name and email are required";
+  if (!payload.location?.address || !payload.location?.lat || !payload.location?.lng) {
+    return "Location address, lat and lng are required";
+  }
+  if (!payload.services?.length) return "At least one service is required";
+
+  const invalidService = payload.services.find(
+    (service) =>
+      !service.name?.trim() ||
+      !Number.isFinite(Number(service.quantity)) ||
+      Number(service.quantity) <= 0 ||
+      !Number.isFinite(Number(service.unitPrice)) ||
+      Number(service.unitPrice) <= 0 ||
+      !Number.isFinite(Number(service.lineTotal)) ||
+      Number(service.lineTotal) <= 0,
+  );
+
+  if (invalidService) return "All services require name, quantity, unitPrice and lineTotal";
+
+  if ((payload.standalonePhotos || []).length > 10) return "Maximum of 10 images allowed";
+
+  return null;
+}
+
+async function getVerifiedEstimateNumber(companyId: string, estimateNumber: string) {
+  const requestedNumber = Number(String(estimateNumber).split(/[-/]/)[0]);
+  const lastEstimate = await prisma.estimate.findFirst({
+    where: {
+      project: {
+        company_id: companyId,
+      },
+    },
+    orderBy: {
+      date_creation: "desc",
+    },
+    select: {
+      number: true,
+    },
+  });
+
+  const lastNumber = Number(String(lastEstimate?.number || "0").split(/[-/]/)[0]);
+  const verified = Number.isFinite(lastNumber) && lastNumber >= requestedNumber ? lastNumber + 1 : requestedNumber;
+
+  return String(verified);
+}
+
+async function getVerifiedProjectEstimateNumber(projectId: string, estimateNumber: string) {
+  const requestedNumber = String(estimateNumber || "").trim();
+  if (!requestedNumber) return "1";
+
+  const existingEstimates = await prisma.estimate.findMany({
+    where: {
+      projectId,
+      type_estimate: "estimateProject",
+    },
+    orderBy: {
+      date_creation: "desc",
+    },
+    select: {
+      number: true,
+    },
+  });
+
+  if (!existingEstimates.some((estimate) => estimate.number === requestedNumber)) {
+    return requestedNumber;
+  }
+
+  const separator = requestedNumber.includes("-") ? "-" : "/";
+  const [baseNumber] = requestedNumber.split(separator);
+  const suffixes = existingEstimates
+    .map((estimate) => String(estimate.number || ""))
+    .filter((number) => number === baseNumber || number.startsWith(`${baseNumber}${separator}`))
+    .map((number) => {
+      const [, suffix] = number.split(separator);
+      return Number(suffix || 0);
+    })
+    .filter((suffix) => Number.isFinite(suffix));
+  const nextSuffix = Math.max(0, ...suffixes) + 1;
+
+  return `${baseNumber}${separator}${String(nextSuffix).padStart(2, "0")}`;
 }
 
 async function getSafePresignedUrl(uri: string) {
@@ -1062,45 +631,13 @@ async function generatePdfBuffer(html: string) {
   const response = await axios.post(
     PDFSHIFT_API_URL,
     {
-      css: `
-        * {
-          -webkit-print-color-adjust: exact !important;
-          color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        @page {
-          size: A4 portrait !important;
-        }
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          width: 100% !important;
-          min-height: 100% !important;
-        }
-        .pdf-container {
-          width: 100% !important;
-          height: auto !important;
-          min-height: calc(297mm - 24mm) !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          page-break-after: always !important;
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-          overflow: visible !important;
-          box-sizing: border-box !important;
-        }
-        .pdf-container > * {
-          width: 100% !important;
-          max-width: 100% !important;
-        }
-      `,
-      disable_javascript: true,
-      format: "A4",
-      landscape: false,
-      margin: "12mm",
-      sandbox: false,
       source: html,
+      sandbox: false,
+      landscape: false,
+      format: "A4",
+      margin: "0",
       use_print: true,
+      disable_javascript: true,
     },
     {
       headers: {
@@ -1118,11 +655,11 @@ async function generatePdfBuffer(html: string) {
 
 async function uploadBufferToS3(buffer: Buffer, fileName: string, contentType: string) {
   const s3 = new S3Client({
+    region: process.env.AMAZON_S3_REGION,
     credentials: {
       accessKeyId: process.env.AMAZON_S3_KEY!,
       secretAccessKey: process.env.AMAZON_S3_SECRET!,
     },
-    region: process.env.AMAZON_S3_REGION,
   });
   const key = `${crypto.randomBytes(4).toString("hex")}-${fileName.replace(/\s/g, "")}`;
 
@@ -1138,21 +675,94 @@ async function uploadBufferToS3(buffer: Buffer, fileName: string, contentType: s
   return key;
 }
 
-async function sendInvoiceEmail({
-  additionalEmails,
+async function uploadStandalonePhotos({
+  estimateId,
+  photos,
+  projectId,
+}: {
+  estimateId: string;
+  photos: NonNullable<MobileManualEstimatePayload["standalonePhotos"]>;
+  projectId: string;
+}) {
+  const tempDir = path.join(os.tmpdir(), "smartbuild-mobile-estimate-images");
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  for (const photo of photos) {
+    const safeFileName = photo.filename || `estimate-image-${Date.now()}.jpg`;
+    const tempFilePath = path.join(tempDir, `${crypto.randomBytes(6).toString("hex")}-${safeFileName}`);
+    const buffer = Buffer.from(photo.base64, "base64");
+    fs.writeFileSync(tempFilePath, buffer);
+
+    const file = {
+      destination: tempDir,
+      encoding: "7bit",
+      fieldname: "file",
+      filename: path.basename(tempFilePath),
+      mimetype: photo.mimeType || "image/jpeg",
+      originalname: safeFileName,
+      path: tempFilePath,
+      size: buffer.length,
+    } as Express.Multer.File;
+
+    const s3Key = await uploadFileToS3_2(file, "");
+
+    await prisma.imagesAttachments.create({
+      data: {
+        estimateId,
+        original_filename: safeFileName,
+        projectId,
+        title: photo.title || "Attached Image",
+        type_images_attachments: "image",
+        url: s3Key,
+      },
+    });
+  }
+}
+
+async function imageAttachmentToPdfPhoto({
+  filename,
+  title,
+  url,
+}: {
+  filename: string;
+  title: string;
+  url: string;
+}) {
+  const presignedUrl = await getSafePresignedUrl(url);
+  if (!presignedUrl) {
+    return {
+      base64: "",
+      filename,
+      mimeType: "image/jpeg",
+      title,
+    };
+  }
+
+  const response = await axios.get<ArrayBuffer>(presignedUrl, {
+    responseType: "arraybuffer",
+    timeout: Number(process.env.PDFSHIFT_TIMEOUT_MS || 90000),
+  });
+  const mimeType = String(response.headers["content-type"] || "image/jpeg");
+
+  return {
+    base64: Buffer.from(response.data).toString("base64"),
+    filename,
+    mimeType,
+    title,
+  };
+}
+
+async function sendEstimateEmail({
   clientEmail,
   clientName,
   company,
-  dueDate,
-  invoiceAmount,
-  invoiceDbId,
-  invoiceNumber,
+  estimateId,
+  estimateNumber,
+  location,
   pdfBuffer,
   pdfFileName,
-  projectNumber,
-  userId,
+  totalAmount,
 }: {
-  additionalEmails: string[];
   clientEmail: string;
   clientName: string;
   company: {
@@ -1161,443 +771,353 @@ async function sendInvoiceEmail({
     id: string;
     name: string;
   };
-  dueDate: Date;
-  invoiceAmount: number;
-  invoiceDbId: string;
-  invoiceNumber: string;
+  estimateId: string;
+  estimateNumber: string;
+  location: string;
   pdfBuffer: Buffer;
   pdfFileName: string;
-  projectNumber: number;
-  userId: string;
+  totalAmount: number;
 }) {
-  const recipients = Array.from(new Set([clientEmail, ...normalizeEmailList(additionalEmails)].filter(Boolean)));
-  if (recipients.length === 0) return false;
-
   const companyAvatar = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
   const totalFormatted = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
-  }).format(invoiceAmount);
-
-  let sentAtLeastOnce = false;
-  for (const email of recipients) {
-    try {
-      await sendEmail({
-        attachments: [
-          {
-            content: pdfBuffer.toString("base64"),
-            disposition: "attachment",
-            filename: pdfFileName,
-            type: "application/pdf",
-          },
-        ],
-        dynamicTemplateData: {
-          companyAvatar,
-          companyName: company.name,
-          companyReplyToEmail: company.email || "",
-          currentYear: new Date().getFullYear().toString(),
-          dueDate: dueDate.toLocaleDateString("en-US", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-            timeZone: "UTC",
-          }),
-          invoiceNumber,
-          paymentUrl: "",
-          projectName: `Project #${projectNumber}`,
-          recipientEmail: email,
-          recipientName: clientName || "Customer",
-          totalAmount: totalFormatted,
-        },
-        subject: `Invoice #${invoiceNumber} - ${company.name}`,
-        templateId: "d-0ce549c501c34e958c342212821b0604",
-        to: email,
-      });
-
-      await prisma.invoiceEmailLog.create({
-        data: {
-          invoice: { connect: { id: invoiceDbId } },
-          recipient: email,
-          sentAt: new Date(),
-          status: "success",
-        },
-      });
-
-      await prisma.invoiceSendHistory.create({
-        data: {
-          invoiceId: invoiceDbId,
-          recipient: email,
-          user_id: userId,
-        },
-      });
-
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Sent to ${email}`,
-          invoice: { connect: { id: invoiceDbId } },
-        },
-      });
-
-      sentAtLeastOnce = true;
-    } catch (error: any) {
-      await prisma.invoiceEmailLog.create({
-        data: {
-          errorMessage: error?.message || "Unknown error",
-          invoice: { connect: { id: invoiceDbId } },
-          recipient: email,
-          sentAt: new Date(),
-          status: "error",
-        },
-      });
-
-      await prisma.invoiceTimeline.create({
-        data: {
-          description: `Failed to send email to ${email}: ${error?.message || "Unknown error"}`,
-          invoice: { connect: { id: invoiceDbId } },
-        },
-      });
-    }
-  }
-
-  return sentAtLeastOnce;
-}
-
-function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
-  const serviceRows = input.services
-    .map((service, index) => renderServiceRow(service, index, input.services.length))
-    .join("");
-  const paymentMethods = input.showPaymentMethods ? renderPaymentMethods(input.invoiceAmount) : "";
-  const paidWatermark = input.isPaid
-    ? `<div style="position:absolute;top:50%;left:0%;right:0%;bottom:0%;pointer-events:none;z-index:0;"><div style="display:flex;justify-content:center;align-items:center;font-size:200px;font-weight:900;opacity:0.10;color:#22c55e;letter-spacing:32px;text-transform:uppercase;">PAID</div></div>`
-    : "";
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice ${escapeHtml(input.invoiceNumber)}</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    html, body {
-      width: 100%;
-      min-height: 100%;
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-      line-height: 1.4;
-      color: #000;
-      background: white;
-    }
-    .pdf-container {
-      width: 100% !important;
-      height: auto !important;
-      background: white;
-      margin: 0 !important;
-      padding: 0;
-      min-height: calc(297mm - 24mm);
-      page-break-after: always;
-      page-break-inside: avoid;
-      break-inside: avoid;
-      overflow: visible;
-      box-sizing: border-box;
-    }
-    .pdf-container > * {
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-    h1, h2, h3, h4, h5, h6 {
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-    p {
-      margin-bottom: 8px;
-    }
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    td, th {
-      padding: 8px;
-      border: 1px solid #ddd;
-    }
-    @media print {
-      .pdf-container {
-        page-break-after: always;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="pdf-container" style="width:100%;background:white;margin:0;padding:0;page-break-after:always;min-height:calc(297mm - 24mm);height:auto;box-sizing:border-box;overflow:visible;">
-    <div style="width:100%;margin:0 auto;">
-      <div style="width:100%;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;">
-        <style>
-          @page { size: A4; }
-          .page-break-before { page-break-before: auto; }
-          .page-break-avoid { page-break-inside: avoid; break-inside: avoid; }
-        </style>
-        <div style="box-sizing:border-box;background-color:#ffffff;display:flex;flex-direction:column;position:relative;">
-          ${paidWatermark}
-          <div style="padding:24px 24px 24px 24px;border-bottom:1px solid #e5e7eb;background-color:#ffffff;position:relative;z-index:1;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
-              <div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;">
-                ${
-                  input.company.avatarUrl
-                    ? `<div style="padding:0px;"><img src="${escapeAttribute(input.company.avatarUrl)}" alt="${escapeAttribute(input.company.name)}" style="max-height:48px;object-fit:contain;display:block;" /></div>`
-                    : ""
-                }
-                <div>
-                  <div style="font-size:20px;font-weight:600;color:#1a1a1a;margin-bottom:4px;letter-spacing:-0.02em;">${escapeHtml(input.company.name || "Company Name")}</div>
-                  <div style="font-size:12px;color:#6b7280;line-height:1.4;">
-                    ${input.company.address ? `<div>${escapeHtml(input.company.address)}</div>` : ""}
-                    ${input.company.phone ? `<div>${escapeHtml(input.company.phone)}</div>` : ""}
-                    ${input.company.email ? `<div>${escapeHtml(input.company.email)}</div>` : ""}
-                  </div>
-                </div>
-              </div>
-              <div style="text-align:right;padding:24px 24px;background-color:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">
-                <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px;letter-spacing:0.5px;">INVOICE #${escapeHtml(input.invoiceNumber)}</div>
-                <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Date: ${formatDisplayDate(input.dateCreation)}</div>
-                <div style="font-size:12px;color:#6b7280;">Due: ${formatDisplayDate(input.dueDate)}</div>
-              </div>
-            </div>
-          </div>
-          <div style="padding:24px 24px;display:flex;gap:40px;">
-            <div style="flex:1;">
-              <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;">
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Bill To</div>
-                <div style="font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">${escapeHtml(input.client.name || "Client Name")}</div>
-                <div style="font-size:12px;color:#6b7280;line-height:1.5;">
-                  ${input.client.address ? `<div style="margin-bottom:6px;">&#128205; ${escapeHtml(input.client.address)}</div>` : ""}
-                  ${input.client.phone ? `<div style="margin-bottom:6px;">&#128222; ${escapeHtml(input.client.phone)}</div>` : ""}
-                  ${input.client.email ? `<div style="margin-bottom:6px;">&#9993;&#65039; ${escapeHtml(input.client.email)}</div>` : ""}
-                </div>
-              </div>
-              ${
-                input.workContext?.name || input.workContext?.address
-                  ? `<div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:16px;">
-                      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Work Site</div>
-                      <div style="font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">${escapeHtml(input.workContext?.name || input.client.name)}</div>
-                      <div style="font-size:12px;color:#6b7280;line-height:1.5;">
-                        ${input.workContext?.address ? `<div style="margin-bottom:6px;">&#128205; ${escapeHtml(input.workContext.address)}</div>` : ""}
-                        ${input.workContext?.phone ? `<div style="margin-bottom:6px;">&#128222; ${escapeHtml(input.workContext.phone)}</div>` : ""}
-                        ${input.workContext?.email ? `<div style="margin-bottom:6px;">&#9993;&#65039; ${escapeHtml(input.workContext.email)}</div>` : ""}
-                      </div>
-                    </div>`
-                  : ""
-              }
-            </div>
-            <div style="flex:1;max-width:300px;">
-              <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;">
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Invoice Details</div>
-                <div style="margin-bottom:16px;">
-                  <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                    <span style="font-size:11px;color:#6b7280;">Payment Method:</span>
-                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${input.invoiceType === "stripe" ? "Stripe" : "Other"}</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                    <span style="font-size:11px;color:#6b7280;">Supervisor:</span>
-                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${escapeHtml(input.company.name || "Project Manager")}</span>
-                  </div>
-                </div>
-                <div style="background-color:#374151;color:white;padding:16px;border-radius:6px;text-align:center;margin-bottom:16px;">
-                  <div style="font-size:10px;opacity:0.8;margin-bottom:4px;">BALANCE DUE</div>
-                  <div style="font-size:16px;font-weight:600;">${input.invoiceAmount > 0 ? formatCurrency(input.invoiceAmount) : "$0.00"}</div>
-                </div>
-                ${
-                  input.isPaid
-                    ? `<div style="display:flex;justify-content:space-between;margin-bottom:16px;padding:8px;background-color:#f0fdf4;border-radius:4px;border:1px solid #bbf7d0;">
-                        <span style="font-size:11px;color:#15803d;font-weight:600;">Payment:</span>
-                        <span style="font-size:11px;color:#15803d;font-weight:600;">-${formatCurrency(input.invoiceAmount)}</span>
-                      </div>`
-                    : ""
-                }
-                ${
-                  input.showPaymentMethods
-                    ? `<div>
-                        <div style="font-size:11px;color:#6b7280;margin-bottom:8px;font-weight:500;">Accepted Payment Methods:</div>
-                        <div style="margin-bottom:8px;display:grid;grid-template-columns:repeat(5,28px);gap:6px;">
-                          ${renderPaymentIcon("https://i.ibb.co/vvRcGxWB/visa.png", 18)}
-                          ${renderPaymentIcon("https://i.ibb.co/fY2zKg6S/mastercard.png", 18)}
-                          ${renderPaymentIcon("https://i.ibb.co/C3QPyJSy/discorver.png", 18)}
-                          ${renderPaymentIcon("https://i.ibb.co/dss3QdzF/Untitled.png", 18)}
-                          <span style="height:18px;background-color:#059669;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:700;color:white;">BANK</span>
-                        </div>
-                        <div style="font-size:9px;color:#9ca3af;text-align:center;">Secure payment processing</div>
-                      </div>`
-                    : ""
-                }
-              </div>
-            </div>
-          </div>
-          ${
-            input.description
-              ? `<div style="padding:0 24px 24px 24px;">
-                  <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">Description</div>
-                    <div style="font-size:12px;color:#1a1a1a;line-height:1.6;">${sanitizeDescriptionHtml(input.description)}</div>
-                  </div>
-                </div>`
-              : ""
-          }
-        </div>
-        <div style="margin-top:40px;">
-          <div style="width:100%;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;padding:24px 24px 24px 24px;display:block;page-break-inside:auto;overflow:visible;">
-            <div style="display:block;position:relative;z-index:1;">
-              <h2 style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:16px;margin:0 0 16px 0;flex-shrink:0;letter-spacing:0.5px;">SERVICES</h2>
-              <div style="display:flex;background-color:#f8f9fa;border:1px solid #e9ecef;border-radius:6px 6px 0 0;padding:12px 16px;font-size:11px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">
-                <div style="flex:3;padding-right:16px;">Service</div>
-                <div style="flex:1;text-align:center;padding-right:16px;">Quantity</div>
-                <div style="flex:1.2;text-align:right;padding-right:16px;">Unit Price</div>
-                <div style="flex:1.2;text-align:right;">Amount</div>
-              </div>
-              <div style="border:1px solid #e9ecef;border-top:none;border-radius:0 0 6px 6px;background-color:#ffffff;">${serviceRows}</div>
-              <div style="margin-top:24px;padding-top:20px;border-top:2px solid #e5e7eb;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">
-                <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
-                  <div style="text-align:right;padding:24px;">
-                    ${
-                      input.isPaid
-                        ? `<div style="font-size:11px;color:#15803d;margin-bottom:4px;margin-top:4px;font-weight:600;">Payment</div>
-                           <div style="font-size:12px;font-weight:700;color:#15803d;">-${formatCurrency(input.invoiceAmount)}</div>
-                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Remaining Balance</div>
-                           <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${formatCurrency(Math.max(0, input.totalInvoice - input.invoiceAmount))}</div>`
-                        : `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;">Total Invoice</div>
-                           <div style="font-size:18px;font-weight:700;color:#1a1a1a;">${formatCurrency(input.totalInvoice)}</div>
-                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Paid Invoice</div>
-                           <div style="font-size:12px;font-weight:700;color:#009900;">$0.00</div>`
-                    }
-                  </div>
-                </div>
-                ${paymentMethods}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-function renderServiceRow(service: NormalizedServiceLine, index: number, totalRows: number) {
-  const hasDescription = Boolean(service.description);
-  const borderBottom = index < totalRows - 1 ? "border-bottom:1px solid #f1f3f4;" : "";
-
-  return `<div>
-    <div style="display:flex;align-items:center;padding:16px;min-height:50px;${hasDescription ? "" : borderBottom}">
-      <div style="flex:3;padding-right:16px;">
-        <div style="font-size:12px;font-weight:600;color:#1a1a1a;">${escapeHtml(service.name)}</div>
-      </div>
-      <div style="flex:1;text-align:center;padding-right:16px;font-size:11px;color:#374151;">${service.quantity}</div>
-      <div style="flex:1.2;text-align:right;padding-right:16px;font-size:11px;color:#374151;">${formatCurrency(service.unitPrice)}</div>
-      <div style="flex:1.2;text-align:right;font-size:12px;font-weight:600;color:#1a1a1a;">${formatCurrency(service.lineTotal)}</div>
-    </div>
-    ${
-      hasDescription
-        ? `<div style="padding:0 16px 16px 16px;${borderBottom}">
-            <div style="font-size:10px;color:#6b7280;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;background-color:#f8f9fa;padding:12px;border-radius:4px;border:1px solid #e9ecef;">${sanitizeDescriptionHtml(service.description)}</div>
-          </div>`
-        : ""
-    }
-  </div>`;
-}
-
-function renderPaymentMethods(balanceDue: number) {
-  return `<div style="background-color:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:20px;page-break-inside:avoid;break-inside:avoid;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:24px;">
-      <div style="font-size:11px;color:#6b7280;font-weight:500;display:flex;flex-direction:column;gap:6px;">
-        Accepted Payment Methods
-        <div style="margin-top:6px;display:grid;grid-template-columns:repeat(5,32px);gap:6px;">
-          ${renderPaymentIcon("https://i.ibb.co/vvRcGxWB/visa.png", 20)}
-          ${renderPaymentIcon("https://i.ibb.co/fY2zKg6S/mastercard.png", 20)}
-          ${renderPaymentIcon("https://i.ibb.co/C3QPyJSy/discorver.png", 20)}
-          ${renderPaymentIcon("https://i.ibb.co/dss3QdzF/Untitled.png", 20)}
-          <span style="height:20px;background-color:#059669;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:white;">BANK</span>
-        </div>
-        <div style="font-size:9px;color:#9ca3af;">Secure payment processing</div>
-      </div>
-      <div style="background-color:#374151;color:white;padding:16px;border-radius:6px;text-align:center;min-width:180px;">
-        <div style="font-size:10px;opacity:0.8;margin-bottom:4px;letter-spacing:0.5px;">BALANCE DUE</div>
-        <div style="font-size:16px;font-weight:600;">${balanceDue > 0 ? formatCurrency(balanceDue) : "$0.00"}</div>
-      </div>
-    </div>
-  </div>`;
-}
-
-function renderPaymentIcon(url: string, height: number) {
-  return `<span style="height:${height}px;background-image:url(${url});background-size:100% 100%;border:1px solid #d1d5db;border-radius:3px;background-color:white;"></span>`;
-}
-
-function formatCompanyAddress(company: {
-  address?: string | null;
-  complement?: string | null;
-  district?: string | null;
-  numberHouse?: string | null;
-}) {
-  return [company.address, company.numberHouse, company.complement, company.district]
-    .filter((part) => Boolean(part && String(part).trim()))
-    .join(", ");
-}
-
-function normalizeEmailList(emails?: string[]) {
-  if (!Array.isArray(emails)) return [];
-  return emails.map((email) => String(email || "").trim()).filter(Boolean);
-}
-
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function normalizeDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid date");
-  }
-  return date;
-}
-
-function formatDisplayDate(date: Date) {
-  return date.toLocaleDateString("en-US", {
-    day: "2-digit",
+  }).format(totalAmount);
+  const validUntilDate = new Date();
+  validUntilDate.setDate(validUntilDate.getDate() + 30);
+  const validUntil = validUntilDate.toLocaleDateString("en-US", {
+    day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone: "UTC",
+  });
+  const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimateId}/${Buffer.from(clientEmail).toString("base64")}`;
+
+  await sendEmail({
+    attachments: [
+      {
+        content: pdfBuffer.toString("base64"),
+        disposition: "attachment",
+        filename: pdfFileName,
+        type: "application/pdf",
+      },
+    ],
+    companyId: company.id,
+    dynamicTemplateData: {
+      body: "",
+      companyAvatar,
+      companyName: company.name,
+      companyReplyToEmail: company.email || "",
+      currentYear: new Date().getFullYear().toString(),
+      estimateNumber: formatEstimateDisplayNumber(estimateNumber),
+      projectName: location || `Estimate #${formatEstimateDisplayNumber(estimateNumber)}`,
+      recipientEmail: clientEmail,
+      recipientName: clientName || "Customer",
+      reviewLink,
+      totalAmount: totalFormatted,
+      validUntil,
+    },
+    subject: `Estimate ${formatEstimateDisplayNumber(estimateNumber)} from ${company.name}`,
+    templateId: "d-c779b5bb2dc44a98b0428a0c17597a8d",
+    to: clientEmail,
+  });
+
+  await prisma.estimateEmailLog.create({
+    data: {
+      estimate: { connect: { id: estimateId } },
+      recipient: clientEmail,
+      sentAt: new Date(),
+      status: "success",
+    },
+  });
+
+  await prisma.estimateTimeline.create({
+    data: {
+      description: `Email sent to: ${clientEmail}`,
+      estimate: { connect: { id: estimateId } },
+    },
   });
 }
 
-function formatCurrency(value: number) {
+function buildClassicEstimateHtml(input: {
+  client: MobileManualEstimatePayload["client"];
+  company: {
+    address?: string | null;
+    email?: string | null;
+    logoUrl: string;
+    name: string;
+    phone?: string | null;
+    webSiteUrl?: string | null;
+  };
+  dateCreation: string;
+  estimateNumber: string;
+  location: MobileManualEstimatePayload["location"];
+  photos: NonNullable<MobileManualEstimatePayload["standalonePhotos"]>;
+  seller: { email: string; name: string };
+  services: Array<{
+    description: string;
+    lineTotal: number;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+  terms: string;
+  totalAmount: number;
+}) {
+  const serviceRows = input.services
+    .map(
+      (service) => `
+        <tr class="service-row">
+          <td><strong>${escapeHtml(service.name)}</strong></td>
+          <td class="num">${formatNumber(service.quantity)}</td>
+          <td class="num">${formatMoney(service.unitPrice)}</td>
+          <td class="num amount">${formatMoney(service.lineTotal)}</td>
+        </tr>
+        ${
+          service.description
+            ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
+            : ""
+        }
+      `,
+    )
+    .join("");
+  const photoBlocks = input.photos
+    .map(
+      (photo) => `
+        <div class="photo">
+          <img src="data:${photo.mimeType || "image/jpeg"};base64,${photo.base64}" />
+          <div>${escapeHtml(photo.title || "Attached Image")}</div>
+        </div>
+      `,
+    )
+    .join("");
+  const termsSection = input.terms?.trim()
+    ? `
+      <section class="terms-page">
+        <h2 class="terms-title">TERMS & CONDITIONS</h2>
+        <div class="terms-content">${escapeHtml(input.terms || "")}</div>
+        <div class="contact-card">
+          <h3>CONTACT INFORMATION</h3>
+          <p>${escapeHtml(input.company.name)}</p>
+          <p>${escapeHtml(input.company.address || "")}</p>
+          <p>${escapeHtml(input.company.phone || "")}</p>
+          <p>${escapeHtml(input.company.email || "")}</p>
+        </div>
+      </section>
+    `
+    : "";
+  const imageSection = photoBlocks
+    ? `
+      <section class="images-page">
+        <h2 class="terms-title">IMAGE ATTACHMENTS</h2>
+        <div class="photos">${photoBlocks}</div>
+      </section>
+    `
+    : "";
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          @page { size: A4; margin: 0; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
+          .pdf-document { width: 595px; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
+          .classic-cover { width: 100%; background: #fff; box-sizing: border-box; page-break-after: auto; overflow: visible; position: relative; }
+          .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 32px 10px; }
+          .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
+          .proposal-subtitle { color: #7a7a7a; font-size: 11px; }
+          .proposal-brand { text-align: right; }
+          .proposal-brand img { max-width: 44px; max-height: 26px; object-fit: contain; display: block; margin-left: auto; margin-bottom: 1px; }
+          .proposal-fallback { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 1px; }
+          .proposal-label { color: #B78A4F; font-size: 9px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+          .cover-body { padding: 28px 24px 8px; background: #fff; }
+          .cover-title { text-align: center; color: rgba(183, 138, 79, 0.58); font-size: 11px; letter-spacing: 7px; text-transform: uppercase; margin-bottom: 20px; line-height: 1; }
+          .info { display: grid; grid-template-columns: 1fr 1fr; gap: 152px; align-items: start; }
+          .logo-shell { width: 190px; height: 68px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; background: #fff; }
+          .logo { max-height: 69.575px; width: auto; object-fit: contain; display: block; }
+          .fallback-logo { color: #B78A4F; font-size: 28px; font-weight: 700; }
+          .company-name { color: #1f1f1f; font-size: 14px; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+          .small { color: #555555; font-size: 11px; line-height: 1.7; }
+          .small .link { color: #B78A4F; text-decoration: underline; }
+          .job { text-align: right; }
+          .gold-label { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+          .job-address { color: #3f3f3f; font-size: 11px; line-height: 1.6; }
+          .job-table { border-top: 1px solid #d8d8d8; margin-top: 18px; padding-top: 12px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; column-gap: 18px; align-items: center; font-size: 11px; }
+          .muted { color: #8b8b8b; }
+          .bold { color: #1f1f1f; font-weight: 700; }
+          .estimate-number { color: #B78A4F; font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
+          .services-section { padding: 20px 24px 24px; background: #fff; display: block; page-break-inside: auto; overflow: visible; }
+          .services-separator { padding-bottom: 18px; margin-bottom: 32px; border-bottom: 2px solid #e5e7eb; }
+          h2 { color: #1a1a1a; font-size: 18px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 8px; }
+          .section-title-line { width: 100%; height: 3px; background: #1a1a1a; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; }
+          th { color: #374151; background: #f8f9fa; font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; text-align: right; padding: 12px 16px; border-bottom: 1px solid #e9ecef; }
+          th:first-child { text-align: left; }
+          td { vertical-align: top; font-size: 12px; padding: 16px; border-bottom: 1px solid #f1f3f4; }
+          .service-row td { border-bottom: 0; }
+          .description-row td { padding: 0 16px 16px; border-bottom: 1px solid #f1f3f4; }
+          tr:last-child td { border-bottom: 0; }
+          .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; padding: 12px; white-space: pre-wrap; width: 100%; }
+          .num { text-align: right; white-space: nowrap; }
+          .amount { color: #1a1a1a; font-weight: 600; }
+          .total { margin-top: 30px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
+          .terms-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
+          .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
+          .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
+          .contact-card { margin-top: 40px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+          .contact-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
+          .contact-card p { margin: 4px 0; font-size: 12px; }
+          .images-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
+          .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 12px; }
+          .photo { border: 1px solid #ECE8E2; border-radius: 8px; overflow: hidden; font-size: 11px; font-weight: 700; color: #596273; }
+          .photo img { width: 100%; height: 180px; object-fit: cover; display: block; }
+          .photo div { padding: 9px; }
+          .signature-block { margin: 130px 48px 24px; page-break-inside: avoid; break-inside: avoid; }
+          .signature-table { width: 100%; border-collapse: collapse; table-layout: fixed; border: none; }
+          .signature-table td { width: 50%; vertical-align: bottom; border: none; padding: 0; }
+          .signature-table td:first-child { padding-right: 24px; }
+          .signature-table td:last-child { padding-left: 24px; }
+          .signature-box { min-height: 72px; display: flex; flex-direction: column; justify-content: flex-end; }
+          .signature-line { border-top: 1px solid #000; padding-top: 6px; margin-bottom: 4px; }
+          .signature-line p { font-size: 12px; text-align: center; margin: 0; font-weight: 600; }
+        </style>
+      </head>
+      <body>
+        <main class="pdf-document">
+          <header class="proposal-header">
+            <div>
+              <div class="proposal-company">${escapeHtml(input.company.name)}</div>
+              <div class="proposal-subtitle">Professional Estimate & Proposal</div>
+            </div>
+            <div class="proposal-brand">
+              ${
+                input.company.logoUrl
+                  ? `<img src="${input.company.logoUrl}" />`
+                  : `<div class="proposal-fallback">SB</div>`
+              }
+              <div class="proposal-label">Estimate</div>
+            </div>
+          </header>
+          <section class="classic-cover">
+            <div class="cover-body">
+              <div class="cover-title">Estimate</div>
+              <div class="info">
+                <div>
+                  <div class="logo-shell">
+                    ${
+                      input.company.logoUrl
+                        ? `<img class="logo" src="${input.company.logoUrl}" />`
+                        : `<div class="fallback-logo">SB</div>`
+                    }
+                  </div>
+                  <div class="company-name">${escapeHtml(input.company.name)}</div>
+                  <div class="small">
+                    ${input.company.address ? `<div>${escapeHtml(input.company.address)}</div>` : ""}
+                    ${input.company.phone ? `<div>Phone: <span class="link">${escapeHtml(input.company.phone)}</span></div>` : ""}
+                    ${input.company.email ? `<div>Email: <span class="link">${escapeHtml(input.company.email)}</span></div>` : ""}
+                    ${input.company.webSiteUrl ? `<div>Web: <span class="link">${escapeHtml(input.company.webSiteUrl)}</span></div>` : ""}
+                  </div>
+                </div>
+                <div class="job">
+                  <div class="gold-label">Job Location</div>
+                  <div class="job-address">
+                    <div>${escapeHtml(input.client.name || "Client Name")}</div>
+                    <div>${escapeHtml(input.location.address)}</div>
+                  </div>
+                  <div class="job-table">
+                    <div class="muted">Estimate #</div><div class="estimate-number">${formatEstimateDisplayNumber(input.estimateNumber)}</div>
+                    <div class="muted">Date</div><div class="bold">${formatDate(input.dateCreation)}</div>
+                    <div class="muted">Salesperson</div><div class="bold">${escapeHtml(input.seller.name)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="services-section">
+            <div class="services-separator"></div>
+            <h2>Scope of Work</h2>
+            <div class="section-title-line"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Quantity</th>
+                  <th>Unit Price</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>${serviceRows}</tbody>
+            </table>
+            <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
+          </section>
+          ${termsSection}
+          ${imageSection}
+          <section class="signature-block">
+            <table role="presentation" class="signature-table">
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="signature-box">
+                      <div class="signature-line"><p>Company Signature</p></div>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="signature-box">
+                      <div class="signature-line"><p>Customer Signature</p></div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </main>
+      </body>
+    </html>
+  `;
+}
+
+function buildPdfFileName(clientName: string, companyName: string, dateCreation: string) {
+  const date = dateCreation || new Date().toISOString().slice(0, 10);
+  return `${sanitizeFileName(clientName)}_${sanitizeFileName(companyName)}_${date}.pdf`;
+}
+
+function sanitizeFileName(value: string) {
+  return (value || "estimate").replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "");
+}
+
+function formatEstimateDisplayNumber(number: string) {
+  const raw = String(number || "").trim();
+  if (!raw) return "-";
+  if (raw.includes("-") || raw.includes("/")) return raw;
+  return `${raw}-01`;
+}
+
+function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
     currency: "USD",
+    maximumFractionDigits: 2,
     minimumFractionDigits: 2,
     style: "currency",
-  }).format(Number(value || 0));
+  }).format(value || 0);
 }
 
-function roundCurrency(value: number) {
-  return roundPrecision(value, 2);
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(value || 0);
 }
 
-function roundPrecision(value: number, precision: number) {
-  const factor = 10 ** precision;
-  return Math.round((Number(value || 0) + Number.EPSILON) * factor) / factor;
+function formatDate(value: string) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US");
 }
 
-function safeFileSegment(value: string) {
-  return String(value || "Client").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "Client";
-}
-
-function escapeHtml(value: string | number | null | undefined) {
-  return String(value ?? "")
+function escapeHtml(value: string) {
+  return String(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -1605,26 +1125,6 @@ function escapeHtml(value: string | number | null | undefined) {
     .replace(/'/g, "&#039;");
 }
 
-function escapeAttribute(value: string | number | null | undefined) {
-  return escapeHtml(value).replace(/`/g, "&#096;");
-}
-
-function sanitizeDescriptionHtml(value: string) {
-  const input = String(value || "");
-  if (!input.includes("<")) {
-    return escapeHtml(input).replace(/\n/g, "<br>");
-  }
-
-  const allowedTags = new Set(["p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li"]);
-  return input
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
-    .replace(/<([a-z][a-z0-9]*)\b[^>]*>/gi, (_match, tag: string) => {
-      const normalizedTag = tag.toLowerCase();
-      return allowedTags.has(normalizedTag) ? `<${normalizedTag}>` : "";
-    })
-    .replace(/<\/([a-z][a-z0-9]*)>/gi, (_match, tag: string) => {
-      const normalizedTag = tag.toLowerCase();
-      return allowedTags.has(normalizedTag) && normalizedTag !== "br" ? `</${normalizedTag}>` : "";
-    });
+function roundMoney(value: number) {
+  return Math.round((value || 0) * 100) / 100;
 }
