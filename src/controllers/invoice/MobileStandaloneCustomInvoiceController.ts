@@ -21,6 +21,7 @@ type MobileStandaloneCustomInvoicePayload = {
     type: "fixed" | "percentage";
   };
   client: {
+    address?: string | null;
     email: string;
     id?: string;
     name: string;
@@ -172,10 +173,10 @@ export class MobileStandaloneCustomInvoiceController {
 
       const pdfInput: InvoicePdfInput = {
         client: {
-          address: workContextDetails?.address || "",
-          email: workContextDetails?.email || payload.client.email,
-          name: workContextDetails?.name || payload.client.name,
-          phone: workContextDetails?.phone || payload.client.phone || "",
+          address: payload.client.address || "",
+          email: payload.client.email,
+          name: payload.client.name,
+          phone: payload.client.phone || "",
         },
         company: {
           address: companyAddress,
@@ -233,7 +234,8 @@ export class MobileStandaloneCustomInvoiceController {
         if (client) {
           client = await tx.client.update({
             where: { id: client.id },
-            data: {
+          data: {
+              addressOffice: payload.client.address || undefined,
               name: payload.client.name,
               phone: payload.client.phone || "",
             },
@@ -244,6 +246,7 @@ export class MobileStandaloneCustomInvoiceController {
               company_id: payload.companyId,
               email: payload.client.email,
               name: payload.client.name,
+              addressOffice: payload.client.address || "",
               phone: payload.client.phone || "",
             },
           });
@@ -886,7 +889,7 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
     .join("");
   const paymentMethods = input.showPaymentMethods ? renderPaymentMethods(input.invoiceAmount) : "";
   const paidWatermark = input.isPaid
-    ? `<div style="position:absolute;top:48%;left:0;right:0;text-align:center;font-size:160px;font-weight:900;opacity:.1;color:#22c55e;letter-spacing:28px;text-transform:uppercase;pointer-events:none;">PAID</div>`
+    ? `<div style="position:absolute;top:50%;left:0%;right:0%;bottom:0%;pointer-events:none;z-index:0;"><div style="display:flex;justify-content:center;align-items:center;font-size:200px;font-weight:900;opacity:0.10;color:#22c55e;letter-spacing:32px;text-transform:uppercase;">PAID</div></div>`
     : "";
 
   return `<!DOCTYPE html>
@@ -896,238 +899,210 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Invoice ${escapeHtml(input.invoiceNumber)}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
     html, body {
       width: 100%;
       min-height: 100%;
       margin: 0;
       padding: 0;
-      font-family: Arial, system-ui, -apple-system, sans-serif;
+      font-family: Arial, sans-serif;
       line-height: 1.4;
-      color: #333333;
-      background: #ffffff;
+      color: #000;
+      background: white;
     }
     .pdf-container {
-      width: 100%;
-      min-height: calc(297mm - 24mm);
-      background: #ffffff;
-      margin: 0;
+      width: 100% !important;
+      height: auto !important;
+      background: white;
+      margin: 0 !important;
       padding: 0;
+      min-height: calc(297mm - 24mm);
       page-break-after: always;
       page-break-inside: avoid;
       break-inside: avoid;
       overflow: visible;
       box-sizing: border-box;
-      position: relative;
     }
-    .page-inner { width: 100%; background: #ffffff; }
-    .cover-header {
-      padding: 24px;
-      border-bottom: 1px solid #e5e7eb;
-      background: #ffffff;
+    .pdf-container > * {
+      width: 100% !important;
+      max-width: 100% !important;
     }
-    .cover-header-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 24px;
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: bold;
+      margin-bottom: 10px;
     }
-    .company-logo { max-height: 48px; object-fit: contain; display: block; margin-bottom: 8px; }
-    .company-name { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; letter-spacing: -0.02em; }
-    .muted { font-size: 12px; color: #6b7280; line-height: 1.4; }
-    .invoice-summary {
-      text-align: right;
-      padding: 24px;
-      background-color: #f8f9fa;
-      border-radius: 8px;
-      border: 1px solid #e9ecef;
-      min-width: 190px;
-    }
-    .invoice-summary-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
+    p {
       margin-bottom: 8px;
-      letter-spacing: 0.5px;
     }
-    .cover-content { padding: 24px; display: flex; gap: 40px; }
-    .content-column { flex: 1; }
-    .details-column { flex: 1; max-width: 300px; }
-    .panel {
-      background-color: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 24px;
-      margin-bottom: 16px;
+    img {
+      max-width: 100%;
+      height: auto;
     }
-    .panel-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #374151;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    table {
+      width: 100%;
+      border-collapse: collapse;
     }
-    .panel-name { font-size: 16px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; }
-    .detail-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
-    .detail-label { font-size: 11px; color: #6b7280; }
-    .detail-value { font-size: 11px; color: #1a1a1a; font-weight: 500; text-align: right; }
-    .balance-card { background-color: #374151; color: #ffffff; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 16px; }
-    .balance-label { font-size: 10px; opacity: .8; margin-bottom: 4px; letter-spacing: .5px; }
-    .balance-value { font-size: 16px; font-weight: 600; }
-    .description-panel { margin: 0 24px 24px; }
-    .services-page { padding: 24px; }
-    .services-title { font-size: 14px; font-weight: 600; color: #1a1a1a; margin: 0 0 16px; letter-spacing: .5px; }
-    .table-header {
-      display: flex;
-      background-color: #f8f9fa;
-      border: 1px solid #e9ecef;
-      border-radius: 6px 6px 0 0;
-      padding: 12px 16px;
-      font-size: 11px;
-      font-weight: 600;
-      color: #374151;
-      text-transform: uppercase;
-      letter-spacing: .5px;
+    td, th {
+      padding: 8px;
+      border: 1px solid #ddd;
     }
-    .table-card { border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 6px 6px; background: #ffffff; }
-    .service-main { display: flex; align-items: center; padding: 16px; min-height: 50px; }
-    .service-desc-wrap { padding: 0 16px 16px; }
-    .service-desc {
-      font-size: 10px;
-      color: #6b7280;
-      line-height: 1.5;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      word-break: break-word;
-      background-color: #f8f9fa;
-      padding: 12px;
-      border-radius: 4px;
-      border: 1px solid #e9ecef;
+    @media print {
+      .pdf-container {
+        page-break-after: always;
+      }
     }
-    .totals { margin-top: 24px; padding-top: 20px; border-top: 2px solid #e5e7eb; page-break-inside: avoid; break-inside: avoid; }
-    .totals-box { display: flex; justify-content: flex-end; margin-bottom: 20px; }
-    .totals-content { text-align: right; padding: 24px; }
-    .total-label { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
-    .total-value { font-size: 18px; font-weight: 700; color: #1a1a1a; }
-    .paid-label { font-size: 11px; color: #6b7280; margin: 4px 0; font-weight: 600; padding-top: 8px; border-top: 1px solid #e5e7eb; }
-    .paid-value { font-size: 12px; font-weight: 700; color: #009900; }
-    .payment-box { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 20px; page-break-inside: avoid; break-inside: avoid; }
-    .payment-row { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
-    .payment-methods { font-size: 11px; color: #6b7280; font-weight: 500; display: flex; flex-direction: column; gap: 6px; }
-    .method-grid { margin-top: 6px; display: grid; grid-template-columns: repeat(5, 32px); gap: 6px; }
-    .method-img { height: 20px; background-size: 100% 100%; border: 1px solid #d1d5db; border-radius: 3px; background-color: #ffffff; }
   </style>
 </head>
 <body>
-  <div class="pdf-container">
-    <div class="page-inner">
-      ${paidWatermark}
-      <div class="cover-header">
-        <div class="cover-header-row">
-          <div>
-            ${input.company.avatarUrl ? `<img class="company-logo" src="${escapeAttribute(input.company.avatarUrl)}" alt="${escapeAttribute(input.company.name)}" />` : ""}
-            <div class="company-name">${escapeHtml(input.company.name || "Company Name")}</div>
-            <div class="muted">
-              ${input.company.address ? `<div>${escapeHtml(input.company.address)}</div>` : ""}
-              ${input.company.phone ? `<div>${escapeHtml(input.company.phone)}</div>` : ""}
-              ${input.company.email ? `<div>${escapeHtml(input.company.email)}</div>` : ""}
+  <div class="pdf-container" style="width:100%;background:white;margin:0;padding:0;page-break-after:always;min-height:calc(297mm - 24mm);height:auto;box-sizing:border-box;overflow:visible;">
+    <div style="width:527px;margin:0 auto;">
+      <div style="width:527px;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;">
+        <style>
+          @page { size: A4; }
+          .page-break-before { page-break-before: auto; }
+          .page-break-avoid { page-break-inside: avoid; break-inside: avoid; }
+        </style>
+        <div style="box-sizing:border-box;background-color:#ffffff;display:flex;flex-direction:column;position:relative;">
+          ${paidWatermark}
+          <div style="padding:24px 24px 24px 24px;border-bottom:1px solid #e5e7eb;background-color:#ffffff;position:relative;z-index:1;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+              <div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;">
+                ${
+                  input.company.avatarUrl
+                    ? `<div style="padding:0px;"><img src="${escapeAttribute(input.company.avatarUrl)}" alt="${escapeAttribute(input.company.name)}" style="max-height:48px;object-fit:contain;display:block;" /></div>`
+                    : ""
+                }
+                <div>
+                  <div style="font-size:20px;font-weight:600;color:#1a1a1a;margin-bottom:4px;letter-spacing:-0.02em;">${escapeHtml(input.company.name || "Company Name")}</div>
+                  <div style="font-size:12px;color:#6b7280;line-height:1.4;">
+                    ${input.company.address ? `<div>${escapeHtml(input.company.address)}</div>` : ""}
+                    ${input.company.phone ? `<div>${escapeHtml(input.company.phone)}</div>` : ""}
+                    ${input.company.email ? `<div>${escapeHtml(input.company.email)}</div>` : ""}
+                  </div>
+                </div>
+              </div>
+              <div style="text-align:right;padding:24px 24px;background-color:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">
+                <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px;letter-spacing:0.5px;">INVOICE #${escapeHtml(input.invoiceNumber)}</div>
+                <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Date: ${formatDisplayDate(input.dateCreation)}</div>
+                <div style="font-size:12px;color:#6b7280;">Due: ${formatDisplayDate(input.dueDate)}</div>
+              </div>
             </div>
           </div>
-          <div class="invoice-summary">
-            <div class="invoice-summary-title">INVOICE #${escapeHtml(input.invoiceNumber)}</div>
-            <div class="muted" style="margin-bottom:4px;">Date: ${formatDisplayDate(input.dateCreation)}</div>
-            <div class="muted">Due: ${formatDisplayDate(input.dueDate)}</div>
-          </div>
-        </div>
-      </div>
-      <div class="cover-content">
-        <div class="content-column">
-          <div class="panel">
-            <div class="panel-title">Bill To</div>
-            <div class="panel-name">${escapeHtml(input.client.name || "Client Name")}</div>
-            <div class="muted">
-              ${input.client.address ? `<div style="margin-bottom:6px;">${escapeHtml(input.client.address)}</div>` : ""}
-              ${input.client.phone ? `<div style="margin-bottom:6px;">${escapeHtml(input.client.phone)}</div>` : ""}
-              ${input.client.email ? `<div style="margin-bottom:6px;">${escapeHtml(input.client.email)}</div>` : ""}
+          <div style="padding:24px 24px;display:flex;gap:40px;">
+            <div style="flex:1;">
+              <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;">
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Bill To</div>
+                <div style="font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">${escapeHtml(input.client.name || "Client Name")}</div>
+                <div style="font-size:12px;color:#6b7280;line-height:1.5;">
+                  ${input.client.address ? `<div style="margin-bottom:6px;">&#128205; ${escapeHtml(input.client.address)}</div>` : ""}
+                  ${input.client.phone ? `<div style="margin-bottom:6px;">&#128222; ${escapeHtml(input.client.phone)}</div>` : ""}
+                  ${input.client.email ? `<div style="margin-bottom:6px;">&#9993;&#65039; ${escapeHtml(input.client.email)}</div>` : ""}
+                </div>
+              </div>
+              ${
+                input.workContext?.name || input.workContext?.address
+                  ? `<div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:16px;">
+                      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Work Site</div>
+                      <div style="font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">${escapeHtml(input.workContext?.name || input.client.name)}</div>
+                      <div style="font-size:12px;color:#6b7280;line-height:1.5;">
+                        ${input.workContext?.address ? `<div style="margin-bottom:6px;">&#128205; ${escapeHtml(input.workContext.address)}</div>` : ""}
+                        ${input.workContext?.phone ? `<div style="margin-bottom:6px;">&#128222; ${escapeHtml(input.workContext.phone)}</div>` : ""}
+                        ${input.workContext?.email ? `<div style="margin-bottom:6px;">&#9993;&#65039; ${escapeHtml(input.workContext.email)}</div>` : ""}
+                      </div>
+                    </div>`
+                  : ""
+              }
+            </div>
+            <div style="flex:1;max-width:300px;">
+              <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;">
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;">Invoice Details</div>
+                <div style="margin-bottom:16px;">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:11px;color:#6b7280;">Payment Method:</span>
+                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${input.invoiceType === "stripe" ? "Stripe" : "Other"}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:11px;color:#6b7280;">Supervisor:</span>
+                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${escapeHtml(input.company.name || "Project Manager")}</span>
+                  </div>
+                </div>
+                <div style="background-color:#374151;color:white;padding:16px;border-radius:6px;text-align:center;margin-bottom:16px;">
+                  <div style="font-size:10px;opacity:0.8;margin-bottom:4px;">BALANCE DUE</div>
+                  <div style="font-size:16px;font-weight:600;">${input.invoiceAmount > 0 ? formatCurrency(input.invoiceAmount) : "$0.00"}</div>
+                </div>
+                ${
+                  input.isPaid
+                    ? `<div style="display:flex;justify-content:space-between;margin-bottom:16px;padding:8px;background-color:#f0fdf4;border-radius:4px;border:1px solid #bbf7d0;">
+                        <span style="font-size:11px;color:#15803d;font-weight:600;">Payment:</span>
+                        <span style="font-size:11px;color:#15803d;font-weight:600;">-${formatCurrency(input.invoiceAmount)}</span>
+                      </div>`
+                    : ""
+                }
+                ${
+                  input.showPaymentMethods
+                    ? `<div>
+                        <div style="font-size:11px;color:#6b7280;margin-bottom:8px;font-weight:500;">Accepted Payment Methods:</div>
+                        <div style="margin-bottom:8px;display:grid;grid-template-columns:repeat(5,28px);gap:6px;">
+                          ${renderPaymentIcon("https://i.ibb.co/vvRcGxWB/visa.png", 18)}
+                          ${renderPaymentIcon("https://i.ibb.co/fY2zKg6S/mastercard.png", 18)}
+                          ${renderPaymentIcon("https://i.ibb.co/C3QPyJSy/discorver.png", 18)}
+                          ${renderPaymentIcon("https://i.ibb.co/dss3QdzF/Untitled.png", 18)}
+                          <span style="height:18px;background-color:#059669;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:700;color:white;">BANK</span>
+                        </div>
+                        <div style="font-size:9px;color:#9ca3af;text-align:center;">Secure payment processing</div>
+                      </div>`
+                    : ""
+                }
+              </div>
             </div>
           </div>
           ${
-            input.workContext?.name || input.workContext?.address
-              ? `<div class="panel">
-                  <div class="panel-title">Work Site</div>
-                  <div class="panel-name">${escapeHtml(input.workContext?.name || input.client.name)}</div>
-                  <div class="muted">
-                    ${input.workContext?.address ? `<div style="margin-bottom:6px;">${escapeHtml(input.workContext.address)}</div>` : ""}
-                    ${input.workContext?.phone ? `<div style="margin-bottom:6px;">${escapeHtml(input.workContext.phone)}</div>` : ""}
-                    ${input.workContext?.email ? `<div style="margin-bottom:6px;">${escapeHtml(input.workContext.email)}</div>` : ""}
+            input.description
+              ? `<div style="padding:0 24px 24px 24px;">
+                  <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;">
+                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">Description</div>
+                    <div style="font-size:12px;color:#1a1a1a;line-height:1.6;">${sanitizeDescriptionHtml(input.description)}</div>
                   </div>
                 </div>`
               : ""
           }
         </div>
-        <div class="details-column">
-          <div class="panel">
-            <div class="panel-title">Invoice Details</div>
-            <div class="detail-row"><span class="detail-label">Payment Method:</span><span class="detail-value">${input.invoiceType === "stripe" ? "Stripe" : "Other"}</span></div>
-            <div class="detail-row"><span class="detail-label">Supervisor:</span><span class="detail-value">${escapeHtml(input.company.name || "Project Manager")}</span></div>
-            <div class="balance-card">
-              <div class="balance-label">BALANCE DUE</div>
-              <div class="balance-value">${formatCurrency(input.invoiceAmount)}</div>
+        <div style="margin-top:40px;">
+          <div style="width:527px;background-color:white;font-family:system-ui,-apple-system,sans-serif;color:#333333;line-height:1.4;font-size:12px;position:relative;box-sizing:border-box;padding:24px 24px 24px 24px;display:block;page-break-inside:auto;overflow:visible;">
+            <div style="display:block;position:relative;z-index:1;">
+              <h2 style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:16px;margin:0 0 16px 0;flex-shrink:0;letter-spacing:0.5px;">SERVICES</h2>
+              <div style="display:flex;background-color:#f8f9fa;border:1px solid #e9ecef;border-radius:6px 6px 0 0;padding:12px 16px;font-size:11px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">
+                <div style="flex:3;padding-right:16px;">Service</div>
+                <div style="flex:1;text-align:center;padding-right:16px;">Quantity</div>
+                <div style="flex:1.2;text-align:right;padding-right:16px;">Unit Price</div>
+                <div style="flex:1.2;text-align:right;">Amount</div>
+              </div>
+              <div style="border:1px solid #e9ecef;border-top:none;border-radius:0 0 6px 6px;background-color:#ffffff;">${serviceRows}</div>
+              <div style="margin-top:24px;padding-top:20px;border-top:2px solid #e5e7eb;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">
+                <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+                  <div style="text-align:right;padding:24px;">
+                    ${
+                      input.isPaid
+                        ? `<div style="font-size:11px;color:#15803d;margin-bottom:4px;margin-top:4px;font-weight:600;">Payment</div>
+                           <div style="font-size:12px;font-weight:700;color:#15803d;">-${formatCurrency(input.invoiceAmount)}</div>
+                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Remaining Balance</div>
+                           <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${formatCurrency(Math.max(0, input.totalInvoice - input.invoiceAmount))}</div>`
+                        : `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;">Total Invoice</div>
+                           <div style="font-size:18px;font-weight:700;color:#1a1a1a;">${formatCurrency(input.totalInvoice)}</div>
+                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Paid Invoice</div>
+                           <div style="font-size:12px;font-weight:700;color:#009900;">$0.00</div>`
+                    }
+                  </div>
+                </div>
+                ${paymentMethods}
+              </div>
             </div>
-            ${
-              input.showPaymentMethods
-                ? `<div>
-                    <div style="font-size:11px;color:#6b7280;margin-bottom:8px;font-weight:500;">Accepted Payment Methods:</div>
-                    <div style="margin-bottom:8px;display:grid;grid-template-columns:repeat(5,28px);gap:6px;">
-                      ${renderPaymentIcon("https://i.ibb.co/vvRcGxWB/visa.png", 18)}
-                      ${renderPaymentIcon("https://i.ibb.co/fY2zKg6S/mastercard.png", 18)}
-                      ${renderPaymentIcon("https://i.ibb.co/C3QPyJSy/discorver.png", 18)}
-                      ${renderPaymentIcon("https://i.ibb.co/dss3QdzF/Untitled.png", 18)}
-                      <span style="height:18px;background-color:#059669;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:700;color:white;">BANK</span>
-                    </div>
-                    <div style="font-size:9px;color:#9ca3af;text-align:center;">Secure payment processing</div>
-                  </div>`
-                : ""
-            }
           </div>
         </div>
-      </div>
-      ${
-        input.description
-          ? `<div class="description-panel panel">
-              <div class="panel-title">Description</div>
-              <div class="muted">${sanitizeDescriptionHtml(input.description)}</div>
-            </div>`
-          : ""
-      }
-    </div>
-  </div>
-  <div class="pdf-container">
-    <div class="services-page">
-      <h2 class="services-title">SERVICES</h2>
-      <div class="table-header">
-        <div style="flex:3;padding-right:16px;">Service</div>
-        <div style="flex:1;text-align:center;padding-right:16px;">Quantity</div>
-        <div style="flex:1.2;text-align:right;padding-right:16px;">Unit Price</div>
-        <div style="flex:1.2;text-align:right;">Amount</div>
-      </div>
-      <div class="table-card">${serviceRows}</div>
-      <div class="totals">
-        <div class="totals-box">
-          <div class="totals-content">
-            <div class="total-label">Total Invoice</div>
-            <div class="total-value">${formatCurrency(input.totalInvoice)}</div>
-            <div class="paid-label">${input.isPaid ? "Payment" : "Paid Invoice"}</div>
-            <div class="paid-value">${input.isPaid ? `-${formatCurrency(input.invoiceAmount)}` : "$0.00"}</div>
-            ${
-              input.isPaid
-                ? `<div class="paid-label">Remaining Balance</div><div class="total-value">${formatCurrency(Math.max(0, input.totalInvoice - input.invoiceAmount))}</div>`
-                : ""
-            }
-          </div>
-        </div>
-        ${paymentMethods}
       </div>
     </div>
   </div>
@@ -1140,16 +1115,18 @@ function renderServiceRow(service: NormalizedServiceLine, index: number, totalRo
   const borderBottom = index < totalRows - 1 ? "border-bottom:1px solid #f1f3f4;" : "";
 
   return `<div>
-    <div class="service-main" style="${hasDescription ? "" : borderBottom}">
-      <div style="flex:3;padding-right:16px;"><div style="font-size:12px;font-weight:600;color:#1a1a1a;">${escapeHtml(service.name)}</div></div>
+    <div style="display:flex;align-items:center;padding:16px;min-height:50px;${hasDescription ? "" : borderBottom}">
+      <div style="flex:3;padding-right:16px;">
+        <div style="font-size:12px;font-weight:600;color:#1a1a1a;">${escapeHtml(service.name)}</div>
+      </div>
       <div style="flex:1;text-align:center;padding-right:16px;font-size:11px;color:#374151;">${service.quantity}</div>
       <div style="flex:1.2;text-align:right;padding-right:16px;font-size:11px;color:#374151;">${formatCurrency(service.unitPrice)}</div>
       <div style="flex:1.2;text-align:right;font-size:12px;font-weight:600;color:#1a1a1a;">${formatCurrency(service.lineTotal)}</div>
     </div>
     ${
       hasDescription
-        ? `<div class="service-desc-wrap" style="${borderBottom}">
-            <div class="service-desc">${sanitizeDescriptionHtml(service.description)}</div>
+        ? `<div style="padding:0 16px 16px 16px;${borderBottom}">
+            <div style="font-size:10px;color:#6b7280;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;background-color:#f8f9fa;padding:12px;border-radius:4px;border:1px solid #e9ecef;">${sanitizeDescriptionHtml(service.description)}</div>
           </div>`
         : ""
     }
@@ -1157,11 +1134,11 @@ function renderServiceRow(service: NormalizedServiceLine, index: number, totalRo
 }
 
 function renderPaymentMethods(balanceDue: number) {
-  return `<div class="payment-box">
-    <div class="payment-row">
-      <div class="payment-methods">
+  return `<div style="background-color:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:20px;page-break-inside:avoid;break-inside:avoid;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:24px;">
+      <div style="font-size:11px;color:#6b7280;font-weight:500;display:flex;flex-direction:column;gap:6px;">
         Accepted Payment Methods
-        <div class="method-grid">
+        <div style="margin-top:6px;display:grid;grid-template-columns:repeat(5,32px);gap:6px;">
           ${renderPaymentIcon("https://i.ibb.co/vvRcGxWB/visa.png", 20)}
           ${renderPaymentIcon("https://i.ibb.co/fY2zKg6S/mastercard.png", 20)}
           ${renderPaymentIcon("https://i.ibb.co/C3QPyJSy/discorver.png", 20)}
@@ -1170,16 +1147,16 @@ function renderPaymentMethods(balanceDue: number) {
         </div>
         <div style="font-size:9px;color:#9ca3af;">Secure payment processing</div>
       </div>
-      <div style="background-color:#374151;color:#ffffff;padding:16px;border-radius:6px;text-align:center;min-width:180px;">
-        <div style="font-size:10px;opacity:.8;margin-bottom:4px;letter-spacing:.5px;">BALANCE DUE</div>
-        <div style="font-size:16px;font-weight:600;">${formatCurrency(balanceDue)}</div>
+      <div style="background-color:#374151;color:white;padding:16px;border-radius:6px;text-align:center;min-width:180px;">
+        <div style="font-size:10px;opacity:0.8;margin-bottom:4px;letter-spacing:0.5px;">BALANCE DUE</div>
+        <div style="font-size:16px;font-weight:600;">${balanceDue > 0 ? formatCurrency(balanceDue) : "$0.00"}</div>
       </div>
     </div>
   </div>`;
 }
 
 function renderPaymentIcon(url: string, height: number) {
-  return `<span style="height:${height}px;background-image:url(${url});background-size:100% 100%;border:1px solid #d1d5db;border-radius:3px;background-color:#ffffff;"></span>`;
+  return `<span style="height:${height}px;background-image:url(${url});background-size:100% 100%;border:1px solid #d1d5db;border-radius:3px;background-color:white;"></span>`;
 }
 
 function formatCompanyAddress(company: {
