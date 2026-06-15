@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { CustomInvoiceController } from "../controllers/invoice/CustomInvoiceController";
+import { MobileStandaloneCustomInvoiceController } from "../controllers/invoice/MobileStandaloneCustomInvoiceController";
 import { checkToken } from "../middlewares/checkToken";
+
 
 const customInvoiceRoutes = Router();
 const customInvoiceController = new CustomInvoiceController();
