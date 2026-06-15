@@ -6,7 +6,6 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
-import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 
@@ -199,14 +198,11 @@ export class MobileStandaloneCustomInvoiceController {
       };
 
       const normalPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml(pdfInput));
-      const signedPdfBuffer = company.signature
-        ? await addCompanySignatureImageToPdfBuffer(normalPdfBuffer, company.signature, company.name)
-        : await addCompanySignatureToPdfBuffer(normalPdfBuffer, company.name, new Date());
       const paidPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml({ ...pdfInput, isPaid: true }));
       const pdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}.pdf`;
       const paidPdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}_PAID.pdf`;
       const [pdfS3Key, paidPdfS3Key] = await Promise.all([
-        uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf"),
+        uploadBufferToS3(normalPdfBuffer, pdfFileName, "application/pdf"),
         uploadBufferToS3(paidPdfBuffer, paidPdfFileName, "application/pdf"),
       ]);
 
@@ -517,7 +513,7 @@ export class MobileStandaloneCustomInvoiceController {
           invoiceAmount,
           invoiceDbId: result.invoice.id,
           invoiceNumber,
-          pdfBuffer: signedPdfBuffer,
+          pdfBuffer: normalPdfBuffer,
           pdfFileName,
           projectNumber,
           userId: payload.sellerUserId,
@@ -540,6 +536,389 @@ export class MobileStandaloneCustomInvoiceController {
       });
     } catch (error: any) {
       console.error("[MobileStandaloneCustomInvoice] Error:", error);
+      return res.status(500).json({ error: error?.message || "Internal Server Error" });
+    }
+  }
+
+  async getForEdit(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          InvoiceItems: true,
+          project: {
+            include: {
+              client: true,
+              company: true,
+              workContext: true,
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      if (invoice.invoiceType !== "custom") {
+        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
+      }
+
+      const project = invoice.project;
+      const client = project?.client;
+      const workContext = project?.workContext;
+      const servicesTotal = invoice.InvoiceItems.reduce(
+        (sum, item) => sum + Number(item.totalAmount || 0),
+        0,
+      );
+      const typeValue = invoice.type_value === "value" ? "fixed" : "percentage";
+      const coefficient = Number(invoice.percentageCoefficient || 0);
+
+      return res.json({
+        amount: {
+          fixedValue: typeValue === "fixed" ? Number(invoice.totalAmount || 0) : undefined,
+          percentage: typeValue === "percentage" ? roundPrecision((coefficient || 1) * 100, 2) : undefined,
+          type: typeValue,
+        },
+        client: {
+          address: client?.addressOffice || project?.location || "",
+          email: client?.email || "",
+          id: client?.id || "",
+          name: client?.name || "",
+          phone: client?.phone || "",
+        },
+        companyId: invoice.companyId || project?.company_id || "",
+        dateCreation: invoice.createdAt,
+        description: invoice.description || "",
+        dueDate: invoice.dueDate,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.externalInvoiceId || "",
+        paymentMethod: "custom",
+        projectId: invoice.projectId,
+        services: invoice.InvoiceItems.map((item, index) => ({
+          description: item.description || "",
+          lineTotal: Number(item.totalAmount || 0),
+          name: item.name || "Service",
+          pos: index + 1,
+          quantity: Number(item.quantity || 1),
+          unitPrice: Number(item.price || 0),
+        })),
+        servicesTotal: roundCurrency(servicesTotal),
+        showPaymentMethods: invoice.showPaymentMethods !== false,
+        status: invoice.status,
+        workContextId: workContext?.id || null,
+      });
+    } catch (error: any) {
+      console.error("[MobileStandaloneCustomInvoice:getForEdit] Error:", error);
+      return res.status(500).json({ error: error?.message || "Internal Server Error" });
+    }
+  }
+
+  async update(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+    const payload = req.body as MobileStandaloneCustomInvoicePayload;
+
+    try {
+      const validationError = validatePayload(payload);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
+
+      const existingInvoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          InvoiceItems: true,
+          PdfProject: true,
+          pdfInvoicePaids: true,
+          project: {
+            include: {
+              client: true,
+              company: true,
+              workContext: true,
+            },
+          },
+        },
+      });
+
+      if (!existingInvoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      if (existingInvoice.invoiceType !== "custom") {
+        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
+      }
+
+      if (["paid", "void"].includes(String(existingInvoice.status || "").toLowerCase())) {
+        return res.status(400).json({ error: "Paid or void invoices cannot be edited." });
+      }
+
+      const services = normalizeServices(payload.services);
+      if (services.length === 0) {
+        return res.status(400).json({ error: "At least one valid service is required" });
+      }
+
+      const company = await prisma.company.findUnique({
+        where: { id: payload.companyId },
+      });
+
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const seller = await prisma.user.findFirst({
+        where: { id: payload.sellerUserId },
+        select: { email: true, id: true, name: true },
+      });
+
+      if (!seller) {
+        return res.status(404).json({ error: "Seller user not found" });
+      }
+
+      const workContext = payload.workContextId
+        ? await prisma.workContext.findFirst({
+            where: {
+              companyId: payload.companyId,
+              id: payload.workContextId,
+              isActive: true,
+            },
+          })
+        : null;
+
+      if (payload.workContextId && !workContext) {
+        return res.status(404).json({ error: "Work context not found" });
+      }
+
+      const servicesTotal = roundCurrency(
+        services.reduce((sum, service) => sum + service.lineTotal, 0),
+      );
+      const { coefficient, invoiceAmount, typeValue } = computeInvoiceAmount(payload.amount, servicesTotal);
+      const invoiceNumber = payload.invoiceNumber || existingInvoice.externalInvoiceId || "";
+      const projectNumber = existingInvoice.project?.contract_number || Number.parseInt(invoiceNumber, 10) || 0;
+      const dateCreation = normalizeDate(payload.dateCreation);
+      const dueDate = normalizeDate(payload.dueDate);
+      const showPaymentMethods = payload.showPaymentMethods !== false;
+      const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+      const companyAddress = formatCompanyAddress(company);
+      const workContextDetails = workContext
+        ? {
+            address: workContext.addressOffice || workContext.location || "",
+            email: workContext.Email || "",
+            name: workContext.Name || workContext.label || "",
+            phone: workContext.phone || "",
+          }
+        : null;
+
+      const pdfInput: InvoicePdfInput = {
+        client: {
+          address: payload.client.address || "",
+          email: payload.client.email,
+          name: payload.client.name,
+          phone: payload.client.phone || "",
+        },
+        company: {
+          address: companyAddress,
+          avatarUrl: companyAvatarUrl,
+          email: company.email || "",
+          name: company.name,
+          phone: company.phone || "",
+          webSiteUrl: company.webSiteUrl || "",
+        },
+        dateCreation,
+        description: payload.description || "",
+        dueDate,
+        invoiceAmount,
+        invoiceNumber,
+        invoiceType: "custom",
+        services,
+        showPaymentMethods,
+        totalInvoice: servicesTotal,
+        workContext: workContextDetails,
+      };
+
+      const normalPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml(pdfInput));
+      const paidPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml({ ...pdfInput, isPaid: true }));
+      const pdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}.pdf`;
+      const paidPdfFileName = `Invoice_${safeFileSegment(payload.client.name)}_${invoiceNumber}_PAID.pdf`;
+      const [pdfS3Key, paidPdfS3Key] = await Promise.all([
+        uploadBufferToS3(normalPdfBuffer, pdfFileName, "application/pdf"),
+        uploadBufferToS3(paidPdfBuffer, paidPdfFileName, "application/pdf"),
+      ]);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const client = payload.client.id
+          ? await tx.client.update({
+              where: { id: payload.client.id },
+              data: {
+                addressOffice: payload.client.address || undefined,
+                email: payload.client.email,
+                name: payload.client.name,
+                phone: payload.client.phone || undefined,
+              },
+            })
+          : await tx.client.create({
+              data: {
+                addressOffice: payload.client.address || "",
+                company_id: payload.companyId,
+                email: payload.client.email,
+                lat: "",
+                location: payload.client.address || "",
+                log: "",
+                name: payload.client.name,
+                phone: payload.client.phone || "",
+              },
+            });
+
+        const project = await tx.project.update({
+          where: { id: existingInvoice.projectId },
+          data: {
+            balanceDue: servicesTotal,
+            client_id: client.id,
+            company_id: payload.companyId,
+            lat: workContext?.latitude?.toString() || "",
+            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
+            log: workContext?.longitude?.toString() || "",
+            price: servicesTotal,
+            radius: workContext?.radius || client.radius || null,
+            seller_user_id: payload.sellerUserId,
+            workContextId: workContext?.id || null,
+          },
+        });
+
+        await tx.serviceProject.deleteMany({
+          where: { projectId: project.id },
+        });
+
+        const serviceProjects = await Promise.all(
+          services.map((service) =>
+            tx.serviceProject.create({
+              data: {
+                company_id: payload.companyId,
+                description: service.description,
+                hours: service.quantity,
+                id_service: service.catalogServiceId || null,
+                name: service.name,
+                price: service.unitPrice,
+                projectId: project.id,
+                status: "Approved",
+              },
+            }),
+          ),
+        );
+
+        const invoice = await tx.invoice.update({
+          where: { id: existingInvoice.id },
+          data: {
+            companyId: payload.companyId,
+            createdAt: dateCreation,
+            description: payload.description || "",
+            dueDate,
+            externalInvoiceId: invoiceNumber,
+            invoiceType: "custom",
+            percentageCoefficient: coefficient,
+            project_manager_id: undefined,
+            showPaymentMethods,
+            totalAmount: invoiceAmount,
+            type_value: typeValue,
+            updatedAt: new Date(),
+            user_id: payload.sellerUserId,
+          },
+        });
+
+        await tx.invoiceItem.deleteMany({
+          where: { invoiceId: invoice.id },
+        });
+
+        await tx.invoiceItem.createMany({
+          data: services.map((service) => ({
+            description: service.description,
+            invoiceId: invoice.id,
+            name: service.name,
+            price: service.unitPrice,
+            quantity: service.quantity,
+            totalAmount: service.lineTotal,
+          })),
+        });
+
+        const pdfProject = existingInvoice.PdfProject[0]
+          ? await tx.pdfProject.update({
+              where: { id: existingInvoice.PdfProject[0].id },
+              data: {
+                original_file_name: pdfFileName,
+                project_id: project.id,
+                templateNumber: 1,
+                type_pdf: "invoice",
+                uri: pdfS3Key,
+              },
+            })
+          : await tx.pdfProject.create({
+              data: {
+                invoice_id: invoice.id,
+                original_file_name: pdfFileName,
+                project_id: project.id,
+                templateNumber: 1,
+                type_pdf: "invoice",
+                uri: pdfS3Key,
+              },
+            });
+
+        const paidPdfProject = await tx.pdfInvoicePaid.upsert({
+          create: {
+            invoiceId: invoice.id,
+            original_file_name: paidPdfFileName,
+            uri: paidPdfS3Key,
+          },
+          update: {
+            original_file_name: paidPdfFileName,
+            uri: paidPdfS3Key,
+          },
+          where: { invoiceId: invoice.id },
+        });
+
+        await tx.invoiceTimeline.create({
+          data: {
+            description: `Invoice updated from mobile. Total amount ${formatCurrency(invoiceAmount)}.`,
+            invoice: { connect: { id: invoice.id } },
+          },
+        });
+
+        return { invoice, paidPdfProject, pdfProject, project, serviceProjects };
+      });
+
+      let emailSent = false;
+      if (payload.action === "createAndSend") {
+        emailSent = await sendInvoiceEmail({
+          additionalEmails: payload.additionalEmails || [],
+          clientEmail: workContext?.Email || payload.client.email,
+          clientName: workContext?.Name || payload.client.name,
+          company: {
+            avatar: company.avatar,
+            email: company.email,
+            id: company.id,
+            name: company.name,
+          },
+          dueDate,
+          invoiceAmount,
+          invoiceDbId: result.invoice.id,
+          invoiceNumber,
+          pdfBuffer: normalPdfBuffer,
+          pdfFileName,
+          projectNumber,
+          userId: payload.sellerUserId,
+        });
+      }
+
+      return res.json({
+        emailSent,
+        invoiceId: result.invoice.id,
+        number: invoiceNumber,
+        paidPdfProjectId: result.paidPdfProject.id,
+        pdfProjectId: result.pdfProject.id,
+        projectId: result.project.id,
+      });
+    } catch (error: any) {
+      console.error("[MobileStandaloneCustomInvoice:update] Error:", error);
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }

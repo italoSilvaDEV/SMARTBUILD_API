@@ -10,6 +10,8 @@ const mobileStandaloneCustomInvoiceController = new MobileStandaloneCustomInvoic
 
 // Criar invoice personalizado
 customInvoiceRoutes.post("/custom/invoice/mobile/standalone", checkToken, mobileStandaloneCustomInvoiceController.handle.bind(mobileStandaloneCustomInvoiceController));
+customInvoiceRoutes.get("/custom/invoice/mobile/:invoiceId", checkToken, mobileStandaloneCustomInvoiceController.getForEdit.bind(mobileStandaloneCustomInvoiceController));
+customInvoiceRoutes.put("/custom/invoice/mobile/:invoiceId", checkToken, mobileStandaloneCustomInvoiceController.update.bind(mobileStandaloneCustomInvoiceController));
 customInvoiceRoutes.post("/custom/invoice/:projectId", checkToken, customInvoiceController.createInvoice.bind(customInvoiceController)); 
 customInvoiceRoutes.get("/custom/invoice/:projectId/generate-number", checkToken, customInvoiceController.generateNumber.bind(customInvoiceController));
 customInvoiceRoutes.get("/custom/invoice/global/:companyId/generate-number", checkToken, customInvoiceController.generateGlobalNumber.bind(customInvoiceController));
