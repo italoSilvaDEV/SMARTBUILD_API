@@ -62,6 +62,8 @@ type NormalizedServiceLine = {
 
 type InvoicePdfInput = {
   amountPaid?: number;
+  apiBalanceDue?: number;
+  balanceDue?: number;
   client: {
     address?: string | null;
     email?: string | null;
@@ -79,9 +81,18 @@ type InvoicePdfInput = {
   dateCreation: Date;
   description?: string | null;
   dueDate: Date;
+  extraWork?: number;
   invoiceAmount: number;
   invoiceNumber: string;
   invoiceType: string;
+  invoicePaymentTimeline?: Array<{
+    date_creation: Date | string;
+    date_update?: Date | string;
+    description: string;
+    estimateId?: string | null;
+    id: string;
+    projectId?: string | null;
+  }>;
   isPaid?: boolean;
   services: NormalizedServiceLine[];
   showPaymentMethods: boolean;
@@ -1101,8 +1112,10 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
       pdfInvoicePaids: true,
       project: {
         include: {
+          InvoicePaymentTimeLine: true,
           client: true,
           company: true,
+          serviceProject: true,
           workContext: true,
         },
       },
@@ -1122,9 +1135,13 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const client = invoice.project.client;
   const workContext = invoice.project.workContext;
   const invoiceAmount = Number(invoice.totalAmount || payload.totalAmount || 0);
-  const totalInvoice = roundCurrency(
-    services.reduce((sum, service) => sum + Number(service.lineTotal || 0), 0),
-  );
+  const servicesTotal = roundCurrency(services.reduce((sum, service) => sum + Number(service.lineTotal || 0), 0));
+  const apiBalanceDue = roundCurrency(Number(invoice.project.balanceDue ?? invoice.project.price ?? servicesTotal));
+  const extraWork = roundCurrency(Math.max(0, invoiceAmount - apiBalanceDue));
+  const amountPaid = roundCurrency(Number(invoice.project.amountPaid || 0));
+  const paymentTimeline = Array.isArray(invoice.project.InvoicePaymentTimeLine)
+    ? invoice.project.InvoicePaymentTimeLine
+    : [];
   const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
   const companyAddress = formatCompanyAddress(company);
   const dateCreation = payload.date_creation ? normalizeDate(payload.date_creation) : invoice.createdAt;
@@ -1132,6 +1149,9 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const invoiceNumber = invoice.externalInvoiceId || payload.invoiceNumber || invoice.id;
   const showPaymentMethods = payload.showPaymentMethods !== false;
   const pdfInput: InvoicePdfInput = {
+    amountPaid,
+    apiBalanceDue,
+    balanceDue: invoiceAmount,
     client: {
       address: client.addressOffice || client.location || invoice.project.location || "",
       email: client.email || "",
@@ -1149,12 +1169,21 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
     dateCreation,
     description: payload.description || invoice.description || "",
     dueDate,
+    extraWork,
     invoiceAmount,
     invoiceNumber,
     invoiceType: normalizeInvoiceType(invoice.invoiceType),
+    invoicePaymentTimeline: paymentTimeline.map((payment) => ({
+      date_creation: payment.date_creation,
+      date_update: payment.date_update,
+      description: payment.description,
+      estimateId: payment.estimateId,
+      id: payment.id,
+      projectId: payment.projectId,
+    })),
     services,
     showPaymentMethods,
-    totalInvoice,
+    totalInvoice: apiBalanceDue > 0 ? apiBalanceDue : servicesTotal,
     workContext: workContext
       ? {
           address: workContext.addressOffice || workContext.location || "",
@@ -1232,7 +1261,10 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
       pdfInvoicePaids: true,
       project: {
         include: {
+          InvoicePaymentTimeLine: true,
           client: true,
+          company: true,
+          workContext: true,
         },
       },
     },
@@ -1858,17 +1890,7 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
               <div style="margin-top:24px;padding-top:20px;border-top:2px solid #e5e7eb;flex-shrink:0;page-break-inside:avoid;break-inside:avoid;">
                 <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
                   <div style="text-align:right;padding:24px;">
-                    ${
-                      input.isPaid
-                        ? `<div style="font-size:11px;color:#15803d;margin-bottom:4px;margin-top:4px;font-weight:600;">Payment</div>
-                           <div style="font-size:12px;font-weight:700;color:#15803d;">-${formatCurrency(input.invoiceAmount)}</div>
-                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Remaining Balance</div>
-                           <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${formatCurrency(Math.max(0, input.totalInvoice - input.invoiceAmount))}</div>`
-                        : `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;">Total Invoice</div>
-                           <div style="font-size:18px;font-weight:700;color:#1a1a1a;">${formatCurrency(input.totalInvoice)}</div>
-                           <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Paid Invoice</div>
-                           <div style="font-size:12px;font-weight:700;color:#009900;">$0.00</div>`
-                    }
+                    ${renderInvoiceFinancialSummary(input)}
                   </div>
                 </div>
                 ${paymentMethods}
@@ -1881,6 +1903,55 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
   </div>
 </body>
 </html>`;
+}
+
+function renderInvoiceFinancialSummary(input: InvoicePdfInput) {
+  const totalInvoice = input.apiBalanceDue && input.apiBalanceDue > 0 ? input.apiBalanceDue : input.totalInvoice;
+  const amountPaid = Number(input.amountPaid || 0);
+  const paymentHistory = renderInvoicePaymentHistory(input.invoicePaymentTimeline || []);
+  const showExtraWork =
+    typeof input.extraWork === "number" &&
+    input.extraWork > 0 &&
+    typeof input.apiBalanceDue === "number" &&
+    input.apiBalanceDue > 0;
+  const extraWork = showExtraWork
+    ? `<div style="font-size:11px;color:#6b7280;margin-bottom:0px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Extra Work</div>
+       <div style="font-size:12px;font-weight:600;color:#dc2626;">${formatCurrency(input.extraWork || 0)}</div>`
+    : "";
+
+  if (input.isPaid) {
+    return `<div style="font-size:11px;color:#15803d;margin-bottom:4px;margin-top:4px;font-weight:600;">Payment</div>
+            <div style="font-size:12px;font-weight:700;color:#15803d;">-${formatCurrency(input.invoiceAmount)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Remaining Balance</div>
+            <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${formatCurrency(Math.max(0, totalInvoice - input.invoiceAmount))}</div>
+            ${extraWork}
+            ${paymentHistory}`;
+  }
+
+  return `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;">Total Invoice</div>
+          <div style="font-size:18px;font-weight:700;color:#1a1a1a;">${formatCurrency(totalInvoice)}</div>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:4px;margin-top:4px;font-weight:600;padding-top:8px;border-top:1px solid #e5e7eb;">Paid Invoice</div>
+          <div style="font-size:12px;font-weight:700;color:#009900;">${amountPaid > 0 ? formatCurrency(amountPaid) : "$0.00"}</div>
+          ${extraWork}
+          ${paymentHistory}`;
+}
+
+function renderInvoicePaymentHistory(
+  payments: NonNullable<InvoicePdfInput["invoicePaymentTimeline"]>,
+) {
+  if (!payments.length) return "";
+
+  const rows = [...payments]
+    .sort((first, second) => new Date(first.date_creation).getTime() - new Date(second.date_creation).getTime())
+    .map((payment) => {
+      return `<div style="font-size:9px;color:#4b5563;margin-bottom:4px;padding-left:8px;border-left:2px solid #e5e7eb;">${escapeHtml(payment.description || "")}</div>`;
+    })
+    .join("");
+
+  return `<div style="margin-top:4px;padding-top:8px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#6b7280;margin-bottom:8px;font-weight:600;">Payment History</div>
+            ${rows}
+          </div>`;
 }
 
 function renderServiceRow(service: NormalizedServiceLine, index: number, totalRows: number) {
