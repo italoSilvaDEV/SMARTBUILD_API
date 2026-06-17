@@ -1136,9 +1136,17 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const workContext = invoice.project.workContext;
   const invoiceAmount = Number(invoice.totalAmount || payload.totalAmount || 0);
   const servicesTotal = roundCurrency(services.reduce((sum, service) => sum + Number(service.lineTotal || 0), 0));
-  const apiBalanceDue = roundCurrency(Number(invoice.project.balanceDue ?? invoice.project.price ?? servicesTotal));
-  const extraWork = roundCurrency(Math.max(0, invoiceAmount - apiBalanceDue));
-  const amountPaid = roundCurrency(Number(invoice.project.amountPaid || 0));
+  const projectPrice = roundCurrency(Number(invoice.project.price || 0));
+  const currentProjectAmountPaid = roundCurrency(Number(invoice.project.amountPaid || 0));
+  const amountPaidBeforeCurrentInvoice = roundCurrency(
+    Math.max(0, currentProjectAmountPaid >= invoiceAmount ? currentProjectAmountPaid - invoiceAmount : currentProjectAmountPaid),
+  );
+  const fallbackApiBalanceDue = projectPrice > 0
+    ? roundCurrency(Math.max(0, projectPrice - amountPaidBeforeCurrentInvoice))
+    : roundCurrency(Number(invoice.project.balanceDue ?? servicesTotal));
+  const apiBalanceDue = roundCurrency(getFiniteNumber(payload.apiBalanceDue, fallbackApiBalanceDue));
+  const extraWork = roundCurrency(getFiniteNumber(payload.extraWork, Math.max(0, invoiceAmount - apiBalanceDue)));
+  const amountPaid = roundCurrency(getFiniteNumber(payload.amountPaid, amountPaidBeforeCurrentInvoice));
   const paymentTimeline = Array.isArray(invoice.project.InvoicePaymentTimeLine)
     ? invoice.project.InvoicePaymentTimeLine
     : [];
@@ -1348,6 +1356,11 @@ function parseEmailList(value?: string | string[]) {
     .split(/[;,]/)
     .map((email) => email.trim())
     .filter(Boolean);
+}
+
+function getFiniteNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function validatePayload(payload: MobileStandaloneCustomInvoicePayload) {
