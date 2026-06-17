@@ -6,6 +6,9 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { sendEmail } from "../../utils/sendEmail";
+import { CustomInvoiceController } from "./CustomInvoiceController";
+import { StripeController } from "../stripe/StripeController";
+import { UnifiedInvoiceController } from "./UnifiedInvoiceController";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 
@@ -92,10 +95,16 @@ type InvoicePdfInput = {
 };
 
 export class MobileStandaloneCustomInvoiceController {
+  private customInvoiceController: CustomInvoiceController;
   private quickBooksController: QuickBooksInvoiceController;
+  private stripeController: StripeController;
+  private unifiedInvoiceController: UnifiedInvoiceController;
 
   constructor() {
+    this.customInvoiceController = new CustomInvoiceController();
     this.quickBooksController = new QuickBooksInvoiceController();
+    this.stripeController = new StripeController();
+    this.unifiedInvoiceController = new UnifiedInvoiceController();
   }
 
   async handle(req: Request, res: Response) {
@@ -540,6 +549,112 @@ export class MobileStandaloneCustomInvoiceController {
     }
   }
 
+  async handleProject(req: Request, res: Response) {
+    const { projectId } = req.params;
+
+    try {
+      const payload = {
+        ...req.body,
+        invoiceType: normalizeInvoiceType(req.body?.invoiceType),
+        isStandaloneInvoice: false,
+        type_invoicebase: "project",
+      };
+      const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, projectId } });
+      const delegatedRes = createCapturedResponse();
+
+      await this.unifiedInvoiceController.createInvoice(delegatedReq, delegatedRes.response);
+
+      if (delegatedRes.statusCode >= 400) {
+        return res.status(delegatedRes.statusCode).json(delegatedRes.body || { error: "Could not create invoice" });
+      }
+
+      const invoiceId = getInvoiceIdFromControllerResponse(delegatedRes.body);
+      if (!invoiceId) {
+        return res.status(500).json({ error: "Invoice was created but the response did not include an invoice id." });
+      }
+
+      const pdfResult = await generateAndAttachMobileProjectInvoicePdf(invoiceId, payload);
+      const emailSent = payload.action === "createAndSend"
+        ? await sendProjectInvoiceEmailFromPdf({
+            invoice: pdfResult.invoice,
+            normalPdfBuffer: pdfResult.normalPdfBuffer,
+            normalPdfFileName: pdfResult.normalPdfFileName,
+            payload,
+          })
+        : false;
+
+      return res.status(delegatedRes.statusCode || 201).json({
+        ...delegatedRes.body,
+        emailSent,
+        invoice: pdfResult.invoice,
+        paidPdfProjectId: pdfResult.paidPdfProject.id,
+        pdfProjectId: pdfResult.pdfProject.id,
+        projectId: pdfResult.invoice.projectId,
+      });
+    } catch (error: any) {
+      console.error("[MobileProjectInvoice:create] Error:", error);
+      return res.status(500).json({ error: error?.message || "Internal Server Error" });
+    }
+  }
+
+  async updateProject(req: Request, res: Response) {
+    const { invoiceId } = req.params;
+
+    try {
+      const existingInvoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { invoiceType: true },
+      });
+
+      if (!existingInvoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      const payload = {
+        ...req.body,
+        invoiceType: normalizeInvoiceType(req.body?.invoiceType || existingInvoice.invoiceType),
+        isStandaloneInvoice: false,
+        type_invoicebase: "project",
+      };
+      const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, invoiceId } });
+      const delegatedRes = createCapturedResponse();
+
+      if (payload.invoiceType === "quickbooks") {
+        await this.quickBooksController.updateInvoice(delegatedReq, delegatedRes.response);
+      } else if (payload.invoiceType === "custom") {
+        await this.customInvoiceController.updateInvoice(delegatedReq, delegatedRes.response);
+      } else {
+        await this.stripeController.updateInvoice(delegatedReq, delegatedRes.response);
+      }
+
+      if (delegatedRes.statusCode >= 400) {
+        return res.status(delegatedRes.statusCode).json(delegatedRes.body || { error: "Could not update invoice" });
+      }
+
+      const pdfResult = await generateAndAttachMobileProjectInvoicePdf(invoiceId, payload);
+      const emailSent = payload.action === "createAndSend"
+        ? await sendProjectInvoiceEmailFromPdf({
+            invoice: pdfResult.invoice,
+            normalPdfBuffer: pdfResult.normalPdfBuffer,
+            normalPdfFileName: pdfResult.normalPdfFileName,
+            payload,
+          })
+        : false;
+
+      return res.status(delegatedRes.statusCode || 200).json({
+        ...delegatedRes.body,
+        emailSent,
+        invoice: pdfResult.invoice,
+        paidPdfProjectId: pdfResult.paidPdfProject.id,
+        pdfProjectId: pdfResult.pdfProject.id,
+        projectId: pdfResult.invoice.projectId,
+      });
+    } catch (error: any) {
+      console.error("[MobileProjectInvoice:update] Error:", error);
+      return res.status(500).json({ error: error?.message || "Internal Server Error" });
+    }
+  }
+
   async getForEdit(req: Request, res: Response) {
     const { invoiceId } = req.params;
 
@@ -922,6 +1037,285 @@ export class MobileStandaloneCustomInvoiceController {
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }
+}
+
+type CapturedResponse = {
+  body: any;
+  response: Response;
+  statusCode: number;
+};
+
+function createCapturedResponse(): CapturedResponse {
+  const captured: CapturedResponse = {
+    body: null,
+    response: {} as Response,
+    statusCode: 200,
+  };
+
+  const response = {
+    header: () => response,
+    json: (body: any) => {
+      captured.body = body;
+      return response;
+    },
+    send: (body: any) => {
+      captured.body = body;
+      return response;
+    },
+    set: () => response,
+    setHeader: () => response,
+    status: (statusCode: number) => {
+      captured.statusCode = statusCode;
+      return response;
+    },
+  };
+
+  captured.response = response as unknown as Response;
+  return captured;
+}
+
+function withRequestOverrides(req: Request, overrides: { body?: any; params?: Record<string, any> }) {
+  const delegatedReq = Object.create(req) as Request;
+  delegatedReq.body = overrides.body ?? req.body;
+  delegatedReq.params = overrides.params ?? req.params;
+  (delegatedReq as any).userId = (req as any).userId;
+  return delegatedReq;
+}
+
+function getInvoiceIdFromControllerResponse(body: any) {
+  return body?.invoice?.id || body?.databaseInvoice?.id || body?.invoiceId || body?.id || null;
+}
+
+function normalizeInvoiceType(invoiceType?: string | null) {
+  if (invoiceType === "quickbooks" || invoiceType === "custom") return invoiceType;
+  return "stripe";
+}
+
+async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, payload: any) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      InvoiceItems: true,
+      PdfProject: true,
+      company: true,
+      pdfInvoicePaids: true,
+      project: {
+        include: {
+          client: true,
+          company: true,
+          workContext: true,
+        },
+      },
+    },
+  });
+
+  if (!invoice || !invoice.project || !invoice.project.client || !invoice.project.company) {
+    throw new Error("Invoice, project, company, or client not found for PDF generation.");
+  }
+
+  const services = normalizeProjectInvoicePdfServices(payload.services, invoice.InvoiceItems);
+  if (!services.length) {
+    throw new Error("At least one valid service is required for PDF generation.");
+  }
+
+  const company = invoice.project.company;
+  const client = invoice.project.client;
+  const workContext = invoice.project.workContext;
+  const invoiceAmount = Number(invoice.totalAmount || payload.totalAmount || 0);
+  const totalInvoice = roundCurrency(
+    services.reduce((sum, service) => sum + Number(service.lineTotal || 0), 0),
+  );
+  const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+  const companyAddress = formatCompanyAddress(company);
+  const dateCreation = payload.date_creation ? normalizeDate(payload.date_creation) : invoice.createdAt;
+  const dueDate = payload.dueDate ? normalizeDate(payload.dueDate) : invoice.dueDate || new Date();
+  const invoiceNumber = invoice.externalInvoiceId || payload.invoiceNumber || invoice.id;
+  const showPaymentMethods = payload.showPaymentMethods !== false;
+  const pdfInput: InvoicePdfInput = {
+    client: {
+      address: client.addressOffice || client.location || invoice.project.location || "",
+      email: client.email || "",
+      name: client.name || "Client",
+      phone: client.phone || "",
+    },
+    company: {
+      address: companyAddress,
+      avatarUrl: companyAvatarUrl,
+      email: company.email || "",
+      name: company.name,
+      phone: company.phone || "",
+      webSiteUrl: company.webSiteUrl || "",
+    },
+    dateCreation,
+    description: payload.description || invoice.description || "",
+    dueDate,
+    invoiceAmount,
+    invoiceNumber,
+    invoiceType: normalizeInvoiceType(invoice.invoiceType),
+    services,
+    showPaymentMethods,
+    totalInvoice,
+    workContext: workContext
+      ? {
+          address: workContext.addressOffice || workContext.location || "",
+          email: workContext.Email || "",
+          name: workContext.Name || workContext.label || "",
+          phone: workContext.phone || "",
+        }
+      : null,
+  };
+
+  const normalPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml(pdfInput));
+  const paidPdfBuffer = await generatePdfBuffer(buildProfessionalInvoiceHtml({ ...pdfInput, isPaid: true }));
+  const normalPdfFileName = `Invoice_${safeFileSegment(client.name || "Client")}_${invoiceNumber}.pdf`;
+  const paidPdfFileName = `Invoice_${safeFileSegment(client.name || "Client")}_${invoiceNumber}_PAID.pdf`;
+  const [pdfS3Key, paidPdfS3Key] = await Promise.all([
+    uploadBufferToS3(normalPdfBuffer, normalPdfFileName, "application/pdf"),
+    uploadBufferToS3(paidPdfBuffer, paidPdfFileName, "application/pdf"),
+  ]);
+
+  const existingPdfProject = await prisma.pdfProject.findFirst({
+    where: { invoice_id: invoice.id },
+  });
+  const pdfProject = existingPdfProject
+    ? await prisma.pdfProject.update({
+        where: { id: existingPdfProject.id },
+        data: {
+          original_file_name: normalPdfFileName,
+          project_id: invoice.projectId,
+          templateNumber: 1,
+          type_pdf: "invoice",
+          uri: pdfS3Key,
+        },
+      })
+    : await prisma.pdfProject.create({
+        data: {
+          invoice_id: invoice.id,
+          original_file_name: normalPdfFileName,
+          project_id: invoice.projectId,
+          templateNumber: 1,
+          type_pdf: "invoice",
+          uri: pdfS3Key,
+        },
+      });
+
+  const paidPdfProject = await prisma.pdfInvoicePaid.upsert({
+    create: {
+      invoiceId: invoice.id,
+      original_file_name: paidPdfFileName,
+      uri: paidPdfS3Key,
+    },
+    update: {
+      original_file_name: paidPdfFileName,
+      uri: paidPdfS3Key,
+    },
+    where: { invoiceId: invoice.id },
+  });
+
+  await prisma.invoiceTimeline.create({
+    data: {
+      description: "Mobile invoice PDF generated successfully",
+      invoice: { connect: { id: invoice.id } },
+    },
+  });
+
+  const refreshedInvoice = await prisma.invoice.findUnique({
+    where: { id: invoice.id },
+    include: {
+      InvoiceItems: true,
+      InvoiceTimeline: true,
+      PdfProject: true,
+      PaymentIntents: true,
+      company: true,
+      payment: true,
+      paymentApplications: true,
+      pdfInvoicePaids: true,
+      project: {
+        include: {
+          client: true,
+        },
+      },
+    },
+  });
+
+  return {
+    invoice: refreshedInvoice || invoice,
+    normalPdfBuffer,
+    normalPdfFileName,
+    paidPdfProject,
+    pdfProject,
+  };
+}
+
+function normalizeProjectInvoicePdfServices(rawServices: any[] | undefined, invoiceItems: any[]): NormalizedServiceLine[] {
+  const source = Array.isArray(rawServices) && rawServices.length ? rawServices : invoiceItems;
+
+  return source
+    .map((service, index) => {
+      const quantity = Math.max(1, Number(service.quantity || 1));
+      const unitPrice = Math.max(0, Number(service.price ?? service.unitPrice ?? 0));
+      const computedLineTotal = roundCurrency(quantity * unitPrice);
+      const lineTotal = roundCurrency(Number(service.totalAmount ?? service.total ?? service.lineTotal ?? computedLineTotal));
+
+      return {
+        catalogServiceId: service.catalogServiceId || service.id_service || undefined,
+        description: String(service.description || "").trim(),
+        lineTotal,
+        name: String(service.name || "Service").trim(),
+        pos: Number.isFinite(Number(service.pos)) ? Number(service.pos) : index,
+        quantity,
+        unitPrice,
+      };
+    })
+    .filter((service) => service.name && service.quantity > 0 && service.unitPrice >= 0 && service.lineTotal > 0)
+    .sort((a, b) => a.pos - b.pos);
+}
+
+async function sendProjectInvoiceEmailFromPdf({
+  invoice,
+  normalPdfBuffer,
+  normalPdfFileName,
+  payload,
+}: {
+  invoice: any;
+  normalPdfBuffer: Buffer;
+  normalPdfFileName: string;
+  payload: any;
+}) {
+  const project = invoice.project;
+  const client = project?.client;
+  const company = project?.company || invoice.company;
+
+  if (!project || !client || !company) return false;
+
+  return sendInvoiceEmail({
+    additionalEmails: parseEmailList(payload.multi_emails),
+    clientEmail: client.email || "",
+    clientName: client.name || "Customer",
+    company: {
+      avatar: company.avatar,
+      email: company.email,
+      id: company.id,
+      name: company.name,
+    },
+    dueDate: payload.dueDate ? normalizeDate(payload.dueDate) : invoice.dueDate || new Date(),
+    invoiceAmount: Number(invoice.totalAmount || payload.totalAmount || 0),
+    invoiceDbId: invoice.id,
+    invoiceNumber: invoice.externalInvoiceId || invoice.id,
+    pdfBuffer: normalPdfBuffer,
+    pdfFileName: normalPdfFileName,
+    projectNumber: Number(project.contract_number || 0),
+    userId: payload.userId,
+  });
+}
+
+function parseEmailList(value?: string | string[]) {
+  if (Array.isArray(value)) return normalizeEmailList(value);
+  if (!value) return [];
+  return String(value)
+    .split(/[;,]/)
+    .map((email) => email.trim())
+    .filter(Boolean);
 }
 
 function validatePayload(payload: MobileStandaloneCustomInvoicePayload) {
