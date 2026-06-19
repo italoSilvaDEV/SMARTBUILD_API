@@ -1099,8 +1099,24 @@ function buildClassicEstimateHtml(input: {
           .photo { border: 1px solid #ECE8E2; border-radius: 8px; overflow: hidden; font-size: 11px; font-weight: 700; color: #596273; }
           .photo img { width: 100%; height: 180px; object-fit: cover; display: block; }
           .photo div { padding: 9px; }
-          .signature-block { margin: 130px 48px 24px; page-break-inside: avoid; break-inside: avoid; }
+          .signature-block {
+            margin: 0 48px 24px;
+            padding-top: 130px;
+            min-height: 224px;
+            box-sizing: border-box;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            break-inside: avoid-page;
+          }
           .signature-table { width: 100%; border-collapse: collapse; table-layout: fixed; border: none; }
+          .signature-table,
+          .signature-table tbody,
+          .signature-table tr,
+          .signature-table td,
+          .signature-box {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
           .signature-table td { width: 50%; vertical-align: bottom; border: none; padding: 0; }
           .signature-table td:first-child { padding-right: 24px; }
           .signature-table td:last-child { padding-left: 24px; }
