@@ -1,4 +1,4 @@
-import { PDFDocument, PDFFont, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { findEstimateSignaturePositions } from "./pdfEstimateFindSignature";
 
 const MARGIN = 48;
@@ -7,6 +7,8 @@ const GAP_BETWEEN_COLUMNS = 24;
 const COMPANY_NAME_FONT_SIZE = 10;
 const DATE_FONT_SIZE = 8;
 const DATE_COLOR = rgb(0.5, 0.5, 0.5);
+const SIGNATURE_TOP_MARGIN = 36;
+const SIGNATURE_BOTTOM_MARGIN = 24;
 
 function getCustomerBlockLeft(pageWidth: number): number {
   const contentWidth = pageWidth - MARGIN_HORIZ;
@@ -24,6 +26,23 @@ function getPageAt(pages: ReturnType<PDFDocument["getPages"]>, pageIndex: number
 }
 
 const FALLBACK_SIGNATURE_Y = 45;
+
+function clampSignatureY(
+  page: PDFPage,
+  desiredY: number,
+  spaceAboveY: number,
+  spaceBelowY: number
+): number {
+  const { height } = page.getSize();
+  const maxY = height - SIGNATURE_TOP_MARGIN - spaceAboveY;
+  const minY = SIGNATURE_BOTTOM_MARGIN + spaceBelowY;
+
+  if (maxY < minY) {
+    return Math.max(SIGNATURE_BOTTOM_MARGIN, Math.min(desiredY, maxY));
+  }
+
+  return Math.min(Math.max(desiredY, minY), maxY);
+}
 
 function wrapTextToLines(
   font: PDFFont,
@@ -63,7 +82,7 @@ export async function addCompanySignatureToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const x = MARGIN;
-  const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
+  const y = clampSignatureY(targetPage, pos ? pos.y : FALLBACK_SIGNATURE_Y, COMPANY_NAME_FONT_SIZE + 4, 32);
 
   const font = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -114,7 +133,7 @@ export async function addCompanySignatureImageToPdfBuffer(
   if (!targetPage) return pdfBuffer;
 
   const x = MARGIN;
-  const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
+  const y = clampSignatureY(targetPage, pos ? pos.y : FALLBACK_SIGNATURE_Y, COMPANY_SIGNATURE_HEIGHT, 38);
 
   const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
   const signatureBuffer = Buffer.from(base64Data, "base64");
@@ -184,7 +203,6 @@ export async function addClientSignatureImageToPdfBuffer(
 
   const { width } = targetPage.getSize();
   const clientBlockLeft = pos ? getCustomerBlockLeft(width) : width - CLIENT_SIGNATURE_WIDTH - CLIENT_SIGNATURE_MARGIN;
-  const y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
 
   const base64Data = signatureBase64.replace(/^data:image\/[a-z]+;base64,/, "");
   const signatureBuffer = Buffer.from(base64Data, "base64");
@@ -200,13 +218,6 @@ export async function addClientSignatureImageToPdfBuffer(
   const drawWidth = CLIENT_SIGNATURE_WIDTH * scale;
   const drawHeight = CLIENT_SIGNATURE_HEIGHT * scale;
 
-  targetPage.drawImage(signatureImage, {
-    x: clientBlockLeft,
-    y,
-    width: drawWidth,
-    height: drawHeight,
-  });
-
   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const formattedDate = new Date().toLocaleString("en-US", {
     year: "numeric",
@@ -219,6 +230,20 @@ export async function addClientSignatureImageToPdfBuffer(
   });
   const signedOnText = `Signed on: ${formattedDate}`;
   const signedOnLines = wrapTextToLines(helveticaFont, signedOnText, DATE_FONT_SIZE, CLIENT_BLOCK_WIDTH);
+  const y = clampSignatureY(
+    targetPage,
+    pos ? pos.y : FALLBACK_SIGNATURE_Y,
+    drawHeight,
+    signedOnLines.length * 12 + 18
+  );
+
+  targetPage.drawImage(signatureImage, {
+    x: clientBlockLeft,
+    y,
+    width: drawWidth,
+    height: drawHeight,
+  });
+
   let lineY = y - 15;
   for (const line of signedOnLines) {
     targetPage.drawText(line, {
@@ -279,7 +304,12 @@ export async function addManualApprovalClientSignatureToPdfBuffer(
   const approvedLines = wrapTextToLines(helveticaFont, approvedText, dateSize, CLIENT_BLOCK_WIDTH);
   const disclaimerLines = wrapTextToLines(helveticaFont, disclaimerText, DISCLAIMER_FONT_SIZE, CLIENT_BLOCK_WIDTH);
 
-  let y = pos ? pos.y : FALLBACK_SIGNATURE_Y;
+  let y = clampSignatureY(
+    targetPage,
+    pos ? pos.y : FALLBACK_SIGNATURE_Y,
+    nameSize + 4,
+    nameLines.length * 14 + approvedLines.length * LINE_HEIGHT + disclaimerLines.length * LINE_HEIGHT + 6
+  );
 
   for (const line of nameLines) {
     targetPage.drawText(line, {
