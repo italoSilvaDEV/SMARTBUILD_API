@@ -5,6 +5,12 @@ import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
 type Fields = {
+    client?: {
+        email?: string
+        id?: string
+        name?: string
+        phone?: string | null
+    }
     description?: string | null
     terms?: string | null
     totalAmount?: number
@@ -12,6 +18,13 @@ type Fields = {
     date_creation?: Date
     discountType?: "fixed" | "percentage" | null
     discountValue?: number | null
+    location?: {
+        address?: string
+        lat?: string
+        lng?: string
+        radius?: string
+    }
+    workContextId?: string | null
 }
 
 const DISCOUNT_ERRORS = new Set([
@@ -30,6 +43,9 @@ export class UpdateEstimateFieldsController {
             date_creation,
             discountType,
             discountValue,
+            client,
+            location,
+            workContextId,
         } = req.body
 
         if (!estimateId) {
@@ -59,7 +75,10 @@ export class UpdateEstimateFieldsController {
                 },
                 project: {
                     select: {
+                        id: true,
                         company_id: true,
+                        client_id: true,
+                        workContextId: true,
                     }
                 }
             }
@@ -71,7 +90,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        const hasAnyField = [description, terms, totalAmount, multi_emails, date_creation, discountType, discountValue]
+        const hasAnyField = [description, terms, totalAmount, multi_emails, date_creation, discountType, discountValue, client, location, workContextId]
             .some(value => value !== undefined)
 
         if (!hasAnyField) {
@@ -111,10 +130,87 @@ export class UpdateEstimateFieldsController {
                 campos.discountValue = discountValue === null || discountValue === "" ? null : Number(discountValue)
             }
 
+            if (client !== undefined) {
+                campos.client = client
+            }
+
+            if (location !== undefined) {
+                campos.location = location
+            }
+
+            if (workContextId !== undefined) {
+                campos.workContextId = workContextId || null
+            }
+
+            const updateProjectContext = async (smartbuild: any) => {
+                if (!estimate.project?.id) return
+
+                const projectData: any = {}
+                const nextClientId = campos.client?.id || estimate.project.client_id
+                const nextWorkContextId =
+                    campos.workContextId !== undefined
+                        ? campos.workContextId
+                        : estimate.project.workContextId
+
+                if (campos.client?.id) {
+                    const existingClient = await smartbuild.client.findFirst({
+                        where: {
+                            id: campos.client.id,
+                            company_id: estimate.project.company_id,
+                        },
+                        select: { id: true }
+                    })
+
+                    if (!existingClient) {
+                        throw new Error("Client not found")
+                    }
+
+                    projectData.client_id = existingClient.id
+                }
+
+                if ((campos.client || campos.location) && !nextWorkContextId) {
+                    throw new Error("workContextId is required")
+                }
+
+                if (nextWorkContextId) {
+                    const existingWorkContext = await smartbuild.workContext.findFirst({
+                        where: {
+                            clientId: nextClientId,
+                            id: nextWorkContextId,
+                        },
+                        select: { id: true }
+                    })
+
+                    if (!existingWorkContext) {
+                        throw new Error("Work context not found for this client")
+                    }
+                }
+
+                if (campos.location) {
+                    if (campos.location.address !== undefined) projectData.location = campos.location.address
+                    if (campos.location.lat !== undefined) projectData.lat = campos.location.lat
+                    if (campos.location.lng !== undefined) projectData.log = campos.location.lng
+                    if (campos.location.radius !== undefined) projectData.radius = Number(campos.location.radius || 100)
+                }
+
+                if (campos.workContextId !== undefined) {
+                    projectData.workContextId = campos.workContextId
+                }
+
+                if (Object.keys(projectData).length > 0) {
+                    await smartbuild.project.update({
+                        where: { id: estimate.project.id },
+                        data: projectData,
+                    })
+                }
+            }
+
             let updatedEstimate: any
 
             if (estimate.serviceProjects.length > 0) {
                 updatedEstimate = await prisma.$transaction(async (smartbuild) => {
+                    await updateProjectContext(smartbuild)
+
                     await smartbuild.estimate.update({
                         where: {
                             id: estimateId
@@ -144,7 +240,10 @@ export class UpdateEstimateFieldsController {
                     discountValue: campos.discountValue !== undefined ? campos.discountValue : (estimate as any).discountValue,
                 })
 
-                updatedEstimate = await prisma.estimate.update({
+                updatedEstimate = await prisma.$transaction(async (smartbuild) => {
+                    await updateProjectContext(smartbuild)
+
+                    return smartbuild.estimate.update({
                     where: {
                         id: estimateId
                     },
@@ -160,6 +259,7 @@ export class UpdateEstimateFieldsController {
                         discountAmount: financialFields.discountAmount,
                         finalAmount: financialFields.finalAmount,
                     }
+                    })
                 })
             }
 
@@ -171,6 +271,10 @@ export class UpdateEstimateFieldsController {
             })
         } catch (error: any) {
             if (DISCOUNT_ERRORS.has(error?.message)) {
+                return res.status(400).json({ error: error.message })
+            }
+
+            if (error?.message === "workContextId is required" || error?.message === "Work context not found for this client") {
                 return res.status(400).json({ error: error.message })
             }
 

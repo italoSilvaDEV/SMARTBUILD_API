@@ -80,8 +80,8 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
   })
   : null;
 
-const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-4.1-mini";
-const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.2";
+const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5.5";
+const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.5";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 10_000);
@@ -97,7 +97,7 @@ const SMARTBUILDER_TRACE_LOGS = String(process.env.SMARTBUILDER_TRACE_LOGS || "t
 const CATALOG_GROUNDING_ENABLED = String(process.env.SMARTBUILDER_CATALOG_GROUNDING_ENABLED || "false").toLowerCase() === "true";
 const CATALOG_TOOL_ENABLED = String(process.env.SMARTBUILDER_CATALOG_TOOL_ENABLED || "true").toLowerCase() === "true";
 const CATALOG_INCLUDE_INACTIVE_FALLBACK = String(process.env.SMARTBUILDER_CATALOG_INCLUDE_INACTIVE_FALLBACK || "false").toLowerCase() === "true";
-const SERVICE_REASONING_EFFORT = process.env.SMARTBUILDER_SERVICE_REASONING_EFFORT || "low";
+const SERVICE_REASONING_EFFORT = process.env.SMARTBUILDER_REASONING_EFFORT || process.env.SMARTBUILDER_SERVICE_REASONING_EFFORT || "low";
 const DOC_REASONING_EFFORT = process.env.SMARTBUILDER_DOC_REASONING_EFFORT || "medium";
 const TEXT_VERBOSITY = process.env.SMARTBUILDER_TEXT_VERBOSITY || "medium";
 const HISTORY_LIMIT = 30;
@@ -105,68 +105,50 @@ const MAX_TEXT_ATTACHMENT_CHARS = 16_000;
 const MAX_CATALOG_SERVICES = 250;
 const MAX_PROMPT_CATALOG_SERVICES = Number(process.env.SMARTBUILDER_MAX_PROMPT_CATALOG_SERVICES || 20);
 
-const SMARTBUILDER_SYSTEM_PROMPT = `
-You are SmartBuilder AI for Pro SmartBuild estimates.
-Your only scope in this version is estimate Line Items/services.
-Always treat the currentServices passed in the latest request as the source of truth, even when prior chat history says something different.
-Return a complete proposedServices list, not a partial patch, so the user can review before applying.
-Preserve existing service ids when modifying existing services. Use null id for new services.
+function buildSmartBuilderContractPrompt() {
+  return [
+    "You are SmartBuilder AI for Pro SmartBuild estimates. V1 scope: estimate Line Items/services only.",
+    "Return a complete proposedServices list for user review; never apply changes directly.",
+    "Preserve existing service ids when modifying existing services. Use null id for new services.",
+    "",
+    "SmartBuilder Contract, in priority order:",
+    "1. The user's latest instruction is the highest priority. If it asks for a target total, cap, exact item price, description change, or exception, obey it unless impossible.",
+    "2. In edit flows, currentServices are the current truth. Do not remove, rename, reprice, or reorder existing services unless the latest instruction asks for it.",
+    "3. Use conversation history only as context; never let old messages override the latest instruction or currentServices.",
+    "4. Attached documents are strong context. When the user asks to copy/import/replicate/use a document, use the document as the baseline for structure, scope, names, quantities, and explicit prices, while still applying any latest requested changes.",
+    "5. Project, client, location, and company context help fill gaps; they do not override explicit user instructions.",
+    "6. Use construction knowledge and web_search_market_rates only as support for new/scratch pricing or missing prices. Do not use web search to override explicit document prices.",
+    "",
+    "Copy/import behavior:",
+    "- Infer the source document's commercial structure naturally: priced rows, units, rooms, phases, sections, allowances, alternates, or summary totals.",
+    "- Preserve the document's own grouping unless the latest user request asks to reorganize or adjust it.",
+    "- If the document has explicit prices and the user asks to copy/import, copy those prices exactly unless the user asks for a target total or price changes.",
+    "- If the document lacks prices, copy the structure/scope faithfully and estimate only the money fields. Add one concise warning that pricing was estimated because the document did not include explicit pricing.",
+    "- Do not add unrelated scope, generic assumptions/exclusions, code/licensing claims, hidden-damage language, or quality claims unless present in the document or requested by the user.",
+    "",
+    "Pricing behavior:",
+    "- Price for realistic average/mid-market United States construction work: not lowball, not premium padded.",
+    "- Include normal labor, materials, prep/protection, disposal, mobilization, overhead, and reasonable contractor margin.",
+    "- If the user gives an exact total, match it within $1 when possible.",
+    "- If the user says around/about/approximately, stay within 2% when possible.",
+    "- If the user says not to exceed, do not exceed the target.",
+    "- If you cannot meet a target without violating explicit scope/prices, keep the best compliant proposal and explain the variance in instructionComplianceNotes and warnings.",
+    "- Do not aggressively round prices. Use normal currency precision and realistic calculated values; avoid making every item end in 00, 50, 500, or 000.",
+    "",
+    "Writing standards:",
+    "- All service names, descriptions, notes, assistant messages, and warnings must be professional American English.",
+    "- Descriptions must be client-ready, specific, and construction-useful. Use safe simple HTML only.",
+    "- For generated/scratch services, include focused sections when useful, such as Scope of Work, Preparation, Materials, Execution, Finish/Cleanup, Quality Standards, Assumptions, and Exclusions.",
+    "- For copy/import services, format copied scope cleanly but do not expand beyond the source document unless the user asks.",
+    "",
+    "Tool discipline:",
+    "- Use at most one web_search_market_rates call, only when current US market pricing context materially helps.",
+    "- After tool results, return the required JSON. Do not call tools again.",
+    "- Do not change taxes, discounts, project status, signatures, invoices, clients, payments, schedules, or PDFs.",
+  ].join("\n");
+}
 
-Language and writing standards:
-- Always write service names, notes, assistant messages, and descriptions in professional American English.
-- Service descriptions must be specific and construction-ready, not vague. Use safe simple HTML.
-- Use complete structured descriptions with 4 to 7 useful sections when applicable, such as Scope of Work, Preparation, Materials, Execution, Finish/Cleanup, Quality Standards, Assumptions, and Exclusions.
-- Include measurable details from the user request, attachments, location, and current services whenever available.
-- Each description must be client-ready and specific enough for a contractor to understand what is included. Avoid one-line descriptions.
-- Keep descriptions focused, but do not make them generic or overly short.
-
-Pricing standards for the United States:
-- Estimate realistic average US-market labor/material pricing for the current year using your construction knowledge and web_search_market_rates when current market context is useful.
-- For new estimates from scratch, target the practical mid-market price range: not budget/low-bid, not premium/high-end, and not padded with unnecessary contingency.
-- Use web_search_market_rates to ground pricing in current United States market references when scope, location, or trade pricing could materially affect the total.
-- Do not use the company service catalog for SmartBuilder pricing in this flow.
-- Avoid premium padding, large contingency, or extra margin unless explicitly requested or clearly justified by the job conditions.
-- Avoid underpricing by ignoring labor, prep, protection, disposal, mobilization, site conditions, overhead, and normal contractor margin.
-- Do not aggressively round prices to "nice" tens, hundreds, or thousands. Values may include cents and decimals.
-- Do not make every service price a clean round number. When estimating from labor/material calculations, use realistic calculated values with normal currency cents when appropriate.
-- Avoid totals that all end in 00, 50, 500, or 000 unless copied from an attachment or directly anchored to a catalog fixed price.
-- If no explicit price exists, derive price from a clear estimating basis such as labor hours/rates, material allowances, quantity, crew size, access/difficulty, and local US market context. The result should look calculated, not guessed.
-- When a range is available, choose a realistic mid-market point based on scope/difficulty rather than the cheapest plausible value or the premium value.
-- If no web research is available, still estimate using realistic 2026 US construction assumptions and the project context. Do not mention missing web research to the client unless critical.
-- unitPrice and lineTotal are money fields. Preserve cents when supplied by a document or calculation.
-- If calculating a line total, quantity * unitPrice should be rounded only to normal currency precision, never to a visually pleasing number.
-
-Source priority:
-- If the user asks to estimate/create from scratch, use current services, provided context, attachments, construction knowledge, and controlled web search for current US market grounding.
-- If the user attaches an existing estimate, proposal, quote, bid, invoice, spreadsheet, or budget and asks to copy/import/replicate/use it, preserve the services, quantities, unit prices, and totals from the file as faithfully as possible.
-- When explicit prices exist in an attached document for an import/copy request, do not reprice from the catalog, do not replace with web search values, and do not round them.
-- If an attached document has ambiguous rows or missing values, preserve what is clear and add a warning only for the unclear critical items.
-
-Copy/import mode:
-- When the latest request is a copy/import/replicate/use-this-document request, the attachment is the source of truth for structure and scope.
-- First infer the document's real commercial structure: priced line items, units, rooms, phases, sections, alternates, allowances, or summary totals.
-- Create proposed services from the document's real service groups. If the document is organized by unit/room/phase/section, use those groups. If it is organized by itemized rows, use those rows.
-- Only create a separate service for a document-level/general/common item when the document clearly presents it as its own scope group, line item, allowance, alternate, or priced item.
-- Avoid creating derived summary services that merely repeat scope already included inside other source groups.
-- Avoid splitting one source group into multiple services just to make the estimate look more detailed.
-- Avoid merging multiple source groups into one service when the document presents them separately.
-- Do not add scope, assumptions, exclusions, code/licensing language, HVAC, structural work, hidden-damage language, or quality standards unless they appear in the source document or are explicitly requested by the user.
-- If the source document does not include explicit pricing, estimate only unitPrice/lineTotal while keeping service names and descriptions faithful to the document. Add one friendly warning that the document did not include pricing, so values were estimated.
-- If the source document includes explicit pricing, copy quantities, unit prices, and totals exactly and do not round.
-
-Web search:
-- Use web_search_market_rates for new estimates when current US-market pricing context helps calibrate labor/material/service rates.
-- Treat web_search_market_rates output as supporting US-market context, then combine it with your construction knowledge and project-specific scope.
-- Do not use web search to override explicit prices from an attached estimate/proposal/bid/quote when the user is asking to import or copy.
-
-Tool discipline:
-- Prefer answering directly when the request is clear and current services/attachments are enough.
-- At most one web market-rate search is allowed, and only when truly needed.
-- After receiving tool results, return the required JSON proposal. Do not call tools again.
-
-Do not change taxes, discounts, project status, signatures, invoices, clients, payments, schedules, or PDFs.
-Warnings should be reserved for critical missing or ambiguous information that affects the proposal. Do not add generic warnings just to justify normal estimating uncertainty.
-`;
+const SMARTBUILDER_SYSTEM_PROMPT = buildSmartBuilderContractPrompt();
 
 const smartBuilderJsonSchema = {
   type: "object",
@@ -199,8 +181,31 @@ const smartBuilderJsonSchema = {
       type: "array",
       items: { type: "string" },
     },
+    pricingIntent: {
+      type: ["string", "null"],
+      enum: ["standard", "copy_exact", "copy_with_changes", "exact_total", "approximate_total", "not_exceed", null],
+    },
+    targetTotal: { type: ["number", "null"] },
+    proposedTotal: { type: ["number", "null"] },
+    targetVariance: { type: ["number", "null"] },
+    documentPricingDetected: { type: ["boolean", "null"] },
+    instructionComplianceNotes: {
+      type: "array",
+      items: { type: "string" },
+    },
   },
-  required: ["assistantMessage", "proposedServices", "changeSummary", "warnings"],
+  required: [
+    "assistantMessage",
+    "proposedServices",
+    "changeSummary",
+    "warnings",
+    "pricingIntent",
+    "targetTotal",
+    "proposedTotal",
+    "targetVariance",
+    "documentPricingDetected",
+    "instructionComplianceNotes",
+  ],
 };
 
 function supportsReasoningControls(model: string) {
@@ -268,6 +273,125 @@ function moneyToNumber(value: any, fallback = 0) {
   return roundCurrency(decimalToNumber(value, fallback));
 }
 
+function sumServicesTotal(services: SmartBuilderService[]) {
+  return roundCurrency((Array.isArray(services) ? services : []).reduce((total, service) => {
+    const quantity = decimalToNumber(service.quantity ?? service.hours, 1) || 1;
+    const unitPrice = moneyToNumber(service.unitPrice ?? service.price, 0);
+    const lineTotal = moneyToNumber(service.lineTotal, roundCurrency(quantity * unitPrice));
+    return total + lineTotal;
+  }, 0));
+}
+
+function parseMoneyAmount(value: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const multiplier = /\bk\b/.test(normalized) ? 1_000 : /\b(m|million)\b/.test(normalized) ? 1_000_000 : 1;
+  const cleaned = normalized
+    .replace(/[$,\s]/g, "")
+    .replace(/\b(k|m|million|dollars?|usd)\b/g, "")
+    .replace(/[^\d.]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? roundCurrency(parsed * multiplier) : null;
+}
+
+function extractTargetPricingInstruction(message: string) {
+  const normalized = String(message || "").toLowerCase();
+  const moneyMatches = Array.from(normalized.matchAll(/(?:\$|usd\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:k|m|million|dollars?|usd)?/gi))
+    .map((match) => {
+      const raw = match[0];
+      const index = typeof match.index === "number" ? match.index : 0;
+      const context = normalized.slice(Math.max(0, index - 45), index + raw.length + 45);
+      const hasCurrencySignal = /[$]|\busd\b|\bdollars?\b|\bk\b|\bm\b|\bmillion\b/i.test(raw);
+      const hasTargetContext = /\b(total|budget|amount|target|not exceed|maximum|max|around|about|approximately|roughly|cost|price|valor|or[cç]amento|pre[cç]o)\b/i.test(context);
+      const parsed = parseMoneyAmount(raw);
+
+      if (parsed === null) return null;
+      if (!hasCurrencySignal && !hasTargetContext) return null;
+      if (!hasCurrencySignal && parsed >= 1900 && parsed <= 2099 && /\b(19|20)\d{2}\b/.test(raw)) return null;
+
+      return parsed;
+    })
+    .filter((value): value is number => typeof value === "number" && value > 0);
+  const targetTotal = moneyMatches.length ? moneyMatches[moneyMatches.length - 1] : null;
+
+  if (!targetTotal) {
+    return {
+      pricingIntent: "standard",
+      targetTotal: null,
+      toleranceType: null as "exact" | "approximate" | "not_exceed" | null,
+      toleranceAmount: null as number | null,
+    };
+  }
+
+  const isNotExceed = [
+    "not exceed",
+    "do not exceed",
+    "don't exceed",
+    "no more than",
+    "maximum",
+    "max ",
+    "under ",
+    "below ",
+    "up to",
+    "nao passar",
+    "não passar",
+    "maximo",
+    "máximo",
+  ].some((term) => normalized.includes(term));
+
+  const isApproximate = [
+    "around",
+    "about",
+    "approximately",
+    "approx",
+    "roughly",
+    "near",
+    "close to",
+    "cerca",
+    "aproximadamente",
+    "por volta",
+    "perto de",
+  ].some((term) => normalized.includes(term));
+
+  if (isNotExceed) {
+    return {
+      pricingIntent: "not_exceed",
+      targetTotal,
+      toleranceType: "not_exceed" as const,
+      toleranceAmount: 1,
+    };
+  }
+
+  if (isApproximate) {
+    return {
+      pricingIntent: "approximate_total",
+      targetTotal,
+      toleranceType: "approximate" as const,
+      toleranceAmount: roundCurrency(targetTotal * 0.02),
+    };
+  }
+
+  const mentionsTotalOrBudget = [
+    "total",
+    "budget",
+    "amount",
+    "price",
+    "cost",
+    "estimate",
+    "valor",
+    "orçamento",
+    "orcamento",
+    "preco",
+    "preço",
+  ].some((term) => normalized.includes(term));
+
+  return {
+    pricingIntent: mentionsTotalOrBudget ? "exact_total" : "standard",
+    targetTotal: mentionsTotalOrBudget ? targetTotal : null,
+    toleranceType: mentionsTotalOrBudget ? ("exact" as const) : null,
+    toleranceAmount: mentionsTotalOrBudget ? 1 : null,
+  };
+}
+
 function normalizeServices(services: SmartBuilderService[]) {
   return (Array.isArray(services) ? services : []).map((service) => {
     const quantity = decimalToNumber(service.quantity ?? service.hours, 1) || 1;
@@ -287,21 +411,44 @@ function normalizeServices(services: SmartBuilderService[]) {
   });
 }
 
-function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[]) {
+function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], message = "") {
+  const targetInstruction = extractTargetPricingInstruction(message);
+  const fallbackProposedServices = normalizeServices(fallbackServices);
+  const fallbackProposedTotal = sumServicesTotal(fallbackProposedServices);
   const fallback = {
     assistantMessage: "I prepared a line item proposal for review.",
-    proposedServices: normalizeServices(fallbackServices),
+    proposedServices: fallbackProposedServices,
     changeSummary: [],
     warnings: ["The AI response could not be fully parsed, so the current services were preserved."],
+    pricingIntent: targetInstruction.pricingIntent,
+    targetTotal: targetInstruction.targetTotal,
+    proposedTotal: fallbackProposedTotal,
+    targetVariance: targetInstruction.targetTotal !== null ? roundCurrency(fallbackProposedTotal - targetInstruction.targetTotal) : null,
+    documentPricingDetected: null as boolean | null,
+    instructionComplianceNotes: [] as string[],
   };
 
   if (!raw || typeof raw !== "object") return fallback;
+  const proposedServices = normalizeServices(Array.isArray(raw.proposedServices) ? raw.proposedServices : fallbackServices);
+  const proposedTotal = sumServicesTotal(proposedServices);
+  const targetTotal = typeof raw.targetTotal === "number"
+    ? roundCurrency(raw.targetTotal)
+    : targetInstruction.targetTotal;
+  const pricingIntent = typeof raw.pricingIntent === "string" && raw.pricingIntent
+    ? raw.pricingIntent
+    : targetInstruction.pricingIntent;
 
   return {
     assistantMessage: typeof raw.assistantMessage === "string" ? raw.assistantMessage : fallback.assistantMessage,
-    proposedServices: normalizeServices(Array.isArray(raw.proposedServices) ? raw.proposedServices : fallbackServices),
+    proposedServices,
     changeSummary: Array.isArray(raw.changeSummary) ? raw.changeSummary.map(String) : [],
     warnings: Array.isArray(raw.warnings) ? raw.warnings.map(String) : [],
+    pricingIntent,
+    targetTotal,
+    proposedTotal,
+    targetVariance: targetTotal !== null ? roundCurrency(proposedTotal - targetTotal) : null,
+    documentPricingDetected: typeof raw.documentPricingDetected === "boolean" ? raw.documentPricingDetected : null,
+    instructionComplianceNotes: Array.isArray(raw.instructionComplianceNotes) ? raw.instructionComplianceNotes.map(String) : [],
   };
 }
 
@@ -682,28 +829,22 @@ function buildUserPrompt(params: {
   grounding: SmartBuilderGrounding;
 }) {
   const copyImportMode = hasImportPricingIntent(params.message, params.attachments);
+  const pricingInstruction = extractTargetPricingInstruction(params.message);
   const attachmentText = params.attachments
     .filter((attachment) => attachment.extractedText)
     .map((attachment) => `Attachment ${attachment.originalName} extracted text:\n${attachment.extractedText}`)
     .join("\n\n");
-  const catalogCandidates = params.grounding.catalogCandidates;
 
   return JSON.stringify({
-    userRequest: params.message,
+    smartBuilderContractReminder: "Follow the system SmartBuilder Contract. Latest user instruction has priority over history, document defaults, and market knowledge.",
+    currentUserInstruction: buildCurrentUserInstructionBlock(params.message),
+    pricingInstruction: buildPricingInstructionBlock(pricingInstruction),
     currentServices: normalizeServices(params.currentServices),
-    estimate: params.estimateContext,
-    companyServiceCatalog: {
-      availableByTool: false,
-      toolName: "search_company_catalog_services",
-      promptInjectionEnabled: CATALOG_GROUNDING_ENABLED,
-      stats: params.grounding.catalogStats,
-      access: "Company catalog pricing is intentionally disabled for SmartBuilder AI pricing. Use construction knowledge plus web market-rate context instead.",
-      catalogCandidates: {
-        totalAvailable: catalogCandidates.totalAvailable,
-        sentToModel: 0,
-        services: [],
-      },
+    editSafety: {
+      currentServicesAreSourceOfTruth: params.currentServices.length > 0,
+      rule: "If currentServices exist, return the full final list and keep unchanged services unless the latest user instruction asks to modify/remove them.",
     },
+    estimateContext: params.estimateContext,
     marketResearch: {
       enabled: WEB_SEARCH_ENABLED,
       allowedByToolForRequest: params.grounding.allowWebSearch,
@@ -711,108 +852,65 @@ function buildUserPrompt(params: {
       used: params.grounding.webResearch.used,
       skippedReason: params.grounding.webResearch.skippedReason || null,
       summary: params.grounding.webResearch.summary || null,
-      rule: "Use web market-rate context only as support. It must not override explicit attachment prices, current service prices, or matching company catalog anchors.",
+      rule: "Use web market-rate context only as support for missing or scratch pricing. Never override explicit document prices unless the latest user instruction asks for a target/price change.",
     },
+    documentContext: buildDocumentContextInstructions({
+      copyImportMode,
+      attachments: params.attachments,
+      extractedAttachmentText: attachmentText || null,
+    }),
+    responseInstruction: {
+      format: "Return only the JSON object requested by the schema.",
+      metadata: "Fill pricingIntent, targetTotal, proposedTotal, targetVariance, documentPricingDetected, and instructionComplianceNotes honestly for auditing.",
+      warnings: "Warnings should be useful and specific, not generic estimating disclaimers.",
+    },
+  });
+}
+
+function buildCurrentUserInstructionBlock(message: string) {
+  return {
+    raw: message,
+    priority: "highest",
+    rule: "Obey this instruction even if history or document defaults suggest something else, unless it conflicts with immutable explicit prices/scope that the user did not ask to change.",
+  };
+}
+
+function buildPricingInstructionBlock(instruction: ReturnType<typeof extractTargetPricingInstruction>) {
+  return {
+    pricingIntent: instruction.pricingIntent,
+    targetTotal: instruction.targetTotal,
+    toleranceType: instruction.toleranceType,
+    toleranceAmount: instruction.toleranceAmount,
+    rules: {
+      exact: "If pricingIntent is exact_total, match targetTotal within $1 when possible.",
+      approximate: "If pricingIntent is approximate_total, stay within 2% when possible.",
+      notExceed: "If pricingIntent is not_exceed, proposedTotal must not exceed targetTotal.",
+      explainVariance: "If the target cannot be met without violating the user's scope or explicit document prices, explain the variance in instructionComplianceNotes and warnings.",
+    },
+  };
+}
+
+function buildDocumentContextInstructions(params: {
+  copyImportMode: boolean;
+  attachments: SmartBuilderAttachment[];
+  extractedAttachmentText: string | null;
+}) {
+  return {
+    hasAttachments: params.attachments.length > 0,
+    copyImportRequested: params.copyImportMode,
     attachmentMetadata: params.attachments.map((attachment) => ({
       fileName: attachment.originalName,
       mimeType: attachment.mimeType || null,
       size: attachment.size || null,
       hasExtractedText: Boolean(attachment.extractedText),
     })),
-    extractedAttachmentText: attachmentText || null,
-    copyImportMode: {
-      active: copyImportMode,
-      sourceOfTruth: copyImportMode ? "attachedDocumentStructureAndScope" : "userRequestAndEstimateContext",
-      preserveDocumentStructure: copyImportMode,
-      preserveDocumentScopeOnly: copyImportMode,
-      doNotReorganizeDocument: copyImportMode,
-      doNotInventScope: copyImportMode,
-      ifOrganizedByUnit: "Return one proposed service per unit unless the document itself has explicit separate priced line items.",
-      ifDocumentHasNoExplicitPricing: "Copy names/descriptions/scope faithfully from the document and estimate only unitPrice/lineTotal. Add exactly one friendly warning that prices were estimated because the document did not include pricing.",
-      ifDocumentHasExplicitPricing: "Copy names, quantities, unit prices, and totals exactly. Do not use catalog, web, or rounding to change them.",
-      forbiddenAdditionsUnlessPresentInDocument: [
-        "generic assumptions",
-        "generic exclusions",
-        "local building code claims",
-        "licensed trade claims",
-        "HVAC scope",
-        "structural work",
-        "hidden damage assumptions",
-        "quality standards not stated by the document",
-      ],
-    },
-    operatingModeRules: {
-      importOrCopyAttachedEstimate: {
-        triggerExamples: [
-          "copy this estimate",
-          "import this proposal",
-          "replicate this bid",
-          "use this PDF",
-          "copy the PDF",
-          "convert this PDF into services",
-          "use the same prices",
-          "transform this quote into services",
-          "copiar esse orcamento",
-          "usar os valores do arquivo",
-        ],
-        rule: "When this applies, preserve the attachment's structure, service names, quantities, unit prices, totals, and scope as faithfully as possible. If the attachment has no explicit prices, preserve structure/scope and estimate prices only.",
-      },
-      estimateFromScratch: {
-        rule: "When no explicit imported pricing is requested, estimate realistic mid-market pricing for the United States using current services, project context, construction knowledge, and web market-rate grounding when available.",
-        fallbackRule: "If web research is not available, generate a realistic average US-market estimate from the request, location, labor/material assumptions, access, prep, disposal, overhead, and normal contractor margin.",
-      },
-    },
-    descriptionRequirements: {
-      language: "American English",
-      html: "Use simple safe HTML only, such as paragraphs, strong labels, and unordered lists.",
-      detailLevel: "Professional, specific, and complete enough for a client-facing construction estimate. Do not return short generic descriptions.",
-      includeWhenApplicable: [
-        "Scope of Work",
-        "Preparation",
-        "Materials",
-        "Execution",
-        "Finish and cleanup",
-        "Quality standards",
-        "Assumptions",
-        "Exclusions",
-      ],
-      copyImportOverride: copyImportMode
-        ? "Do not expand descriptions beyond the source document. Format the copied scope cleanly in HTML, but only include sections/details that are present or clearly implied by the document."
-        : null,
-      minimumQuality: [
-        "Mention what will be performed for this specific service",
-        "Mention preparation/protection steps when relevant",
-        "Mention materials/equipment or allowances when relevant",
-        "Mention finish, cleanup, and quality expectations when relevant",
-        "Mention exclusions or assumptions when scope could be misunderstood",
-      ],
-      avoid: ["generic one-line descriptions", "vague language", "Portuguese service names or descriptions"],
-    },
-    pricingRequirements: {
-      market: "United States",
-      priority: [
-        "Explicit attached estimate/proposal/bid prices when user asks to copy/import",
-        "Current estimate service prices if user is editing existing work",
-        "Bounded web market research for current United States labor/material/service pricing",
-        "Model construction knowledge calibrated to realistic average 2026 US market pricing",
-      ],
-      preserveDecimals: true,
-      allowCents: true,
-      maxCurrencyDecimals: 2,
-      avoidAggressiveRounding: true,
-      targetMarketPosition: "Aim for average/mid-market pricing. Avoid lowballing and avoid premium overpricing.",
-      avoidInflation: "Do not add premium padding, high contingency, or extra markup without clear evidence or user instruction.",
-      avoidUnderpricing: "Do not omit normal labor, materials, prep/protection, disposal, mobilization, overhead, and contractor margin.",
-      priceQualityCheck: "For scratch estimates, avoid making every unitPrice and lineTotal a clean rounded number. Use calculated-looking values based on realistic mid-market labor/material assumptions.",
-    },
-    webSearchPolicy: {
-      enabled: WEB_SEARCH_ENABLED,
-      researchAlreadyPreparedByBackend: params.grounding.webResearch.used,
-      userLocationCountry: "US",
-      neverOverrideExplicitAttachmentPrices: true,
-    },
-    responseInstruction: "Return only the JSON object requested by the schema.",
-  });
+    extractedAttachmentText: params.extractedAttachmentText,
+    rule: params.copyImportMode
+      ? "Use the document as baseline for structure/scope/prices, but still apply the latest user's requested changes such as target total, item edits, or description changes."
+      : "Use attachments as supporting context unless the latest user instruction asks to copy/import/replicate/use them.",
+    explicitPricingRule: "If explicit prices are detected in a copy/import document, preserve them exactly unless the latest user instruction asks to change pricing or target total.",
+    missingPricingRule: "If copy/import document has no explicit prices, preserve structure/scope and estimate only prices. Add one concise warning.",
+  };
 }
 
 function buildSmartBuilderResponseRequest(model: string, input: any[], options: {
@@ -948,10 +1046,22 @@ function hasImportPricingIntent(message: string, attachments: SmartBuilderAttach
     "same prices",
     "use the values",
     "use these values",
-    "quote",
-    "proposal",
-    "bid",
-    "estimate",
+    "copy this quote",
+    "copy this proposal",
+    "copy this bid",
+    "copy this estimate",
+    "import this quote",
+    "import this proposal",
+    "import this bid",
+    "import this estimate",
+    "use this quote",
+    "use this proposal",
+    "use this bid",
+    "use this estimate",
+    "replicate this quote",
+    "replicate this proposal",
+    "replicate this bid",
+    "replicate this estimate",
     "orcamento",
     "orçamento",
     "proposta",
@@ -1918,6 +2028,7 @@ async function createFileContextAgentResponse(params: {
       "IMPORTANT_COPY_NOTES: explain which source groups should become services and why. Mention any document-level/common/general groups only if the document presents them as distinct scope, allowance, alternate, or priced line item.",
       "If the file is existing estimate/proposal/bid/quote, preserve original names, values, quantities, totals, section titles, and unit labels exactly in the report.",
       "If pricing is absent, say DOCUMENT_HAS_EXPLICIT_PRICING: false and do not invent pricing in this file-context report.",
+      "If the user's current request asks to copy/import and also adjust totals, wording, services, or values, extract the source facts without deciding the final adjustment.",
       "Do not add assumptions, exclusions, code/licensing language, HVAC, hidden damage, structural scope, or quality standards unless the document explicitly says them.",
       "Keep output concise and under the configured token budget.",
     ].join("\n"),
@@ -1991,11 +2102,12 @@ async function createStructuredEstimateResponse(params: {
             type: "input_text",
             text: [
               "Document context extracted by fileContextAgent. Use this as attachment context for the final service proposal.",
-              "If the user asks to copy/import/replicate/use this document, the document context is the source of truth for service structure and scope.",
+              "If the user asks to copy/import/replicate/use this document, the document context is the baseline for service structure and scope.",
+              "The latest user instruction still has priority. If the user asked to copy/import and also adjust pricing, total, descriptions, or scope, preserve the document baseline while applying those requested changes.",
               "For copy/import mode, follow SOURCE_STRUCTURE and IMPORTANT_COPY_NOTES. Convert the document's real commercial groups into services: priced rows, units, rooms, phases, sections, allowances, alternates, or distinct general/common groups.",
               "Only create a separate document-level/general/common service when the document presents it as a distinct scope group, allowance, alternate, or priced line item. Avoid derived summary services that duplicate scope already inside other services.",
               "If DOCUMENT_HAS_EXPLICIT_PRICING is false, keep the copied service names/descriptions faithful to SCOPE_BY_UNIT_OR_SECTION and estimate only the money fields. Add one warning that pricing was estimated because the document did not include explicit prices.",
-              "If DOCUMENT_HAS_EXPLICIT_PRICING is true, copy quantities, unit prices, and totals exactly from LINE_ITEMS/PRICES_FOUND. Do not reprice or round.",
+              "If DOCUMENT_HAS_EXPLICIT_PRICING is true, copy quantities, unit prices, and totals exactly from LINE_ITEMS/PRICES_FOUND unless the latest user instruction explicitly asks to change pricing or match a target total.",
               "Do not add scope that is absent from the document context.",
               fileContextText || "No readable document context was extracted.",
             ].join("\n\n"),
@@ -2040,6 +2152,294 @@ async function createStructuredEstimateResponse(params: {
     allowWebSearch: params.allowWebSearch,
     traceId: params.traceId,
   });
+}
+
+function hasRemovalInstruction(message: string) {
+  const normalized = String(message || "").toLowerCase();
+  return [
+    "remove",
+    "delete",
+    "drop",
+    "exclude",
+    "take out",
+    "get rid",
+    "remover",
+    "deletar",
+    "tirar",
+    "excluir",
+  ].some((term) => normalized.includes(term));
+}
+
+function hasExplicitPriceChangeInstruction(message: string) {
+  const normalized = String(message || "").toLowerCase();
+  return [
+    "target",
+    "total",
+    "budget",
+    "price",
+    "cost",
+    "amount",
+    "adjust",
+    "change",
+    "set",
+    "not exceed",
+    "valor",
+    "preco",
+    "preço",
+    "orçamento",
+    "orcamento",
+    "alterar",
+    "ajustar",
+  ].some((term) => normalized.includes(term));
+}
+
+function hasLikelyNonEnglishText(value: string) {
+  const normalized = String(value || "").toLowerCase();
+  return /[ãõçáéíóúâêôà]/i.test(normalized)
+    || /\b(servi[cç]o|m[aã]o de obra|or[cç]amento|projeto|paredes|pintura|instala[cç][aã]o|remo[cç][aã]o|limpeza|acabamento)\b/i.test(normalized);
+}
+
+function looksLikeDerivedCopyImportSummary(service: SmartBuilderService) {
+  const text = `${service.name || ""} ${service.description || ""}`.toLowerCase();
+  return [
+    "applied to all units",
+    "standard finishes applied",
+    "general finishes applied",
+    "common scope applied",
+    "all units standard",
+    "overall standard",
+  ].some((term) => text.includes(term));
+}
+
+function validateSmartBuilderProposal(params: {
+  parsed: ReturnType<typeof normalizeAiResponse>;
+  currentServices: SmartBuilderService[];
+  message: string;
+  attachments: SmartBuilderAttachment[];
+  importPricingIntent: boolean;
+}) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const proposedServices = params.parsed.proposedServices || [];
+  const targetInstruction = extractTargetPricingInstruction(params.message);
+  const targetTotal = params.parsed.targetTotal ?? targetInstruction.targetTotal;
+  const pricingIntent = params.parsed.pricingIntent || targetInstruction.pricingIntent;
+  const proposedTotal = sumServicesTotal(proposedServices);
+
+  if (!proposedServices.length) {
+    errors.push("The proposal must include at least one service.");
+  }
+
+  proposedServices.forEach((service, index) => {
+    const quantity = decimalToNumber(service.quantity, 1) || 1;
+    const unitPrice = moneyToNumber(service.unitPrice, 0);
+    const expectedLineTotal = roundCurrency(quantity * unitPrice);
+    const actualLineTotal = moneyToNumber(service.lineTotal, expectedLineTotal);
+
+    if (Math.abs(actualLineTotal - expectedLineTotal) > 1) {
+      errors.push(`Service ${index + 1} lineTotal must match quantity * unitPrice within normal currency rounding.`);
+    }
+
+    if (hasLikelyNonEnglishText(`${service.name || ""} ${service.description || ""} ${service.notes || ""}`)) {
+      errors.push(`Service ${index + 1} appears to contain non-English wording. All proposal text must be American English.`);
+    }
+  });
+
+  if (
+    params.currentServices.length > 0
+    && proposedServices.length < params.currentServices.length
+    && !hasRemovalInstruction(params.message)
+  ) {
+    errors.push("The proposal removed existing services even though the user did not ask to remove services.");
+  }
+
+  if (params.importPricingIntent && params.attachments.length > 0) {
+    if (proposedServices.some(looksLikeDerivedCopyImportSummary)) {
+      errors.push("The copy/import proposal appears to add a derived all-units/general summary service that may duplicate source-document scope.");
+    }
+
+    if (params.parsed.documentPricingDetected && !hasExplicitPriceChangeInstruction(params.message)) {
+      warnings.push("Document pricing was detected; explicit document values should be preserved unless the user requested pricing changes.");
+    }
+  }
+
+  if (targetTotal !== null && Number.isFinite(Number(targetTotal))) {
+    const numericTarget = Number(targetTotal);
+    const variance = roundCurrency(proposedTotal - numericTarget);
+
+    if (pricingIntent === "not_exceed" && proposedTotal > numericTarget + 1) {
+      errors.push(`The proposal total ${proposedTotal} exceeds the user's not-to-exceed target ${numericTarget}.`);
+    }
+
+    if (pricingIntent === "exact_total" && Math.abs(variance) > 1) {
+      errors.push(`The proposal total ${proposedTotal} does not match the user's exact target ${numericTarget} within $1.`);
+    }
+
+    if (pricingIntent === "approximate_total") {
+      const tolerance = roundCurrency(numericTarget * 0.02);
+      if (Math.abs(variance) > tolerance) {
+        errors.push(`The proposal total ${proposedTotal} is outside the 2% tolerance for the user's approximate target ${numericTarget}.`);
+      }
+    }
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+    proposedTotal,
+    targetTotal,
+    pricingIntent,
+  };
+}
+
+async function repairSmartBuilderProposalIfNeeded(params: {
+  parsed: ReturnType<typeof normalizeAiResponse>;
+  currentServices: SmartBuilderService[];
+  message: string;
+  attachments: SmartBuilderAttachment[];
+  importPricingIntent: boolean;
+  hasDocumentAttachment: boolean;
+  companyId?: string | null;
+  traceId?: string;
+}) {
+  const validation = validateSmartBuilderProposal({
+    parsed: params.parsed,
+    currentServices: params.currentServices,
+    message: params.message,
+    attachments: params.attachments,
+    importPricingIntent: params.importPricingIntent,
+  });
+
+  if (validation.passed) {
+    return {
+      parsed: {
+        ...params.parsed,
+        proposedTotal: validation.proposedTotal,
+        targetTotal: validation.targetTotal ?? params.parsed.targetTotal,
+        targetVariance: validation.targetTotal !== null && validation.targetTotal !== undefined
+          ? roundCurrency(validation.proposedTotal - Number(validation.targetTotal))
+          : params.parsed.targetVariance,
+        warnings: [...params.parsed.warnings, ...validation.warnings],
+      },
+      validation,
+      repaired: false,
+    };
+  }
+
+  if (!openai) {
+    return {
+      parsed: {
+        ...params.parsed,
+        warnings: [...params.parsed.warnings, ...validation.warnings],
+      },
+      validation,
+      repaired: false,
+    };
+  }
+
+  logSmartBuilderTrace(params.traceId, "proposal.validation.failed", {
+    errors: validation.errors,
+    warnings: validation.warnings,
+    proposedTotal: validation.proposedTotal,
+    targetTotal: validation.targetTotal,
+    pricingIntent: validation.pricingIntent,
+  }, "warn");
+
+  const repairInput = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: JSON.stringify({
+            task: "Repair this SmartBuilder proposal JSON. Return the full corrected JSON only.",
+            latestUserInstruction: params.message,
+            validationErrors: validation.errors,
+            validationWarnings: validation.warnings,
+            targetPricingInstruction: extractTargetPricingInstruction(params.message),
+            currentServices: normalizeServices(params.currentServices),
+            importPricingIntent: params.importPricingIntent,
+            hasDocumentAttachment: params.hasDocumentAttachment,
+            repairRules: [
+              "Fix every validation error.",
+              "Do not remove existing services unless the latest user instruction asks for removal.",
+              "Keep all text in professional American English.",
+              "If copy/import is active, preserve source structure/scope and explicit prices unless the latest user instruction asks for price changes.",
+              "If a target total exists, adjust service prices proportionally or intelligently so the proposedTotal satisfies the tolerance.",
+              "Keep descriptions detailed and safe HTML.",
+              "Return the same schema fields, including metadata fields.",
+            ],
+            previousProposal: params.parsed,
+          }),
+        },
+      ],
+    },
+  ];
+
+  try {
+    const repairResponse = await createOpenAiResponseWithTransientRetry(
+      {
+        ...buildSmartBuilderResponseRequest(SERVICE_MODEL, repairInput, {
+          tools: [],
+          toolChoice: "none",
+          useReasoning: false,
+          enableVerbosity: false,
+          maxOutputTokens: Math.min(OPENAI_MAX_OUTPUT_TOKENS, 3600),
+        }),
+      },
+      OPENAI_RETRY_TIMEOUT_MS,
+      "repair",
+      0,
+      params.traceId
+    );
+    const repaired = normalizeAiResponse(safeParseAiJson(getResponseText(repairResponse)), params.currentServices, params.message);
+    const repairedValidation = validateSmartBuilderProposal({
+      parsed: repaired,
+      currentServices: params.currentServices,
+      message: params.message,
+      attachments: params.attachments,
+      importPricingIntent: params.importPricingIntent,
+    });
+
+    logSmartBuilderTrace(params.traceId, "proposal.repair.completed", {
+      responseId: repairResponse?.id || null,
+      passed: repairedValidation.passed,
+      errors: repairedValidation.errors,
+      warnings: repairedValidation.warnings,
+      proposedTotal: repairedValidation.proposedTotal,
+      targetTotal: repairedValidation.targetTotal,
+    });
+
+    if (repairedValidation.passed || repairedValidation.errors.length <= validation.errors.length) {
+      return {
+        parsed: {
+          ...repaired,
+          proposedTotal: repairedValidation.proposedTotal,
+          targetTotal: repairedValidation.targetTotal ?? repaired.targetTotal,
+          targetVariance: repairedValidation.targetTotal !== null && repairedValidation.targetTotal !== undefined
+            ? roundCurrency(repairedValidation.proposedTotal - Number(repairedValidation.targetTotal))
+            : repaired.targetVariance,
+          warnings: [...repaired.warnings, ...repairedValidation.warnings],
+        },
+        validation: repairedValidation,
+        repaired: true,
+      };
+    }
+  } catch (error) {
+    logSmartBuilderTrace(params.traceId, "proposal.repair.failed", {
+      error: summarizeSmartBuilderError(error),
+    }, "warn");
+  }
+
+  return {
+    parsed: {
+      ...params.parsed,
+      warnings: [...params.parsed.warnings, ...validation.warnings],
+    },
+    validation,
+    repaired: false,
+  };
 }
 
 function serializeSession(session: any) {
@@ -2235,7 +2635,18 @@ export class SmartBuilderEstimateController {
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
 
       const rawText = getResponseText(response);
-      const parsed = normalizeAiResponse(safeParseAiJson(rawText), currentServices);
+      const initialParsed = normalizeAiResponse(safeParseAiJson(rawText), currentServices, message);
+      const proposalResult = await repairSmartBuilderProposalIfNeeded({
+        parsed: initialParsed,
+        currentServices,
+        message,
+        attachments: prepared.attachments,
+        importPricingIntent: grounding.importPricingIntent,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
+        companyId: estimate.project.company_id,
+        traceId,
+      });
+      const parsed = proposalResult.parsed;
 
       const assistantMessage = await prisma.estimateAiMessage.create({
         data: {
@@ -2259,6 +2670,9 @@ export class SmartBuilderEstimateController {
             webSearchAllowedForLastRequest: grounding.allowWebSearch,
             webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
             catalogSearchUsedForLastRequest: false,
+            lastProposalValidationPassed: proposalResult.validation.passed,
+            lastProposalRepaired: proposalResult.repaired,
+            lastProposalValidationErrors: proposalResult.validation.errors,
           },
         },
       });
@@ -2270,6 +2684,12 @@ export class SmartBuilderEstimateController {
           proposedServices: parsed.proposedServices,
           changeSummary: parsed.changeSummary,
           warnings: parsed.warnings,
+          pricingIntent: parsed.pricingIntent,
+          targetTotal: parsed.targetTotal,
+          proposedTotal: parsed.proposedTotal,
+          targetVariance: parsed.targetVariance,
+          documentPricingDetected: parsed.documentPricingDetected,
+          instructionComplianceNotes: parsed.instructionComplianceNotes,
           session: {
             id: session.id,
             messages: [
@@ -2385,7 +2805,18 @@ export class SmartBuilderEstimateController {
       });
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
 
-      const parsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices);
+      const initialParsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices, message);
+      const proposalResult = await repairSmartBuilderProposalIfNeeded({
+        parsed: initialParsed,
+        currentServices,
+        message,
+        attachments: prepared.attachments,
+        importPricingIntent: grounding.importPricingIntent,
+        hasDocumentAttachment: prepared.hasDocumentAttachment,
+        companyId,
+        traceId,
+      });
+      const parsed = proposalResult.parsed;
       const now = new Date().toISOString();
       const nextSession: DraftSessionPayload = {
         metadata: {
@@ -2398,6 +2829,9 @@ export class SmartBuilderEstimateController {
           webSearchAllowedForLastRequest: grounding.allowWebSearch,
           webSearchUsedForLastRequest: Boolean(toolUsage.webSearchUsed || grounding.webResearch.used),
           catalogSearchUsedForLastRequest: false,
+          lastProposalValidationPassed: proposalResult.validation.passed,
+          lastProposalRepaired: proposalResult.repaired,
+          lastProposalValidationErrors: proposalResult.validation.errors,
         },
         attachments: [...(draftSession.attachments || []), ...prepared.attachments],
         messages: [
@@ -2426,6 +2860,12 @@ export class SmartBuilderEstimateController {
           proposedServices: parsed.proposedServices,
           changeSummary: parsed.changeSummary,
           warnings: parsed.warnings,
+          pricingIntent: parsed.pricingIntent,
+          targetTotal: parsed.targetTotal,
+          proposedTotal: parsed.proposedTotal,
+          targetVariance: parsed.targetVariance,
+          documentPricingDetected: parsed.documentPricingDetected,
+          instructionComplianceNotes: parsed.instructionComplianceNotes,
           draftSession: nextSession,
         },
       });

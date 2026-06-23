@@ -644,6 +644,7 @@ export class ProjectController {
 
         include: {
           client: true,
+          workContext: true,
 
           serviceProject: {
             include: {

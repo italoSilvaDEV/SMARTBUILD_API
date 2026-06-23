@@ -12,6 +12,11 @@ import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { prisma } from "../../utils/prisma";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
+import {
+  buildEstimateFinancialFields,
+  distributeEstimateDiscountAcrossServices,
+  type EstimateDiscountType,
+} from "../../utils/estimateDiscount";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
@@ -22,12 +27,15 @@ type MobileManualEstimatePayload = {
   estimateNumber: string;
   dateCreation: string;
   templateNumber: 1;
+  discountType?: EstimateDiscountType;
+  discountValue?: number | null;
   client: {
     id?: string;
     name: string;
     email: string;
     phone?: string | null;
   };
+  multi_emails?: string;
   workContextId?: string;
   location: {
     address: string;
@@ -35,6 +43,7 @@ type MobileManualEstimatePayload = {
     lng: string;
     radius: string;
   };
+  projectId?: string;
   terms: string;
   services: Array<{
     catalogServiceId?: string;
@@ -52,6 +61,11 @@ type MobileManualEstimatePayload = {
     filename: string;
   }>;
 };
+
+const DISCOUNT_ERRORS = new Set([
+  "Percentage discount cannot be greater than 100",
+  "Fixed discount cannot be greater than estimate subtotal",
+]);
 
 export class MobileManualEstimateController {
   async handle(req: Request, res: Response) {
@@ -86,10 +100,26 @@ export class MobileManualEstimateController {
       if (!company) return res.status(404).json({ error: "Company not found" });
       if (!seller) return res.status(404).json({ error: "Seller not found" });
 
-      const verifiedEstimateNumber = await getVerifiedEstimateNumber(
-        payload.companyId,
-        payload.estimateNumber,
-      );
+      const existingProject = payload.projectId
+        ? await prisma.project.findFirst({
+            where: {
+              company_id: payload.companyId,
+              id: payload.projectId,
+            },
+            select: {
+              client_id: true,
+              id: true,
+            },
+          })
+        : null;
+
+      if (payload.projectId && !existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const verifiedEstimateNumber = payload.projectId
+        ? await getVerifiedProjectEstimateNumber(payload.projectId, payload.estimateNumber)
+        : await getVerifiedEstimateNumber(payload.companyId, payload.estimateNumber);
 
       const normalizedServices = payload.services.map((service, index) => ({
         catalogServiceId: service.catalogServiceId || null,
@@ -101,9 +131,31 @@ export class MobileManualEstimateController {
         unitPrice: roundMoney(Number(service.unitPrice)),
       }));
 
-      const totalAmount = roundMoney(
+      const subtotalAmount = roundMoney(
         normalizedServices.reduce((total, service) => total + service.lineTotal, 0),
       );
+      const distributedEstimate = distributeEstimateDiscountAcrossServices({
+        services: normalizedServices,
+        discountType: payload.discountType,
+        discountValue: payload.discountValue,
+        amountPaid: 0,
+      });
+      const financialFields = buildEstimateFinancialFields({
+        subtotal: subtotalAmount,
+        amountPaid: 0,
+        discountType: payload.discountType,
+        discountValue: payload.discountValue,
+      });
+      const totalAmount = roundMoney(Number(financialFields.totalAmount));
+      const pdfServices = normalizedServices.map((service) => ({
+        description: service.description,
+        lineTotal: roundMoney(Number(service.lineTotal)),
+        name: service.name,
+        originalLineTotal: roundMoney(Number(service.lineTotal)),
+        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        quantity: service.quantity,
+        unitPrice: roundMoney(Number(service.unitPrice)),
+      }));
 
       const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
       const html = buildClassicEstimateHtml({
@@ -117,8 +169,12 @@ export class MobileManualEstimateController {
         location: payload.location,
         photos: payload.standalonePhotos || [],
         seller,
-        services: normalizedServices,
+        services: pdfServices,
         terms: payload.terms,
+        discountAmount: Number(financialFields.discountAmount || 0),
+        discountType: financialFields.discountType,
+        discountValue: financialFields.discountValue,
+        subtotalAmount,
         totalAmount,
       });
 
@@ -169,22 +225,50 @@ export class MobileManualEstimateController {
           });
         }
 
-        const project = await tx.project.create({
-          data: {
-            balanceDue: totalAmount,
-            client_id: client.id,
-            company_id: payload.companyId,
-            contract_number: Number(verifiedEstimateNumber),
-            lat: payload.location.lat,
-            location: payload.location.address,
-            log: payload.location.lng,
-            price: totalAmount,
-            radius: Number(payload.location.radius || 100),
-            seller_user_id: payload.sellerUserId,
-            status_project: "Pending",
-            workContextId: payload.workContextId || null,
+        const workContext = await tx.workContext.findFirst({
+          where: {
+            clientId: client.id,
+            id: payload.workContextId,
           },
+          select: { id: true },
         });
+
+        if (!workContext) {
+          throw new Error("Work context not found for this client");
+        }
+
+        const project = existingProject
+          ? existingProject
+          : await tx.project.create({
+              data: {
+                balanceDue: Number(financialFields.balanceDue),
+                client_id: client.id,
+                company_id: payload.companyId,
+                contract_number: Number(verifiedEstimateNumber),
+                lat: payload.location.lat,
+                location: payload.location.address,
+                log: payload.location.lng,
+                price: totalAmount,
+                radius: Number(payload.location.radius || 100),
+                seller_user_id: payload.sellerUserId,
+                status_project: "Pending",
+                workContextId: payload.workContextId || null,
+              },
+            });
+
+        if (existingProject) {
+          await tx.project.update({
+            where: { id: existingProject.id },
+            data: {
+              client_id: client.id,
+              lat: payload.location.lat,
+              location: payload.location.address,
+              log: payload.location.lng,
+              radius: Number(payload.location.radius || 100),
+              workContextId: payload.workContextId || null,
+            },
+          });
+        }
 
         const pdfProject = await tx.pdfProject.create({
           data: {
@@ -199,16 +283,20 @@ export class MobileManualEstimateController {
         const estimate = await tx.estimate.create({
           data: {
             amountPaid: 0,
-            balanceDue: totalAmount,
+            balanceDue: Number(financialFields.balanceDue),
             date_creation: payload.dateCreation ? new Date(payload.dateCreation) : new Date(),
             description: "",
-            finalAmount: totalAmount,
-            multi_emails: "",
+            discountAmount: financialFields.discountAmount,
+            discountType: financialFields.discountType,
+            discountValue: financialFields.discountValue,
+            finalAmount: financialFields.finalAmount,
+            multi_emails: payload.multi_emails || "",
             number: verifiedEstimateNumber,
             status: "pending",
             terms: payload.terms,
             totalAmount,
-            type_estimate: "estimate",
+            type_estimate: existingProject ? "estimateProject" : "estimate",
+            assignatureRequired: Boolean(existingProject),
             project: {
               connect: { id: project.id },
             },
@@ -223,21 +311,21 @@ export class MobileManualEstimateController {
         });
 
         await Promise.all(
-          normalizedServices.map((service) =>
+          distributedEstimate.services.map((service) =>
             tx.estimateServiceProject.create({
               data: {
                 description: service.description,
                 estimateId: estimate.id,
                 hours: service.quantity,
                 id_service: service.catalogServiceId,
-                lineTotal: service.lineTotal,
+                lineTotal: service.discountedLineTotal,
                 name: service.name,
-                originalLineTotal: service.lineTotal,
-                originalUnitPrice: service.unitPrice,
+                originalLineTotal: service.originalLineTotal,
+                originalUnitPrice: service.originalUnitPrice,
                 pos: service.pos,
-                price: service.unitPrice,
+                price: service.discountedUnitPrice,
                 quantity: service.quantity,
-                unitPrice: service.unitPrice,
+                unitPrice: service.discountedUnitPrice,
               },
             }),
           ),
@@ -270,17 +358,20 @@ export class MobileManualEstimateController {
 
       let emailSent = false;
       if (payload.action === "createAndSend") {
-        await sendEstimateEmail({
-          clientEmail: payload.client.email,
-          clientName: payload.client.name,
-          company,
-          estimateId: result.estimate.id,
-          estimateNumber: verifiedEstimateNumber,
-          location: payload.location.address,
-          pdfBuffer: signedPdfBuffer,
-          pdfFileName,
-          totalAmount,
-        });
+        const recipients = normalizeEmailList(`${payload.client.email},${payload.multi_emails || ""}`);
+        for (const recipient of recipients) {
+          await sendEstimateEmail({
+            clientEmail: recipient,
+            clientName: payload.client.name,
+            company,
+            estimateId: result.estimate.id,
+            estimateNumber: verifiedEstimateNumber,
+            location: payload.location.address,
+            pdfBuffer: signedPdfBuffer,
+            pdfFileName,
+            totalAmount,
+          });
+        }
         emailSent = true;
       }
 
@@ -295,6 +386,240 @@ export class MobileManualEstimateController {
       });
     } catch (error) {
       console.error("[MobileManualEstimateController] Error creating manual estimate:", error);
+      if (error instanceof Error && DISCOUNT_ERRORS.has(error.message)) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error instanceof Error && error.message === "Work context not found for this client") {
+        return res.status(400).json({ error: error.message });
+      }
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return res.status(500).json({ error: message });
+    }
+  }
+
+  async regeneratePdf(req: Request, res: Response) {
+    const { estimateId } = req.params;
+
+    if (!estimateId) {
+      return res.status(400).json({ error: "Estimate ID is required" });
+    }
+
+    try {
+      const estimate = await prisma.estimate.findUnique({
+        where: { id: estimateId },
+        include: {
+          imagesAttachments: {
+            orderBy: { date_creation: "asc" },
+            select: {
+              id: true,
+              original_filename: true,
+              title: true,
+              url: true,
+            },
+          },
+          PdfProject: {
+            orderBy: { date_creation: "desc" },
+            take: 1,
+          },
+          project: {
+            include: {
+              client: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                },
+              },
+              company: {
+                select: {
+                  address: true,
+                  avatar: true,
+                  email: true,
+                  id: true,
+                  name: true,
+                  phone: true,
+                  signature: true,
+                  webSiteUrl: true,
+                },
+              },
+              user: {
+                select: {
+                  email: true,
+                  id: true,
+                  name: true,
+                },
+              },
+              workContext: {
+                select: {
+                  Email: true,
+                  Name: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          serviceProjects: {
+            orderBy: [
+              { pos: "asc" },
+              { date_creation: "asc" },
+              { id: "asc" },
+            ],
+          },
+        },
+      });
+
+      if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+      if (!estimate.project) return res.status(400).json({ error: "Estimate has no project" });
+      if (!estimate.project.company) return res.status(400).json({ error: "Estimate has no company" });
+
+      const company = estimate.project.company;
+      const clientName = estimate.project.workContext?.Name || estimate.project.client?.name || "Customer";
+      const clientEmail = estimate.project.workContext?.Email || estimate.project.client?.email || "";
+      const clientPhone = estimate.project.workContext?.phone || estimate.project.client?.phone || "";
+      const seller = estimate.project.user || { email: "", id: "", name: "SmartBuild" };
+      const services = estimate.serviceProjects.map((service: any, index: number) => ({
+        catalogServiceId: service.id_service || null,
+        description: service.description || "",
+        lineTotal: roundMoney(Number(service.originalLineTotal ?? service.lineTotal ?? 0)),
+        name: String(service.name || "").trim(),
+        pos: Number.isFinite(Number(service.pos)) ? Number(service.pos) : index,
+        quantity: Number(service.quantity ?? service.hours ?? 1),
+        unitPrice: roundMoney(Number(service.originalUnitPrice ?? service.unitPrice ?? service.price ?? 0)),
+      }));
+
+      if (!services.length) {
+        return res.status(400).json({ error: "At least one service is required" });
+      }
+
+      const subtotalAmount = roundMoney(services.reduce((total, service) => total + service.lineTotal, 0));
+      const distributedEstimate = distributeEstimateDiscountAcrossServices({
+        services,
+        discountType: estimate.discountType,
+        discountValue: estimate.discountValue,
+        amountPaid: estimate.amountPaid,
+      });
+      const totalAmount = roundMoney(Number(distributedEstimate.totals.totalAmount));
+      const pdfServices = services.map((service) => ({
+        description: service.description,
+        lineTotal: roundMoney(Number(service.lineTotal)),
+        name: service.name,
+        originalLineTotal: roundMoney(Number(service.lineTotal)),
+        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        quantity: service.quantity,
+        unitPrice: roundMoney(Number(service.unitPrice)),
+      }));
+      const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
+      const photos = (await Promise.all(
+        (estimate.imagesAttachments || []).flatMap((photo) =>
+          photo.url
+            ? [
+                imageAttachmentToPdfPhoto({
+                  filename: photo.original_filename || `estimate-image-${photo.id}.jpg`,
+                  title: photo.title || "Attached Image",
+                  url: photo.url,
+                }),
+              ]
+            : [],
+        ),
+      )).filter((photo) => photo.base64);
+      const dateCreation = estimate.date_creation
+        ? estimate.date_creation.toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const html = buildClassicEstimateHtml({
+        client: {
+          email: clientEmail,
+          id: estimate.project.client?.id,
+          name: clientName,
+          phone: clientPhone,
+        },
+        company: {
+          ...company,
+          logoUrl: companyLogoUrl,
+        },
+        dateCreation,
+        estimateNumber: estimate.number,
+        location: {
+          address: estimate.project.location || "",
+          lat: estimate.project.lat || "",
+          lng: estimate.project.log || "",
+          radius: String(estimate.project.radius || 100),
+        },
+        photos,
+        seller: {
+          email: seller.email || "",
+          name: seller.name || "SmartBuild",
+        },
+        services: pdfServices,
+        terms: estimate.terms || "",
+        discountAmount: Number(distributedEstimate.totals.discountAmount || 0),
+        discountType: distributedEstimate.totals.discountType,
+        discountValue: distributedEstimate.totals.discountValue,
+        subtotalAmount,
+        totalAmount,
+      });
+
+      const pdfBuffer = await generatePdfBuffer(html);
+      const signedPdfBuffer = company.signature
+        ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, company.name)
+        : await addCompanySignatureToPdfBuffer(pdfBuffer, company.name, new Date());
+      const pdfFileName = buildPdfFileName(clientName, company.name, dateCreation);
+      const pdfS3Key = await uploadBufferToS3(signedPdfBuffer, pdfFileName, "application/pdf");
+      const existingPdf = Array.isArray(estimate.PdfProject) ? estimate.PdfProject[0] : null;
+
+      const pdfProject = existingPdf
+        ? await prisma.pdfProject.update({
+            where: { id: existingPdf.id },
+            data: {
+              original_file_name: pdfFileName,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          })
+        : await prisma.pdfProject.create({
+            data: {
+              estimate_id: estimate.id,
+              original_file_name: pdfFileName,
+              project_id: estimate.project.id,
+              templateNumber: 1,
+              type_pdf: "estimate",
+              uri: pdfS3Key,
+            },
+          });
+
+      await prisma.estimate.update({
+        where: { id: estimate.id },
+        data: {
+          ...(estimate.status === "approved" ? { assignatureRequired: true } : {}),
+          balanceDue: distributedEstimate.totals.balanceDue,
+          discountAmount: distributedEstimate.totals.discountAmount,
+          discountType: distributedEstimate.totals.discountType,
+          discountValue: distributedEstimate.totals.discountValue,
+          finalAmount: distributedEstimate.totals.finalAmount,
+          totalAmount: distributedEstimate.totals.totalAmount,
+        },
+      });
+
+      await prisma.estimateTimeline.create({
+        data: {
+          description: "PDF regenerated",
+          estimate: { connect: { id: estimate.id } },
+        },
+      });
+
+      fireAndForgetUpsertEstimateToQBO(company.id, (req as any).userId, estimate.id);
+
+      return res.status(200).json({
+        data: {
+          id: pdfProject.id,
+          original_file_name: pdfProject.original_file_name,
+          uri: pdfProject.uri ? await getPresignedUrl(pdfProject.uri) : null,
+        },
+        message: "Estimate PDF regenerated successfully",
+      });
+    } catch (error) {
+      console.error("[MobileManualEstimateController] Error regenerating PDF:", error);
       const message = error instanceof Error ? error.message : "Internal server error";
       return res.status(500).json({ error: message });
     }
@@ -308,6 +633,7 @@ function validatePayload(payload: MobileManualEstimatePayload) {
   if (!payload.sellerUserId) return "sellerUserId is required";
   if (!payload.estimateNumber) return "estimateNumber is required";
   if (!payload.client?.name || !payload.client?.email) return "Client name and email are required";
+  if (!payload.workContextId) return "workContextId is required";
   if (!payload.location?.address || !payload.location?.lat || !payload.location?.lng) {
     return "Location address, lat and lng are required";
   }
@@ -351,6 +677,42 @@ async function getVerifiedEstimateNumber(companyId: string, estimateNumber: stri
   const verified = Number.isFinite(lastNumber) && lastNumber >= requestedNumber ? lastNumber + 1 : requestedNumber;
 
   return String(verified);
+}
+
+async function getVerifiedProjectEstimateNumber(projectId: string, estimateNumber: string) {
+  const requestedNumber = String(estimateNumber || "").trim();
+  if (!requestedNumber) return "1";
+
+  const existingEstimates = await prisma.estimate.findMany({
+    where: {
+      projectId,
+      type_estimate: "estimateProject",
+    },
+    orderBy: {
+      date_creation: "desc",
+    },
+    select: {
+      number: true,
+    },
+  });
+
+  if (!existingEstimates.some((estimate) => estimate.number === requestedNumber)) {
+    return requestedNumber;
+  }
+
+  const separator = requestedNumber.includes("-") ? "-" : "/";
+  const [baseNumber] = requestedNumber.split(separator);
+  const suffixes = existingEstimates
+    .map((estimate) => String(estimate.number || ""))
+    .filter((number) => number === baseNumber || number.startsWith(`${baseNumber}${separator}`))
+    .map((number) => {
+      const [, suffix] = number.split(separator);
+      return Number(suffix || 0);
+    })
+    .filter((suffix) => Number.isFinite(suffix));
+  const nextSuffix = Math.max(0, ...suffixes) + 1;
+
+  return `${baseNumber}${separator}${String(nextSuffix).padStart(2, "0")}`;
 }
 
 async function getSafePresignedUrl(uri: string) {
@@ -458,6 +820,39 @@ async function uploadStandalonePhotos({
   }
 }
 
+async function imageAttachmentToPdfPhoto({
+  filename,
+  title,
+  url,
+}: {
+  filename: string;
+  title: string;
+  url: string;
+}) {
+  const presignedUrl = await getSafePresignedUrl(url);
+  if (!presignedUrl) {
+    return {
+      base64: "",
+      filename,
+      mimeType: "image/jpeg",
+      title,
+    };
+  }
+
+  const response = await axios.get<ArrayBuffer>(presignedUrl, {
+    responseType: "arraybuffer",
+    timeout: Number(process.env.PDFSHIFT_TIMEOUT_MS || 90000),
+  });
+  const mimeType = String(response.headers["content-type"] || "image/jpeg");
+
+  return {
+    base64: Buffer.from(response.data).toString("base64"),
+    filename,
+    mimeType,
+    title,
+  };
+}
+
 async function sendEstimateEmail({
   clientEmail,
   clientName,
@@ -563,10 +958,16 @@ function buildClassicEstimateHtml(input: {
     description: string;
     lineTotal: number;
     name: string;
+    originalLineTotal?: number;
+    originalUnitPrice?: number;
     quantity: number;
     unitPrice: number;
   }>;
   terms: string;
+  discountAmount?: number | null;
+  discountType?: EstimateDiscountType;
+  discountValue?: number | null;
+  subtotalAmount: number;
   totalAmount: number;
 }) {
   const serviceRows = input.services
@@ -619,6 +1020,18 @@ function buildClassicEstimateHtml(input: {
       </section>
     `
     : "";
+  const discountLabel = input.discountType === "percentage"
+    ? `Discount (${formatNumber(Number(input.discountValue || 0))}%)`
+    : "Discount";
+  const totalsBlock = input.discountAmount
+    ? `
+      <div class="totals">
+        <div class="summary-row"><span>Subtotal</span><span>${formatMoney(input.subtotalAmount)}</span></div>
+        <div class="summary-row discount"><span>${discountLabel}</span><span>-${formatMoney(input.discountAmount)}</span></div>
+        <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
+      </div>
+    `
+    : `<div class="total single-total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>`;
 
   return `
     <!doctype html>
@@ -628,8 +1041,9 @@ function buildClassicEstimateHtml(input: {
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { margin: 0; color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; background: #ffffff; line-height: 1.4; font-size: 12px; }
-          .pdf-document { width: 595px; background: #fff; color: #333333; position: relative; box-sizing: border-box; }
+          html, body { width: 210mm; min-height: 297mm; margin: 0; padding: 0; overflow-x: hidden; background: #ffffff; }
+          body { color: #333333; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif; line-height: 1.4; font-size: 12px; }
+          .pdf-document { width: 210mm; min-height: 297mm; background: #fff; color: #333333; position: relative; box-sizing: border-box; overflow-x: hidden; }
           .classic-cover { width: 100%; background: #fff; box-sizing: border-box; page-break-after: auto; overflow: visible; position: relative; }
           .proposal-header { border-bottom: 1px solid #B78A4F; display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 32px 10px; }
           .proposal-company { color: #222222; font-size: 14px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
@@ -648,6 +1062,7 @@ function buildClassicEstimateHtml(input: {
           .small { color: #555555; font-size: 11px; line-height: 1.7; }
           .small .link { color: #B78A4F; text-decoration: underline; }
           .job { text-align: right; }
+          .client-card, .job-location-card { margin-bottom: 10px; }
           .gold-label { color: #B78A4F; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
           .job-address { color: #3f3f3f; font-size: 11px; line-height: 1.6; }
           .job-table { border-top: 1px solid #d8d8d8; margin-top: 18px; padding-top: 12px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; column-gap: 18px; align-items: center; font-size: 11px; }
@@ -668,20 +1083,40 @@ function buildClassicEstimateHtml(input: {
           .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; padding: 12px; white-space: pre-wrap; width: 100%; }
           .num { text-align: right; white-space: nowrap; }
           .amount { color: #1a1a1a; font-weight: 600; }
-          .total { margin-top: 30px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
-          .terms-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
+          .totals { margin-top: 30px; }
+          .summary-row { display: flex; justify-content: space-between; padding: 4px 16px; color: #555; font-size: 12px; font-weight: 700; }
+          .summary-row.discount { color: #B83232; }
+          .total { margin-top: 10px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
+          .single-total { margin-top: 30px; }
+          .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
           .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
           .contact-card { margin-top: 40px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
           .contact-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
           .contact-card p { margin: 4px 0; font-size: 12px; }
-          .images-page { page-break-before: always; break-before: page; margin-top: 40px; padding: 40px; min-height: 842px; box-sizing: border-box; }
+          .images-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 12px; }
           .photo { border: 1px solid #ECE8E2; border-radius: 8px; overflow: hidden; font-size: 11px; font-weight: 700; color: #596273; }
           .photo img { width: 100%; height: 180px; object-fit: cover; display: block; }
           .photo div { padding: 9px; }
-          .signature-block { margin: 130px 48px 24px; page-break-inside: avoid; break-inside: avoid; }
+          .signature-block {
+            margin: 0 48px 24px;
+            padding-top: 130px;
+            min-height: 224px;
+            box-sizing: border-box;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            break-inside: avoid-page;
+          }
           .signature-table { width: 100%; border-collapse: collapse; table-layout: fixed; border: none; }
+          .signature-table,
+          .signature-table tbody,
+          .signature-table tr,
+          .signature-table td,
+          .signature-box {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
           .signature-table td { width: 50%; vertical-align: bottom; border: none; padding: 0; }
           .signature-table td:first-child { padding-right: 24px; }
           .signature-table td:last-child { padding-left: 24px; }
@@ -727,10 +1162,19 @@ function buildClassicEstimateHtml(input: {
                   </div>
                 </div>
                 <div class="job">
-                  <div class="gold-label">Job Location</div>
-                  <div class="job-address">
-                    <div>${escapeHtml(input.client.name || "Client Name")}</div>
-                    <div>${escapeHtml(input.location.address)}</div>
+                  <div class="client-card">
+                    <div class="gold-label">Client</div>
+                    <div class="job-address">
+                      <div>${escapeHtml(input.client.name || "Client Name")}</div>
+                      ${input.client.email ? `<div>${escapeHtml(input.client.email)}</div>` : ""}
+                      ${input.client.phone ? `<div>${escapeHtml(input.client.phone)}</div>` : ""}
+                    </div>
+                  </div>
+                  <div class="job-location-card">
+                    <div class="gold-label">Job Location</div>
+                    <div class="job-address">
+                      <div>${escapeHtml(input.location.address)}</div>
+                    </div>
                   </div>
                   <div class="job-table">
                     <div class="muted">Estimate #</div><div class="estimate-number">${formatEstimateDisplayNumber(input.estimateNumber)}</div>
@@ -756,7 +1200,7 @@ function buildClassicEstimateHtml(input: {
               </thead>
               <tbody>${serviceRows}</tbody>
             </table>
-            <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
+            ${totalsBlock}
           </section>
           ${termsSection}
           ${imageSection}
@@ -787,6 +1231,17 @@ function buildClassicEstimateHtml(input: {
 function buildPdfFileName(clientName: string, companyName: string, dateCreation: string) {
   const date = dateCreation || new Date().toISOString().slice(0, 10);
   return `${sanitizeFileName(clientName)}_${sanitizeFileName(companyName)}_${date}.pdf`;
+}
+
+function normalizeEmailList(value: string) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/[,\n;]/)
+        .map((email) => email.trim())
+        .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
+    ),
+  );
 }
 
 function sanitizeFileName(value: string) {
