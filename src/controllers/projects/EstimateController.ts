@@ -17,6 +17,12 @@ import path from 'path';
 import mime from 'mime-types';
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
+const ESTIMATE_EMAIL_TOO_LARGE_MESSAGE =
+  "The estimate PDF and attachments are too large to email. Please remove attachments or send the estimate link.";
+const ESTIMATE_EMAIL_HARD_LIMIT_BYTES = Number(process.env.ESTIMATE_EMAIL_HARD_LIMIT_BYTES || 28 * 1024 * 1024);
+const ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES = Number(process.env.ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES || 512 * 1024);
+
+const formatEmailPayloadBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
 
 export class EstimateController {
 
@@ -1575,25 +1581,31 @@ export class EstimateController {
       const uniqueRecipients = [...new Set(allRecipients.filter(email => email && typeof email === 'string'))];
 
       try {
-        const attachments = [
-          {
-            filename: fileName,
-            content: pdfBuffer.toString('base64'),
-            type: 'application/pdf',
-            disposition: 'attachment'
-          }
-        ];
+        const pdfBase64 = pdfBuffer.toString('base64');
+        const pdfRawBytes = pdfBuffer.byteLength;
+        const pdfBase64Bytes = Buffer.byteLength(pdfBase64, 'utf8');
+        const extraAttachments: Array<{
+          filename: string;
+          content: string;
+          type: string;
+          disposition: string;
+          rawBytes: number;
+          base64Bytes: number;
+        }> = [];
 
         if (attachmentFiles && attachmentFiles.length > 0) {
           console.log(`📎 Processing ${attachmentFiles.length} attachment(s)...`);
           for (const file of attachmentFiles) {
             try {
               const fileBuffer = fs.readFileSync(file.path);
-              attachments.push({
+              const content = fileBuffer.toString('base64');
+              extraAttachments.push({
                 filename: file.originalname,
-                content: fileBuffer.toString('base64'),
+                content,
                 type: file.mimetype,
-                disposition: 'attachment'
+                disposition: 'attachment',
+                rawBytes: fileBuffer.byteLength,
+                base64Bytes: Buffer.byteLength(content, 'utf8')
               });
               console.log(`✅ Processed attachment: ${file.originalname} (${file.mimetype})`);
             } catch (error) {
@@ -1601,6 +1613,91 @@ export class EstimateController {
             }
           }
         }
+
+        const extraRawBytes = extraAttachments.reduce((total, file) => total + file.rawBytes, 0);
+        const extraBase64Bytes = extraAttachments.reduce((total, file) => total + file.base64Bytes, 0);
+        const estimatedWithPdfBytes = pdfBase64Bytes + extraBase64Bytes + ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES;
+        const estimatedWithoutPdfBytes = extraBase64Bytes + ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES;
+        const pdfOnlyEstimateBytes = pdfBase64Bytes + ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES;
+        const shouldOmitPdfAttachment = pdfOnlyEstimateBytes > ESTIMATE_EMAIL_HARD_LIMIT_BYTES;
+
+        console.log("[estimate.sendEmail.sizeCheck]", {
+          estimateId: estimate.id,
+          recipients: uniqueRecipients,
+          pdfRawBytes,
+          pdfBase64Bytes,
+          extraRawBytes,
+          extraBase64Bytes,
+          estimatedWithPdfBytes,
+          estimatedWithoutPdfBytes,
+          hardLimitBytes: ESTIMATE_EMAIL_HARD_LIMIT_BYTES,
+          pdfAttachmentMode: shouldOmitPdfAttachment ? "omitted_link_only" : "attached",
+          attachmentCount: extraAttachments.length,
+          formatted: {
+            pdfRaw: formatEmailPayloadBytes(pdfRawBytes),
+            extraRaw: formatEmailPayloadBytes(extraRawBytes),
+            estimatedWithPdf: formatEmailPayloadBytes(estimatedWithPdfBytes),
+            hardLimit: formatEmailPayloadBytes(ESTIMATE_EMAIL_HARD_LIMIT_BYTES),
+          },
+        });
+
+        const isTooLarge = shouldOmitPdfAttachment
+          ? estimatedWithoutPdfBytes > ESTIMATE_EMAIL_HARD_LIMIT_BYTES
+          : estimatedWithPdfBytes > ESTIMATE_EMAIL_HARD_LIMIT_BYTES;
+
+        if (isTooLarge) {
+          console.warn("[estimate.sendEmail.sizeCheck] blocked", {
+            estimateId: estimate.id,
+            recipients: uniqueRecipients,
+            pdfRawBytes,
+            pdfBase64Bytes,
+            extraRawBytes,
+            extraBase64Bytes,
+            estimatedWithPdfBytes,
+            estimatedWithoutPdfBytes,
+            hardLimitBytes: ESTIMATE_EMAIL_HARD_LIMIT_BYTES,
+            pdfAttachmentMode: shouldOmitPdfAttachment ? "omitted_link_only" : "attached",
+            attachmentCount: extraAttachments.length,
+          });
+
+          await prisma.estimateEmailLog.create({
+            data: {
+              estimate: { connect: { id } },
+              recipient: uniqueRecipients.join(', '),
+              status: "error",
+              errorMessage: ESTIMATE_EMAIL_TOO_LARGE_MESSAGE,
+              sentAt: new Date()
+            }
+          });
+
+          await EstimateController.addTimelineEvent(
+            estimate.id,
+            `Failed to send estimate email: ${ESTIMATE_EMAIL_TOO_LARGE_MESSAGE}`
+          );
+
+          return res.status(413).json({
+            error: ESTIMATE_EMAIL_TOO_LARGE_MESSAGE,
+            message: ESTIMATE_EMAIL_TOO_LARGE_MESSAGE,
+            code: "estimate_email_too_large",
+            size: {
+              pdfRawBytes,
+              extraRawBytes,
+              estimatedPayloadBytes: shouldOmitPdfAttachment ? estimatedWithoutPdfBytes : estimatedWithPdfBytes,
+              hardLimitBytes: ESTIMATE_EMAIL_HARD_LIMIT_BYTES,
+              pdfAttachmentMode: shouldOmitPdfAttachment ? "omitted_link_only" : "attached"
+            }
+          });
+        }
+
+        const attachments = [
+          ...(shouldOmitPdfAttachment ? [] : [{
+            filename: fileName,
+            content: pdfBase64,
+            type: 'application/pdf',
+            disposition: 'attachment'
+          }]),
+          ...extraAttachments.map(({ rawBytes, base64Bytes, ...attachment }) => attachment)
+        ];
 
         const TEMPLATE_ID = "d-c779b5bb2dc44a98b0428a0c17597a8d";
 
@@ -1634,6 +1731,9 @@ export class EstimateController {
             to: recipientEmail,
             subject: subjectFixed,
             attachments: attachments as any,
+            throwOnError: true,
+            debugContext: `estimate.send.${estimate.id}.${recipientEmail}`,
+            companyId: estimate.project?.company_id || null,
             templateId: TEMPLATE_ID,
             dynamicTemplateData: {
               recipientName: recipientName,
@@ -1676,23 +1776,33 @@ export class EstimateController {
 
       } catch (error: any) {
         console.error("Error sending estimate email:", error);
+        const statusCode = Number(error?.code || error?.status || error?.response?.statusCode || error?.response?.status);
+        const isSizeError = statusCode === 413;
+        const responseMessage = isSizeError
+          ? ESTIMATE_EMAIL_TOO_LARGE_MESSAGE
+          : "Failed to send email";
 
         await prisma.estimateEmailLog.create({
           data: {
             estimate: { connect: { id } },
             recipient: uniqueRecipients.join(', '),
             status: "error",
-            errorMessage: error.message || "Unknown error",
+            errorMessage: isSizeError ? ESTIMATE_EMAIL_TOO_LARGE_MESSAGE : (error.message || "Unknown error"),
             sentAt: new Date()
           }
         });
 
         await EstimateController.addTimelineEvent(
           estimate.id,
-          `Failed to send email via Twilio: ${error.message}`
+          `Failed to send estimate email: ${isSizeError ? ESTIMATE_EMAIL_TOO_LARGE_MESSAGE : error.message}`
         );
 
-        return res.status(500).json({ error: "Failed to send email", details: error.message });
+        return res.status(isSizeError ? 413 : 500).json({
+          error: responseMessage,
+          message: responseMessage,
+          code: isSizeError ? "estimate_email_too_large" : "estimate_email_failed",
+          details: isSizeError ? undefined : error.message
+        });
       } finally {
         cleanupTempFiles(attachmentFiles);
       }
