@@ -43,6 +43,7 @@ type MobileManualEstimatePayload = {
     lng: string;
     radius: string;
   };
+  projectFlow?: boolean;
   projectId?: string;
   terms: string;
   services: Array<{
@@ -50,6 +51,7 @@ type MobileManualEstimatePayload = {
     name: string;
     description?: string;
     quantity: number;
+    serviceProjectId?: string;
     unitPrice: number;
     lineTotal: number;
     pos: number;
@@ -128,6 +130,7 @@ export class MobileManualEstimateController {
         name: service.name.trim(),
         pos: Number.isFinite(service.pos) ? Number(service.pos) : index,
         quantity: Number(service.quantity),
+        serviceProjectId: service.serviceProjectId || null,
         unitPrice: roundMoney(Number(service.unitPrice)),
       }));
 
@@ -147,14 +150,15 @@ export class MobileManualEstimateController {
         discountValue: payload.discountValue,
       });
       const totalAmount = roundMoney(Number(financialFields.totalAmount));
-      const pdfServices = normalizedServices.map((service) => ({
+      const pdfServices = distributedEstimate.services.map((service) => ({
         description: service.description,
-        lineTotal: roundMoney(Number(service.lineTotal)),
+        discountAmount: roundMoney(Number(service.discountAmount || 0)),
+        lineTotal: roundMoney(Number(service.discountedLineTotal)),
         name: service.name,
-        originalLineTotal: roundMoney(Number(service.lineTotal)),
-        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        originalLineTotal: roundMoney(Number(service.originalLineTotal)),
+        originalUnitPrice: roundMoney(Number(service.originalUnitPrice)),
         quantity: service.quantity,
-        unitPrice: roundMoney(Number(service.unitPrice)),
+        unitPrice: roundMoney(Number(service.discountedUnitPrice)),
       }));
 
       const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
@@ -264,6 +268,13 @@ export class MobileManualEstimateController {
               lat: payload.location.lat,
               location: payload.location.address,
               log: payload.location.lng,
+              ...(payload.projectFlow
+                ? {
+                    balanceDue: Number(financialFields.balanceDue),
+                    price: totalAmount,
+                    status_project: "Pre-Start",
+                  }
+                : {}),
               radius: Number(payload.location.radius || 100),
               workContextId: payload.workContextId || null,
             },
@@ -292,7 +303,7 @@ export class MobileManualEstimateController {
             finalAmount: financialFields.finalAmount,
             multi_emails: payload.multi_emails || "",
             number: verifiedEstimateNumber,
-            status: "pending",
+            status: payload.projectFlow && existingProject ? "approved" : "pending",
             terms: payload.terms,
             totalAmount,
             type_estimate: existingProject ? "estimateProject" : "estimate",
@@ -325,6 +336,13 @@ export class MobileManualEstimateController {
                 pos: service.pos,
                 price: service.discountedUnitPrice,
                 quantity: service.quantity,
+                ...(service.serviceProjectId
+                  ? {
+                      serviceProject: {
+                        connect: { id: service.serviceProjectId },
+                      },
+                    }
+                  : {}),
                 unitPrice: service.discountedUnitPrice,
               },
             }),
@@ -500,14 +518,15 @@ export class MobileManualEstimateController {
         amountPaid: estimate.amountPaid,
       });
       const totalAmount = roundMoney(Number(distributedEstimate.totals.totalAmount));
-      const pdfServices = services.map((service) => ({
+      const pdfServices = distributedEstimate.services.map((service) => ({
         description: service.description,
-        lineTotal: roundMoney(Number(service.lineTotal)),
+        discountAmount: roundMoney(Number(service.discountAmount || 0)),
+        lineTotal: roundMoney(Number(service.discountedLineTotal)),
         name: service.name,
-        originalLineTotal: roundMoney(Number(service.lineTotal)),
-        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        originalLineTotal: roundMoney(Number(service.originalLineTotal)),
+        originalUnitPrice: roundMoney(Number(service.originalUnitPrice)),
         quantity: service.quantity,
-        unitPrice: roundMoney(Number(service.unitPrice)),
+        unitPrice: roundMoney(Number(service.discountedUnitPrice)),
       }));
       const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
       const photos = (await Promise.all(
@@ -955,6 +974,9 @@ function buildClassicEstimateHtml(input: {
   photos: NonNullable<MobileManualEstimatePayload["standalonePhotos"]>;
   seller: { email: string; name: string };
   services: Array<{
+    discountAmount?: number;
+    discountedLineTotal?: number;
+    discountedUnitPrice?: number;
     description: string;
     lineTotal: number;
     name: string;
@@ -972,19 +994,29 @@ function buildClassicEstimateHtml(input: {
 }) {
   const serviceRows = input.services
     .map(
-      (service) => `
-        <tr class="service-row">
-          <td><strong>${escapeHtml(service.name)}</strong></td>
-          <td class="num">${formatNumber(service.quantity)}</td>
-          <td class="num">${formatMoney(service.unitPrice)}</td>
-          <td class="num amount">${formatMoney(service.lineTotal)}</td>
-        </tr>
-        ${
-          service.description
-            ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
-            : ""
-        }
-      `,
+      (service) => {
+        const hasDiscount = Number(service.discountAmount || 0) > 0;
+        const unitPriceHtml = hasDiscount
+          ? `<div class="price-stack"><span class="old-price">${formatMoney(service.originalUnitPrice ?? service.unitPrice)}</span><span>${formatMoney(service.unitPrice)}</span></div>`
+          : formatMoney(service.unitPrice);
+        const amountHtml = hasDiscount
+          ? `<div class="price-stack amount"><span class="old-price normal-weight">${formatMoney(service.originalLineTotal ?? service.lineTotal)}</span><span>${formatMoney(service.lineTotal)}</span></div>`
+          : formatMoney(service.lineTotal);
+
+        return `
+          <tr class="service-row">
+            <td><strong>${escapeHtml(service.name)}</strong></td>
+            <td class="num">${formatNumber(service.quantity)}</td>
+            <td class="num">${unitPriceHtml}</td>
+            <td class="num amount">${amountHtml}</td>
+          </tr>
+          ${
+            service.description
+              ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
+              : ""
+          }
+        `;
+      },
     )
     .join("");
   const photoBlocks = input.photos
@@ -1083,6 +1115,9 @@ function buildClassicEstimateHtml(input: {
           .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; padding: 12px; white-space: pre-wrap; width: 100%; }
           .num { text-align: right; white-space: nowrap; }
           .amount { color: #1a1a1a; font-weight: 600; }
+          .price-stack { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.25; }
+          .old-price { color: #9ca3af; text-decoration: line-through; font-weight: 400; }
+          .normal-weight { font-weight: 400; }
           .totals { margin-top: 30px; }
           .summary-row { display: flex; justify-content: space-between; padding: 4px 16px; color: #555; font-size: 12px; font-weight: 700; }
           .summary-row.discount { color: #B83232; }
