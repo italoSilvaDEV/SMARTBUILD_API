@@ -25,13 +25,20 @@ type payloadCreateEstimate = {
     cancelEstimates?: boolean;
     isProjectFlow?: boolean;
     isStandaloneEstimate?: boolean;
+    markupType?: EstimateDiscountType;
+    markupValue?: number | null;
     discountType?: EstimateDiscountType;
     discountValue?: number | null;
+    depositType?: EstimateDiscountType;
+    depositValue?: number | null;
 }
 
 const DISCOUNT_ERRORS = new Set([
+    "Percentage markup cannot be greater than 100",
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
+    "Percentage deposit cannot be greater than 100",
+    "Fixed deposit cannot be greater than estimate total",
 ]);
 
 export class CreateNewEstimateController {
@@ -71,8 +78,12 @@ export class CreateNewEstimateController {
                 const financialFields = buildEstimateFinancialFields({
                     subtotal: Number(payloadCreateEstimate.totalAmount),
                     amountPaid: 0,
+                    markupType: payloadCreateEstimate.markupType,
+                    markupValue: payloadCreateEstimate.markupValue,
                     discountType: payloadCreateEstimate.discountType,
                     discountValue: payloadCreateEstimate.discountValue,
+                    depositType: payloadCreateEstimate.depositType,
+                    depositValue: payloadCreateEstimate.depositValue,
                 });
 
                 const createEstimate = await smartbuild.estimate.create({
@@ -82,9 +93,15 @@ export class CreateNewEstimateController {
                         totalAmount: Number(financialFields.totalAmount),
                         balanceDue: Number(financialFields.balanceDue),
                         amountPaid: 0,
+                        markupType: financialFields.markupType,
+                        markupValue: financialFields.markupValue,
+                        markupAmount: financialFields.markupAmount,
                         discountType: financialFields.discountType,
                         discountValue: financialFields.discountValue,
                         discountAmount: financialFields.discountAmount,
+                        depositType: financialFields.depositType,
+                        depositValue: financialFields.depositValue,
+                        depositAmount: financialFields.depositAmount,
                         finalAmount: financialFields.finalAmount,
                         description: payloadCreateEstimate.description,
                         terms: payloadCreateEstimate.terms,

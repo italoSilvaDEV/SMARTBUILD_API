@@ -31,8 +31,12 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
       type_estimate: true,
       projectId: true,
       amountPaid: true,
+      markupType: true,
+      markupValue: true,
       discountType: true,
       discountValue: true,
+      depositType: true,
+      depositValue: true,
       project: {
         select: {
           company_id: true,
@@ -78,8 +82,12 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
 
   const distributed = distributeEstimateDiscountAcrossServices<SyncEstimateService>({
     services,
+    markupType: estimate.markupType,
+    markupValue: estimate.markupValue,
     discountType: estimate.discountType,
     discountValue: estimate.discountValue,
+    depositType: estimate.depositType,
+    depositValue: estimate.depositValue,
     amountPaid: estimate.amountPaid,
   });
 
@@ -145,8 +153,12 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
   const financialFields = buildEstimateFinancialFields({
     subtotal: distributed.totals.subtotal,
     amountPaid: estimate.amountPaid,
+    markupType: estimate.markupType,
+    markupValue: estimate.markupValue,
     discountType: estimate.discountType,
     discountValue: estimate.discountValue,
+    depositType: estimate.depositType,
+    depositValue: estimate.depositValue,
   });
 
   await smartbuild.estimate.update({
@@ -154,9 +166,15 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
     data: {
       totalAmount: financialFields.totalAmount,
       balanceDue: financialFields.balanceDue,
+      markupType: financialFields.markupType,
+      markupValue: financialFields.markupValue,
+      markupAmount: financialFields.markupAmount,
       discountType: financialFields.discountType,
       discountValue: financialFields.discountValue,
       discountAmount: financialFields.discountAmount,
+      depositType: financialFields.depositType,
+      depositValue: financialFields.depositValue,
+      depositAmount: financialFields.depositAmount,
       finalAmount: financialFields.finalAmount,
     },
   });

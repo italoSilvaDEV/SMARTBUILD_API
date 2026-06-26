@@ -1,4 +1,5 @@
 export type EstimateDiscountType = "fixed" | "percentage" | null | undefined;
+export type EstimateAdjustmentType = EstimateDiscountType;
 
 type DecimalLike = { toString(): string; valueOf?: () => string | number; toNumber?: () => number };
 
@@ -50,6 +51,8 @@ export const normalizeEstimateDiscountType = (value: unknown): EstimateDiscountT
   return null;
 };
 
+export const normalizeEstimateAdjustmentType = normalizeEstimateDiscountType;
+
 export const getEstimateServiceQuantity = (service: EstimateServiceLike): number => {
   return Math.max(1, toNumber(service.quantity, 1));
 };
@@ -81,92 +84,155 @@ export const getEstimateServiceOriginalLineTotal = (service: EstimateServiceLike
 export const calculateEstimateDiscountTotals = ({
   subtotal,
   amountPaid,
+  markupType,
+  markupValue,
   discountType,
   discountValue,
+  depositType,
+  depositValue,
 }: {
   subtotal: NumericLike;
   amountPaid?: NumericLike;
+  markupType?: EstimateAdjustmentType;
+  markupValue?: NumericLike;
   discountType?: EstimateDiscountType;
   discountValue?: NumericLike;
+  depositType?: EstimateAdjustmentType;
+  depositValue?: NumericLike;
 }) => {
   const normalizedSubtotal = round2(Math.max(0, toNumber(subtotal, 0)));
   const normalizedAmountPaid = round2(Math.max(0, toNumber(amountPaid, 0)));
+  const normalizedMarkupType = normalizeEstimateAdjustmentType(markupType);
+  const rawMarkupValue = round2(Math.max(0, toNumber(markupValue, 0)));
   const normalizedType = normalizeEstimateDiscountType(discountType);
   const rawDiscountValue = round2(Math.max(0, toNumber(discountValue, 0)));
+  const normalizedDepositType = normalizeEstimateAdjustmentType(depositType);
+  const rawDepositValue = round2(Math.max(0, toNumber(depositValue, 0)));
 
-  if (!normalizedType || rawDiscountValue <= 0) {
-    return {
-      subtotal: normalizedSubtotal,
-      amountPaid: normalizedAmountPaid,
-      discountType: null as EstimateDiscountType,
-      discountValue: null as number | null,
-      discountAmount: null as number | null,
-      totalAmount: normalizedSubtotal,
-      finalAmount: normalizedSubtotal,
-      balanceDue: round2(Math.max(0, normalizedSubtotal - normalizedAmountPaid)),
-    };
+  if (normalizedMarkupType === "percentage" && rawMarkupValue > 100) {
+    throw new Error("Percentage markup cannot be greater than 100");
   }
+
+  const markupAmount = normalizedMarkupType && rawMarkupValue > 0
+    ? normalizedMarkupType === "percentage"
+      ? round2((normalizedSubtotal * rawMarkupValue) / 100)
+      : round2(rawMarkupValue)
+    : null;
+
+  const subtotalWithMarkup = round2(normalizedSubtotal + (markupAmount || 0));
 
   if (normalizedType === "percentage" && rawDiscountValue > 100) {
     throw new Error("Percentage discount cannot be greater than 100");
   }
 
-  if (normalizedType === "fixed" && rawDiscountValue > normalizedSubtotal) {
+  if (normalizedType === "fixed" && rawDiscountValue > subtotalWithMarkup) {
     throw new Error("Fixed discount cannot be greater than estimate subtotal");
   }
 
-  const computedDiscountAmount = normalizedType === "percentage"
-    ? round2((normalizedSubtotal * rawDiscountValue) / 100)
-    : round2(rawDiscountValue);
+  const computedDiscountAmount = normalizedType && rawDiscountValue > 0
+    ? normalizedType === "percentage"
+      ? round2((subtotalWithMarkup * rawDiscountValue) / 100)
+      : round2(rawDiscountValue)
+    : null;
 
-  const discountedTotal = round2(Math.max(0, normalizedSubtotal - computedDiscountAmount));
+  const finalTotal = round2(Math.max(0, subtotalWithMarkup - (computedDiscountAmount || 0)));
 
+  if (normalizedDepositType === "percentage" && rawDepositValue > 100) {
+    throw new Error("Percentage deposit cannot be greater than 100");
+  }
 
+  if (normalizedDepositType === "fixed" && rawDepositValue > finalTotal) {
+    throw new Error("Fixed deposit cannot be greater than estimate total");
+  }
+
+  const depositAmount = normalizedDepositType && rawDepositValue > 0
+    ? normalizedDepositType === "percentage"
+      ? round2((finalTotal * rawDepositValue) / 100)
+      : round2(rawDepositValue)
+    : null;
 
   return {
     subtotal: normalizedSubtotal,
     amountPaid: normalizedAmountPaid,
-    discountType: normalizedType,
-    discountValue: rawDiscountValue,
+    markupType: markupAmount ? normalizedMarkupType : null as EstimateAdjustmentType,
+    markupValue: markupAmount ? rawMarkupValue : null as number | null,
+    markupAmount,
+    subtotalWithMarkup,
+    discountType: computedDiscountAmount ? normalizedType : null as EstimateDiscountType,
+    discountValue: computedDiscountAmount ? rawDiscountValue : null as number | null,
     discountAmount: computedDiscountAmount,
-    totalAmount: discountedTotal,
-    finalAmount: discountedTotal,
-    balanceDue: round2(Math.max(0, discountedTotal - normalizedAmountPaid)),
+    depositType: depositAmount ? normalizedDepositType : null as EstimateAdjustmentType,
+    depositValue: depositAmount ? rawDepositValue : null as number | null,
+    depositAmount,
+    totalAmount: finalTotal,
+    finalAmount: finalTotal,
+    balanceDue: round2(Math.max(0, finalTotal - normalizedAmountPaid)),
   };
 };
 
 export const buildEstimateFinancialFields = ({
   subtotal,
   amountPaid,
+  markupType,
+  markupValue,
   discountType,
   discountValue,
+  depositType,
+  depositValue,
 }: {
   subtotal: NumericLike;
   amountPaid?: NumericLike;
+  markupType?: EstimateAdjustmentType;
+  markupValue?: NumericLike;
   discountType?: EstimateDiscountType;
   discountValue?: NumericLike;
+  depositType?: EstimateAdjustmentType;
+  depositValue?: NumericLike;
 }) => {
-  const totals = calculateEstimateDiscountTotals({ subtotal, amountPaid, discountType, discountValue });
+  const totals = calculateEstimateDiscountTotals({
+    subtotal,
+    amountPaid,
+    markupType,
+    markupValue,
+    discountType,
+    discountValue,
+    depositType,
+    depositValue,
+  });
 
   return {
     totalAmount: totals.totalAmount,
     balanceDue: totals.balanceDue,
+    markupType: totals.markupType,
+    markupValue: totals.markupValue,
+    markupAmount: totals.markupAmount,
     discountType: totals.discountType,
     discountValue: totals.discountValue,
     discountAmount: totals.discountAmount,
+    depositType: totals.depositType,
+    depositValue: totals.depositValue,
+    depositAmount: totals.depositAmount,
     finalAmount: totals.finalAmount,
   };
 };
 
 export const distributeEstimateDiscountAcrossServices = <T extends EstimateServiceLike>({
   services,
+  markupType,
+  markupValue,
   discountType,
   discountValue,
+  depositType,
+  depositValue,
   amountPaid,
 }: {
   services: T[];
+  markupType?: EstimateAdjustmentType;
+  markupValue?: NumericLike;
   discountType?: EstimateDiscountType;
   discountValue?: NumericLike;
+  depositType?: EstimateAdjustmentType;
+  depositValue?: NumericLike;
   amountPaid?: NumericLike;
 }) => {
   const normalizedServices = services.map((service) => {
@@ -186,15 +252,20 @@ export const distributeEstimateDiscountAcrossServices = <T extends EstimateServi
   const totals = calculateEstimateDiscountTotals({
     subtotal,
     amountPaid,
+    markupType,
+    markupValue,
     discountType,
     discountValue,
+    depositType,
+    depositValue,
   });
 
-  if (!totals.discountAmount || subtotal <= 0) {
+  if ((!totals.markupAmount && !totals.discountAmount) || subtotal <= 0) {
     return {
       totals,
       services: normalizedServices.map((service) => ({
         ...service,
+        markupAmount: 0,
         discountAmount: 0,
         discountedLineTotal: round2(service.originalLineTotal),
         discountedUnitPrice: round6(service.originalUnitPrice),
@@ -203,22 +274,34 @@ export const distributeEstimateDiscountAcrossServices = <T extends EstimateServi
     };
   }
 
+  let accumulatedMarkup = 0;
   let accumulatedDiscount = 0;
 
   const distributedServices = normalizedServices.map((service, index) => {
     const isLast = index === normalizedServices.length - 1;
-    const proportionalDiscount = subtotal > 0 ? (totals.discountAmount! * service.originalLineTotal) / subtotal : 0;
+    const proportionalMarkup = subtotal > 0 ? ((totals.markupAmount || 0) * service.originalLineTotal) / subtotal : 0;
+    const markupAmount = isLast
+      ? round2((totals.markupAmount || 0) - accumulatedMarkup)
+      : round2(proportionalMarkup);
+    accumulatedMarkup = round2(accumulatedMarkup + markupAmount);
+
+    const markedUpLineTotal = round2(service.originalLineTotal + markupAmount);
+    const discountBase = totals.subtotalWithMarkup || subtotal;
+    const proportionalDiscount = discountBase > 0
+      ? ((totals.discountAmount || 0) * markedUpLineTotal) / discountBase
+      : 0;
     const discountAmount = isLast
-      ? round2(totals.discountAmount! - accumulatedDiscount)
+      ? round2((totals.discountAmount || 0) - accumulatedDiscount)
       : round2(proportionalDiscount);
 
     accumulatedDiscount = round2(accumulatedDiscount + discountAmount);
 
-    const discountedLineTotal = round2(Math.max(0, service.originalLineTotal - discountAmount));
+    const discountedLineTotal = round2(Math.max(0, markedUpLineTotal - discountAmount));
     const discountedUnitPrice = round6(service.quantity > 0 ? discountedLineTotal / service.quantity : discountedLineTotal);
 
     return {
       ...service,
+      markupAmount,
       discountAmount,
       discountedLineTotal,
       discountedUnitPrice,

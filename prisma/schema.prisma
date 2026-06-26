@@ -1813,9 +1813,15 @@ model Estimate {
   approvedAt      DateTime              @default(now())
   clientSignature String?               @db.Text
   totalAmount     Decimal
+  markupType      EstimateDiscountType?
+  markupValue     Decimal?
+  markupAmount    Decimal?
   discountType    EstimateDiscountType?
   discountValue   Decimal?
   discountAmount  Decimal?
+  depositType     EstimateDiscountType?
+  depositValue    Decimal?
+  depositAmount   Decimal?
   finalAmount     Decimal?
   description     String?               @db.Text
   terms           String?               @db.Text
