@@ -281,6 +281,24 @@ export class MobileManualEstimateController {
           });
         }
 
+        const isProjectFlowEstimate = Boolean(payload.projectFlow && existingProject);
+
+        if (isProjectFlowEstimate) {
+          await Promise.all(
+            distributedEstimate.services
+              .filter((service) => service.serviceProjectId)
+              .map((service) =>
+                tx.serviceProject.update({
+                  where: { id: service.serviceProjectId! },
+                  data: {
+                    hours: service.quantity,
+                    price: service.discountedUnitPrice,
+                  },
+                }),
+              ),
+          );
+        }
+
         const pdfProject = await tx.pdfProject.create({
           data: {
             original_file_name: pdfFileName,
@@ -303,7 +321,7 @@ export class MobileManualEstimateController {
             finalAmount: financialFields.finalAmount,
             multi_emails: payload.multi_emails || "",
             number: verifiedEstimateNumber,
-            status: payload.projectFlow && existingProject ? "approved" : "pending",
+            status: isProjectFlowEstimate ? "approved" : "pending",
             terms: payload.terms,
             totalAmount,
             type_estimate: existingProject ? "estimateProject" : "estimate",
