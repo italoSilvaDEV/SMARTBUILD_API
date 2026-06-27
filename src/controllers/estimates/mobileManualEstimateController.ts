@@ -1133,10 +1133,12 @@ function buildClassicEstimateHtml(input: {
   const hasDeposit = Number(input.depositAmount || 0) > 0;
   const totalsBlock = hasMarkup || hasDiscount || hasDeposit
     ? `
-      <div class="totals">
-        <div class="summary-row"><span>Subtotal</span><span>${formatMoney(input.subtotalAmount)}</span></div>
-        ${hasMarkup ? `<div class="summary-row markup"><span>${markupLabel}</span><span>${formatMoney(Number(input.markupAmount || 0))}</span></div>` : ""}
-        ${hasDiscount ? `<div class="summary-row discount"><span>${discountLabel}</span><span>-${formatMoney(Number(input.discountAmount || 0))}</span></div>` : ""}
+      <div class="totals totals-card">
+        <div class="summary-lines">
+          <div class="summary-row"><span>Subtotal</span><span>${formatMoney(input.subtotalAmount)}</span></div>
+          ${hasMarkup ? `<div class="summary-row markup"><span>${markupLabel}</span><span>${formatMoney(Number(input.markupAmount || 0))}</span></div>` : ""}
+          ${hasDiscount ? `<div class="summary-row discount"><span>${discountLabel}</span><span>-${formatMoney(Number(input.discountAmount || 0))}</span></div>` : ""}
+        </div>
         <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
         ${hasDeposit ? `<div class="summary-row deposit"><span>${depositLabel}</span><span>${formatMoney(Number(input.depositAmount || 0))}</span></div>` : ""}
       </div>
@@ -1196,12 +1198,14 @@ function buildClassicEstimateHtml(input: {
           .price-stack { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.25; }
           .old-price { color: #9ca3af; text-decoration: line-through; font-weight: 400; }
           .normal-weight { font-weight: 400; }
-          .totals { margin-top: 30px; }
+          .totals { margin-top: 30px; page-break-inside: avoid; break-inside: avoid; break-inside: avoid-page; }
+          .totals-card { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; background: #ffffff; }
+          .summary-lines { padding: 8px 0 6px; }
           .summary-row { display: flex; justify-content: space-between; padding: 4px 16px; color: #555; font-size: 12px; font-weight: 700; }
           .summary-row.markup { color: #4b5563; }
           .summary-row.discount { color: #B83232; }
-          .summary-row.deposit { color: #0f7a55; margin-top: 8px; }
-          .total { margin-top: 10px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
+          .summary-row.deposit { color: #0f7a55; border-top: 1px solid #e5e7eb; padding: 8px 16px; }
+          .total { padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
           .single-total { margin-top: 30px; }
           .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
