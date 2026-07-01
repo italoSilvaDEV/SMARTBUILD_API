@@ -87,6 +87,8 @@ model User {
 
   // Nova relação N:N através da tabela UserCompany
   companies UserCompany[]
+  authIdentities UserAuthIdentity[]
+  deviceCredentials UserDeviceCredential[]
 
   Invoice            Invoice[]
   TimeLine           TimeLine[]
@@ -317,6 +319,8 @@ model Company {
   accentColor String?
   isActive              Boolean        @default(true) // false = arquivado (master)
   createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
+  mobileSubscriptionStatus String      @default("active") @db.VarChar(32)
+  mobileSignupProvider     String?     @db.VarChar(32)
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -2039,9 +2043,73 @@ model Subscription {
   paymentFailed                  Boolean   @default(false)
   stripeSubscriptionCanceled     Boolean   @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
+  billingProvider                BillingProvider @default(stripe)
+  storeProductId                 String?
+  storeTransactionId             String? @unique
+  storeOriginalTransactionId     String?
+  googlePurchaseToken            String? @unique @db.VarChar(512)
+  storeEnvironment               StoreEnvironment?
+  autoRenewing                   Boolean?
+  lastVerifiedAt                 DateTime?
   fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
   campaignId                     String? // ID da campanha (opcional)
   campaign                       Campaign? @relation(fields: [campaignId], references: [id])
+
+  @@index([billingProvider])
+  @@index([storeOriginalTransactionId])
+  @@index([storeProductId])
+}
+
+enum AuthProvider {
+  google
+  apple
+}
+
+enum BillingProvider {
+  stripe
+  apple
+  google
+  free
+}
+
+enum StoreEnvironment {
+  sandbox
+  production
+}
+
+model UserAuthIdentity {
+  id             String       @id @default(uuid())
+  provider       AuthProvider
+  providerUserId String
+  email          String?
+  emailVerified  Boolean      @default(false)
+  rawProfile     Json?
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([email])
+  @@index([userId])
+}
+
+model UserDeviceCredential {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId      String
+  tokenHash     String
+  platform      String?   @db.VarChar(32)
+  label         String?
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, deviceId])
+  @@index([deviceId])
+  @@index([tokenHash])
 }
 
 enum ValidityType {

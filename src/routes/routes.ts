@@ -60,6 +60,7 @@ import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
 import contractRoutes from './contractRoutes'
+import { mobileAuthRoutes } from './mobileAuthRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -83,6 +84,7 @@ router.post(
 );
 
 router.use(userRoutes)
+router.use(mobileAuthRoutes)
 router.use(companyRoutes)
 router.use(serviceRoutes)
 router.use(catalogRoutes)

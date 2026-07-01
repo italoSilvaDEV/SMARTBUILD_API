@@ -506,8 +506,14 @@ export class UserController {
         }
         else {
           // Para planos PAGOS (não-FREE)
-          if (!subscription || !subscription.stripeSubscriptionId) {
-            // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+          if (!subscription) {
+            isExpired = true;
+          } else if (subscription.billingProvider === "apple" || subscription.billingProvider === "google") {
+            isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
+            stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+            paymentFailed = subscription.paymentFailed;
+          } else if (!subscription.stripeSubscriptionId) {
+            // Sem stripeSubscriptionId em plano pago legado, considerar expirado
             isExpired = true;
           }
           else {
@@ -1634,8 +1640,14 @@ export class UserController {
       }
       else {
         // Para planos PAGOS (não-FREE)
-        if (!subscription || !subscription.stripeSubscriptionId) {
-          // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+        if (!subscription) {
+          isExpired = true;
+        } else if (subscription.billingProvider === "apple" || subscription.billingProvider === "google") {
+          isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
+          stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+          paymentFailed = subscription.paymentFailed;
+        } else if (!subscription.stripeSubscriptionId) {
+          // Sem stripeSubscriptionId em plano pago legado, considerar expirado
           isExpired = true;
         }
         else {
