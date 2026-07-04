@@ -13,16 +13,23 @@ const mockState = {
     pdf: 1,
     estimate: 1,
     estimateService: 1,
+    serviceProject: 1,
     image: 1,
     attachment: 1,
+    aiSession: 1,
+    aiMessage: 1,
   },
   clients: [] as any[],
   projects: [] as any[],
   pdfProjects: [] as any[],
   estimates: [] as any[],
   estimateServices: [] as any[],
+  serviceProjects: [] as any[],
   imgServiceProjects: [] as any[],
   imagesAttachments: [] as any[],
+  aiSessions: [] as any[],
+  aiMessages: [] as any[],
+  aiAttachments: [] as any[],
   serviceCreateCalls: 0,
   failOnServiceCreateCall: 0,
 };
@@ -39,16 +46,23 @@ const resetState = () => {
     pdf: 1,
     estimate: 1,
     estimateService: 1,
+    serviceProject: 1,
     image: 1,
     attachment: 1,
+    aiSession: 1,
+    aiMessage: 1,
   };
   mockState.clients = [];
   mockState.projects = [];
   mockState.pdfProjects = [];
   mockState.estimates = [];
   mockState.estimateServices = [];
+  mockState.serviceProjects = [];
   mockState.imgServiceProjects = [];
   mockState.imagesAttachments = [];
+  mockState.aiSessions = [];
+  mockState.aiMessages = [];
+  mockState.aiAttachments = [];
   mockState.serviceCreateCalls = 0;
   mockState.failOnServiceCreateCall = 0;
 };
@@ -58,7 +72,41 @@ const sortDesc = (records: any[], field: string) => {
 };
 
 const mockPrisma: RecordMap = {
-  $transaction: jest.fn(async (callback: (tx: any) => Promise<any>) => callback(mockPrisma)),
+  $transaction: jest.fn(async (callback: (tx: any) => Promise<any>) => {
+    const snapshot = {
+      clients: [...mockState.clients],
+      projects: [...mockState.projects],
+      pdfProjects: [...mockState.pdfProjects],
+      estimates: [...mockState.estimates],
+      estimateServices: [...mockState.estimateServices],
+      serviceProjects: [...mockState.serviceProjects],
+      imgServiceProjects: [...mockState.imgServiceProjects],
+      imagesAttachments: [...mockState.imagesAttachments],
+      aiSessions: [...mockState.aiSessions],
+      aiMessages: [...mockState.aiMessages],
+      aiAttachments: [...mockState.aiAttachments],
+      ids: { ...mockState.ids },
+      serviceCreateCalls: mockState.serviceCreateCalls,
+    };
+
+    try {
+      return await callback(mockPrisma);
+    } catch (error) {
+      Object.assign(mockState, snapshot);
+      throw error;
+    }
+  }),
+  company: {
+    findUnique: jest.fn(async ({ where }: any) => {
+      if (where.id !== "company-1") return null;
+      return {
+        id: "company-1",
+        name: "ACME Construction",
+        email: "office@acme.test",
+        signature: null,
+      };
+    }),
+  },
   user: {
     update: jest.fn().mockResolvedValue({}),
   },
@@ -109,7 +157,7 @@ const mockPrisma: RecordMap = {
           signature: null,
         },
         client: mockState.clients.find((client) => client.id === project.client_id),
-        serviceProject: [],
+        serviceProject: mockState.serviceProjects.filter((service) => service.projectId === project.id),
       };
     }),
     create: jest.fn(async ({ data }: any) => {
@@ -162,10 +210,36 @@ const mockPrisma: RecordMap = {
       return estimates[0] || null;
     }),
     findMany: jest.fn(async () => mockState.estimates),
-    findUnique: jest.fn(async ({ where, select }: any) => {
+    findUnique: jest.fn(async ({ where, select, include }: any) => {
       const estimate = mockState.estimates.find((item) => item.id === where.id);
       if (!estimate) return null;
       const project = mockState.projects.find((item) => item.id === estimate.projectId);
+      const fullEstimate = {
+        ...estimate,
+        project: project
+          ? {
+            ...project,
+            client: mockState.clients.find((client) => client.id === project.client_id),
+            company: {
+              id: project.company_id,
+              name: "ACME Construction",
+              email: "office@acme.test",
+              signature: null,
+            },
+            serviceProject: mockState.serviceProjects.filter((service) => service.projectId === project.id),
+          }
+          : null,
+        serviceProjects: mockState.estimateServices.filter((service) => service.estimateId === estimate.id),
+        PdfProject: mockState.pdfProjects.filter((pdf) => pdf.estimate_id === estimate.id),
+        timelineEvents: [],
+        imagesAttachments: mockState.imagesAttachments.filter((image) => image.estimateId === estimate.id),
+        emailLogs: [],
+      };
+
+      if (include || select?.serviceProjects) {
+        return fullEstimate;
+      }
+
       if (select?.project) {
         return {
           id: estimate.id,
@@ -174,11 +248,7 @@ const mockPrisma: RecordMap = {
           },
         };
       }
-      return {
-        ...estimate,
-        project,
-        serviceProjects: mockState.estimateServices.filter((service) => service.estimateId === estimate.id),
-      };
+      return fullEstimate;
     }),
     create: jest.fn(async ({ data }: any) => {
       const estimate = {
@@ -188,7 +258,15 @@ const mockPrisma: RecordMap = {
         totalAmount: data.totalAmount,
         balanceDue: data.balanceDue,
         amountPaid: data.amountPaid,
+        markupType: data.markupType,
+        markupValue: data.markupValue,
+        markupAmount: data.markupAmount,
         finalAmount: data.finalAmount,
+        discountValue: data.discountValue,
+        discountAmount: data.discountAmount,
+        depositType: data.depositType,
+        depositValue: data.depositValue,
+        depositAmount: data.depositAmount,
         description: data.description,
         terms: data.terms,
         status: data.status,
@@ -199,6 +277,11 @@ const mockPrisma: RecordMap = {
         projectId: data.project.connect.id,
       };
       mockState.estimates.push(estimate);
+      return estimate;
+    }),
+    update: jest.fn(async ({ where, data }: any) => {
+      const estimate = mockState.estimates.find((item) => item.id === where.id);
+      Object.assign(estimate, data);
       return estimate;
     }),
   },
@@ -224,12 +307,33 @@ const mockPrisma: RecordMap = {
       mockState.estimateServices.push(service);
       return service;
     }),
+    update: jest.fn(async ({ where, data }: any) => {
+      const service = mockState.estimateServices.find((item) => item.id === where.id);
+      Object.assign(service, data);
+      return service;
+    }),
     findUnique: jest.fn(async ({ where }: any) => {
       return mockState.estimateServices.find((item) => item.id === where.id) || null;
     }),
   },
   serviceProject: {
-    findMany: jest.fn(async () => []),
+    findMany: jest.fn(async () => mockState.serviceProjects),
+    findFirst: jest.fn(async ({ where }: any) => {
+      return mockState.serviceProjects.find((item) => item.estimateServiceId === where.estimateServiceId) || null;
+    }),
+    create: jest.fn(async ({ data }: any) => {
+      const serviceProject = {
+        id: nextId("serviceProject", "service-project"),
+        ...data,
+      };
+      mockState.serviceProjects.push(serviceProject);
+      return serviceProject;
+    }),
+    update: jest.fn(async ({ where, data }: any) => {
+      const serviceProject = mockState.serviceProjects.find((item) => item.id === where.id);
+      Object.assign(serviceProject, data);
+      return serviceProject;
+    }),
   },
   imgServiceProject: {
     create: jest.fn(async ({ data }: any) => {
@@ -247,6 +351,29 @@ const mockPrisma: RecordMap = {
       };
       mockState.imagesAttachments.push(attachment);
       return attachment;
+    }),
+  },
+  estimateAiSession: {
+    findUnique: jest.fn(async ({ where }: any) => {
+      return mockState.aiSessions.find((session) => session.estimateId === where.estimateId) || null;
+    }),
+    create: jest.fn(async ({ data }: any) => {
+      const session = { id: nextId("aiSession", "ai-session"), ...data };
+      mockState.aiSessions.push(session);
+      return session;
+    }),
+  },
+  estimateAiMessage: {
+    create: jest.fn(async ({ data }: any) => {
+      const message = { id: nextId("aiMessage", "ai-message"), ...data };
+      mockState.aiMessages.push(message);
+      return message;
+    }),
+  },
+  estimateAiAttachment: {
+    createMany: jest.fn(async ({ data }: any) => {
+      mockState.aiAttachments.push(...data);
+      return { count: data.length };
     }),
   },
 };
@@ -275,6 +402,7 @@ jest.mock("@aws-sdk/client-s3", () => ({
     send: jest.fn().mockResolvedValue({}),
   })),
   PutObjectCommand: jest.fn().mockImplementation((input: any) => input),
+  DeleteObjectCommand: jest.fn().mockImplementation((input: any) => input),
 }));
 
 jest.mock("../../src/utils/pdfEstimateSignatures", () => ({
@@ -293,6 +421,7 @@ jest.mock("../../src/controllers/quickbooks/estimate/QuickBooksEstimateOutboundS
 import { estimateRoutes } from "../../src/routes/estimateRoutes";
 import { projectRoutes } from "../../src/routes/projectRoutes";
 import { imagesAttachmentsRoutes } from "../../src/routes/imagesAttachments";
+import { addCompanySignatureToPdfBuffer } from "../../src/utils/pdfEstimateSignatures";
 
 const createTestApp = () => {
   const app = express();
@@ -542,6 +671,266 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
         id: "estimate-service-1",
         name: "Service created before failure",
         estimateId: estimate.id,
+      }),
+    ]);
+  });
+
+  it("creates project, pdf, estimate, services, photos, attachments and SmartBuilder session through the unified route", async () => {
+    const payload = {
+      project: {
+        seller_user_id: "seller-1",
+        price: 300,
+        status_project: "Pending",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+        work_context_id: "work-context-1",
+      },
+      pdf: {
+        type_pdf: "estimate",
+        templateNumber: 2,
+      },
+      estimate: {
+        preGeneratedNumber: "1001",
+        totalAmount: 300,
+        discountType: null,
+        discountValue: null,
+        type_estimate: "estimate",
+        description: "Estimate letter",
+        terms: "Estimate terms",
+        multi_emails: "client@example.com,owner@example.com",
+        date_creation: "2026-07-03",
+      },
+      services: [
+        {
+          name: "Roof Repair",
+          description: "Repair damaged roof area",
+          quantity: 2,
+          unitPrice: 100,
+          lineTotal: 200,
+          hours: 2,
+          price: 100,
+          pos: 0,
+          photos: [{ id: "s3/service-photo-1.jpg" }],
+        },
+        {
+          name: "Cleanup",
+          description: "Site cleanup",
+          quantity: 1,
+          unitPrice: 100,
+          lineTotal: 100,
+          hours: 1,
+          price: 100,
+          pos: 1,
+        },
+      ],
+      attachments: [{ title: "Before photo" }],
+      smartBuilderSession: {
+        metadata: { source: "test" },
+        messages: [{ role: "user", content: "Create this estimate" }],
+      },
+    };
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify(payload))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "estimate.pdf")
+      .attach("attachments", Buffer.from("image-bytes"), "before.jpg");
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual(expect.objectContaining({
+      id: "estimate-1",
+      number: "1001",
+      projectId: "project-1",
+    }));
+
+    expect(mockState.clients).toHaveLength(1);
+    expect(mockState.projects).toEqual([
+      expect.objectContaining({
+        id: "project-1",
+        price: 300,
+        balanceDue: 300,
+        workContextId: "work-context-1",
+      }),
+    ]);
+    expect(mockState.pdfProjects).toEqual([
+      expect.objectContaining({
+        id: "pdf-1",
+        project_id: "project-1",
+        estimate_id: "estimate-1",
+        templateNumber: 2,
+        type_pdf: "estimate",
+      }),
+    ]);
+    expect(mockState.estimates).toEqual([
+      expect.objectContaining({
+        id: "estimate-1",
+        totalAmount: 300,
+        multi_emails: "client@example.com,owner@example.com",
+      }),
+    ]);
+    expect(mockState.estimateServices).toEqual([
+      expect.objectContaining({ id: "estimate-service-1", name: "Roof Repair", estimateId: "estimate-1", pos: 0 }),
+      expect.objectContaining({ id: "estimate-service-2", name: "Cleanup", estimateId: "estimate-1", pos: 1 }),
+    ]);
+    expect(mockState.serviceProjects).toEqual([
+      expect.objectContaining({
+        id: "service-project-1",
+        projectId: "project-1",
+        estimateServiceId: "estimate-service-1",
+      }),
+    ]);
+    expect(mockState.imgServiceProjects).toEqual([
+      expect.objectContaining({
+        uri: "s3/service-photo-1.jpg",
+        serviceProjectId: "service-project-1",
+      }),
+    ]);
+    expect(mockState.imagesAttachments).toEqual([
+      expect.objectContaining({
+        projectId: "project-1",
+        estimateId: "estimate-1",
+        original_filename: "before.jpg",
+        title: "Before photo",
+      }),
+    ]);
+    expect(mockState.aiSessions).toEqual([
+      expect.objectContaining({
+        estimateId: "estimate-1",
+        companyId: "company-1",
+        createdById: "user-test",
+      }),
+    ]);
+    expect(mockState.aiMessages).toEqual([
+      expect.objectContaining({
+        sessionId: "ai-session-1",
+        role: "user",
+        content: "Create this estimate",
+      }),
+    ]);
+  });
+
+  it("rolls back the unified route when a service fails inside the transaction", async () => {
+    mockState.failOnServiceCreateCall = 2;
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify({
+        project: {
+          seller_user_id: "seller-1",
+          price: 300,
+          status_project: "Pending",
+          company_id: "company-1",
+          client: {
+            name: "Client One",
+            email: "client@example.com",
+            phone: "555-0101",
+          },
+          location: "123 Main St",
+          lat: "40.7128",
+          log: "-74.0060",
+          radius: "25",
+        },
+        pdf: {
+          type_pdf: "estimate",
+          templateNumber: 2,
+        },
+        estimate: {
+          preGeneratedNumber: "1001",
+          totalAmount: 300,
+          type_estimate: "estimate",
+        },
+        services: [
+          {
+            name: "Service created before failure",
+            quantity: 1,
+            unitPrice: 100,
+            lineTotal: 100,
+          },
+          {
+            name: "Service that fails",
+            quantity: 1,
+            unitPrice: 200,
+            lineTotal: 200,
+          },
+        ],
+      }))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "estimate.pdf");
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: "Internal server error while creating full estimate",
+    });
+
+    expect(mockState.clients).toEqual([]);
+    expect(mockState.projects).toEqual([]);
+    expect(mockState.pdfProjects).toEqual([]);
+    expect(mockState.estimates).toEqual([]);
+    expect(mockState.estimateServices).toEqual([]);
+    expect(mockState.serviceProjects).toEqual([]);
+    expect(mockState.imgServiceProjects).toEqual([]);
+    expect(mockState.imagesAttachments).toEqual([]);
+    expect(mockState.aiSessions).toEqual([]);
+  });
+
+  it("keeps creating the unified estimate when the company PDF signature step fails", async () => {
+    (addCompanySignatureToPdfBuffer as jest.Mock).mockRejectedValueOnce(new Error("signature failed"));
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify({
+        project: {
+          seller_user_id: "seller-1",
+          price: 100,
+          status_project: "Pending",
+          company_id: "company-1",
+          client: {
+            name: "Client One",
+            email: "client@example.com",
+            phone: "555-0101",
+          },
+          location: "123 Main St",
+          lat: "40.7128",
+          log: "-74.0060",
+          radius: "25",
+        },
+        pdf: {
+          type_pdf: "estimate",
+          templateNumber: 2,
+        },
+        estimate: {
+          preGeneratedNumber: "1001",
+          totalAmount: 100,
+          type_estimate: "estimate",
+        },
+        services: [
+          {
+            name: "Roof Repair",
+            quantity: 1,
+            unitPrice: 100,
+            lineTotal: 100,
+          },
+        ],
+      }))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "estimate.pdf");
+
+    expect(response.status).toBe(201);
+    expect(mockState.projects).toHaveLength(1);
+    expect(mockState.estimates).toHaveLength(1);
+    expect(mockState.pdfProjects).toEqual([
+      expect.objectContaining({
+        project_id: "project-1",
+        estimate_id: "estimate-1",
       }),
     ]);
   });

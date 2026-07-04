@@ -11,6 +11,7 @@ import { UpdateEstimateFieldsController } from "../controllers/estimates/updateE
 import { UpdateServiceEstimateController } from "../controllers/estimates/updateServiceEstimateController";
 import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
 import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
+import { CreateFullEstimateController } from "../controllers/estimates/createFullEstimateController";
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
 import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
@@ -34,6 +35,7 @@ const updateEstimateFieldsController = new UpdateEstimateFieldsController();
 const updateServiceEstimateController = new UpdateServiceEstimateController();
 const createServiceEstimateController = new CreateServiceEstimateController();
 const createNewEstimateController = new CreateNewEstimateController();
+const createFullEstimateController = new CreateFullEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
 const dashboardEstimatesController = new DashboardEstimatesController();
 const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
@@ -50,6 +52,7 @@ const mobileManualEstimateController = new MobileManualEstimateController();
 // Configurar multer para aceitar múltiplos arquivos de anexo
 const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
 const uploadSmartBuilderAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-smartbuilder"));
+const uploadCreateFullEstimate = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
 
 estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByCompanyController.handle);
 estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
@@ -59,6 +62,15 @@ estimateRoutes.patch("/update/fields", checkToken, updateEstimateFieldsControlle
 estimateRoutes.patch("/update/service-fields", checkToken, updateServiceEstimateController.handle);
 estimateRoutes.post("/new-service", checkToken, createServiceEstimateController.handle);
 estimateRoutes.post("/new-estimate", checkToken, createNewEstimateController.handle);
+estimateRoutes.post(
+  "/create-full",
+  checkToken,
+  uploadCreateFullEstimate.fields([
+    { name: "file", maxCount: 1 },
+    { name: "attachments", maxCount: 20 },
+  ]),
+  createFullEstimateController.handle.bind(createFullEstimateController)
+);
 estimateRoutes.get("/number/:companyId", checkToken, getNumberNewEstimateController.handle);
 estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateController.verifyNumber);
 estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesController.handle);
