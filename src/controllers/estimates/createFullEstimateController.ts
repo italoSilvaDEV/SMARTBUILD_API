@@ -105,11 +105,32 @@ const DISCOUNT_ERRORS = new Set([
   "Invalid discount type",
   "Invalid markup type",
   "Invalid deposit type",
-  "Discount percentage cannot be greater than 100",
-  "Markup percentage cannot be greater than 100",
-  "Deposit percentage cannot be greater than 100",
-  "Discount cannot be greater than subtotal with markup",
-  "Deposit cannot be greater than estimate total",
+  "Percentage markup cannot be greater than 100",
+  "Percentage discount cannot be greater than 100",
+  "Fixed discount cannot be greater than estimate subtotal",
+  "Percentage deposit cannot be greater than 100",
+  "Fixed deposit cannot be greater than estimate total",
+]);
+
+const VALIDATION_ERRORS = new Set([
+  "payload is required",
+  "payload must be valid JSON",
+  "Only PDF files are allowed",
+  "seller_user_id is required",
+  "company_id is required",
+  "client data is required",
+  "client name and email are required",
+  "location is required",
+  "lat is required",
+  "log is required",
+  "radius is required",
+  "preGeneratedNumber is required",
+  "totalAmount is required",
+  "type_estimate is required",
+  "services are required",
+  "service name is required",
+  "approvedAt must be a valid date",
+  "date_creation must be a valid date",
 ]);
 
 const parsePayload = (rawPayload: unknown): CreateFullEstimatePayload => {
@@ -148,6 +169,17 @@ const validatePayload = (payload: CreateFullEstimatePayload) => {
   for (const service of payload.services) {
     if (!service.name) throw new Error("service name is required");
   }
+};
+
+const parseOptionalDate = (value: string | null | undefined, fieldName: string) => {
+  if (!value) return undefined;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${fieldName} must be a valid date`);
+  }
+
+  return date;
 };
 
 const removeLocalFiles = async (files: Express.Multer.File[]) => {
@@ -420,11 +452,13 @@ export class CreateFullEstimateController {
           depositType: payload.estimate.depositType ?? undefined,
           depositValue: payload.estimate.depositValue ?? undefined,
         });
+        const approvedAt = parseOptionalDate(payload.estimate.approvedAt, "approvedAt") || new Date();
+        const dateCreation = parseOptionalDate(payload.estimate.date_creation, "date_creation");
 
         const estimate = await tx.estimate.create({
           data: {
             number: payload.estimate.preGeneratedNumber,
-            approvedAt: payload.estimate.approvedAt ? new Date(payload.estimate.approvedAt) : new Date(),
+            approvedAt,
             totalAmount: financialFields.totalAmount,
             balanceDue: financialFields.balanceDue,
             amountPaid: payload.estimate.amountPaid ?? 0,
@@ -443,8 +477,8 @@ export class CreateFullEstimateController {
             status: payload.estimate.status || "pending",
             type_estimate: payload.estimate.type_estimate,
             multi_emails: payload.estimate.multi_emails || null,
-            isStandaloneEstimate: payload.estimate.isStandaloneEstimate ?? true,
-            date_creation: payload.estimate.date_creation ? new Date(payload.estimate.date_creation) : undefined,
+            isStandaloneEstimate: payload.estimate.isStandaloneEstimate ?? false,
+            date_creation: dateCreation,
             project: { connect: { id: project.id } },
           },
         });
@@ -577,29 +611,19 @@ export class CreateFullEstimateController {
         return res.status(400).json({ error: error.message });
       }
 
-      if ([
-        "payload is required",
-        "payload must be valid JSON",
-        "Only PDF files are allowed",
-        "seller_user_id is required",
-        "company_id is required",
-        "client data is required",
-        "client name and email are required",
-        "location is required",
-        "lat is required",
-        "log is required",
-        "radius is required",
-        "preGeneratedNumber is required",
-        "totalAmount is required",
-        "type_estimate is required",
-        "services are required",
-        "service name is required",
-      ].includes(error?.message)) {
+      if (VALIDATION_ERRORS.has(error?.message)) {
         return res.status(400).json({ error: error.message });
       }
 
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return res.status(409).json({ error: "Estimate already exists with this number" });
+      }
+
       console.error("[CreateFullEstimateController]", error);
-      return res.status(500).json({ error: "Internal server error while creating full estimate" });
+      return res.status(500).json({
+        error: "Internal server error while creating full estimate",
+        ...(process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test" ? { details: error?.message } : {}),
+      });
     }
   }
 }

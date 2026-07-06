@@ -775,6 +775,7 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
         id: "estimate-1",
         totalAmount: 300,
         multi_emails: "client@example.com,owner@example.com",
+        isStandaloneEstimate: false,
       }),
     ]);
     expect(mockState.estimateServices).toEqual([
