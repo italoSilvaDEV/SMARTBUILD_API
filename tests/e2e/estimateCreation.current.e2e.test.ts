@@ -779,6 +779,8 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
       expect.objectContaining({ id: "estimate-service-1", name: "Roof Repair", estimateId: "estimate-1", pos: 0 }),
       expect.objectContaining({ id: "estimate-service-2", name: "Cleanup", estimateId: "estimate-1", pos: 1 }),
     ]);
+    expect(mockState.serviceProjects).toHaveLength(0);
+    expect(mockState.imgServiceProjects).toHaveLength(0);
     expect(mockState.imagesAttachments).toEqual([
       expect.objectContaining({
         projectId: projectResponse.body.id,
