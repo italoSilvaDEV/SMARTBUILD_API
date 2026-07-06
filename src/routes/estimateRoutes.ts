@@ -12,6 +12,7 @@ import { UpdateServiceEstimateController } from "../controllers/estimates/update
 import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
 import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
 import { CreateFullEstimateController } from "../controllers/estimates/createFullEstimateController";
+import { CreateFullEstimateForProjectController } from "../controllers/estimates/createFullEstimateForProjectController";
 import { UpdateFullEstimateController } from "../controllers/estimates/updateFullEstimateController";
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
@@ -37,6 +38,7 @@ const updateServiceEstimateController = new UpdateServiceEstimateController();
 const createServiceEstimateController = new CreateServiceEstimateController();
 const createNewEstimateController = new CreateNewEstimateController();
 const createFullEstimateController = new CreateFullEstimateController();
+const createFullEstimateForProjectController = new CreateFullEstimateForProjectController();
 const updateFullEstimateController = new UpdateFullEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
 const dashboardEstimatesController = new DashboardEstimatesController();
@@ -72,6 +74,15 @@ estimateRoutes.post(
     { name: "attachments", maxCount: 20 },
   ]),
   createFullEstimateController.handle.bind(createFullEstimateController)
+);
+estimateRoutes.post(
+  "/create-full/project/:projectId",
+  checkToken,
+  uploadCreateFullEstimate.fields([
+    { name: "file", maxCount: 1 },
+    { name: "attachments", maxCount: 20 },
+  ]),
+  createFullEstimateForProjectController.handle.bind(createFullEstimateForProjectController)
 );
 estimateRoutes.put(
   "/update-full/:estimateId",

@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { Prisma } from "@prisma/client";
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import fs from "fs";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
@@ -11,33 +11,13 @@ import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync
 import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 
-type CreateFullEstimatePayload = {
-  project: {
-    seller_user_id: string;
-    price?: number;
-    status_project?: string;
-    company_id: string;
-    client: {
-      name: string;
-      email: string;
-      phone?: string;
-      birth_date?: string | null;
-    };
-    location?: string;
-    lat?: string;
-    log?: string;
-    radius?: string | number | null;
-    start_date?: string | null;
-    deadline?: string | null;
-    work_context_id?: string | null;
-    skipLocationValidation?: boolean;
-  };
-  pdf: {
+type CreateFullEstimateForProjectPayload = {
+  pdf?: {
     type_pdf?: string;
     templateNumber?: number | string;
   };
   estimate: {
-    approvedAt?: string;
+    preGeneratedNumber: string;
     totalAmount: number;
     amountPaid?: number;
     markupType?: "fixed" | "percentage" | null;
@@ -49,21 +29,22 @@ type CreateFullEstimatePayload = {
     description?: string;
     terms?: string;
     status?: string;
-    preGeneratedNumber: string;
     type_estimate: "estimate" | "estimateProject";
     multi_emails?: string;
     date_creation?: string;
+    workContextId?: string | null;
+    cancelEstimates?: boolean;
     isProjectFlow?: boolean;
     isStandaloneEstimate?: boolean;
   };
   services: Array<{
     name: string;
-    description?: string;
-    quantity?: number;
-    unitPrice?: number;
-    lineTotal?: number;
-    originalUnitPrice?: number;
-    originalLineTotal?: number;
+    description?: string | null;
+    quantity?: number | null;
+    unitPrice?: number | null;
+    lineTotal?: number | null;
+    originalUnitPrice?: number | null;
+    originalLineTotal?: number | null;
     notes?: string | null;
     id_service?: string | null;
     hours?: number | null;
@@ -71,10 +52,9 @@ type CreateFullEstimatePayload = {
     start_date?: string | null;
     deadline?: string | null;
     pos?: number | null;
-    photos?: Array<{ id?: string; uri?: string }>;
   }>;
   attachments?: Array<{
-    title?: string;
+    title?: string | null;
     type_images_attachments?: "image" | "document";
   }>;
   smartBuilderSession?: {
@@ -118,25 +98,19 @@ const DISCOUNT_ERRORS = new Set([
 const VALIDATION_ERRORS = new Set([
   "payload is required",
   "payload must be valid JSON",
+  "PDF file is required",
   "Only PDF files are allowed",
-  "seller_user_id is required",
-  "company_id is required",
-  "client data is required",
-  "client name and email are required",
-  "location is required",
-  "lat is required",
-  "log is required",
-  "radius is required",
+  "projectId is required",
+  "Project not found",
   "preGeneratedNumber is required",
   "totalAmount is required",
   "type_estimate is required",
   "services are required",
   "service name is required",
-  "approvedAt must be a valid date",
   "date_creation must be a valid date",
 ]);
 
-const parsePayload = (rawPayload: unknown): CreateFullEstimatePayload => {
+const parsePayload = (rawPayload: unknown): CreateFullEstimateForProjectPayload => {
   if (!rawPayload || typeof rawPayload !== "string") {
     throw new Error("payload is required");
   }
@@ -148,25 +122,13 @@ const parsePayload = (rawPayload: unknown): CreateFullEstimatePayload => {
   }
 };
 
-const validatePayload = (payload: CreateFullEstimatePayload) => {
-  const project = payload.project;
-  const estimate = payload.estimate;
-
-  if (!project?.seller_user_id) throw new Error("seller_user_id is required");
-  if (!project?.company_id) throw new Error("company_id is required");
-  if (!project?.client) throw new Error("client data is required");
-  if (!project.client.name || !project.client.email) throw new Error("client name and email are required");
-
-  if (!project.skipLocationValidation) {
-    if (!project.location) throw new Error("location is required");
-    if (!project.lat) throw new Error("lat is required");
-    if (!project.log) throw new Error("log is required");
-    if (!project.radius) throw new Error("radius is required");
+const validatePayload = (projectId: string | undefined, payload: CreateFullEstimateForProjectPayload) => {
+  if (!projectId) throw new Error("projectId is required");
+  if (!payload.estimate?.preGeneratedNumber) throw new Error("preGeneratedNumber is required");
+  if (payload.estimate.totalAmount === undefined || payload.estimate.totalAmount === null) {
+    throw new Error("totalAmount is required");
   }
-
-  if (!estimate?.preGeneratedNumber) throw new Error("preGeneratedNumber is required");
-  if (estimate.totalAmount === undefined || estimate.totalAmount === null) throw new Error("totalAmount is required");
-  if (!estimate.type_estimate) throw new Error("type_estimate is required");
+  if (!payload.estimate.type_estimate) throw new Error("type_estimate is required");
   if (!payload.services?.length) throw new Error("services are required");
 
   for (const service of payload.services) {
@@ -176,12 +138,10 @@ const validatePayload = (payload: CreateFullEstimatePayload) => {
 
 const parseOptionalDate = (value: string | null | undefined, fieldName: string) => {
   if (!value) return undefined;
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     throw new Error(`${fieldName} must be a valid date`);
   }
-
   return date;
 };
 
@@ -189,10 +149,25 @@ const removeLocalFiles = async (files: Express.Multer.File[]) => {
   await Promise.all(files.map((file) => deleteFile(file.path)));
 };
 
-const getUploadedFiles = (req: MulterRequest) => {
-  const pdfFile = req.files?.file?.[0];
-  const attachments = req.files?.attachments || [];
-  return { pdfFile, attachments };
+const deleteS3File = async (fileName?: string | null) => {
+  if (!fileName) return;
+
+  try {
+    const s3 = new S3Client({
+      region: process.env.AMAZON_S3_REGION,
+      credentials: {
+        accessKeyId: process.env.AMAZON_S3_KEY!,
+        secretAccessKey: process.env.AMAZON_S3_SECRET!,
+      },
+    });
+
+    await s3.send(new DeleteObjectCommand({
+      Bucket: process.env.AMAZON_S3_BUCKET!,
+      Key: fileName,
+    }));
+  } catch (error) {
+    console.error("[CreateFullEstimateForProjectController] Failed to cleanup uploaded file:", error);
+  }
 };
 
 const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: string | null; signature?: string | null }) => {
@@ -209,7 +184,7 @@ const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: str
       ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, companyName)
       : await addCompanySignatureToPdfBuffer(pdfBuffer, companyName, new Date());
   } catch (error) {
-    console.error("[CreateFullEstimateController] Error adding company signature to PDF:", error);
+    console.error("[CreateFullEstimateForProjectController] Error adding company signature to PDF:", error);
   }
 
   const fileHash = crypto.randomBytes(4).toString("hex");
@@ -233,117 +208,12 @@ const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: str
   return fileName;
 };
 
-const deleteS3File = async (fileName?: string | null) => {
-  if (!fileName) return;
-
-  try {
-    const s3 = new S3Client({
-      region: process.env.AMAZON_S3_REGION,
-      credentials: {
-        accessKeyId: process.env.AMAZON_S3_KEY!,
-        secretAccessKey: process.env.AMAZON_S3_SECRET!,
-      },
-    });
-
-    await s3.send(new DeleteObjectCommand({
-      Bucket: process.env.AMAZON_S3_BUCKET!,
-      Key: fileName,
-    }));
-  } catch (error) {
-    console.error("[CreateFullEstimateController] Failed to cleanup uploaded file:", error);
-  }
-};
-
-const createOrUpdateClient = async (tx: Prisma.TransactionClient, payload: CreateFullEstimatePayload["project"]) => {
-  const existingClient = await tx.client.findUnique({
-    where: {
-      email_company_id: {
-        email: payload.client.email,
-        company_id: payload.company_id,
-      },
-    },
-  });
-
-  if (existingClient) {
-    const updateData: any = {
-      name: payload.client.name,
-      phone: payload.client.phone,
-    };
-
-    if (payload.client.birth_date !== undefined) {
-      updateData.birth_date = payload.client.birth_date;
-    }
-
-    return tx.client.update({
-      where: { id: existingClient.id },
-      data: updateData,
-    });
-  }
-
-  return tx.client.create({
-    data: {
-      name: payload.client.name,
-      email: payload.client.email,
-      phone: payload.client.phone,
-      birth_date: payload.client.birth_date || null,
-      company_id: payload.company_id,
-    },
-  });
-};
-
-const createProject = async (tx: Prisma.TransactionClient, payload: CreateFullEstimatePayload["project"]) => {
-  const client = await createOrUpdateClient(tx, payload);
-
-  const lastEstimate = await tx.estimate.findFirst({
-    where: {
-      project: {
-        company_id: payload.company_id,
-      },
-    },
-    select: { number: true },
-    orderBy: { number: "desc" },
-  });
-
-  const lastProject = await tx.project.findFirst({
-    where: {
-      company_id: payload.company_id,
-      contract_number: { not: null },
-    },
-    select: { contract_number: true },
-    orderBy: { contract_number: "desc" },
-  });
-
-  const lastEstimateNumber = lastEstimate?.number ? Number(String(lastEstimate.number).split("/")[0]) || 0 : 0;
-  const lastProjectNumber = Number(lastProject?.contract_number || "0");
-  const nextNumber = Math.max(lastEstimateNumber, lastProjectNumber) + 1;
-  const price = payload.price || 0;
-
-  return tx.project.create({
-    data: {
-      seller_user_id: payload.seller_user_id,
-      price,
-      status_project: payload.status_project || "Pending",
-      client_id: client.id,
-      company_id: payload.company_id,
-      contract_number: nextNumber,
-      location: payload.location || "",
-      lat: payload.lat || "",
-      log: payload.log || "",
-      radius: payload.radius ? Number(payload.radius) : null,
-      start_date: payload.start_date || null,
-      deadline: payload.deadline || null,
-      balanceDue: price,
-      workContextId: payload.work_context_id || null,
-    },
-  });
-};
-
 const importSmartBuilderSession = async (
   tx: Prisma.TransactionClient,
   estimateId: string,
   companyId: string | null | undefined,
   userId: string | undefined,
-  draftSession?: CreateFullEstimatePayload["smartBuilderSession"]
+  draftSession?: CreateFullEstimateForProjectPayload["smartBuilderSession"]
 ) => {
   if (!draftSession?.messages?.length) return null;
 
@@ -393,48 +263,41 @@ const importSmartBuilderSession = async (
   return session;
 };
 
-export class CreateFullEstimateController {
+export class CreateFullEstimateForProjectController {
   async handle(req: MulterRequest, res: Response) {
-    const { pdfFile, attachments } = getUploadedFiles(req);
+    const { projectId } = req.params;
+    const pdfFile = req.files?.file?.[0];
+    const attachments = req.files?.attachments || [];
     let uploadedPdfUri: string | null = null;
     const uploadedAttachmentUris: string[] = [];
 
     try {
-      if (!pdfFile) {
-        return res.status(400).json({ error: "PDF file is required" });
-      }
+      if (!pdfFile) throw new Error("PDF file is required");
 
       const payload = parsePayload(req.body.payload);
-      validatePayload(payload);
+      validatePayload(projectId, payload);
 
-      const company = await prisma.company.findUnique({
-        where: { id: payload.project.company_id },
-        select: { id: true, name: true, signature: true },
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          company: { select: { id: true, name: true, signature: true } },
+          client: true,
+        },
       });
 
-      if (!company) {
-        await removeLocalFiles([pdfFile, ...attachments]);
-        return res.status(404).json({ error: "Company not found" });
-      }
+      if (!project) throw new Error("Project not found");
 
-      const pdfUri = await uploadSignedPdf(pdfFile, company);
+      const pdfUri = await uploadSignedPdf(pdfFile, project.company || undefined);
       uploadedPdfUri = pdfUri;
-      const uploadedAttachments: Array<{ file: Express.Multer.File; uri: string }> = [];
 
-      try {
-        const uploaded = await Promise.all(attachments.map(async (attachment) => {
-          const uri = await uploadFileToS3_2(attachment, "");
-          uploadedAttachmentUris.push(uri);
-          return { file: attachment, uri };
-        }));
-        uploadedAttachments.push(...uploaded);
-      } catch (error) {
-        await removeLocalFiles(attachments);
-        throw error;
+      const uploadedAttachments: Array<{ file: Express.Multer.File; uri: string }> = [];
+      for (const attachment of attachments) {
+        const uri = await uploadFileToS3_2(attachment, "");
+        uploadedAttachmentUris.push(uri);
+        uploadedAttachments.push({ file: attachment, uri });
       }
 
       const result = await prisma.$transaction(async (tx) => {
-        const project = await createProject(tx, payload.project);
         const templateNumberInt = parseInt(String(payload.pdf?.templateNumber || "1"));
 
         const pdfProject = await tx.pdfProject.create({
@@ -457,13 +320,12 @@ export class CreateFullEstimateController {
           depositType: payload.estimate.depositType ?? undefined,
           depositValue: payload.estimate.depositValue ?? undefined,
         });
-        const approvedAt = parseOptionalDate(payload.estimate.approvedAt, "approvedAt") || new Date();
         const dateCreation = parseOptionalDate(payload.estimate.date_creation, "date_creation");
 
         const estimate = await tx.estimate.create({
           data: {
             number: payload.estimate.preGeneratedNumber,
-            approvedAt,
+            approvedAt: new Date(),
             totalAmount: financialFields.totalAmount,
             balanceDue: financialFields.balanceDue,
             amountPaid: payload.estimate.amountPaid ?? 0,
@@ -494,13 +356,20 @@ export class CreateFullEstimateController {
           data: { estimate_id: estimate.id },
         });
 
+        if (payload.estimate.workContextId) {
+          await tx.project.update({
+            where: { id: project.id },
+            data: { workContextId: payload.estimate.workContextId },
+          });
+        }
+
         for (let index = 0; index < payload.services.length; index += 1) {
           const service = payload.services[index];
           const quantity = Number(service.quantity ?? 1);
           const unitPrice = Number(service.unitPrice ?? service.price ?? 0);
           const lineTotal = Number(service.lineTotal ?? quantity * unitPrice);
 
-          const estimateService = await tx.estimateServiceProject.create({
+          await tx.estimateServiceProject.create({
             data: {
               estimateId: estimate.id,
               name: service.name,
@@ -519,35 +388,6 @@ export class CreateFullEstimateController {
               pos: service.pos ?? index,
             },
           });
-
-          if (payload.estimate.type_estimate === "estimateProject" || service.photos?.length) {
-            const serviceProject = await tx.serviceProject.create({
-              data: {
-                projectId: project.id,
-                company_id: payload.project.company_id,
-                estimateServiceId: estimateService.id,
-                name: service.name,
-                description: service.description || "",
-                id_service: service.id_service || null,
-                hours: service.hours ?? quantity,
-                price: service.price ?? unitPrice,
-                start_date: service.start_date || null,
-                deadline: service.deadline || null,
-              },
-            });
-
-            for (const photo of service.photos || []) {
-              const uri = photo.id || photo.uri;
-              if (uri) {
-                await tx.imgServiceProject.create({
-                  data: {
-                    uri,
-                    serviceProjectId: serviceProject.id,
-                  },
-                });
-              }
-            }
-          }
         }
 
         await syncEstimateDiscountedServices(tx, estimate.id);
@@ -570,12 +410,12 @@ export class CreateFullEstimateController {
         await importSmartBuilderSession(
           tx,
           estimate.id,
-          payload.project.company_id,
+          project.company_id,
           (req as any).userId,
           payload.smartBuilderSession
         );
 
-        const finalEstimate = await tx.estimate.findUnique({
+        return tx.estimate.findUnique({
           where: { id: estimate.id },
           include: {
             project: {
@@ -594,16 +434,15 @@ export class CreateFullEstimateController {
             emailLogs: true,
           },
         });
-
-        return { project, estimate: finalEstimate || estimate };
       });
 
-      fireAndForgetUpsertEstimateToQBO(payload.project.company_id, (req as any).userId, result.estimate.id);
+      if (result?.id) {
+        fireAndForgetUpsertEstimateToQBO(project.company_id, (req as any).userId, result.id);
+      }
 
       return res.status(201).json({
         message: "Estimate created successfully",
-        data: result.estimate,
-        project: result.project,
+        data: result,
       });
     } catch (error: any) {
       if (pdfFile) await deleteFile(pdfFile.path);
@@ -613,11 +452,7 @@ export class CreateFullEstimateController {
         ...uploadedAttachmentUris.map((uri) => deleteS3File(uri)),
       ]);
 
-      if (DISCOUNT_ERRORS.has(error?.message)) {
-        return res.status(400).json({ error: error.message });
-      }
-
-      if (VALIDATION_ERRORS.has(error?.message)) {
+      if (DISCOUNT_ERRORS.has(error?.message) || VALIDATION_ERRORS.has(error?.message)) {
         return res.status(400).json({ error: error.message });
       }
 
@@ -625,9 +460,9 @@ export class CreateFullEstimateController {
         return res.status(409).json({ error: "Estimate already exists with this number" });
       }
 
-      console.error("[CreateFullEstimateController]", error);
+      console.error("[CreateFullEstimateForProjectController]", error);
       return res.status(500).json({
-        error: "Internal server error while creating full estimate",
+        error: "Internal server error while creating full estimate for project",
         ...(process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test" ? { details: error?.message } : {}),
       });
     }

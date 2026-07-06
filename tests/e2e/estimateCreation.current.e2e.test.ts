@@ -271,6 +271,7 @@ const mockPrisma: RecordMap = {
         terms: data.terms,
         status: data.status,
         type_estimate: data.type_estimate,
+        assignatureRequired: data.assignatureRequired,
         multi_emails: data.multi_emails,
         isStandaloneEstimate: data.isStandaloneEstimate,
         date_creation: data.date_creation || new Date("2026-07-03T12:02:00.000Z"),
@@ -675,6 +676,178 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
     ]);
   });
 
+  it("creates a full estimate for an existing project through a single route", async () => {
+    const projectResponse = await request(app)
+      .post("/project")
+      .set(auth)
+      .send({
+        seller_user_id: "seller-1",
+        price: 0,
+        status_project: "Pre-Start",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        estimateNumber: "1001",
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+      });
+
+    expect(projectResponse.status).toBe(201);
+
+    const response = await request(app)
+      .post(`/estimate/create-full/project/${projectResponse.body.id}`)
+      .set(auth)
+      .field("payload", JSON.stringify({
+        pdf: {
+          type_pdf: "estimate",
+          templateNumber: 2,
+        },
+        estimate: {
+          preGeneratedNumber: "1001-01",
+          totalAmount: 300,
+          discountType: null,
+          discountValue: null,
+          type_estimate: "estimateProject",
+          description: "Estimate letter",
+          terms: "Estimate terms",
+          multi_emails: "client@example.com,owner@example.com",
+          date_creation: "2026-07-03",
+          workContextId: "work-context-1",
+          cancelEstimates: true,
+        },
+        services: [
+          {
+            name: "Roof Repair",
+            description: "Repair damaged roof area",
+            quantity: 2,
+            unitPrice: 100,
+            lineTotal: 200,
+            hours: 2,
+            price: 100,
+            pos: 0,
+          },
+          {
+            name: "Cleanup",
+            description: "Site cleanup",
+            quantity: 1,
+            unitPrice: 100,
+            lineTotal: 100,
+            hours: 1,
+            price: 100,
+            pos: 1,
+          },
+        ],
+        attachments: [{ title: "Before photo" }],
+        smartBuilderSession: {
+          metadata: { source: "project-existing-test" },
+          messages: [{ role: "user", content: "Create estimate inside project" }],
+        },
+      }))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "project-estimate.pdf")
+      .attach("attachments", Buffer.from("image-bytes"), "before.jpg");
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual(expect.objectContaining({
+      id: "estimate-1",
+      number: "1001-01",
+      projectId: projectResponse.body.id,
+    }));
+    expect(mockState.projects).toHaveLength(1);
+    expect(mockState.pdfProjects).toEqual([
+      expect.objectContaining({
+        id: "pdf-1",
+        project_id: projectResponse.body.id,
+        estimate_id: "estimate-1",
+        templateNumber: 2,
+        type_pdf: "estimate",
+      }),
+    ]);
+    expect(mockState.estimates).toEqual([
+      expect.objectContaining({
+        id: "estimate-1",
+        totalAmount: 300,
+        type_estimate: "estimateProject",
+        isStandaloneEstimate: false,
+      }),
+    ]);
+    expect(mockState.estimateServices).toEqual([
+      expect.objectContaining({ id: "estimate-service-1", name: "Roof Repair", estimateId: "estimate-1", pos: 0 }),
+      expect.objectContaining({ id: "estimate-service-2", name: "Cleanup", estimateId: "estimate-1", pos: 1 }),
+    ]);
+    expect(mockState.imagesAttachments).toEqual([
+      expect.objectContaining({
+        projectId: projectResponse.body.id,
+        estimateId: "estimate-1",
+        original_filename: "before.jpg",
+        title: "Before photo",
+      }),
+    ]);
+    expect(mockState.aiSessions).toEqual([
+      expect.objectContaining({
+        estimateId: "estimate-1",
+        companyId: "company-1",
+        createdById: "user-test",
+      }),
+    ]);
+  });
+
+  it("rolls back full estimate creation for an existing project when a service fails", async () => {
+    const projectResponse = await request(app)
+      .post("/project")
+      .set(auth)
+      .send({
+        seller_user_id: "seller-1",
+        price: 0,
+        status_project: "Pre-Start",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        estimateNumber: "1001",
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+      });
+
+    expect(projectResponse.status).toBe(201);
+    mockState.failOnServiceCreateCall = 2;
+
+    const response = await request(app)
+      .post(`/estimate/create-full/project/${projectResponse.body.id}`)
+      .set(auth)
+      .field("payload", JSON.stringify({
+        pdf: {
+          type_pdf: "estimate",
+          templateNumber: 2,
+        },
+        estimate: {
+          preGeneratedNumber: "1001-01",
+          totalAmount: 300,
+          type_estimate: "estimateProject",
+        },
+        services: [
+          { name: "Service created before failure", quantity: 1, unitPrice: 100, lineTotal: 100, pos: 0 },
+          { name: "Service that fails", quantity: 1, unitPrice: 200, lineTotal: 200, pos: 1 },
+        ],
+      }))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "project-estimate.pdf");
+
+    expect(response.status).toBe(500);
+    expect(mockState.projects).toHaveLength(1);
+    expect(mockState.pdfProjects).toHaveLength(0);
+    expect(mockState.estimates).toHaveLength(0);
+    expect(mockState.estimateServices).toHaveLength(0);
+    expect(mockState.imagesAttachments).toHaveLength(0);
+  });
+
   it("creates project, pdf, estimate, services, photos, attachments and SmartBuilder session through the unified route", async () => {
     const payload = {
       project: {
@@ -815,6 +988,110 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
         sessionId: "ai-session-1",
         role: "user",
         content: "Create this estimate",
+      }),
+    ]);
+  });
+
+  it("creates a project-flow estimate with every service mirrored into the project services", async () => {
+    const payload = {
+      project: {
+        seller_user_id: "seller-1",
+        price: 300,
+        status_project: "Pre-Start",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+        start_date: "2026-07-10",
+        deadline: "2026-07-20",
+      },
+      pdf: {
+        type_pdf: "estimate",
+        templateNumber: 2,
+      },
+      estimate: {
+        preGeneratedNumber: "1001",
+        totalAmount: 300,
+        type_estimate: "estimateProject",
+        status: "approved",
+        isProjectFlow: true,
+      },
+      services: [
+        {
+          name: "Roof Repair",
+          description: "Repair damaged roof area",
+          quantity: 2,
+          unitPrice: 100,
+          lineTotal: 200,
+          hours: 2,
+          price: 100,
+          pos: 0,
+          photos: [{ id: "s3/service-photo-1.jpg" }],
+        },
+        {
+          name: "Cleanup",
+          description: "Site cleanup",
+          quantity: 1,
+          unitPrice: 100,
+          lineTotal: 100,
+          hours: 1,
+          price: 100,
+          pos: 1,
+        },
+      ],
+    };
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify(payload))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "estimate.pdf");
+
+    expect(response.status).toBe(201);
+    expect(mockState.projects).toEqual([
+      expect.objectContaining({
+        id: "project-1",
+        status_project: "Pre-Start",
+        start_date: "2026-07-10",
+        deadline: "2026-07-20",
+      }),
+    ]);
+    expect(mockState.estimates).toEqual([
+      expect.objectContaining({
+        id: "estimate-1",
+        type_estimate: "estimateProject",
+        status: "approved",
+        assignatureRequired: true,
+      }),
+    ]);
+    expect(mockState.estimateServices).toEqual([
+      expect.objectContaining({ id: "estimate-service-1", name: "Roof Repair", estimateId: "estimate-1", pos: 0 }),
+      expect.objectContaining({ id: "estimate-service-2", name: "Cleanup", estimateId: "estimate-1", pos: 1 }),
+    ]);
+    expect(mockState.serviceProjects).toEqual([
+      expect.objectContaining({
+        id: "service-project-1",
+        projectId: "project-1",
+        estimateServiceId: "estimate-service-1",
+        name: "Roof Repair",
+      }),
+      expect.objectContaining({
+        id: "service-project-2",
+        projectId: "project-1",
+        estimateServiceId: "estimate-service-2",
+        name: "Cleanup",
+      }),
+    ]);
+    expect(mockState.imgServiceProjects).toEqual([
+      expect.objectContaining({
+        uri: "s3/service-photo-1.jpg",
+        serviceProjectId: "service-project-1",
       }),
     ]);
   });
