@@ -12,6 +12,7 @@ import { UpdateServiceEstimateController } from "../controllers/estimates/update
 import { CreateServiceEstimateController } from "../controllers/estimates/createServiceEstimateController";
 import { CreateNewEstimateController } from "../controllers/estimates/createNewEstimateController";
 import { CreateFullEstimateController } from "../controllers/estimates/createFullEstimateController";
+import { UpdateFullEstimateController } from "../controllers/estimates/updateFullEstimateController";
 import { GetNumberNewEstimateController } from "../controllers/estimates/getNumberNewEstimate";
 import { GetNumberEstimateProjectController } from "../controllers/estimates/getNumberEstimateProject";
 import { GetEstimateByProjectIdController } from "../controllers/estimates/getEstimateById";
@@ -36,6 +37,7 @@ const updateServiceEstimateController = new UpdateServiceEstimateController();
 const createServiceEstimateController = new CreateServiceEstimateController();
 const createNewEstimateController = new CreateNewEstimateController();
 const createFullEstimateController = new CreateFullEstimateController();
+const updateFullEstimateController = new UpdateFullEstimateController();
 const getNumberNewEstimateController = new GetNumberNewEstimateController();
 const dashboardEstimatesController = new DashboardEstimatesController();
 const getNumberEstimateProjectController = new GetNumberEstimateProjectController();
@@ -70,6 +72,15 @@ estimateRoutes.post(
     { name: "attachments", maxCount: 20 },
   ]),
   createFullEstimateController.handle.bind(createFullEstimateController)
+);
+estimateRoutes.put(
+  "/update-full/:estimateId",
+  checkToken,
+  uploadCreateFullEstimate.fields([
+    { name: "file", maxCount: 1 },
+    { name: "attachments", maxCount: 20 },
+  ]),
+  updateFullEstimateController.handle.bind(updateFullEstimateController)
 );
 estimateRoutes.get("/number/:companyId", checkToken, getNumberNewEstimateController.handle);
 estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateController.verifyNumber);

@@ -13,6 +13,7 @@ const state = {
   estimateServices: [] as any[],
   serviceProjects: [] as any[],
   pdfProjects: [] as any[],
+  imagesAttachments: [] as any[],
   serviceUpdates: 0,
   failOnServiceUpdateCall: 0,
 };
@@ -99,9 +100,90 @@ const seedEstimateForEdit = () => {
     uri: "s3/old-estimate.pdf",
     templateNumber: 1,
   }];
+  state.imagesAttachments = [];
   state.serviceUpdates = 0;
   state.failOnServiceUpdateCall = 0;
 };
+
+const currentEditPayload = {
+  fields: {
+    description: "New intro",
+    terms: "New terms",
+    multi_emails: "client@example.com,owner@example.com",
+    date_creation: "2026-07-06T12:00:00.000Z",
+    totalAmount: 400,
+    discountType: "fixed",
+    discountValue: 25,
+    workContextId: "work-context-1",
+  },
+  services: {
+    update: [{
+      id: "estimate-service-1",
+      name: "Roof Repair",
+      description: "Updated roof description",
+      quantity: 2,
+      unitPrice: 150,
+      lineTotal: 300,
+      hours: 2,
+      price: 150,
+      pos: 0,
+    }],
+    create: [{
+      name: "Cleanup",
+      description: "Site cleanup",
+      quantity: 1,
+      unitPrice: 100,
+      lineTotal: 100,
+      hours: 1,
+      price: 100,
+      pos: 1,
+    }],
+    delete: ["estimate-service-2"],
+  },
+  pdf: {
+    templateNumber: 2,
+  },
+};
+
+const comparableState = () => ({
+  estimate: {
+    description: state.estimates[0].description,
+    terms: state.estimates[0].terms,
+    multi_emails: state.estimates[0].multi_emails,
+    totalAmount: state.estimates[0].totalAmount,
+    finalAmount: state.estimates[0].finalAmount,
+    balanceDue: state.estimates[0].balanceDue,
+    discountType: state.estimates[0].discountType,
+    discountValue: state.estimates[0].discountValue,
+    discountAmount: state.estimates[0].discountAmount,
+  },
+  project: {
+    workContextId: state.projects[0].workContextId,
+    location: state.projects[0].location,
+    lat: state.projects[0].lat,
+    log: state.projects[0].log,
+    radius: state.projects[0].radius,
+  },
+  services: state.estimateServices.map((service) => ({
+    name: service.name,
+    description: service.description,
+    quantity: service.quantity,
+    unitPrice: service.unitPrice,
+    lineTotal: service.lineTotal,
+    originalUnitPrice: service.originalUnitPrice,
+    originalLineTotal: service.originalLineTotal,
+    hours: service.hours,
+    price: service.price,
+    pos: service.pos,
+  })),
+  serviceProjects: state.serviceProjects.map((serviceProject) => ({
+    estimateServiceId: serviceProject.estimateServiceId,
+  })),
+  pdf: {
+    original_file_name: state.pdfProjects[0].original_file_name,
+    templateNumber: state.pdfProjects[0].templateNumber,
+  },
+});
 
 const mockPrisma: RecordMap = {
   $transaction: jest.fn(async (callback: (tx: any) => Promise<any>) => {
@@ -124,6 +206,7 @@ const mockPrisma: RecordMap = {
           ...project,
           client: state.clients.find((item) => item.id === project.client_id),
           company: { id: project.company_id, name: "ACME Construction", signature: null },
+          workContext: { id: project.workContextId, Name: "Ada Homeowner" },
         } : null,
         serviceProjects: state.estimateServices.filter((service) => service.estimateId === estimate.id),
       };
@@ -237,6 +320,24 @@ const mockPrisma: RecordMap = {
       return state.pdfProjects.find((item) => item.id === where.id) || null;
     }),
   },
+  imagesAttachments: {
+    create: jest.fn(async ({ data }: any) => {
+      const image = {
+        id: `image-${state.imagesAttachments.length + 1}`,
+        ...data,
+      };
+      state.imagesAttachments.push(image);
+      return image;
+    }),
+    findUnique: jest.fn(async ({ where }: any) => {
+      return state.imagesAttachments.find((item) => item.id === where.id) || null;
+    }),
+    delete: jest.fn(async ({ where }: any) => {
+      const index = state.imagesAttachments.findIndex((item) => item.id === where.id);
+      const [deleted] = state.imagesAttachments.splice(index, 1);
+      return deleted;
+    }),
+  },
 };
 
 jest.mock("../../src/middlewares/checkToken", () => ({
@@ -256,6 +357,9 @@ jest.mock("../../src/utils/S3/getPresignedUrl", () => ({
 jest.mock("../../src/utils/S3/s3Storage", () => (
   jest.fn().mockImplementation(() => ({ deleteFile: jest.fn(async () => undefined) }))
 ));
+jest.mock("../../src/utils/S3/deleteFileFromS3", () => ({
+  deleteFileFromS3: jest.fn(async () => undefined),
+}));
 jest.mock("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: jest.fn().mockResolvedValue({}) })),
   PutObjectCommand: jest.fn().mockImplementation((input: any) => input),
@@ -423,6 +527,37 @@ describe("current estimate edit flow contract", () => {
       original_file_name: "updated-estimate.pdf",
       templateNumber: 2,
     }));
+  });
+
+  it("keeps the unified edit route final state equivalent to the old multi-call flow", async () => {
+    const oldResponses = await runCurrentEditSequence();
+    expect(Object.values(oldResponses).map((response: any) => response.status)).toEqual([200, 200, 201, 200, 200, 200]);
+    const oldFinalState = comparableState();
+
+    seedEstimateForEdit();
+
+    const response = await request(app)
+      .put("/estimate/update-full/estimate-1")
+      .set("Authorization", "Bearer test")
+      .field("payload", JSON.stringify(currentEditPayload))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "updated-estimate.pdf");
+
+    expect(response.status).toBe(200);
+    expect(comparableState()).toEqual(oldFinalState);
+  });
+
+  it("rolls back all database changes when the unified edit route fails mid-update", async () => {
+    const before = comparableState();
+    state.failOnServiceUpdateCall = 1;
+
+    const response = await request(app)
+      .put("/estimate/update-full/estimate-1")
+      .set("Authorization", "Bearer test")
+      .field("payload", JSON.stringify(currentEditPayload))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "updated-estimate.pdf");
+
+    expect(response.status).toBe(500);
+    expect(comparableState()).toEqual(before);
   });
 
   it("documents the current partial-state risk when a later edit call fails", async () => {
