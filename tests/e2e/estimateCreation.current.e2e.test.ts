@@ -398,6 +398,13 @@ jest.mock("../../src/utils/S3/getPresignedUrl", () => ({
   getPresignedUrl: jest.fn(async (key: string) => `https://s3.test/${key}`),
 }));
 
+jest.mock("../../src/utils/S3/stagedUpload", () => ({
+  verifyStagedUploadReference: jest.fn(async (reference: any) => reference),
+  getStagedObjectBuffer: jest.fn(async () => Buffer.from("%PDF-1.4\n%%EOF")),
+  putS3ObjectBuffer: jest.fn(async () => undefined),
+  deleteS3ObjectQuietly: jest.fn(async () => undefined),
+}));
+
 jest.mock("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({
     send: jest.fn().mockResolvedValue({}),
@@ -423,6 +430,7 @@ import { estimateRoutes } from "../../src/routes/estimateRoutes";
 import { projectRoutes } from "../../src/routes/projectRoutes";
 import { imagesAttachmentsRoutes } from "../../src/routes/imagesAttachments";
 import { addCompanySignatureToPdfBuffer } from "../../src/utils/pdfEstimateSignatures";
+import { putS3ObjectBuffer, verifyStagedUploadReference } from "../../src/utils/S3/stagedUpload";
 
 const createTestApp = () => {
   const app = express();
@@ -798,6 +806,141 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
     ]);
   });
 
+  it("creates a full estimate for an existing project through staged S3 uploads", async () => {
+    const projectResponse = await request(app)
+      .post("/project")
+      .set(auth)
+      .send({
+        seller_user_id: "seller-1",
+        price: 0,
+        status_project: "Pre-Start",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        estimateNumber: "1001",
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+      });
+
+    expect(projectResponse.status).toBe(201);
+
+    const stagedPdfUpload = {
+      key: "staged/company-1/user-test/project-estimate.pdf",
+      token: "signed-pdf-token",
+      originalName: "project-estimate.pdf",
+      contentType: "application/pdf",
+      size: 18,
+      purpose: "estimate-pdf",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+    const stagedAttachmentUpload = {
+      key: "staged/company-1/user-test/project-before.jpg",
+      token: "signed-image-token",
+      originalName: "project-before.jpg",
+      contentType: "image/jpeg",
+      size: 11,
+      purpose: "estimate-attachment",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+
+    const response = await request(app)
+      .post(`/estimate/create-full/project/${projectResponse.body.id}`)
+      .set(auth)
+      .field("payload", JSON.stringify({
+        pdf: {
+          type_pdf: "estimate",
+          templateNumber: 2,
+          upload: stagedPdfUpload,
+        },
+        estimate: {
+          preGeneratedNumber: "1001-01",
+          totalAmount: 300,
+          discountType: null,
+          discountValue: null,
+          type_estimate: "estimateProject",
+          description: "Estimate letter",
+          terms: "Estimate terms",
+          multi_emails: "client@example.com,owner@example.com",
+          date_creation: "2026-07-03",
+          workContextId: "work-context-1",
+          cancelEstimates: true,
+        },
+        services: [
+          {
+            name: "Roof Repair",
+            description: "Repair damaged roof area",
+            quantity: 2,
+            unitPrice: 100,
+            lineTotal: 200,
+            hours: 2,
+            price: 100,
+            pos: 0,
+          },
+          {
+            name: "Cleanup",
+            description: "Site cleanup",
+            quantity: 1,
+            unitPrice: 100,
+            lineTotal: 100,
+            hours: 1,
+            price: 100,
+            pos: 1,
+          },
+        ],
+        attachments: [{
+          title: "Before photo",
+          type_images_attachments: "image",
+          upload: stagedAttachmentUpload,
+        }],
+      }));
+
+    expect(response.status).toBe(201);
+    expect(mockState.pdfProjects).toEqual([
+      expect.objectContaining({
+        original_file_name: "project-estimate.pdf",
+        project_id: projectResponse.body.id,
+        estimate_id: "estimate-1",
+        type_pdf: "estimate",
+      }),
+    ]);
+    expect(mockState.estimates).toEqual([
+      expect.objectContaining({
+        id: "estimate-1",
+        number: "1001-01",
+        totalAmount: 300,
+        type_estimate: "estimateProject",
+      }),
+    ]);
+    expect(mockState.estimateServices).toEqual([
+      expect.objectContaining({ id: "estimate-service-1", name: "Roof Repair", estimateId: "estimate-1", pos: 0 }),
+      expect.objectContaining({ id: "estimate-service-2", name: "Cleanup", estimateId: "estimate-1", pos: 1 }),
+    ]);
+    expect(mockState.imagesAttachments).toEqual([
+      expect.objectContaining({
+        url: stagedAttachmentUpload.key,
+        projectId: projectResponse.body.id,
+        estimateId: "estimate-1",
+        original_filename: "project-before.jpg",
+        title: "Before photo",
+      }),
+    ]);
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedPdfUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-pdf",
+    });
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedAttachmentUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-attachment",
+    });
+  });
+
   it("rolls back full estimate creation for an existing project when a service fails", async () => {
     const projectResponse = await request(app)
       .post("/project")
@@ -992,6 +1135,138 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
         content: "Create this estimate",
       }),
     ]);
+  });
+
+  it("creates project, pdf, estimate, services and attachments through staged S3 uploads", async () => {
+    const stagedPdfUpload = {
+      key: "staged/company-1/user-test/estimate.pdf",
+      token: "signed-pdf-token",
+      originalName: "estimate.pdf",
+      contentType: "application/pdf",
+      size: 18,
+      purpose: "estimate-pdf",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+    const stagedAttachmentUpload = {
+      key: "staged/company-1/user-test/before.jpg",
+      token: "signed-image-token",
+      originalName: "before.jpg",
+      contentType: "image/jpeg",
+      size: 11,
+      purpose: "estimate-attachment",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+
+    const payload = {
+      project: {
+        seller_user_id: "seller-1",
+        price: 300,
+        status_project: "Pending",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+      },
+      pdf: {
+        type_pdf: "estimate",
+        templateNumber: 2,
+        upload: stagedPdfUpload,
+      },
+      estimate: {
+        preGeneratedNumber: "1001",
+        totalAmount: 300,
+        type_estimate: "estimate",
+        description: "Estimate letter",
+        terms: "Estimate terms",
+        multi_emails: "client@example.com,owner@example.com",
+      },
+      services: [
+        {
+          name: "Roof Repair",
+          description: "Repair damaged roof area",
+          quantity: 2,
+          unitPrice: 100,
+          lineTotal: 200,
+          hours: 2,
+          price: 100,
+          pos: 0,
+        },
+        {
+          name: "Cleanup",
+          description: "Site cleanup",
+          quantity: 1,
+          unitPrice: 100,
+          lineTotal: 100,
+          hours: 1,
+          price: 100,
+          pos: 1,
+        },
+      ],
+      attachments: [{
+        title: "Before photo",
+        type_images_attachments: "image",
+        upload: stagedAttachmentUpload,
+      }],
+    };
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify(payload));
+
+    expect(response.status).toBe(201);
+    expect(mockState.projects).toEqual([
+      expect.objectContaining({
+        id: "project-1",
+        price: 300,
+        balanceDue: 300,
+      }),
+    ]);
+    expect(mockState.pdfProjects).toEqual([
+      expect.objectContaining({
+        original_file_name: "estimate.pdf",
+        type_pdf: "estimate",
+        project_id: "project-1",
+        estimate_id: "estimate-1",
+      }),
+    ]);
+    expect(mockState.estimates).toEqual([
+      expect.objectContaining({
+        id: "estimate-1",
+        totalAmount: 300,
+        multi_emails: "client@example.com,owner@example.com",
+        isStandaloneEstimate: false,
+      }),
+    ]);
+    expect(mockState.imagesAttachments).toEqual([
+      expect.objectContaining({
+        url: stagedAttachmentUpload.key,
+        projectId: "project-1",
+        estimateId: "estimate-1",
+        original_filename: "before.jpg",
+        title: "Before photo",
+        type_images_attachments: "image",
+      }),
+    ]);
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedPdfUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-pdf",
+    });
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedAttachmentUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-attachment",
+    });
+    expect(putS3ObjectBuffer).toHaveBeenCalledWith(expect.objectContaining({
+      contentType: "application/pdf",
+    }));
   });
 
   it("creates a project-flow estimate with every service mirrored into the project services", async () => {

@@ -360,6 +360,12 @@ jest.mock("../../src/utils/S3/s3Storage", () => (
 jest.mock("../../src/utils/S3/deleteFileFromS3", () => ({
   deleteFileFromS3: jest.fn(async () => undefined),
 }));
+jest.mock("../../src/utils/S3/stagedUpload", () => ({
+  verifyStagedUploadReference: jest.fn(async (reference: any) => reference),
+  getStagedObjectBuffer: jest.fn(async () => Buffer.from("%PDF-1.4\n%%EOF")),
+  putS3ObjectBuffer: jest.fn(async () => undefined),
+  deleteS3ObjectQuietly: jest.fn(async () => undefined),
+}));
 jest.mock("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: jest.fn().mockResolvedValue({}) })),
   PutObjectCommand: jest.fn().mockImplementation((input: any) => input),
@@ -395,6 +401,7 @@ jest.mock("../../src/controllers/quickbooks/estimate/QuickBooksEstimateOutboundS
 }));
 
 import { estimateRoutes } from "../../src/routes/estimateRoutes";
+import { verifyStagedUploadReference } from "../../src/utils/S3/stagedUpload";
 
 const app = express()
   .use(express.json({ limit: "25mb" }))
@@ -544,6 +551,71 @@ describe("current estimate edit flow contract", () => {
 
     expect(response.status).toBe(200);
     expect(comparableState()).toEqual(oldFinalState);
+  });
+
+  it("updates through the unified edit route using staged S3 uploads", async () => {
+    const stagedPdfUpload = {
+      key: "staged/company-1/user-test/updated-estimate.pdf",
+      token: "signed-pdf-token",
+      originalName: "updated-estimate.pdf",
+      contentType: "application/pdf",
+      size: 18,
+      purpose: "estimate-pdf",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+    const stagedAttachmentUpload = {
+      key: "staged/company-1/user-test/update-before.jpg",
+      token: "signed-image-token",
+      originalName: "update-before.jpg",
+      contentType: "image/jpeg",
+      size: 11,
+      purpose: "estimate-attachment",
+      expiresAt: "2026-07-03T13:00:00.000Z",
+    };
+
+    const payload = {
+      ...currentEditPayload,
+      pdf: {
+        ...currentEditPayload.pdf,
+        upload: stagedPdfUpload,
+      },
+      attachments: {
+        create: [{
+          title: "New before",
+          type_images_attachments: "image",
+          upload: stagedAttachmentUpload,
+        }],
+      },
+    };
+
+    const response = await request(app)
+      .put("/estimate/update-full/estimate-1")
+      .set("Authorization", "Bearer test")
+      .field("payload", JSON.stringify(payload));
+
+    expect(response.status).toBe(200);
+    expect(state.pdfProjects[0]).toEqual(expect.objectContaining({
+      original_file_name: "updated-estimate.pdf",
+      templateNumber: 2,
+    }));
+    expect(state.imagesAttachments).toEqual([
+      expect.objectContaining({
+        url: stagedAttachmentUpload.key,
+        original_filename: "update-before.jpg",
+        title: "New before",
+        type_images_attachments: "image",
+      }),
+    ]);
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedPdfUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-pdf",
+    });
+    expect(verifyStagedUploadReference).toHaveBeenCalledWith(stagedAttachmentUpload, {
+      companyId: "company-1",
+      userId: "user-test",
+      purpose: "estimate-attachment",
+    });
   });
 
   it("rolls back all database changes when the unified edit route fails mid-update", async () => {

@@ -10,6 +10,13 @@ import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
+import {
+  deleteS3ObjectQuietly,
+  getStagedObjectBuffer,
+  putS3ObjectBuffer,
+  StagedUploadReference,
+  verifyStagedUploadReference,
+} from "../../utils/S3/stagedUpload";
 
 type CreateFullEstimatePayload = {
   project: {
@@ -35,6 +42,7 @@ type CreateFullEstimatePayload = {
   pdf: {
     type_pdf?: string;
     templateNumber?: number | string;
+    upload?: StagedUploadReference;
   };
   estimate: {
     approvedAt?: string;
@@ -76,6 +84,7 @@ type CreateFullEstimatePayload = {
   attachments?: Array<{
     title?: string;
     type_images_attachments?: "image" | "document";
+    upload?: StagedUploadReference;
   }>;
   smartBuilderSession?: {
     metadata?: any;
@@ -119,6 +128,13 @@ const VALIDATION_ERRORS = new Set([
   "payload is required",
   "payload must be valid JSON",
   "Only PDF files are allowed",
+  "PDF file is required",
+  "Staged upload reference is required",
+  "Staged upload token expired",
+  "Staged upload reference does not match request",
+  "Staged upload size does not match",
+  "Staged upload content type does not match",
+  "Invalid staged upload token",
   "seller_user_id is required",
   "company_id is required",
   "client data is required",
@@ -195,25 +211,34 @@ const getUploadedFiles = (req: MulterRequest) => {
   return { pdfFile, attachments };
 };
 
-const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: string | null; signature?: string | null }) => {
-  if (!file.originalname.toLowerCase().endsWith(".pdf")) {
-    throw new Error("Only PDF files are allowed");
-  }
-
+const signPdfBuffer = async (pdfBuffer: Buffer, company?: { name?: string | null; signature?: string | null }) => {
   const companyName = company?.name || "Company";
-  const pdfBuffer = await fs.promises.readFile(file.path);
-  let pdfToUpload = pdfBuffer;
-
   try {
-    pdfToUpload = company?.signature
+    return company?.signature
       ? await addCompanySignatureImageToPdfBuffer(pdfBuffer, company.signature, companyName)
       : await addCompanySignatureToPdfBuffer(pdfBuffer, companyName, new Date());
   } catch (error) {
     console.error("[CreateFullEstimateController] Error adding company signature to PDF:", error);
+    return pdfBuffer;
+  }
+};
+
+const buildFinalPdfFileName = (originalName: string) => {
+  const fileHash = crypto.randomBytes(4).toString("hex");
+  return `${fileHash}-${originalName.replace(/\s/g, "")}`;
+};
+
+const uploadSignedPdfBuffer = async (
+  pdfBuffer: Buffer,
+  originalName: string,
+  company?: { name?: string | null; signature?: string | null }
+) => {
+  if (!originalName.toLowerCase().endsWith(".pdf")) {
+    throw new Error("Only PDF files are allowed");
   }
 
-  const fileHash = crypto.randomBytes(4).toString("hex");
-  const fileName = `${fileHash}-${file.originalname.replace(/\s/g, "")}`;
+  const pdfToUpload = await signPdfBuffer(pdfBuffer, company);
+  const fileName = buildFinalPdfFileName(originalName);
   const s3 = new S3Client({
     region: process.env.AMAZON_S3_REGION,
     credentials: {
@@ -229,7 +254,32 @@ const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: str
     ContentType: "application/pdf",
   }));
 
+  return fileName;
+};
+
+const uploadSignedPdf = async (file: Express.Multer.File, company?: { name?: string | null; signature?: string | null }) => {
+  const pdfBuffer = await fs.promises.readFile(file.path);
+  const fileName = await uploadSignedPdfBuffer(pdfBuffer, file.originalname, company);
   await deleteFile(file.path);
+  return fileName;
+};
+
+const uploadSignedStagedPdf = async (
+  upload: StagedUploadReference,
+  params: { companyId: string; userId: string },
+  company?: { name?: string | null; signature?: string | null }
+) => {
+  await verifyStagedUploadReference(upload, {
+    companyId: params.companyId,
+    userId: params.userId,
+    purpose: "estimate-pdf",
+  });
+
+  const pdfBuffer = await getStagedObjectBuffer(upload.key);
+  const fileName = buildFinalPdfFileName(upload.originalName || "estimate.pdf");
+  const signedPdfBuffer = await signPdfBuffer(pdfBuffer, company);
+  await putS3ObjectBuffer({ key: fileName, body: signedPdfBuffer, contentType: "application/pdf" });
+  await deleteS3ObjectQuietly(upload.key);
   return fileName;
 };
 
@@ -398,14 +448,18 @@ export class CreateFullEstimateController {
     const { pdfFile, attachments } = getUploadedFiles(req);
     let uploadedPdfUri: string | null = null;
     const uploadedAttachmentUris: string[] = [];
+    const stagedAttachmentUris: string[] = [];
+    let shouldCleanupStagedAttachments = true;
 
     try {
-      if (!pdfFile) {
-        return res.status(400).json({ error: "PDF file is required" });
-      }
-
       const payload = parsePayload(req.body.payload);
       validatePayload(payload);
+
+      const userId = (req as any).userId;
+      const stagedPdfUpload = payload.pdf?.upload;
+      if (!pdfFile && !stagedPdfUpload) {
+        throw new Error("PDF file is required");
+      }
 
       const company = await prisma.company.findUnique({
         where: { id: payload.project.company_id },
@@ -413,21 +467,44 @@ export class CreateFullEstimateController {
       });
 
       if (!company) {
-        await removeLocalFiles([pdfFile, ...attachments]);
+        await removeLocalFiles([...(pdfFile ? [pdfFile] : []), ...attachments]);
         return res.status(404).json({ error: "Company not found" });
       }
 
-      const pdfUri = await uploadSignedPdf(pdfFile, company);
+      const pdfUri = pdfFile
+        ? await uploadSignedPdf(pdfFile, company)
+        : await uploadSignedStagedPdf(stagedPdfUpload!, {
+          companyId: payload.project.company_id,
+          userId,
+        }, company);
       uploadedPdfUri = pdfUri;
-      const uploadedAttachments: Array<{ file: Express.Multer.File; uri: string }> = [];
+      const pdfOriginalName = pdfFile?.originalname || stagedPdfUpload?.originalName || "estimate.pdf";
+      const uploadedAttachments: Array<{ originalName: string; uri: string }> = [];
 
       try {
         const uploaded = await Promise.all(attachments.map(async (attachment) => {
           const uri = await uploadFileToS3_2(attachment, "");
           uploadedAttachmentUris.push(uri);
-          return { file: attachment, uri };
+          return { originalName: attachment.originalname, uri };
         }));
         uploadedAttachments.push(...uploaded);
+
+        const stagedUploads = payload.attachments
+          ?.map((metadata, index) => ({ metadata, index }))
+          .filter(({ metadata }) => metadata.upload) || [];
+
+        for (const { metadata } of stagedUploads) {
+          await verifyStagedUploadReference(metadata.upload!, {
+            companyId: payload.project.company_id,
+            userId,
+            purpose: "estimate-attachment",
+          });
+          stagedAttachmentUris.push(metadata.upload!.key);
+          uploadedAttachments.push({
+            originalName: metadata.upload!.originalName,
+            uri: metadata.upload!.key,
+          });
+        }
       } catch (error) {
         await removeLocalFiles(attachments);
         throw error;
@@ -439,7 +516,7 @@ export class CreateFullEstimateController {
 
         const pdfProject = await tx.pdfProject.create({
           data: {
-            original_file_name: pdfFile.originalname,
+            original_file_name: pdfOriginalName,
             type_pdf: payload.pdf?.type_pdf || "estimate",
             uri: pdfUri,
             project_id: project.id,
@@ -560,7 +637,7 @@ export class CreateFullEstimateController {
               url: attachment.uri,
               projectId: project.id,
               estimateId: estimate.id,
-              original_filename: attachment.file.originalname,
+              original_filename: attachment.originalName,
               title: metadata.title,
               type_images_attachments: metadata.type_images_attachments || "image",
             },
@@ -597,6 +674,7 @@ export class CreateFullEstimateController {
 
         return { project, estimate: finalEstimate || estimate };
       });
+      shouldCleanupStagedAttachments = false;
 
       fireAndForgetUpsertEstimateToQBO(payload.project.company_id, (req as any).userId, result.estimate.id);
 
@@ -611,6 +689,7 @@ export class CreateFullEstimateController {
       await Promise.all([
         deleteS3File(uploadedPdfUri),
         ...uploadedAttachmentUris.map((uri) => deleteS3File(uri)),
+        ...(shouldCleanupStagedAttachments ? stagedAttachmentUris.map((uri) => deleteS3ObjectQuietly(uri)) : []),
       ]);
 
       if (DISCOUNT_ERRORS.has(error?.message)) {
