@@ -564,11 +564,16 @@ export class MobileStandaloneCustomInvoiceController {
     const { projectId } = req.params;
 
     try {
+      const invoiceBaseType = req.body?.type_invoicebase === "estimate" ? "estimate" : "project";
+      if (invoiceBaseType === "estimate" && !req.body?.estimateId) {
+        return res.status(400).json({ error: "estimateId is required for estimate based invoices." });
+      }
+
       const payload = {
         ...req.body,
         invoiceType: normalizeInvoiceType(req.body?.invoiceType),
         isStandaloneInvoice: false,
-        type_invoicebase: "project",
+        type_invoicebase: invoiceBaseType,
       };
       const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, projectId } });
       const delegatedRes = createCapturedResponse();
@@ -614,18 +619,28 @@ export class MobileStandaloneCustomInvoiceController {
     try {
       const existingInvoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
-        select: { invoiceType: true },
+        select: { estimateId: true, invoiceType: true, type_invoicebase: true },
       });
 
       if (!existingInvoice) {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      const invoiceBaseType =
+        req.body?.type_invoicebase === "estimate" || existingInvoice.type_invoicebase === "estimate"
+          ? "estimate"
+          : "project";
+      const estimateId = req.body?.estimateId ?? existingInvoice.estimateId ?? null;
+      if (invoiceBaseType === "estimate" && !estimateId) {
+        return res.status(400).json({ error: "estimateId is required for estimate based invoices." });
+      }
+
       const payload = {
         ...req.body,
+        estimateId: invoiceBaseType === "estimate" ? estimateId : null,
         invoiceType: normalizeInvoiceType(req.body?.invoiceType || existingInvoice.invoiceType),
         isStandaloneInvoice: false,
-        type_invoicebase: "project",
+        type_invoicebase: invoiceBaseType,
       };
       const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, invoiceId } });
       const delegatedRes = createCapturedResponse();
@@ -1119,6 +1134,12 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
           workContext: true,
         },
       },
+      estimate: {
+        include: {
+          InvoicePaymentTimeLine: true,
+          serviceProjects: true,
+        },
+      },
     },
   });
 
@@ -1136,19 +1157,28 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const workContext = invoice.project.workContext;
   const invoiceAmount = Number(invoice.totalAmount || payload.totalAmount || 0);
   const servicesTotal = roundCurrency(services.reduce((sum, service) => sum + Number(service.lineTotal || 0), 0));
-  const projectPrice = roundCurrency(Number(invoice.project.price || 0));
-  const currentProjectAmountPaid = roundCurrency(Number(invoice.project.amountPaid || 0));
+  const isEstimateInvoice = invoice.type_invoicebase === "estimate" && !!invoice.estimate;
+  const sourceTotal = isEstimateInvoice
+    ? roundCurrency(Number(invoice.estimate?.finalAmount ?? invoice.estimate?.totalAmount ?? servicesTotal))
+    : roundCurrency(Number(invoice.project.price || 0));
+  const currentSourceAmountPaid = isEstimateInvoice
+    ? roundCurrency(Number(invoice.estimate?.amountPaid || 0))
+    : roundCurrency(Number(invoice.project.amountPaid || 0));
+  const sourceBalanceDue = isEstimateInvoice ? invoice.estimate?.balanceDue : invoice.project.balanceDue;
   const amountPaidBeforeCurrentInvoice = roundCurrency(
-    Math.max(0, currentProjectAmountPaid >= invoiceAmount ? currentProjectAmountPaid - invoiceAmount : currentProjectAmountPaid),
+    Math.max(0, currentSourceAmountPaid >= invoiceAmount ? currentSourceAmountPaid - invoiceAmount : currentSourceAmountPaid),
   );
-  const fallbackApiBalanceDue = projectPrice > 0
-    ? roundCurrency(Math.max(0, projectPrice - amountPaidBeforeCurrentInvoice))
-    : roundCurrency(Number(invoice.project.balanceDue ?? servicesTotal));
+  const fallbackApiBalanceDue = sourceTotal > 0
+    ? roundCurrency(Math.max(0, sourceTotal - amountPaidBeforeCurrentInvoice))
+    : roundCurrency(Number(sourceBalanceDue ?? servicesTotal));
   const apiBalanceDue = roundCurrency(getFiniteNumber(payload.apiBalanceDue, fallbackApiBalanceDue));
   const extraWork = roundCurrency(getFiniteNumber(payload.extraWork, Math.max(0, invoiceAmount - apiBalanceDue)));
   const amountPaid = roundCurrency(getFiniteNumber(payload.amountPaid, amountPaidBeforeCurrentInvoice));
-  const paymentTimeline = Array.isArray(invoice.project.InvoicePaymentTimeLine)
-    ? invoice.project.InvoicePaymentTimeLine
+  const sourcePaymentTimeline = isEstimateInvoice
+    ? invoice.estimate?.InvoicePaymentTimeLine
+    : invoice.project.InvoicePaymentTimeLine;
+  const paymentTimeline = Array.isArray(sourcePaymentTimeline)
+    ? sourcePaymentTimeline
     : [];
   const companyAvatarUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
   const companyAddress = formatCompanyAddress(company);
@@ -1218,6 +1248,7 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
     ? await prisma.pdfProject.update({
         where: { id: existingPdfProject.id },
         data: {
+          estimate_id: isEstimateInvoice ? invoice.estimateId : null,
           original_file_name: normalPdfFileName,
           project_id: invoice.projectId,
           templateNumber: 1,
@@ -1227,6 +1258,7 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
       })
     : await prisma.pdfProject.create({
         data: {
+          estimate_id: isEstimateInvoice ? invoice.estimateId : null,
           invoice_id: invoice.id,
           original_file_name: normalPdfFileName,
           project_id: invoice.projectId,
@@ -1273,6 +1305,11 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
           client: true,
           company: true,
           workContext: true,
+        },
+      },
+      estimate: {
+        include: {
+          InvoicePaymentTimeLine: true,
         },
       },
     },
