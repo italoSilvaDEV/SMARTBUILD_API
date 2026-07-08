@@ -28,7 +28,7 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node", "express", "multer"]
   },
   "include": ["src"]
 }

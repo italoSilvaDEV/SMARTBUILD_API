@@ -7,6 +7,7 @@ import { SignChangeOrderController } from "../controllers/changeOrder/signChange
 import { GetAllChangeOrderByProjectController } from "../controllers/changeOrder/getAllChangeOrderByProject";
 import { GetChangeOrderController } from "../controllers/changeOrder/getChangeOrderController";
 import { UpdateChangeOrderController } from "../controllers/changeOrder/updateChangeOrderController";
+import { UpdateFullChangeOrderController } from "../controllers/changeOrder/updateFullChangeOrderController";
 import { CreateChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/createChangeOrderServiceController";
 import { DeleteChangeOrderServiceController } from "../controllers/changeOrder/changeOrderService/deleteChangeOrderServiceController";
 import { GetChangeOrderServicesController } from "../controllers/changeOrder/changeOrderService/getChangeOrderServices";
@@ -26,6 +27,7 @@ const signChangeOrderController = new SignChangeOrderController();
 const getAllChangeOrderByProjectController = new GetAllChangeOrderByProjectController();
 const getChangeOrderController = new GetChangeOrderController();
 const updateChangeOrderController = new UpdateChangeOrderController();
+const updateFullChangeOrderController = new UpdateFullChangeOrderController();
 const updatePdfChangeOrderController = new UpdatePdfChangeOrderController();
 const sendEmailChangeOrderController = new SendEmailChangeOrderController();
 const manualApprovalChangeOrderController = new ManualApprovalChangeOrderController();
@@ -75,6 +77,12 @@ changeOrderRoutes.put(
     "/update",
     checkToken,
     updateChangeOrderController.handle
+);
+
+changeOrderRoutes.put(
+    "/update-full",
+    checkToken,
+    updateFullChangeOrderController.handle
 );
 
 changeOrderRoutes.delete(
