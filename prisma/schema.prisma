@@ -52,6 +52,7 @@ model User {
   dailyRate             Decimal? @db.Decimal(10, 2)
   defaultBreakMinutes   Int?     @default(0)
   manualBreakEnabled    Boolean? @default(false)
+  paidShortGapEnabled   Boolean? @default(true)
   projectVisibilityMode String?  @default("allActive") // assignedOnly, allActive
 
   invoiceEditAll  Boolean? @default(false)

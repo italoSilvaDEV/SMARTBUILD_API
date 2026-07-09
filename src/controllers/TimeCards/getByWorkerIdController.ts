@@ -5,6 +5,7 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calc
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
 import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours, getPaidShortGapMinutes } from "../../utils/paidShortGaps";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -138,6 +139,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                dailyHours += getPaidShortGapHours(attendance);
             }
 
             const hadOvertimePermission = attendance.isOvertime === true;
@@ -231,6 +233,7 @@ export class getByWorkerIdController {
                     isOverTime: true,
                     defaultBreakMinutes: true,
                     manualBreakEnabled: true,
+                    paidShortGapEnabled: true,
                     dailyRate: true
                 }
             });
@@ -299,6 +302,7 @@ export class getByWorkerIdController {
                             isOverTime: true,
                             defaultBreakMinutes: true,
                             manualBreakEnabled: true,
+                            paidShortGapEnabled: true,
                             dailyRate: true
                         }
                     },
@@ -331,6 +335,7 @@ export class getByWorkerIdController {
             ));
 
             applyEffectiveBreaksToAttendances(attendances as any[]);
+            applyPaidShortGapsToAttendances(attendances as any[]);
 
             const weeklyAttendances = new Map();
 
@@ -406,6 +411,7 @@ export class getByWorkerIdController {
                         );
                         const rawDailyHours = convertHHMMToDecimal(rawHours.normais) + convertHHMMToDecimal(rawHours.extras);
                         dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        dailyHours += getPaidShortGapHours(attendance);
                         const breakMinutesApplied = Math.min(
                             attendance.user.defaultBreakMinutes || 0,
                             Math.round(rawDailyHours * 60)
@@ -468,6 +474,8 @@ export class getByWorkerIdController {
                         raw_hours_worked: parseFloat(((attendance.__rawDailyHours as number) || 0).toFixed(2)),
                         break_minutes: (attendance.__breakMinutesApplied as number) || 0,
                         break_hours: parseFloat((((attendance.__breakMinutesApplied as number) || 0) / 60).toFixed(2)),
+                        paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
+                        paid_short_gap_hours: parseFloat(getPaidShortGapHours(attendance).toFixed(2)),
                         breaks: attendance.breakRecords || [],
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(dailyHours.toFixed(2)),

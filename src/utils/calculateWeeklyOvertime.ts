@@ -1,4 +1,5 @@
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "./calculaHoraExtra";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "./paidShortGaps";
 
 export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attendances: any[] }>) {
   let totalPrice = 0;
@@ -9,6 +10,7 @@ export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attenda
   weeklyAttendances.forEach((weekData) => {
     let weeklyRegularHoursUsed = 0;
     const WEEKLY_REGULAR_LIMIT = 40;
+    applyPaidShortGapsToAttendances((weekData.attendances || []) as any[]);
 
     const sortedAttendances = [...(weekData.attendances || [])].sort(
       (a: any, b: any) =>
@@ -28,7 +30,9 @@ export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attenda
           attendance.user.defaultBreakMinutes || 0
         );
         dailyHours =
-          convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+          convertHHMMToDecimal(hours.normais) +
+          convertHHMMToDecimal(hours.extras) +
+          getPaidShortGapHours(attendance);
       }
 
       const hadOvertimePermission = attendance.isOvertime === true;
@@ -79,6 +83,7 @@ export type AttendanceForOvertime = {
   user: {
     hourly_price?: number | null;
     defaultBreakMinutes?: number | null;
+    paidShortGapEnabled?: boolean | null;
   };
 };
 
@@ -87,6 +92,7 @@ export function calculateWeeklyOvertimePerAttendance(
 ): Map<string, { regularHours: number; overtimeHours: number; price: number }> {
   const WEEKLY_REGULAR_LIMIT = 40;
   const byUserWeek = new Map<string, AttendanceForOvertime[]>();
+  applyPaidShortGapsToAttendances(attendances as any[]);
 
   for (const a of attendances) {
     if (!a.check_in_time || !a.user) continue;
@@ -126,7 +132,9 @@ export function calculateWeeklyOvertimePerAttendance(
           attendance.user?.defaultBreakMinutes ?? 0
         );
         dailyHours =
-          convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+          convertHHMMToDecimal(hours.normais) +
+          convertHHMMToDecimal(hours.extras) +
+          getPaidShortGapHours(attendance);
       }
 
       const hadOvertimePermission = attendance.isOvertime === true;

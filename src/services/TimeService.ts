@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../utils/calculaHoraExtra";
 import { applyEffectiveBreaksToAttendances } from "../utils/attendanceBreaks";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours, getPaidShortGapMinutes } from "../utils/paidShortGaps";
 
 export interface AttendanceWithUser {
     check_in_time: Date | null;
@@ -15,6 +16,7 @@ export interface AttendanceWithUser {
         isOverTime: boolean | null;
         defaultBreakMinutes: number | null;
         manualBreakEnabled?: boolean | null;
+        paidShortGapEnabled?: boolean | null;
         dailyRate: any | null;
     };
     isOvertime?: boolean | null;
@@ -26,7 +28,9 @@ export class TimeService {
      * Agrupa por semana e aplica regras de overtime (40h).
      */
     calculatePeriodTotals(attendances: AttendanceWithUser[]) {
-        const attendancesByUser = this.groupByUser(applyEffectiveBreaksToAttendances(attendances as any[]) as any);
+        const effectiveAttendances = applyEffectiveBreaksToAttendances(attendances as any[]) as any;
+        applyPaidShortGapsToAttendances(effectiveAttendances);
+        const attendancesByUser = this.groupByUser(effectiveAttendances);
         const allFormatted: any[] = [];
 
         Object.values(attendancesByUser).forEach(userAttendances => {
@@ -101,7 +105,10 @@ export class TimeService {
                 att.workEndTime,
                 breakMinutes
             );
-            const dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+            const dailyHours =
+                convertHHMMToDecimal(hours.normais) +
+                convertHHMMToDecimal(hours.extras) +
+                getPaidShortGapHours(att);
             const breakMinutesApplied = Math.min(breakMinutes, Math.round(grossDailyHours * 60));
             totalWeekHours += dailyHours;
             return {
@@ -150,6 +157,8 @@ export class TimeService {
                 raw_hours_worked: parseFloat((att.rawDailyHours || 0).toFixed(2)),
                 break_minutes: att.breakMinutesApplied || 0,
                 break_hours: parseFloat((att.breakHoursApplied || 0).toFixed(2)),
+                paid_short_gap_minutes: getPaidShortGapMinutes(att),
+                paid_short_gap_hours: parseFloat(getPaidShortGapHours(att).toFixed(2)),
                 regular_hours: parseFloat(reg.toFixed(2)),
                 overtime_hours: parseFloat(over.toFixed(2)),
                 price: parseFloat(proportionalPrice.toFixed(2))

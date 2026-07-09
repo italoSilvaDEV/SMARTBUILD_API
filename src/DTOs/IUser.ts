@@ -40,6 +40,7 @@ export interface INewUser {
   dailyRate?: number | string
   defaultBreakMinutes?: number | string
   manualBreakEnabled?: boolean | string
+  paidShortGapEnabled?: boolean | string
   invoiceEditAll?: boolean | string
   projectEditAll?: boolean | string
   estimateEditAll?: boolean | string
