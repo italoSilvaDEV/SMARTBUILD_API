@@ -217,9 +217,10 @@ export class UserController {
       // Os primeiros allowedEmployees usuários são do plano, os seguintes são extras
       const companyForExtraCheck = await prisma.company.findUnique({
         where: { id: company_id },
-        select: { allowedEmployees: true }
+        select: { allowedEmployees: true, paidShortGapEnabled: true }
       });
       const allowedEmployees = companyForExtraCheck?.allowedEmployees ?? 0;
+      const companyPaidShortGapEnabled = companyForExtraCheck?.paidShortGapEnabled ?? true;
       
       const whereCountForExtra = isMultiCompany
         ? { companies: { some: { companyId: company_id } } }
@@ -251,7 +252,7 @@ export class UserController {
           dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
           defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
           manualBreakEnabled: (data as any).manualBreakEnabled === 'true' || (data as any).manualBreakEnabled === true,
-          paidShortGapEnabled: (data as any).paidShortGapEnabled === undefined ? true : ((data as any).paidShortGapEnabled === 'true' || (data as any).paidShortGapEnabled === true),
+          paidShortGapEnabled: companyPaidShortGapEnabled,
           projectVisibilityMode: isOwnerOffice ? "allActive" : (data as any).projectVisibilityMode || "allActive",
           invoiceEditAll: isOwnerOffice || data.invoiceEditAll === "true" || data.invoiceEditAll === true,
           projectEditAll: isOwnerOffice || data.projectEditAll === "true" || data.projectEditAll === true,
@@ -675,6 +676,16 @@ export class UserController {
         return response.status(404).json({ error: "User not found!" });
       }
 
+      const policyCompanyId = company_id || user.company_id || (await prisma.userCompany.findFirst({
+        where: { userId: id },
+        select: { companyId: true },
+      }))?.companyId;
+      const companyPolicy = policyCompanyId ? await prisma.company.findUnique({
+        where: { id: policyCompanyId },
+        select: { paidShortGapEnabled: true },
+      }) : null;
+      const effectivePaidShortGapEnabled = companyPolicy?.paidShortGapEnabled ?? user.paidShortGapEnabled ?? true;
+
       // Validation for enabling extra paid users
       // Only validate if: user is extra paid AND we're trying to enable them (isDisabled = false)
       // AND user is currently disabled
@@ -905,7 +916,7 @@ export class UserController {
             dailyRate,
             defaultBreakMinutes,
             manualBreakEnabled,
-            paidShortGapEnabled: paidShortGapEnabled === undefined ? user.paidShortGapEnabled : toBoolean(paidShortGapEnabled),
+            paidShortGapEnabled: effectivePaidShortGapEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
@@ -930,7 +941,7 @@ export class UserController {
             dailyRate,
             defaultBreakMinutes,
             manualBreakEnabled,
-            paidShortGapEnabled: paidShortGapEnabled === undefined ? user.paidShortGapEnabled : toBoolean(paidShortGapEnabled),
+            paidShortGapEnabled: effectivePaidShortGapEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
