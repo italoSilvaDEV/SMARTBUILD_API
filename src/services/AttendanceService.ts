@@ -13,6 +13,11 @@ export interface CheckInData {
     date?: Date | string | null;
 }
 
+export interface ManualClosedAttendanceData extends CheckInData {
+    check_in_time: Date | string;
+    check_out_time: Date | string;
+}
+
 export interface PendingCheckInData {
     user_id: string;
     project_id: string;
@@ -175,6 +180,124 @@ export class AttendanceService {
                     check_in_address: address || project?.location || '',
                     check_in_latitude: Number.isFinite(latitude) ? latitude! : (project?.lat && !isNaN(parseFloat(project.lat)) ? parseFloat(project.lat) : 0),
                     check_in_longitude: Number.isFinite(longitude) ? longitude! : (project?.log && !isNaN(parseFloat(project.log)) ? parseFloat(project.log) : 0),
+                    isOvertime: user.isOverTime,
+                    workStartTime: user.isOverTime ? user.company?.workStartTime : null,
+                    workEndTime: user.isOverTime ? user.company?.workEndTime : null,
+                    company_id: project?.company_id || user.company?.id || null
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            manualBreakEnabled: true
+                        }
+                    },
+                    UserServiceProject: {
+                        include: {
+                            service_project: {
+                                include: { Project: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return {
+                alreadyOpen: false,
+                attendance
+            };
+        }, {
+            isolationLevel: 'Serializable',
+        });
+    }
+
+    async processManualClosedAttendance(data: ManualClosedAttendanceData) {
+        const { user_id, service_project_id, address, latitude, longitude, check_in_time, check_out_time, date } = data;
+        const checkInDate = new Date(check_in_time);
+        const checkOutDate = new Date(check_out_time);
+
+        if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
+            throw new Error('INVALID_ATTENDANCE_TIME');
+        }
+
+        if (checkOutDate <= checkInDate) {
+            throw new Error('CHECK_OUT_BEFORE_CHECK_IN');
+        }
+
+        return await prisma.$transaction(async (tx) => {
+            const user = await this.getUserAttendanceConfig(tx, user_id);
+
+            const serviceProject = await tx.serviceProject.findUnique({
+                where: { id: service_project_id },
+                include: { Project: true }
+            });
+
+            if (!serviceProject) throw new Error('SERVICE_NOT_FOUND');
+
+            const project = serviceProject.Project;
+            if (project && ['Canceled', 'Declined', 'Rejected'].includes(project.status_project)) {
+                throw new Error('PROJECT_INACTIVE');
+            }
+
+            if (serviceProject.status === 'Canceled') {
+                throw new Error('SERVICE_CANCELED');
+            }
+
+            const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
+            const userServiceProject = await this.ensureUserServiceProjectLink(tx, {
+                user_id,
+                service_project_id,
+                date,
+                visibilityMode,
+                serviceStatus: serviceProject.status,
+            });
+
+            const duplicateAttendance = await tx.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    user_service_project_id: userServiceProject.id,
+                    check_in_time: checkInDate,
+                    check_out_time: checkOutDate,
+                },
+                select: { id: true }
+            });
+
+            if (duplicateAttendance) {
+                throw new Error('DUPLICATE_ATTENDANCE');
+            }
+
+            const overlappingAttendance = await tx.userAttendance.findFirst({
+                where: {
+                    user_id,
+                    check_in_time: { lt: checkOutDate },
+                    OR: [
+                        { check_out_time: null },
+                        { check_out_time: { gt: checkInDate } }
+                    ]
+                },
+                select: { id: true }
+            });
+
+            if (overlappingAttendance) {
+                throw new Error('ATTENDANCE_OVERLAP');
+            }
+
+            const projectLatitude = project?.lat && !isNaN(parseFloat(project.lat)) ? parseFloat(project.lat) : 0;
+            const projectLongitude = project?.log && !isNaN(parseFloat(project.log)) ? parseFloat(project.log) : 0;
+
+            const attendance = await tx.userAttendance.create({
+                data: {
+                    user_id,
+                    user_service_project_id: userServiceProject.id,
+                    check_in_time: checkInDate,
+                    check_out_time: checkOutDate,
+                    date: date ? new Date(date) : checkInDate,
+                    check_in_address: address || project?.location || '',
+                    check_in_latitude: Number.isFinite(latitude) ? latitude! : projectLatitude,
+                    check_in_longitude: Number.isFinite(longitude) ? longitude! : projectLongitude,
+                    check_out_address: address || project?.location || '',
+                    check_out_latitude: Number.isFinite(latitude) ? latitude! : projectLatitude,
+                    check_out_longitude: Number.isFinite(longitude) ? longitude! : projectLongitude,
                     isOvertime: user.isOverTime,
                     workStartTime: user.isOverTime ? user.company?.workStartTime : null,
                     workEndTime: user.isOverTime ? user.company?.workEndTime : null,

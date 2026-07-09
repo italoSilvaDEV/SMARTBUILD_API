@@ -5,6 +5,7 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calc
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
 import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours, getPaidShortGapMinutes } from "../../utils/paidShortGaps";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -149,6 +150,7 @@ function calculateWeeklyOvertime(weeklyAttendances: Map<string, any>) {
                     attendance.user.defaultBreakMinutes || 0
                 );
                 dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                dailyHours += getPaidShortGapHours(attendance);
                 breakMinutesApplied = Math.min(attendance.user.defaultBreakMinutes || 0, Math.round(grossDailyHours * 60));
             }
 
@@ -312,6 +314,7 @@ export class getAllController {
                                                     avatar: true,
                                                     defaultBreakMinutes: true,
                                                     manualBreakEnabled: true,
+                                                    paidShortGapEnabled: true,
                                                     dailyRate: true
                                                 }
                                             },
@@ -387,6 +390,7 @@ export class getAllController {
                             avatar: true,
                             defaultBreakMinutes: true,
                             manualBreakEnabled: true,
+                            paidShortGapEnabled: true,
                             dailyRate: true
                         }
                     },
@@ -433,6 +437,7 @@ export class getAllController {
                             isOverTime: true,
                             defaultBreakMinutes: true,
                             manualBreakEnabled: true,
+                            paidShortGapEnabled: true,
                             dailyRate: true
                         }
                     },
@@ -448,6 +453,11 @@ export class getAllController {
                 )
             );
             applyEffectiveBreaksToAttendances([
+                ...(allAttendances as any[]),
+                ...(canceledProjectAttendances as any[]),
+                ...(nestedProjectAttendances as any[])
+            ]);
+            applyPaidShortGapsToAttendances([
                 ...(allAttendances as any[]),
                 ...(canceledProjectAttendances as any[]),
                 ...(nestedProjectAttendances as any[])
@@ -524,6 +534,7 @@ export class getAllController {
                             attendance.user.defaultBreakMinutes || 0
                         );
                         dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                        dailyHours += getPaidShortGapHours(attendance);
                         breakMinutesApplied = Math.min(attendance.user.defaultBreakMinutes || 0, Math.round(grossDailyHours * 60));
                         breakHoursApplied = breakMinutesApplied / 60;
                     }
@@ -556,6 +567,8 @@ export class getAllController {
                         out: attendance.check_out_time,
                         break_minutes: breakMinutesApplied,
                         break_hours: parseFloat(breakHoursApplied.toFixed(2)),
+                        paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
+                        paid_short_gap_hours: parseFloat(getPaidShortGapHours(attendance).toFixed(2)),
                         regular_hours: parseFloat(finalRegularHours.toFixed(2)),
                         overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
                         total_hours: parseFloat(dailyHours.toFixed(2)),
@@ -637,6 +650,7 @@ export class getAllController {
                                 attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                            dailyHours += getPaidShortGapHours(attendance);
                             breakMinutesApplied = Math.min(attendance.user.defaultBreakMinutes || 0, Math.round(grossDailyHours * 60));
                             breakHoursApplied = breakMinutesApplied / 60;
                         } else {
@@ -685,6 +699,8 @@ export class getAllController {
                             out: attendance.check_out_time,
                             break_minutes: breakMinutesApplied,
                             break_hours: parseFloat(breakHoursApplied.toFixed(2)),
+                            paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
+                            paid_short_gap_hours: parseFloat(getPaidShortGapHours(attendance).toFixed(2)),
                             regular_hours: parseFloat(finalRegularHours.toFixed(2)),
                             overtime_hours: parseFloat(finalOvertimeHours.toFixed(2)),
                             total_hours: parseFloat(dailyHours.toFixed(2)),
@@ -815,6 +831,7 @@ export class getAllController {
                                 attendance.user.defaultBreakMinutes || 0
                             );
                             dailyHours = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                            dailyHours += getPaidShortGapHours(attendance);
                             breakMinutesApplied = Math.min(attendance.user.defaultBreakMinutes || 0, Math.round(grossDailyHours * 60));
                             breakHoursApplied = breakMinutesApplied / 60;
                         } else {
@@ -860,6 +877,8 @@ export class getAllController {
                             out: attendance.check_out_time,
                             break_minutes: breakMinutesApplied,
                             break_hours: parseFloat(breakHoursApplied.toFixed(2)),
+                            paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
+                            paid_short_gap_hours: parseFloat(getPaidShortGapHours(attendance).toFixed(2)),
                             regular_hours: parseFloat(regularHoursThisDay.toFixed(2)),
                             overtime_hours: parseFloat(overtimeHoursThisDay.toFixed(2)),
                             total_hours: parseFloat(dailyHours.toFixed(2)),

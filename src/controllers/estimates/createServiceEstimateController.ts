@@ -20,8 +20,11 @@ interface ServicePayload {
 }
 
 const DISCOUNT_ERRORS = new Set([
+    "Percentage markup cannot be greater than 100",
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
+    "Percentage deposit cannot be greater than 100",
+    "Fixed deposit cannot be greater than estimate total",
 ]);
 
 export class CreateServiceEstimateController {

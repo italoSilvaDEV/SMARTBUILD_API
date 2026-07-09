@@ -469,9 +469,14 @@ export class CompanyController {
             workEndTime,
             attendanceMode,
             projectVisibilityMode,
+            paidShortGapEnabled,
             signature
         } = req.body;
         const file = req.file;
+        const parseOptionalBoolean = (value: any) => {
+            if (value === undefined) return undefined;
+            return value === true || value === "true";
+        };
 
         try {
             const company = await prisma.company.findUnique({ where: { id } });
@@ -516,21 +521,39 @@ export class CompanyController {
                 avatarUrl = newAvatarUrl;
             }
 
-            const updatedCompany = await prisma.company.update({
-                where: { id },
-                data: {
-                    address,
-                    email,
-                    phone,
-                    webSiteUrl,
-                    name,
-                    avatar: avatarUrl,
-                    workStartTime,
-                    workEndTime,
-                    ...(attendanceMode ? { attendanceMode } : {}),
-                    ...(projectVisibilityMode ? { projectVisibilityMode } : {}),
-                    ...(signature !== undefined ? { signature: signature || null } : {})
-                },
+            const paidShortGapSetting = parseOptionalBoolean(paidShortGapEnabled);
+            const updatedCompany = await prisma.$transaction(async (tx) => {
+                const companyResult = await tx.company.update({
+                    where: { id },
+                    data: {
+                        address,
+                        email,
+                        phone,
+                        webSiteUrl,
+                        name,
+                        avatar: avatarUrl,
+                        workStartTime,
+                        workEndTime,
+                        ...(attendanceMode ? { attendanceMode } : {}),
+                        ...(projectVisibilityMode ? { projectVisibilityMode } : {}),
+                        ...(paidShortGapSetting !== undefined ? { paidShortGapEnabled: paidShortGapSetting } : {}),
+                        ...(signature !== undefined ? { signature: signature || null } : {})
+                    },
+                });
+
+                if (paidShortGapSetting !== undefined) {
+                    await tx.user.updateMany({
+                        where: {
+                            OR: [
+                                { company_id: id },
+                                { companies: { some: { companyId: id } } }
+                            ]
+                        },
+                        data: { paidShortGapEnabled: paidShortGapSetting }
+                    });
+                }
+
+                return companyResult;
             });
 
             return res.status(200).json({ company: updatedCompany });
@@ -563,7 +586,8 @@ export class CompanyController {
                     workStartTime: true,
                     workEndTime: true,
                     attendanceMode: true,
-                    projectVisibilityMode: true
+                    projectVisibilityMode: true,
+                    paidShortGapEnabled: true
                 }
             });
 

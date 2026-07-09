@@ -16,8 +16,12 @@ type Fields = {
     totalAmount?: number
     multi_emails?: string | null
     date_creation?: Date
+    markupType?: "fixed" | "percentage" | null
+    markupValue?: number | null
     discountType?: "fixed" | "percentage" | null
     discountValue?: number | null
+    depositType?: "fixed" | "percentage" | null
+    depositValue?: number | null
     location?: {
         address?: string
         lat?: string
@@ -28,8 +32,11 @@ type Fields = {
 }
 
 const DISCOUNT_ERRORS = new Set([
+    "Percentage markup cannot be greater than 100",
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
+    "Percentage deposit cannot be greater than 100",
+    "Fixed deposit cannot be greater than estimate total",
 ]);
 
 export class UpdateEstimateFieldsController {
@@ -41,8 +48,12 @@ export class UpdateEstimateFieldsController {
             totalAmount,
             multi_emails,
             date_creation,
+            markupType,
+            markupValue,
             discountType,
             discountValue,
+            depositType,
+            depositValue,
             client,
             location,
             workContextId,
@@ -90,7 +101,7 @@ export class UpdateEstimateFieldsController {
             })
         }
 
-        const hasAnyField = [description, terms, totalAmount, multi_emails, date_creation, discountType, discountValue, client, location, workContextId]
+        const hasAnyField = [description, terms, totalAmount, multi_emails, date_creation, markupType, markupValue, discountType, discountValue, depositType, depositValue, client, location, workContextId]
             .some(value => value !== undefined)
 
         if (!hasAnyField) {
@@ -122,12 +133,28 @@ export class UpdateEstimateFieldsController {
                 campos.multi_emails = multi_emails === "" ? null : multi_emails
             }
 
+            if (markupType !== undefined) {
+                campos.markupType = markupType
+            }
+
+            if (markupValue !== undefined) {
+                campos.markupValue = markupValue === null || markupValue === "" ? null : Number(markupValue)
+            }
+
             if (discountType !== undefined) {
                 campos.discountType = discountType
             }
 
             if (discountValue !== undefined) {
                 campos.discountValue = discountValue === null || discountValue === "" ? null : Number(discountValue)
+            }
+
+            if (depositType !== undefined) {
+                campos.depositType = depositType
+            }
+
+            if (depositValue !== undefined) {
+                campos.depositValue = depositValue === null || depositValue === "" ? null : Number(depositValue)
             }
 
             if (client !== undefined) {
@@ -220,8 +247,12 @@ export class UpdateEstimateFieldsController {
                             ...(campos.terms !== undefined ? { terms: campos.terms } : {}),
                             ...(campos.multi_emails !== undefined ? { multi_emails: campos.multi_emails } : {}),
                             ...(campos.date_creation !== undefined ? { date_creation: campos.date_creation } : {}),
+                            ...(campos.markupType !== undefined ? { markupType: campos.markupType } : {}),
+                            ...(campos.markupValue !== undefined ? { markupValue: campos.markupValue } : {}),
                             ...(campos.discountType !== undefined ? { discountType: campos.discountType } : {}),
                             ...(campos.discountValue !== undefined ? { discountValue: campos.discountValue } : {}),
+                            ...(campos.depositType !== undefined ? { depositType: campos.depositType } : {}),
+                            ...(campos.depositValue !== undefined ? { depositValue: campos.depositValue } : {}),
                         }
                     })
 
@@ -236,8 +267,12 @@ export class UpdateEstimateFieldsController {
                 const financialFields = buildEstimateFinancialFields({
                     subtotal,
                     amountPaid: estimate.amountPaid,
+                    markupType: campos.markupType !== undefined ? campos.markupType : (estimate as any).markupType,
+                    markupValue: campos.markupValue !== undefined ? campos.markupValue : (estimate as any).markupValue,
                     discountType: campos.discountType !== undefined ? campos.discountType : (estimate as any).discountType,
                     discountValue: campos.discountValue !== undefined ? campos.discountValue : (estimate as any).discountValue,
+                    depositType: campos.depositType !== undefined ? campos.depositType : (estimate as any).depositType,
+                    depositValue: campos.depositValue !== undefined ? campos.depositValue : (estimate as any).depositValue,
                 })
 
                 updatedEstimate = await prisma.$transaction(async (smartbuild) => {
@@ -254,9 +289,15 @@ export class UpdateEstimateFieldsController {
                         ...(campos.date_creation !== undefined ? { date_creation: campos.date_creation } : {}),
                         totalAmount: financialFields.totalAmount,
                         balanceDue: financialFields.balanceDue,
+                        markupType: financialFields.markupType,
+                        markupValue: financialFields.markupValue,
+                        markupAmount: financialFields.markupAmount,
                         discountType: financialFields.discountType,
                         discountValue: financialFields.discountValue,
                         discountAmount: financialFields.discountAmount,
+                        depositType: financialFields.depositType,
+                        depositValue: financialFields.depositValue,
+                        depositAmount: financialFields.depositAmount,
                         finalAmount: financialFields.finalAmount,
                     }
                     })

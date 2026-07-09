@@ -438,8 +438,12 @@ export class EstimateController {
         }
 
         estimate.totalAmount = Number(estimate.totalAmount);
+        estimate.markupValue = estimate.markupValue !== null && estimate.markupValue !== undefined ? Number(estimate.markupValue) : null;
+        estimate.markupAmount = estimate.markupAmount !== null && estimate.markupAmount !== undefined ? Number(estimate.markupAmount) : null;
         estimate.discountValue = estimate.discountValue !== null && estimate.discountValue !== undefined ? Number(estimate.discountValue) : null;
         estimate.discountAmount = estimate.discountAmount !== null && estimate.discountAmount !== undefined ? Number(estimate.discountAmount) : null;
+        estimate.depositValue = estimate.depositValue !== null && estimate.depositValue !== undefined ? Number(estimate.depositValue) : null;
+        estimate.depositAmount = estimate.depositAmount !== null && estimate.depositAmount !== undefined ? Number(estimate.depositAmount) : null;
         estimate.finalAmount = estimate.finalAmount !== null && estimate.finalAmount !== undefined ? Number(estimate.finalAmount) : null;
         estimate.balanceDue = estimate.balanceDue !== null && estimate.balanceDue !== undefined ? Number(estimate.balanceDue) : Number((effectiveTotal - amountPaid).toFixed(2));
         estimate.amountPaid = amountPaid;
@@ -596,8 +600,12 @@ export class EstimateController {
       }
 
       (estimate as any).totalAmount = Number(estimate.totalAmount);
+      (estimate as any).markupValue = (estimate as any).markupValue !== null && (estimate as any).markupValue !== undefined ? Number((estimate as any).markupValue) : null;
+      (estimate as any).markupAmount = (estimate as any).markupAmount !== null && (estimate as any).markupAmount !== undefined ? Number((estimate as any).markupAmount) : null;
       (estimate as any).discountValue = (estimate as any).discountValue !== null && (estimate as any).discountValue !== undefined ? Number((estimate as any).discountValue) : null;
       (estimate as any).discountAmount = (estimate as any).discountAmount !== null && (estimate as any).discountAmount !== undefined ? Number((estimate as any).discountAmount) : null;
+      (estimate as any).depositValue = (estimate as any).depositValue !== null && (estimate as any).depositValue !== undefined ? Number((estimate as any).depositValue) : null;
+      (estimate as any).depositAmount = (estimate as any).depositAmount !== null && (estimate as any).depositAmount !== undefined ? Number((estimate as any).depositAmount) : null;
       (estimate as any).finalAmount = (estimate as any).finalAmount !== null && (estimate as any).finalAmount !== undefined ? Number((estimate as any).finalAmount) : null;
       (estimate as any).balanceDue = (estimate as any).balanceDue !== null && (estimate as any).balanceDue !== undefined ? Number((estimate as any).balanceDue) : Number((effectiveTotal - amountPaid).toFixed(2));
       (estimate as any).amountPaid = amountPaid;

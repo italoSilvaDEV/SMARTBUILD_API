@@ -1,0 +1,2 @@
+ALTER TABLE `User`
+  ADD COLUMN `paidShortGapEnabled` BOOLEAN NULL DEFAULT true;

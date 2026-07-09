@@ -7,4 +7,6 @@ yarn.lock
 dist
 public
 
+.codex-logs/
+
 

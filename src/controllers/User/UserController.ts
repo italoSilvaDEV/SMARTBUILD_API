@@ -217,9 +217,10 @@ export class UserController {
       // Os primeiros allowedEmployees usuários são do plano, os seguintes são extras
       const companyForExtraCheck = await prisma.company.findUnique({
         where: { id: company_id },
-        select: { allowedEmployees: true }
+        select: { allowedEmployees: true, paidShortGapEnabled: true }
       });
       const allowedEmployees = companyForExtraCheck?.allowedEmployees ?? 0;
+      const companyPaidShortGapEnabled = companyForExtraCheck?.paidShortGapEnabled ?? true;
       
       const whereCountForExtra = isMultiCompany
         ? { companies: { some: { companyId: company_id } } }
@@ -251,6 +252,7 @@ export class UserController {
           dailyRate: (data as any).dailyRate ? Number((data as any).dailyRate) : null,
           defaultBreakMinutes: (data as any).defaultBreakMinutes ? Number((data as any).defaultBreakMinutes) : 0,
           manualBreakEnabled: (data as any).manualBreakEnabled === 'true' || (data as any).manualBreakEnabled === true,
+          paidShortGapEnabled: companyPaidShortGapEnabled,
           projectVisibilityMode: isOwnerOffice ? "allActive" : (data as any).projectVisibilityMode || "allActive",
           invoiceEditAll: isOwnerOffice || data.invoiceEditAll === "true" || data.invoiceEditAll === true,
           projectEditAll: isOwnerOffice || data.projectEditAll === "true" || data.projectEditAll === true,
@@ -506,8 +508,14 @@ export class UserController {
         }
         else {
           // Para planos PAGOS (não-FREE)
-          if (!subscription || !subscription.stripeSubscriptionId) {
-            // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+          if (!subscription) {
+            isExpired = true;
+          } else if (subscription.billingProvider === "apple" || subscription.billingProvider === "google") {
+            isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
+            stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+            paymentFailed = subscription.paymentFailed;
+          } else if (!subscription.stripeSubscriptionId) {
+            // Sem stripeSubscriptionId em plano pago legado, considerar expirado
             isExpired = true;
           }
           else {
@@ -591,6 +599,7 @@ export class UserController {
           attendanceMode: user.attendanceMode,
           clockOutMode: user.clockOutMode,
           manualBreakEnabled: user.manualBreakEnabled,
+          paidShortGapEnabled: user.paidShortGapEnabled,
           projectVisibilityMode: user.projectVisibilityMode,
           company: {
             id: user.company?.id,
@@ -638,6 +647,7 @@ export class UserController {
       dailyRate,
       defaultBreakMinutes,
       manualBreakEnabled,
+      paidShortGapEnabled,
       projectVisibilityMode,
       invoiceEditAll,
       projectEditAll,
@@ -665,6 +675,16 @@ export class UserController {
       if (!user) {
         return response.status(404).json({ error: "User not found!" });
       }
+
+      const policyCompanyId = company_id || user.company_id || (await prisma.userCompany.findFirst({
+        where: { userId: id },
+        select: { companyId: true },
+      }))?.companyId;
+      const companyPolicy = policyCompanyId ? await prisma.company.findUnique({
+        where: { id: policyCompanyId },
+        select: { paidShortGapEnabled: true },
+      }) : null;
+      const effectivePaidShortGapEnabled = companyPolicy?.paidShortGapEnabled ?? user.paidShortGapEnabled ?? true;
 
       // Validation for enabling extra paid users
       // Only validate if: user is extra paid AND we're trying to enable them (isDisabled = false)
@@ -896,6 +916,7 @@ export class UserController {
             dailyRate,
             defaultBreakMinutes,
             manualBreakEnabled,
+            paidShortGapEnabled: effectivePaidShortGapEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
@@ -920,6 +941,7 @@ export class UserController {
             dailyRate,
             defaultBreakMinutes,
             manualBreakEnabled,
+            paidShortGapEnabled: effectivePaidShortGapEnabled,
             projectVisibilityMode: finalProjectEditAll ? "allActive" : projectVisibilityMode,
             invoiceEditAll: finalInvoiceEditAll,
             projectEditAll: finalProjectEditAll,
@@ -1054,6 +1076,7 @@ export class UserController {
           dailyRate: true,
           defaultBreakMinutes: true,
           manualBreakEnabled: true,
+          paidShortGapEnabled: true,
           projectVisibilityMode: true,
           invoiceEditAll: true,
           projectEditAll: true,
@@ -1145,6 +1168,7 @@ export class UserController {
           attendanceMode: true,
           clockOutMode: true,
           manualBreakEnabled: true,
+          paidShortGapEnabled: true,
           projectVisibilityMode: true,
           id: true,
           office: {
@@ -1634,8 +1658,14 @@ export class UserController {
       }
       else {
         // Para planos PAGOS (não-FREE)
-        if (!subscription || !subscription.stripeSubscriptionId) {
-          // Sem assinatura ou sem stripeSubscriptionId, considerar expirado
+        if (!subscription) {
+          isExpired = true;
+        } else if (subscription.billingProvider === "apple" || subscription.billingProvider === "google") {
+          isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
+          stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+          paymentFailed = subscription.paymentFailed;
+        } else if (!subscription.stripeSubscriptionId) {
+          // Sem stripeSubscriptionId em plano pago legado, considerar expirado
           isExpired = true;
         }
         else {

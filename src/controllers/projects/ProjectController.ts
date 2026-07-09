@@ -13,6 +13,7 @@ import { generatePdf } from "../../utils/generatePdf";
 import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
 
@@ -23,7 +24,7 @@ function projectAttendanceTotals(attendances: Array<{
   workStartTime: string | null;
   workEndTime: string | null;
   isOvertime: boolean | null;
-  user: { hourly_price: number | null; defaultBreakMinutes: number | null };
+  user: { hourly_price: number | null; defaultBreakMinutes: number | null; paidShortGapEnabled?: boolean | null };
 }>): { totalPrice: number; totalHours: number } {
   const weeklyByUser = new Map<string, Map<string, { attendances: any[] }>>();
 
@@ -343,7 +344,8 @@ export class ProjectController {
                       user: {
                         select: {
                           hourly_price: true,
-                          defaultBreakMinutes: true
+                          defaultBreakMinutes: true,
+                          paidShortGapEnabled: true
                         }
                       }
                     }
@@ -541,6 +543,7 @@ export class ProjectController {
               user: {
                 hourly_price: a.user?.hourly_price ?? null,
                 defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+                paidShortGapEnabled: a.user?.paidShortGapEnabled ?? null,
               },
             }))
           )
@@ -656,7 +659,8 @@ export class ProjectController {
                       user: {
                         select: {
                           hourly_price: true,
-                          defaultBreakMinutes: true
+                          defaultBreakMinutes: true,
+                          paidShortGapEnabled: true
                         },
                       }
                     }
@@ -788,6 +792,7 @@ export class ProjectController {
               user: {
                 hourly_price: a.user?.hourly_price ?? null,
                 defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+                paidShortGapEnabled: a.user?.paidShortGapEnabled ?? null,
               },
             }))
           )
@@ -1932,6 +1937,7 @@ export class ProjectController {
               avatar: true,
               hourly_price: true,
               defaultBreakMinutes: true,
+              paidShortGapEnabled: true,
             },
           },
         },
@@ -1939,6 +1945,8 @@ export class ProjectController {
           check_in_time: "desc",
         },
       });
+
+      applyPaidShortGapsToAttendances(result as any[]);
 
       // Processar URLs assinadas e calcular horas trabalhadas
       const processedResult = await Promise.all(
@@ -1957,6 +1965,7 @@ export class ProjectController {
             );
             regularHours = convertHHMMToDecimal(hours.normais);
             overtimeHours = convertHHMMToDecimal(hours.extras);
+            regularHours += getPaidShortGapHours(attendance);
             hoursWorked = regularHours + overtimeHours;
           }
           return {

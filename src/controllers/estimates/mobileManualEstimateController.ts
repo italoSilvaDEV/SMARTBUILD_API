@@ -27,8 +27,12 @@ type MobileManualEstimatePayload = {
   estimateNumber: string;
   dateCreation: string;
   templateNumber: 1;
+  markupType?: EstimateDiscountType;
+  markupValue?: number | null;
   discountType?: EstimateDiscountType;
   discountValue?: number | null;
+  depositType?: EstimateDiscountType;
+  depositValue?: number | null;
   client: {
     id?: string;
     name: string;
@@ -43,6 +47,7 @@ type MobileManualEstimatePayload = {
     lng: string;
     radius: string;
   };
+  projectFlow?: boolean;
   projectId?: string;
   terms: string;
   services: Array<{
@@ -50,6 +55,7 @@ type MobileManualEstimatePayload = {
     name: string;
     description?: string;
     quantity: number;
+    serviceProjectId?: string;
     unitPrice: number;
     lineTotal: number;
     pos: number;
@@ -63,8 +69,11 @@ type MobileManualEstimatePayload = {
 };
 
 const DISCOUNT_ERRORS = new Set([
+  "Percentage markup cannot be greater than 100",
   "Percentage discount cannot be greater than 100",
   "Fixed discount cannot be greater than estimate subtotal",
+  "Percentage deposit cannot be greater than 100",
+  "Fixed deposit cannot be greater than estimate total",
 ]);
 
 export class MobileManualEstimateController {
@@ -128,6 +137,7 @@ export class MobileManualEstimateController {
         name: service.name.trim(),
         pos: Number.isFinite(service.pos) ? Number(service.pos) : index,
         quantity: Number(service.quantity),
+        serviceProjectId: service.serviceProjectId || null,
         unitPrice: roundMoney(Number(service.unitPrice)),
       }));
 
@@ -136,25 +146,34 @@ export class MobileManualEstimateController {
       );
       const distributedEstimate = distributeEstimateDiscountAcrossServices({
         services: normalizedServices,
+        markupType: payload.markupType,
+        markupValue: payload.markupValue,
         discountType: payload.discountType,
         discountValue: payload.discountValue,
+        depositType: payload.depositType,
+        depositValue: payload.depositValue,
         amountPaid: 0,
       });
       const financialFields = buildEstimateFinancialFields({
         subtotal: subtotalAmount,
         amountPaid: 0,
+        markupType: payload.markupType,
+        markupValue: payload.markupValue,
         discountType: payload.discountType,
         discountValue: payload.discountValue,
+        depositType: payload.depositType,
+        depositValue: payload.depositValue,
       });
       const totalAmount = roundMoney(Number(financialFields.totalAmount));
-      const pdfServices = normalizedServices.map((service) => ({
+      const pdfServices = distributedEstimate.services.map((service) => ({
         description: service.description,
-        lineTotal: roundMoney(Number(service.lineTotal)),
+        discountAmount: roundMoney(Number(service.discountAmount || 0)),
+        lineTotal: roundMoney(Number(service.discountedLineTotal)),
         name: service.name,
-        originalLineTotal: roundMoney(Number(service.lineTotal)),
-        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        originalLineTotal: roundMoney(Number(service.originalLineTotal)),
+        originalUnitPrice: roundMoney(Number(service.originalUnitPrice)),
         quantity: service.quantity,
-        unitPrice: roundMoney(Number(service.unitPrice)),
+        unitPrice: roundMoney(Number(service.discountedUnitPrice)),
       }));
 
       const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
@@ -171,9 +190,15 @@ export class MobileManualEstimateController {
         seller,
         services: pdfServices,
         terms: payload.terms,
+        markupAmount: Number(financialFields.markupAmount || 0),
+        markupType: financialFields.markupType,
+        markupValue: financialFields.markupValue,
         discountAmount: Number(financialFields.discountAmount || 0),
         discountType: financialFields.discountType,
         discountValue: financialFields.discountValue,
+        depositAmount: Number(financialFields.depositAmount || 0),
+        depositType: financialFields.depositType,
+        depositValue: financialFields.depositValue,
         subtotalAmount,
         totalAmount,
       });
@@ -264,10 +289,35 @@ export class MobileManualEstimateController {
               lat: payload.location.lat,
               location: payload.location.address,
               log: payload.location.lng,
+              ...(payload.projectFlow
+                ? {
+                    balanceDue: Number(financialFields.balanceDue),
+                    price: totalAmount,
+                    status_project: "Pre-Start",
+                  }
+                : {}),
               radius: Number(payload.location.radius || 100),
               workContextId: payload.workContextId || null,
             },
           });
+        }
+
+        const isProjectFlowEstimate = Boolean(payload.projectFlow && existingProject);
+
+        if (isProjectFlowEstimate) {
+          await Promise.all(
+            distributedEstimate.services
+              .filter((service) => service.serviceProjectId)
+              .map((service) =>
+                tx.serviceProject.update({
+                  where: { id: service.serviceProjectId! },
+                  data: {
+                    hours: service.quantity,
+                    price: service.discountedUnitPrice,
+                  },
+                }),
+              ),
+          );
         }
 
         const pdfProject = await tx.pdfProject.create({
@@ -289,10 +339,16 @@ export class MobileManualEstimateController {
             discountAmount: financialFields.discountAmount,
             discountType: financialFields.discountType,
             discountValue: financialFields.discountValue,
+            depositAmount: financialFields.depositAmount,
+            depositType: financialFields.depositType,
+            depositValue: financialFields.depositValue,
             finalAmount: financialFields.finalAmount,
+            markupAmount: financialFields.markupAmount,
+            markupType: financialFields.markupType,
+            markupValue: financialFields.markupValue,
             multi_emails: payload.multi_emails || "",
             number: verifiedEstimateNumber,
-            status: "pending",
+            status: isProjectFlowEstimate ? "approved" : "pending",
             terms: payload.terms,
             totalAmount,
             type_estimate: existingProject ? "estimateProject" : "estimate",
@@ -325,6 +381,13 @@ export class MobileManualEstimateController {
                 pos: service.pos,
                 price: service.discountedUnitPrice,
                 quantity: service.quantity,
+                ...(service.serviceProjectId
+                  ? {
+                      serviceProject: {
+                        connect: { id: service.serviceProjectId },
+                      },
+                    }
+                  : {}),
                 unitPrice: service.discountedUnitPrice,
               },
             }),
@@ -495,19 +558,24 @@ export class MobileManualEstimateController {
       const subtotalAmount = roundMoney(services.reduce((total, service) => total + service.lineTotal, 0));
       const distributedEstimate = distributeEstimateDiscountAcrossServices({
         services,
+        markupType: estimate.markupType,
+        markupValue: estimate.markupValue,
         discountType: estimate.discountType,
         discountValue: estimate.discountValue,
+        depositType: estimate.depositType,
+        depositValue: estimate.depositValue,
         amountPaid: estimate.amountPaid,
       });
       const totalAmount = roundMoney(Number(distributedEstimate.totals.totalAmount));
-      const pdfServices = services.map((service) => ({
+      const pdfServices = distributedEstimate.services.map((service) => ({
         description: service.description,
-        lineTotal: roundMoney(Number(service.lineTotal)),
+        discountAmount: roundMoney(Number(service.discountAmount || 0)),
+        lineTotal: roundMoney(Number(service.discountedLineTotal)),
         name: service.name,
-        originalLineTotal: roundMoney(Number(service.lineTotal)),
-        originalUnitPrice: roundMoney(Number(service.unitPrice)),
+        originalLineTotal: roundMoney(Number(service.originalLineTotal)),
+        originalUnitPrice: roundMoney(Number(service.originalUnitPrice)),
         quantity: service.quantity,
-        unitPrice: roundMoney(Number(service.unitPrice)),
+        unitPrice: roundMoney(Number(service.discountedUnitPrice)),
       }));
       const companyLogoUrl = company.avatar ? await getSafePresignedUrl(company.avatar) : "";
       const photos = (await Promise.all(
@@ -552,9 +620,15 @@ export class MobileManualEstimateController {
         },
         services: pdfServices,
         terms: estimate.terms || "",
+        markupAmount: Number(distributedEstimate.totals.markupAmount || 0),
+        markupType: distributedEstimate.totals.markupType,
+        markupValue: distributedEstimate.totals.markupValue,
         discountAmount: Number(distributedEstimate.totals.discountAmount || 0),
         discountType: distributedEstimate.totals.discountType,
         discountValue: distributedEstimate.totals.discountValue,
+        depositAmount: Number(distributedEstimate.totals.depositAmount || 0),
+        depositType: distributedEstimate.totals.depositType,
+        depositValue: distributedEstimate.totals.depositValue,
         subtotalAmount,
         totalAmount,
       });
@@ -593,9 +667,15 @@ export class MobileManualEstimateController {
         data: {
           ...(estimate.status === "approved" ? { assignatureRequired: true } : {}),
           balanceDue: distributedEstimate.totals.balanceDue,
+          markupAmount: distributedEstimate.totals.markupAmount,
+          markupType: distributedEstimate.totals.markupType,
+          markupValue: distributedEstimate.totals.markupValue,
           discountAmount: distributedEstimate.totals.discountAmount,
           discountType: distributedEstimate.totals.discountType,
           discountValue: distributedEstimate.totals.discountValue,
+          depositAmount: distributedEstimate.totals.depositAmount,
+          depositType: distributedEstimate.totals.depositType,
+          depositValue: distributedEstimate.totals.depositValue,
           finalAmount: distributedEstimate.totals.finalAmount,
           totalAmount: distributedEstimate.totals.totalAmount,
         },
@@ -955,6 +1035,9 @@ function buildClassicEstimateHtml(input: {
   photos: NonNullable<MobileManualEstimatePayload["standalonePhotos"]>;
   seller: { email: string; name: string };
   services: Array<{
+    discountAmount?: number;
+    discountedLineTotal?: number;
+    discountedUnitPrice?: number;
     description: string;
     lineTotal: number;
     name: string;
@@ -964,27 +1047,43 @@ function buildClassicEstimateHtml(input: {
     unitPrice: number;
   }>;
   terms: string;
+  markupAmount?: number | null;
+  markupType?: EstimateDiscountType;
+  markupValue?: number | null;
   discountAmount?: number | null;
   discountType?: EstimateDiscountType;
   discountValue?: number | null;
+  depositAmount?: number | null;
+  depositType?: EstimateDiscountType;
+  depositValue?: number | null;
   subtotalAmount: number;
   totalAmount: number;
 }) {
   const serviceRows = input.services
     .map(
-      (service) => `
-        <tr class="service-row">
-          <td><strong>${escapeHtml(service.name)}</strong></td>
-          <td class="num">${formatNumber(service.quantity)}</td>
-          <td class="num">${formatMoney(service.unitPrice)}</td>
-          <td class="num amount">${formatMoney(service.lineTotal)}</td>
-        </tr>
-        ${
-          service.description
-            ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
-            : ""
-        }
-      `,
+      (service) => {
+        const hasDiscount = Number(service.discountAmount || 0) > 0;
+        const unitPriceHtml = hasDiscount
+          ? `<div class="price-stack"><span class="old-price">${formatMoney(service.originalUnitPrice ?? service.unitPrice)}</span><span>${formatMoney(service.unitPrice)}</span></div>`
+          : formatMoney(service.unitPrice);
+        const amountHtml = hasDiscount
+          ? `<div class="price-stack amount"><span class="old-price normal-weight">${formatMoney(service.originalLineTotal ?? service.lineTotal)}</span><span>${formatMoney(service.lineTotal)}</span></div>`
+          : formatMoney(service.lineTotal);
+
+        return `
+          <tr class="service-row">
+            <td><strong>${escapeHtml(service.name)}</strong></td>
+            <td class="num">${formatNumber(service.quantity)}</td>
+            <td class="num">${unitPriceHtml}</td>
+            <td class="num amount">${amountHtml}</td>
+          </tr>
+          ${
+            service.description
+              ? `<tr class="description-row"><td colspan="4"><div class="description">${escapeHtml(service.description)}</div></td></tr>`
+              : ""
+          }
+        `;
+      },
     )
     .join("");
   const photoBlocks = input.photos
@@ -1023,12 +1122,25 @@ function buildClassicEstimateHtml(input: {
   const discountLabel = input.discountType === "percentage"
     ? `Discount (${formatNumber(Number(input.discountValue || 0))}%)`
     : "Discount";
-  const totalsBlock = input.discountAmount
+  const markupLabel = input.markupType === "percentage"
+    ? `Markup (${formatNumber(Number(input.markupValue || 0))}%)`
+    : "Markup";
+  const depositLabel = input.depositType === "percentage"
+    ? `Deposit Required (${formatNumber(Number(input.depositValue || 0))}%)`
+    : "Deposit Required";
+  const hasMarkup = Number(input.markupAmount || 0) > 0;
+  const hasDiscount = Number(input.discountAmount || 0) > 0;
+  const hasDeposit = Number(input.depositAmount || 0) > 0;
+  const totalsBlock = hasMarkup || hasDiscount || hasDeposit
     ? `
-      <div class="totals">
-        <div class="summary-row"><span>Subtotal</span><span>${formatMoney(input.subtotalAmount)}</span></div>
-        <div class="summary-row discount"><span>${discountLabel}</span><span>-${formatMoney(input.discountAmount)}</span></div>
+      <div class="totals totals-card">
+        <div class="summary-lines">
+          <div class="summary-row"><span>Subtotal</span><span>${formatMoney(input.subtotalAmount)}</span></div>
+          ${hasMarkup ? `<div class="summary-row markup"><span>${markupLabel}</span><span>${formatMoney(Number(input.markupAmount || 0))}</span></div>` : ""}
+          ${hasDiscount ? `<div class="summary-row discount"><span>${discountLabel}</span><span>-${formatMoney(Number(input.discountAmount || 0))}</span></div>` : ""}
+        </div>
         <div class="total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>
+        ${hasDeposit ? `<div class="summary-row deposit"><span>${depositLabel}</span><span>${formatMoney(Number(input.depositAmount || 0))}</span></div>` : ""}
       </div>
     `
     : `<div class="total single-total"><span>Total</span><span>${formatMoney(input.totalAmount)}</span></div>`;
@@ -1083,10 +1195,17 @@ function buildClassicEstimateHtml(input: {
           .description { color: #6b7280; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 10px; line-height: 1.5; padding: 12px; white-space: pre-wrap; width: 100%; }
           .num { text-align: right; white-space: nowrap; }
           .amount { color: #1a1a1a; font-weight: 600; }
-          .totals { margin-top: 30px; }
+          .price-stack { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.25; }
+          .old-price { color: #9ca3af; text-decoration: line-through; font-weight: 400; }
+          .normal-weight { font-weight: 400; }
+          .totals { margin-top: 30px; page-break-inside: avoid; break-inside: avoid; break-inside: avoid-page; }
+          .totals-card { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; background: #ffffff; }
+          .summary-lines { padding: 8px 0 6px; }
           .summary-row { display: flex; justify-content: space-between; padding: 4px 16px; color: #555; font-size: 12px; font-weight: 700; }
+          .summary-row.markup { color: #4b5563; }
           .summary-row.discount { color: #B83232; }
-          .total { margin-top: 10px; padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
+          .summary-row.deposit { color: #0f7a55; border-top: 1px solid #e5e7eb; padding: 8px 16px; }
+          .total { padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
           .single-total { margin-top: 30px; }
           .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }

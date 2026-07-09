@@ -3,8 +3,11 @@ import { prisma } from "../../utils/prisma";
 import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 
 const DISCOUNT_ERRORS = new Set([
+    "Percentage markup cannot be greater than 100",
     "Percentage discount cannot be greater than 100",
     "Fixed discount cannot be greater than estimate subtotal",
+    "Percentage deposit cannot be greater than 100",
+    "Fixed deposit cannot be greater than estimate total",
 ]);
 
 export class BalanceController {
@@ -60,8 +63,12 @@ export class BalanceController {
             const financialFields = buildEstimateFinancialFields({
                 subtotal,
                 amountPaid: estimate.amountPaid,
+                markupType: (estimate as any).markupType,
+                markupValue: (estimate as any).markupValue,
                 discountType: (estimate as any).discountType,
                 discountValue: (estimate as any).discountValue,
+                depositType: (estimate as any).depositType,
+                depositValue: (estimate as any).depositValue,
             })
 
             const balanceUpdate = await prisma.estimate.update({
@@ -71,9 +78,15 @@ export class BalanceController {
                 data: {
                     totalAmount: financialFields.totalAmount,
                     balanceDue: financialFields.balanceDue,
+                    markupType: financialFields.markupType,
+                    markupValue: financialFields.markupValue,
+                    markupAmount: financialFields.markupAmount,
                     discountType: financialFields.discountType,
                     discountValue: financialFields.discountValue,
                     discountAmount: financialFields.discountAmount,
+                    depositType: financialFields.depositType,
+                    depositValue: financialFields.depositValue,
+                    depositAmount: financialFields.depositAmount,
                     finalAmount: financialFields.finalAmount,
                 }
             })

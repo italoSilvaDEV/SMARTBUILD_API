@@ -263,7 +263,13 @@ export class UserMultiCompanyController {
           }
         }
         else {
-          if (!subscription || !subscription.stripeSubscriptionId) {
+          if (!subscription) {
+            isExpired = true;
+          } else if (subscription.billingProvider === "apple" || subscription.billingProvider === "google") {
+            isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
+            stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
+            paymentFailed = subscription.paymentFailed;
+          } else if (!subscription.stripeSubscriptionId) {
             isExpired = true;
           }
           else {
