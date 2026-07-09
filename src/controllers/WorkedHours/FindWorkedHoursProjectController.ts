@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
 import { getWorkedHoursPrice, workedHoursToNumber } from "../../utils/workedHoursCost";
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -131,7 +132,8 @@ export class FindWorkedHoursProjectController {
                             name: true,
                             avatar: true,
                             hourly_price: true,
-                            defaultBreakMinutes: true
+                            defaultBreakMinutes: true,
+                            paidShortGapEnabled: true
                         }
                     }
                 },
@@ -141,6 +143,7 @@ export class FindWorkedHoursProjectController {
             });
 
             // Calcular as horas trabalhadas
+            applyPaidShortGapsToAttendances(resultAttendance as any[]);
             const formattedResult = resultAttendance.map((attendance) => {
                 let hoursWorked = 0;
                 if (attendance.check_out_time && attendance.check_in_time) {
@@ -151,7 +154,10 @@ export class FindWorkedHoursProjectController {
                         attendance.workEndTime,
                         attendance.user.defaultBreakMinutes || 0,
                     );
-                    hoursWorked = convertHHMMToDecimal(hours.normais) + convertHHMMToDecimal(hours.extras);
+                    hoursWorked =
+                        convertHHMMToDecimal(hours.normais) +
+                        convertHHMMToDecimal(hours.extras) +
+                        getPaidShortGapHours(attendance);
                 }
                 return {
                     id: '',
@@ -304,7 +310,8 @@ export class FindWorkedHoursProjectController {
                             name: true,
                             avatar: true,
                             hourly_price: true,
-                            defaultBreakMinutes: true
+                            defaultBreakMinutes: true,
+                            paidShortGapEnabled: true
                         }
                     }
                 },
@@ -334,6 +341,7 @@ export class FindWorkedHoursProjectController {
                     user: {
                         hourly_price: a.user?.hourly_price ?? null,
                         defaultBreakMinutes: a.user?.defaultBreakMinutes ?? null,
+                        paidShortGapEnabled: a.user?.paidShortGapEnabled ?? null,
                     },
                 }))
             );

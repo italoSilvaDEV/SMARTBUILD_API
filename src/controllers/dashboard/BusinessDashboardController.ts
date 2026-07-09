@@ -4,6 +4,19 @@ import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
 import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
+import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from '../../utils/paidShortGaps';
+
+function applyDashboardPaidShortGaps(projects: any[]) {
+    const attendances = projects.flatMap(project =>
+        (project.serviceProject || []).flatMap((serviceProject: any) =>
+            (serviceProject.UserServiceProject || []).flatMap((userServiceProject: any) =>
+                userServiceProject.user_attendances || []
+            )
+        )
+    );
+
+    applyPaidShortGapsToAttendances(attendances);
+}
 
 const validPeriods = [
     "thisYear",
@@ -679,7 +692,8 @@ export class BusinessDashboardController {
                                             user: {
                                                 select: {
                                                     name: true,
-                                                    hourly_price: true
+                                                    hourly_price: true,
+                                                    paidShortGapEnabled: true
                                                 }
                                             }
                                         }
@@ -690,6 +704,8 @@ export class BusinessDashboardController {
                     }
                 },
             })
+            applyDashboardPaidShortGaps(projects);
+
             // Formatar e calcular horas trabalhadas
             const formattedResult = projects.flatMap(i => i.serviceProject
                 .filter(s => s.UserServiceProject.length > 0) // Filtra para garantir que há dados em UserServiceProject
@@ -716,7 +732,7 @@ export class BusinessDashboardController {
                                     x.workStartTime,
                                     x.workEndTime,
                                 );
-                                regularHours = convertHHMMToDecimal(hours.normais);
+                                regularHours = convertHHMMToDecimal(hours.normais) + getPaidShortGapHours(x);
                                 overtimeHours = convertHHMMToDecimal(hours.extras);
                             }
 

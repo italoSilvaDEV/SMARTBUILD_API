@@ -148,7 +148,7 @@ export class TimeController {
                     user: {
                         select: {
                             id: true, name: true, hourly_price: true, isOverTime: true,
-                            defaultBreakMinutes: true, manualBreakEnabled: true, dailyRate: true
+                            defaultBreakMinutes: true, manualBreakEnabled: true, paidShortGapEnabled: true, dailyRate: true
                         }
                     },
                     breakRecords: {

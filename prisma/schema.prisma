@@ -52,6 +52,7 @@ model User {
   dailyRate             Decimal? @db.Decimal(10, 2)
   defaultBreakMinutes   Int?     @default(0)
   manualBreakEnabled    Boolean? @default(false)
+  paidShortGapEnabled   Boolean? @default(true)
   projectVisibilityMode String?  @default("allActive") // assignedOnly, allActive
 
   invoiceEditAll  Boolean? @default(false)
@@ -316,6 +317,7 @@ model Company {
   workEndTime           String? // Format: "HH:mm" (24-hour)
   attendanceMode        AttendanceMode @default(manual)
   projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
+  paidShortGapEnabled   Boolean?       @default(true)
   accentColor String?
   isActive              Boolean        @default(true) // false = arquivado (master)
   createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
