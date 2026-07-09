@@ -442,8 +442,19 @@ export class UserAttendanceController {
                     data: { check_out_time: new Date(checkOutTime) }
                 });
                 return res.status(200).json({ success: true, data: updated });
+            } else if (checkInTime && checkOutTime) {
+                // Entrada manual fechada: cria o registro solicitado sem reutilizar ponto aberto existente.
+                const result = await attendanceService.processManualClosedAttendance({
+                    user_id: userId,
+                    service_project_id: serviceProjectId,
+                    check_in_time: checkInTime,
+                    check_out_time: checkOutTime,
+                    date: date
+                });
+
+                return res.status(201).json({ success: true, data: result.attendance });
             } else {
-                // Modo Check-in (ou ambos)
+                // Modo Check-in
                 const result = await attendanceService.processCheckIn({
                     user_id: userId,
                     service_project_id: serviceProjectId,
@@ -461,7 +472,8 @@ export class UserAttendanceController {
                 return res.status(201).json({ success: true, data: result.attendance });
             }
         } catch (error: any) {
-            return res.status(500).json({ error: error.message });
+            const status = this.mapErrorToStatus(error.message);
+            return res.status(status).json({ error: error.message });
         }
     }
 
@@ -554,6 +566,10 @@ export class UserAttendanceController {
             case 'MANUAL_BREAK_DISABLED': return 403;
             case 'BREAK_ALREADY_OPEN': return 400;
             case 'BREAK_NOT_OPEN': return 400;
+            case 'INVALID_ATTENDANCE_TIME': return 400;
+            case 'CHECK_OUT_BEFORE_CHECK_IN': return 400;
+            case 'DUPLICATE_ATTENDANCE': return 409;
+            case 'ATTENDANCE_OVERLAP': return 409;
             default: return 500;
         }
     }
