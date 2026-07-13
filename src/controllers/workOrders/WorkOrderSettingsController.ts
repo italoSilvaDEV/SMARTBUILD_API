@@ -4,8 +4,11 @@ import { prisma } from "../../utils/prisma";
 export class WorkOrderSettingsController {
   async get(req: Request, res: Response) {
     if (!await this.canAccess(req, req.params.companyId)) return res.status(403).json({ error: "Access denied" });
-    const settings = await prisma.workOrderSettings.findUnique({ where: { companyId: req.params.companyId } });
-    return res.json({ data: settings || { companyId: req.params.companyId, terms: "" } });
+    const [settings, company] = await Promise.all([
+      prisma.workOrderSettings.findUnique({ where: { companyId: req.params.companyId } }),
+      prisma.company.findUnique({ where: { id: req.params.companyId }, select: { signature: true } }),
+    ]);
+    return res.json({ data: { ...(settings || { companyId: req.params.companyId, terms: "" }), companySignature: company?.signature || "" } });
   }
 
   async save(req: Request, res: Response) {

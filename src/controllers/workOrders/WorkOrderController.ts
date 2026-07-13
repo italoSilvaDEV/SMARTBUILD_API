@@ -8,11 +8,12 @@ import { Prisma } from "@prisma/client";
 const includeWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
   emailLogs: { orderBy: { sentAt: "desc" as const } },
+  company: { select: { name: true, signature: true } },
 };
 
 const includePublicWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
-  company: { select: { name: true, avatar: true } },
+  company: { select: { name: true, avatar: true, signature: true } },
 };
 
 const asDate = (value: unknown) => {
@@ -64,7 +65,7 @@ async function canAccessCompany(req: Request, companyId: string) {
 async function resolveProjectAndAssignee(companyId: string, payload: any) {
   const project = await prisma.project.findFirst({
     where: { id: payload.projectId, company_id: companyId },
-    include: { client: true, workContext: true, project_manager: true },
+    include: { client: true, workContext: true, project_manager: true, company: { select: { signature: true } } },
   });
   if (!project) throw new Error("PROJECT_NOT_FOUND");
 
@@ -84,6 +85,7 @@ async function resolveProjectAndAssignee(companyId: string, payload: any) {
   return {
     project,
     assignee,
+    companySignature: project.company?.signature || null,
     snapshot: {
       projectNumber: project.contract_number ? String(project.contract_number) : null,
       projectName: project.client?.name || project.workContext?.Name || project.workContext?.label || "Project",
@@ -182,9 +184,10 @@ export class WorkOrderController {
 
   async list(req: Request, res: Response) {
     const companyId = String(req.query.companyId || "");
+    const projectId = String(req.query.projectId || "");
     if (!companyId) return res.status(400).json({ error: "Company ID is required" });
     if (!await canAccessCompany(req, companyId)) return res.status(403).json({ error: "Access denied" });
-    const orders = await prisma.workOrder.findMany({ where: { companyId }, include: includeWorkOrder, orderBy: { createdAt: "desc" } });
+    const orders = await prisma.workOrder.findMany({ where: { companyId, ...(projectId ? { projectId } : {}) }, include: includeWorkOrder, orderBy: { createdAt: "desc" } });
     return res.json({ data: orders.map(serialize) });
   }
 
@@ -201,7 +204,7 @@ export class WorkOrderController {
       if (checked.error) return res.status(400).json({ error: checked.error });
       const payload = req.body;
       if (!await canAccessCompany(req, payload.companyId)) return res.status(403).json({ error: "Access denied" });
-      const { snapshot } = await resolveProjectAndAssignee(payload.companyId, payload);
+      const { snapshot, companySignature } = await resolveProjectAndAssignee(payload.companyId, payload);
 
       const order = await withTransactionRetry(() => prisma.$transaction(async (tx) => {
         await tx.$executeRaw`
@@ -224,8 +227,8 @@ export class WorkOrderController {
             assigneeId: payload.assigneeId,
             ...snapshot,
             terms: payload.terms || null,
-            managerSignature: payload.managerSignature || null,
-            managerSignedAt: asDate(payload.managerSignedAt),
+            managerSignature: companySignature,
+            managerSignedAt: companySignature ? new Date() : null,
             items: { create: checked.items!.map((item: any, position: number) => ({
               type: item.type === "material" ? "material" : "service",
               name: item.name.trim(), description: item.description?.trim() || null,
@@ -254,7 +257,7 @@ export class WorkOrderController {
       const payload = { ...req.body, companyId: existing.companyId };
       const checked = validatePayload(payload);
       if (checked.error) return res.status(400).json({ error: checked.error });
-      const { snapshot } = await resolveProjectAndAssignee(existing.companyId, payload);
+      const { snapshot, companySignature } = await resolveProjectAndAssignee(existing.companyId, payload);
       const order = await prisma.$transaction(async (tx) => {
         await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
         return tx.workOrder.update({
@@ -263,8 +266,8 @@ export class WorkOrderController {
             projectId: payload.projectId, title: payload.title.trim(), scope: String(payload.scope || "").trim(),
             startDate: checked.startDate!, endDate: checked.endDate!, assigneeType: payload.assigneeType,
             assigneeId: payload.assigneeId, ...snapshot, terms: payload.terms || null,
-            managerSignature: payload.managerSignature || null,
-            managerSignedAt: asDate(payload.managerSignedAt),
+            managerSignature: companySignature || existing.managerSignature,
+            managerSignedAt: (companySignature || existing.managerSignature) ? (existing.managerSignedAt || new Date()) : null,
             items: { create: checked.items!.map((item: any, position: number) => ({
               type: item.type === "material" ? "material" : "service", name: item.name.trim(),
               description: item.description?.trim() || null, quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
