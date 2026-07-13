@@ -4,15 +4,20 @@ import { sendEmail } from "../../utils/sendEmail";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { workOrderEmail } from "../../templateEmail/workOrder";
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "crypto";
+import { deleteS3ObjectQuietly, getStagedObjectBuffer, putS3ObjectBuffer, StagedUploadReference, verifyStagedUploadReference } from "../../utils/S3/stagedUpload";
+import { signWorkOrderPdf } from "../../utils/workOrders/signWorkOrderPdf";
 
 const includeWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
+  attachments: { orderBy: { date_creation: "asc" as const } },
   emailLogs: { orderBy: { sentAt: "desc" as const } },
   company: { select: { name: true, signature: true } },
 };
 
 const includePublicWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
+  attachments: { orderBy: { date_creation: "asc" as const } },
   company: { select: { name: true, avatar: true, signature: true } },
 };
 
@@ -22,14 +27,57 @@ const asDate = (value: unknown) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const serialize = (order: any) => ({
-  ...order,
-  items: (order.items || []).map((item: any) => ({
-    ...item,
-    quantity: Number(item.quantity),
-    unitPrice: Number(item.unitPrice),
-  })),
-});
+const serialize = (order: any) => {
+  const { sourcePdfKey, signedPdfKey, attachments, ...safeOrder } = order;
+  void sourcePdfKey; void signedPdfKey; void attachments;
+  return {
+    ...safeOrder,
+    attachments: [],
+    items: (order.items || []).map((item: any) => ({
+      ...item,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+    })),
+  };
+};
+
+async function serializeWithPdfUrls(order: any) {
+  const serialized = serialize(order);
+  const attachments = await Promise.all((order.attachments || []).map(async (attachment: any) => ({
+    id: attachment.id,
+    uri: attachment.url ? await getPresignedUrl(attachment.url).catch(() => "") : "",
+    title: attachment.title || "",
+  })));
+  return {
+    ...serialized,
+    attachments,
+    pdfUrl: order.sourcePdfKey ? await getPresignedUrl(order.sourcePdfKey).catch(() => "") : "",
+    signedPdfUrl: order.signedPdfKey ? await getPresignedUrl(order.signedPdfKey).catch(() => "") : "",
+  };
+}
+
+type AttachmentCreate = { title?: string; upload: StagedUploadReference };
+
+async function validateAttachments(payload: any, companyId: string, userId: string) {
+  const submittedExistingIds: string[] = Array.isArray(payload.attachments?.existingIds)
+    ? payload.attachments.existingIds.filter((id: unknown): id is string => typeof id === "string" && Boolean(id))
+    : [];
+  const existingIds = [...new Set(submittedExistingIds)];
+  const create = Array.isArray(payload.attachments?.create) ? payload.attachments.create as AttachmentCreate[] : [];
+  if (existingIds.length + create.length > 10) throw new Error("ATTACHMENT_LIMIT");
+  for (const attachment of create) {
+    if (!attachment?.upload || String(attachment.title || "").length > 191) throw new Error("INVALID_ATTACHMENT");
+    try {
+      await verifyStagedUploadReference(attachment.upload, { companyId, userId, purpose: "work-order-attachment" });
+    } catch {
+      throw new Error("INVALID_ATTACHMENT");
+    }
+  }
+  return { existingIds, create };
+}
+
+const pdfKey = (order: { companyId: string; id: string }, kind: "source" | "signed") =>
+  `work-orders/${order.companyId}/${order.id}/${kind}-${Date.now()}-${randomUUID()}.pdf`;
 
 const isRetryableTransactionError = (error: unknown) => {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return true;
@@ -134,45 +182,51 @@ export class WorkOrderController {
         ? await getPresignedUrl(order.company.avatar).catch(() => "")
         : "",
     };
-    return res.json({ data: serialize({ ...order, company }) });
+    return res.json({ data: await serializeWithPdfUrls({ ...order, company }) });
   }
 
   async signPublic(req: Request, res: Response) {
     const signature = typeof req.body.signature === "string" ? req.body.signature.trim() : "";
-    if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(signature)) {
+    if (!/^data:image\/(png|jpe?g);base64,/i.test(signature)) {
       return res.status(400).json({ error: "A valid signature is required" });
     }
     if (signature.length > 6_000_000) {
       return res.status(413).json({ error: "Signature image is too large" });
     }
 
-    const existing = await prisma.workOrder.findUnique({ where: { publicToken: req.params.publicToken } });
-    if (!existing) return res.status(404).json({ error: "Work order not found" });
+    try {
+      const existing = await prisma.workOrder.findUnique({ where: { publicToken: req.params.publicToken } });
+      if (!existing) return res.status(404).json({ error: "Work order not found" });
 
-    if (existing.status !== "approved") {
-      const signedAt = new Date();
-      await prisma.workOrder.updateMany({
-        where: { id: existing.id, status: "pending" },
-        data: {
-          status: "approved",
-          approvedAt: signedAt,
-          assigneeSignature: signature,
-          assigneeSignedAt: signedAt,
-        },
+      if (existing.status !== "approved") {
+        if (!existing.sourcePdfKey) return res.status(409).json({ error: "This work order must be sent again before it can be signed" });
+        const signedAt = new Date();
+        const sourcePdf = await getStagedObjectBuffer(existing.sourcePdfKey);
+        const signedPdf = await signWorkOrderPdf(sourcePdf, signature, signedAt);
+        const signedPdfKey = pdfKey(existing, "signed");
+        await putS3ObjectBuffer({ key: signedPdfKey, body: signedPdf, contentType: "application/pdf" });
+        const updated = await prisma.workOrder.updateMany({
+          where: { id: existing.id, status: "pending" },
+          data: { status: "approved", approvedAt: signedAt, assigneeSignature: signature, assigneeSignedAt: signedAt, signedPdfKey },
+        });
+        if (updated.count === 0) await deleteS3ObjectQuietly(signedPdfKey);
+      }
+
+      const order = await prisma.workOrder.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: includePublicWorkOrder,
       });
+      const company = {
+        ...order.company,
+        avatar: order.company.avatar
+          ? await getPresignedUrl(order.company.avatar).catch(() => "")
+          : "",
+      };
+      return res.json({ data: await serializeWithPdfUrls({ ...order, company }) });
+    } catch (error) {
+      console.error("[workOrder.signPublic]", error);
+      return res.status(500).json({ error: "Unable to sign work order" });
     }
-
-    const order = await prisma.workOrder.findUniqueOrThrow({
-      where: { id: existing.id },
-      include: includePublicWorkOrder,
-    });
-    const company = {
-      ...order.company,
-      avatar: order.company.avatar
-        ? await getPresignedUrl(order.company.avatar).catch(() => "")
-        : "",
-    };
-    return res.json({ data: serialize({ ...order, company }) });
   }
 
   async nextNumber(req: Request, res: Response) {
@@ -195,15 +249,21 @@ export class WorkOrderController {
     const order = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: includeWorkOrder });
     if (!order) return res.status(404).json({ error: "Work order not found" });
     if (!await canAccessCompany(req, order.companyId)) return res.status(403).json({ error: "Access denied" });
-    return res.json({ data: serialize(order) });
+    return res.json({ data: await serializeWithPdfUrls(order) });
   }
 
   async create(req: Request, res: Response) {
+    let stagedAttachmentKeys: string[] = [];
+    let attachmentsPersisted = false;
     try {
       const checked = validatePayload(req.body);
       if (checked.error) return res.status(400).json({ error: checked.error });
       const payload = req.body;
       if (!await canAccessCompany(req, payload.companyId)) return res.status(403).json({ error: "Access denied" });
+      const userId = (req as any).userId as string;
+      const attachmentChanges = await validateAttachments(payload, payload.companyId, userId);
+      if (attachmentChanges.existingIds.length) throw new Error("INVALID_ATTACHMENT");
+      stagedAttachmentKeys = attachmentChanges.create.map((attachment) => attachment.upload.key);
       const { snapshot, companySignature } = await resolveProjectAndAssignee(payload.companyId, payload);
 
       const order = await withTransactionRetry(() => prisma.$transaction(async (tx) => {
@@ -229,6 +289,13 @@ export class WorkOrderController {
             terms: payload.terms || null,
             managerSignature: companySignature,
             managerSignedAt: companySignature ? new Date() : null,
+            attachments: { create: attachmentChanges.create.map((attachment) => ({
+              url: attachment.upload.key,
+              original_filename: attachment.upload.originalName,
+              title: attachment.title?.trim() || null,
+              type_images_attachments: "image",
+              projectId: payload.projectId,
+            })) },
             items: { create: checked.items!.map((item: any, position: number) => ({
               type: item.type === "material" ? "material" : "service",
               name: item.name.trim(), description: item.description?.trim() || null,
@@ -240,26 +307,45 @@ export class WorkOrderController {
           include: includeWorkOrder,
         });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 5000, timeout: 10000 }));
-      return res.status(201).json({ data: serialize(order) });
+      attachmentsPersisted = true;
+      return res.status(201).json({ data: await serializeWithPdfUrls(order) });
     } catch (error) {
+      if (!attachmentsPersisted) await Promise.all(stagedAttachmentKeys.map((key) => deleteS3ObjectQuietly(key)));
       if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") return res.status(404).json({ error: "Project not found" });
       if (error instanceof Error && error.message === "ASSIGNEE_NOT_FOUND") return res.status(404).json({ error: "Employee or subcontractor not found" });
+      if (error instanceof Error && error.message === "ATTACHMENT_LIMIT") return res.status(400).json({ error: "A maximum of 10 image attachments is allowed" });
+      if (error instanceof Error && error.message === "INVALID_ATTACHMENT") return res.status(400).json({ error: "An image attachment is invalid" });
       console.error("[workOrder.create]", error);
       return res.status(500).json({ error: "Unable to create work order" });
     }
   }
 
   async update(req: Request, res: Response) {
+    let stagedAttachmentKeys: string[] = [];
+    let attachmentsPersisted = false;
     try {
-      const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id } });
+      const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: { attachments: true } });
       if (!existing) return res.status(404).json({ error: "Work order not found" });
       if (!await canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: "Access denied" });
       const payload = { ...req.body, companyId: existing.companyId };
       const checked = validatePayload(payload);
       if (checked.error) return res.status(400).json({ error: checked.error });
       const { snapshot, companySignature } = await resolveProjectAndAssignee(existing.companyId, payload);
+      const userId = (req as any).userId as string;
+      const attachmentPayload = payload.attachments === undefined
+        ? { ...payload, attachments: { existingIds: existing.attachments.map((attachment) => attachment.id), create: [] } }
+        : payload;
+      const attachmentChanges = await validateAttachments(attachmentPayload, existing.companyId, userId);
+      const existingAttachmentIds = new Set(existing.attachments.map((attachment) => attachment.id));
+      if (attachmentChanges.existingIds.some((id) => !existingAttachmentIds.has(id))) throw new Error("INVALID_ATTACHMENT");
+      stagedAttachmentKeys = attachmentChanges.create.map((attachment) => attachment.upload.key);
+      const keptAttachmentIds = new Set(attachmentChanges.existingIds);
+      const removedAttachments = existing.attachments.filter((attachment) => !keptAttachmentIds.has(attachment.id));
+      const obsoletePdfKeys = [existing.sourcePdfKey, existing.signedPdfKey];
       const order = await prisma.$transaction(async (tx) => {
         await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
+        if (removedAttachments.length) await tx.imagesAttachments.deleteMany({ where: { id: { in: removedAttachments.map((attachment) => attachment.id) }, workOrderId: existing.id } });
+        if (attachmentChanges.existingIds.length) await tx.imagesAttachments.updateMany({ where: { id: { in: attachmentChanges.existingIds }, workOrderId: existing.id }, data: { projectId: payload.projectId } });
         return tx.workOrder.update({
           where: { id: existing.id },
           data: {
@@ -268,6 +354,15 @@ export class WorkOrderController {
             assigneeId: payload.assigneeId, ...snapshot, terms: payload.terms || null,
             managerSignature: companySignature || existing.managerSignature,
             managerSignedAt: (companySignature || existing.managerSignature) ? (existing.managerSignedAt || new Date()) : null,
+            status: "pending", approvedAt: null, assigneeSignature: null, assigneeSignedAt: null,
+            sourcePdfKey: null, signedPdfKey: null, lastSentAt: null, publicToken: randomUUID(),
+            attachments: { create: attachmentChanges.create.map((attachment) => ({
+              url: attachment.upload.key,
+              original_filename: attachment.upload.originalName,
+              title: attachment.title?.trim() || null,
+              type_images_attachments: "image",
+              projectId: payload.projectId,
+            })) },
             items: { create: checked.items!.map((item: any, position: number) => ({
               type: item.type === "material" ? "material" : "service", name: item.name.trim(),
               description: item.description?.trim() || null, quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
@@ -277,18 +372,26 @@ export class WorkOrderController {
           include: includeWorkOrder,
         });
       });
-      return res.json({ data: serialize(order) });
+      attachmentsPersisted = true;
+      await Promise.all(obsoletePdfKeys.map((key) => deleteS3ObjectQuietly(key)));
+      await Promise.all(removedAttachments.map((attachment) => deleteS3ObjectQuietly(attachment.url)));
+      return res.json({ data: await serializeWithPdfUrls(order) });
     } catch (error) {
+      if (!attachmentsPersisted) await Promise.all(stagedAttachmentKeys.map((key) => deleteS3ObjectQuietly(key)));
+      if (error instanceof Error && error.message === "ATTACHMENT_LIMIT") return res.status(400).json({ error: "A maximum of 10 image attachments is allowed" });
+      if (error instanceof Error && error.message === "INVALID_ATTACHMENT") return res.status(400).json({ error: "An image attachment is invalid" });
       console.error("[workOrder.update]", error);
       return res.status(500).json({ error: "Unable to update work order" });
     }
   }
 
   async remove(req: Request, res: Response) {
-    const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: { attachments: true } });
     if (!existing) return res.status(404).json({ error: "Work order not found" });
     if (!await canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: "Access denied" });
     await prisma.workOrder.delete({ where: { id: existing.id } });
+    await Promise.all([deleteS3ObjectQuietly(existing.sourcePdfKey), deleteS3ObjectQuietly(existing.signedPdfKey)]);
+    await Promise.all(existing.attachments.map((attachment) => deleteS3ObjectQuietly(attachment.url)));
     return res.status(204).send();
   }
 
@@ -309,6 +412,20 @@ export class WorkOrderController {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) return res.status(400).json({ error: "A valid recipient email is required" });
       const companyLogo = order.company.avatar ? await getPresignedUrl(order.company.avatar).catch(() => "") : "";
       const content = pdf.buffer.toString("base64");
+      let previousSourcePdfKey: string | null = null;
+      let storedSourcePdfKey: string | null = null;
+      if (order.status === "pending") {
+        const sourcePdfKey = pdfKey(order, "source");
+        await putS3ObjectBuffer({ key: sourcePdfKey, body: pdf.buffer, contentType: "application/pdf" });
+        storedSourcePdfKey = sourcePdfKey;
+        previousSourcePdfKey = order.sourcePdfKey;
+        try {
+          await prisma.workOrder.update({ where: { id: order.id }, data: { sourcePdfKey } });
+        } catch (error) {
+          await deleteS3ObjectQuietly(sourcePdfKey);
+          throw error;
+        }
+      }
       try {
         await sendEmail({
           to: recipient,
@@ -326,8 +443,16 @@ export class WorkOrderController {
           prisma.workOrder.update({ where: { id: order.id }, data: { lastSentAt: new Date() } }),
           prisma.workOrderEmailLog.create({ data: { workOrderId: order.id, recipient, status: "success" } }),
         ]);
+        await deleteS3ObjectQuietly(previousSourcePdfKey);
         return res.json({ success: true, recipient });
       } catch (error) {
+        if (storedSourcePdfKey) {
+          await prisma.workOrder.updateMany({
+            where: { id: order.id, sourcePdfKey: storedSourcePdfKey },
+            data: { sourcePdfKey: previousSourcePdfKey },
+          });
+          await deleteS3ObjectQuietly(storedSourcePdfKey);
+        }
         await prisma.workOrderEmailLog.create({ data: { workOrderId: order.id, recipient, status: "error", errorMessage: error instanceof Error ? error.message : "Unknown error" } });
         throw error;
       }

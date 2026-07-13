@@ -87,8 +87,8 @@ model User {
   company_id String?
 
   // Nova relação N:N através da tabela UserCompany
-  companies UserCompany[]
-  authIdentities UserAuthIdentity[]
+  companies         UserCompany[]
+  authIdentities    UserAuthIdentity[]
   deviceCredentials UserDeviceCredential[]
 
   Invoice            Invoice[]
@@ -300,29 +300,29 @@ model Audit {
 }
 
 model Company {
-  id                    String         @id @default(uuid())
-  avatar                String?
-  signature             String?        @db.Text
-  name                  String
-  date_creation         DateTime       @default(now())
-  date_update           DateTime       @updatedAt
-  address               String?
-  district              String?
-  numberHouse           String?
-  complement            String?
-  email                 String?
-  phone                 String?
-  webSiteUrl            String?
-  workStartTime         String? // Format: "HH:mm" (24-hour)
-  workEndTime           String? // Format: "HH:mm" (24-hour)
-  attendanceMode        AttendanceMode @default(manual)
-  projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
-  paidShortGapEnabled   Boolean?       @default(true)
-  accentColor String?
-  isActive              Boolean        @default(true) // false = arquivado (master)
-  createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
-  mobileSubscriptionStatus String      @default("active") @db.VarChar(32)
-  mobileSignupProvider     String?     @db.VarChar(32)
+  id                       String         @id @default(uuid())
+  avatar                   String?
+  signature                String?        @db.Text
+  name                     String
+  date_creation            DateTime       @default(now())
+  date_update              DateTime       @updatedAt
+  address                  String?
+  district                 String?
+  numberHouse              String?
+  complement               String?
+  email                    String?
+  phone                    String?
+  webSiteUrl               String?
+  workStartTime            String? // Format: "HH:mm" (24-hour)
+  workEndTime              String? // Format: "HH:mm" (24-hour)
+  attendanceMode           AttendanceMode @default(manual)
+  projectVisibilityMode    String?        @default("allActive") // assignedOnly, allActive
+  paidShortGapEnabled      Boolean?       @default(true)
+  accentColor              String?
+  isActive                 Boolean        @default(true) // false = arquivado (master)
+  createdFromMaster        Boolean        @default(false) // true = criado pelo fluxo New Client no Master
+  mobileSubscriptionStatus String         @default("active") @db.VarChar(32)
+  mobileSignupProvider     String?        @db.VarChar(32)
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -344,8 +344,8 @@ model Company {
 
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
-  NotesContrac ContractNotes[]
-  contracts    Contract[]
+  NotesContrac            ContractNotes[]
+  contracts               Contract[]
   contractNumberSequences ContractNumberSequence[]
 
   stripeCustomerId String?
@@ -863,9 +863,9 @@ enum ContractFieldType {
 }
 
 model ContractNumberSequence {
-  id         String   @id @default(uuid())
-  companyId String   @unique
-  nextNumber Int     @default(1000)
+  id         String @id @default(uuid())
+  companyId  String @unique
+  nextNumber Int    @default(1000)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -876,24 +876,24 @@ model ContractNumberSequence {
 }
 
 model Contract {
-  id             String           @id @default(uuid())
-  number         Int
-  status         ContractStatus   @default(draft)
-  authType       ContractAuthType @default(none)
-  authCode       String?          @db.VarChar(9)
-  publicToken    String           @unique @default(uuid())
-  expirationDays Int              @default(7)
-  expiresAt      DateTime
-  sentAt         DateTime?
-  viewedAt       DateTime?
-  signedAt       DateTime?
-  canceledAt     DateTime?
-  clientSignature String?         @db.LongText
-  companySignatureText String?    @db.Text
-  companySignatureFontKey String  @default("classic") @db.VarChar(64)
-  clientSignatureFontKey  String  @default("classic") @db.VarChar(64)
-  multi_emails   String?          @db.Text
-  createdById    String?
+  id                      String           @id @default(uuid())
+  number                  Int
+  status                  ContractStatus   @default(draft)
+  authType                ContractAuthType @default(none)
+  authCode                String?          @db.VarChar(9)
+  publicToken             String           @unique @default(uuid())
+  expirationDays          Int              @default(7)
+  expiresAt               DateTime
+  sentAt                  DateTime?
+  viewedAt                DateTime?
+  signedAt                DateTime?
+  canceledAt              DateTime?
+  clientSignature         String?          @db.LongText
+  companySignatureText    String?          @db.Text
+  companySignatureFontKey String           @default("classic") @db.VarChar(64)
+  clientSignatureFontKey  String           @default("classic") @db.VarChar(64)
+  multi_emails            String?          @db.Text
+  createdById             String?
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   companyId String
@@ -1166,7 +1166,7 @@ model WorkContext {
   notes    String? @db.Text
   isActive Boolean @default(true)
 
-  projects Project[]
+  projects  Project[]
   contracts Contract[]
 
   createdAt DateTime @default(now())
@@ -1293,16 +1293,19 @@ model WorkOrder {
   approvedAt          DateTime?
   managerSignature    String?               @db.LongText
   managerSignedAt     DateTime?
+  sourcePdfKey        String?               @db.Text
+  signedPdfKey        String?               @db.Text
   lastSentAt          DateTime?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
-  companyId String
-  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projectId String
-  project   Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  items     WorkOrderItem[]
-  emailLogs WorkOrderEmailLog[]
+  companyId   String
+  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  items       WorkOrderItem[]
+  attachments ImagesAttachments[]
+  emailLogs   WorkOrderEmailLog[]
 
   @@unique([companyId, number])
   @@index([projectId])
@@ -2013,11 +2016,11 @@ model EstimateServiceProject {
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])
 
-  hours      Decimal?
-  price      Decimal?
-  start_date String?
-  deadline   String?
-  idQuickbooks String?
+  hours         Decimal?
+  price         Decimal?
+  start_date    String?
+  deadline      String?
+  idQuickbooks  String?
   quickbooksRaw Json?
 
   date_creation  DateTime        @default(now())
@@ -2028,18 +2031,18 @@ model EstimateServiceProject {
 }
 
 model EstimateAiSession {
-  id            String   @id @default(uuid())
-  estimateId    String?  @unique
-  companyId     String?
-  createdById   String?
-  status        String   @default("active")
-  title         String?
+  id             String   @id @default(uuid())
+  estimateId     String?  @unique
+  companyId      String?
+  createdById    String?
+  status         String   @default("active")
+  title          String?
   lastResponseId String?
-  modelSimple   String?
-  modelDocument String?
-  metadata      Json?
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  modelSimple    String?
+  modelDocument  String?
+  metadata       Json?
+  date_creation  DateTime @default(now())
+  date_update    DateTime @updatedAt
 
   estimate    Estimate?              @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   messages    EstimateAiMessage[]
@@ -2081,7 +2084,7 @@ model EstimateAiAttachment {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  session EstimateAiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session EstimateAiSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   message EstimateAiMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
@@ -2140,29 +2143,29 @@ model UserPermission {
 }
 
 model Subscription {
-  id                             String    @id @default(uuid())
+  id                             String            @id @default(uuid())
   companyId                      String
-  company                        Company   @relation(fields: [companyId], references: [id])
+  company                        Company           @relation(fields: [companyId], references: [id])
   planId                         String
-  plan                           Plan      @relation(fields: [planId], references: [id])
+  plan                           Plan              @relation(fields: [planId], references: [id])
   startDate                      DateTime // Data de início da assinatura (quando o plano foi comprado)
   endDate                        DateTime // Data de fim do plano (quando o plano expira)
-  isActive                       Boolean   @default(true) // Indica se o plano está ativo ou expirado
+  isActive                       Boolean           @default(true) // Indica se o plano está ativo ou expirado
   stripeSubscriptionId           String?
-  paymentFailed                  Boolean   @default(false)
-  stripeSubscriptionCanceled     Boolean   @default(false)
+  paymentFailed                  Boolean           @default(false)
+  stripeSubscriptionCanceled     Boolean           @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
-  billingProvider                BillingProvider @default(stripe)
+  billingProvider                BillingProvider   @default(stripe)
   storeProductId                 String?
-  storeTransactionId             String? @unique
+  storeTransactionId             String?           @unique
   storeOriginalTransactionId     String?
-  googlePurchaseToken            String? @unique @db.VarChar(512)
+  googlePurchaseToken            String?           @unique @db.VarChar(512)
   storeEnvironment               StoreEnvironment?
   autoRenewing                   Boolean?
   lastVerifiedAt                 DateTime?
-  fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
+  fromCampaign                   Boolean           @default(false) // Indica se a assinatura foi criada através de uma campanha
   campaignId                     String? // ID da campanha (opcional)
-  campaign                       Campaign? @relation(fields: [campaignId], references: [id])
+  campaign                       Campaign?         @relation(fields: [campaignId], references: [id])
 
   @@index([billingProvider])
   @@index([storeOriginalTransactionId])
@@ -2204,17 +2207,17 @@ model UserAuthIdentity {
 }
 
 model UserDeviceCredential {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceId      String
-  tokenHash     String
-  platform      String?   @db.VarChar(32)
-  label         String?
-  lastUsedAt    DateTime?
-  revokedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  tokenHash  String
+  platform   String?   @db.VarChar(32)
+  label      String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([userId, deviceId])
   @@index([deviceId])
@@ -2894,6 +2897,9 @@ model ImagesAttachments {
 
   invoiceId String?
   invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  workOrderId String?
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
