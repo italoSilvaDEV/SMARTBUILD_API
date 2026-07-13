@@ -386,6 +386,9 @@ model Company {
   chats               Chat[]
   workerLiveLocations WorkerLiveLocation[]
   workerLocationPings WorkerLocationPing[]
+  workOrders          WorkOrder[]
+  workOrderSequence   WorkOrderNumberSequence?
+  workOrderSettings   WorkOrderSettings?
 }
 
 model ContractNotes {
@@ -813,6 +816,7 @@ model Project {
   customServiceSchedules CustomServiceSchedule[]
   tasks                  Task[]
   changeOrders           ChangeOrder[]
+  workOrders             WorkOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -1232,6 +1236,109 @@ model Subcontractor {
 
   @@unique([email, company_id])
   @@map("subcontractors")
+}
+
+enum WorkOrderAssigneeType {
+  employee
+  subcontractor
+}
+
+enum WorkOrderStatus {
+  pending
+  approved
+}
+
+model WorkOrderNumberSequence {
+  companyId  String @id
+  nextNumber Int    @default(1029)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("work_order_number_sequence")
+}
+
+model WorkOrderSettings {
+  id        String   @id @default(uuid())
+  terms     String?  @db.Text
+  companyId String   @unique
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("work_order_settings")
+}
+
+model WorkOrder {
+  id                  String                @id @default(uuid())
+  number              Int
+  status              WorkOrderStatus       @default(pending)
+  publicToken         String                @unique @default(uuid())
+  title               String
+  scope               String                @db.Text
+  startDate           DateTime
+  endDate             DateTime
+  assigneeType        WorkOrderAssigneeType
+  assigneeId          String
+  assigneeName        String
+  assigneeEmail       String?
+  assigneePhone       String?
+  projectNumber       String?
+  projectName         String
+  projectAddress      String?               @db.Text
+  projectManagerName  String?
+  projectManagerPhone String?
+  terms               String?               @db.Text
+  assigneeSignature   String?               @db.LongText
+  assigneeSignedAt    DateTime?
+  approvedAt          DateTime?
+  managerSignature    String?               @db.LongText
+  managerSignedAt     DateTime?
+  lastSentAt          DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  companyId String
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  items     WorkOrderItem[]
+  emailLogs WorkOrderEmailLog[]
+
+  @@unique([companyId, number])
+  @@index([projectId])
+  @@index([companyId, createdAt])
+  @@map("work_order")
+}
+
+model WorkOrderItem {
+  id          String   @id @default(uuid())
+  type        String   @default("service")
+  name        String
+  description String?  @db.Text
+  quantity    Decimal  @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal  @default(0) @db.Decimal(12, 2)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId, position])
+  @@map("work_order_item")
+}
+
+model WorkOrderEmailLog {
+  id           String    @id @default(uuid())
+  recipient    String
+  status       String
+  errorMessage String?   @db.Text
+  sentAt       DateTime  @default(now())
+  workOrderId  String
+  workOrder    WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId, sentAt])
+  @@map("work_order_email_log")
 }
 
 enum TypePrice {
