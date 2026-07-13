@@ -8,7 +8,13 @@ export class WorkOrderSettingsController {
       prisma.workOrderSettings.findUnique({ where: { companyId: req.params.companyId } }),
       prisma.company.findUnique({ where: { id: req.params.companyId }, select: { signature: true } }),
     ]);
-    return res.json({ data: { ...(settings || { companyId: req.params.companyId, terms: "" }), companySignature: company?.signature || "" } });
+    return res.json({
+      data: {
+        companyId: req.params.companyId,
+        terms: settings?.terms ?? null,
+        companySignature: company?.signature || "",
+      },
+    });
   }
 
   async save(req: Request, res: Response) {
