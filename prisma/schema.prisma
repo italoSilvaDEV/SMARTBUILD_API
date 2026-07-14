@@ -60,25 +60,26 @@ model User {
   estimateEditAll Boolean? @default(false)
   isExtraPaidUser Boolean? @default(false)
 
-  token_recover_password       String?               @unique
+  token_recover_password       String?                   @unique
   autorId                      String?
   last_acess                   DateTime?
-  date_creation                DateTime              @default(now())
-  date_update                  DateTime              @updatedAt
+  date_creation                DateTime                  @default(now())
+  date_update                  DateTime                  @updatedAt
   office_id                    String
-  office                       Office                @relation(fields: [office_id], references: [id])
-  userLikedCostProject         CostProject[]         @relation("userLikedProject")
-  seller_project               Project[]             @relation("seller")
+  office                       Office                    @relation(fields: [office_id], references: [id])
+  userLikedCostProject         CostProject[]             @relation("userLikedProject")
+  seller_project               Project[]                 @relation("seller")
   ServiceStages                ServiceStages[]
   projectId                    String?
   UserServiceProject           UserServiceProject[]
   UserAttendance               UserAttendance[]
   attendanceBreaks             UserAttendanceBreak[]
-  timeCardEditRequests         TimeCardEditRequest[] @relation("TimeCardEditRequestEmployee")
-  reviewedTimeCardEditRequests TimeCardEditRequest[] @relation("TimeCardEditRequestReviewer")
+  timeCardEditRequests         TimeCardEditRequest[]     @relation("TimeCardEditRequestEmployee")
+  reviewedTimeCardEditRequests TimeCardEditRequest[]     @relation("TimeCardEditRequestReviewer")
   Activities                   Activities[]
-  project_manager_project      Project[]             @relation("project_manager")
-  project_manager_invoice      Invoice[]             @relation("project_manager_invoice")
+  project_manager_project      Project[]                 @relation("project_manager")
+  project_manager_invoice      Invoice[]                 @relation("project_manager_invoice")
+  workOrderProjectManagers     WorkOrderProjectManager[]
 
   InvoiceSendHistory InvoiceSendHistory[]
 
@@ -1301,18 +1302,37 @@ model WorkOrder {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
-  companyId   String
-  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projectId   String
-  project     Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  items       WorkOrderItem[]
-  attachments ImagesAttachments[]
-  emailLogs   WorkOrderEmailLog[]
+  companyId       String
+  company         Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId       String
+  project         Project                   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  items           WorkOrderItem[]
+  attachments     ImagesAttachments[]
+  emailLogs       WorkOrderEmailLog[]
+  projectManagers WorkOrderProjectManager[]
 
   @@unique([companyId, number])
   @@index([projectId])
   @@index([companyId, createdAt])
   @@map("work_order")
+}
+
+model WorkOrderProjectManager {
+  id          String    @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([workOrderId, userId])
+  @@index([workOrderId, position])
+  @@index([userId])
+  @@map("work_order_project_manager")
 }
 
 model WorkOrderItem {

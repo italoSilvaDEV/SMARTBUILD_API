@@ -12,12 +12,14 @@ const includeWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
   attachments: { orderBy: { date_creation: "asc" as const } },
   emailLogs: { orderBy: { sentAt: "desc" as const } },
+  projectManagers: { orderBy: { position: "asc" as const } },
   company: { select: { name: true, signature: true } },
 };
 
 const includePublicWorkOrder = {
   items: { orderBy: { position: "asc" as const } },
   attachments: { orderBy: { date_creation: "asc" as const } },
+  projectManagers: { orderBy: { position: "asc" as const } },
   company: { select: { name: true, avatar: true, signature: true } },
 };
 
@@ -27,12 +29,17 @@ const asDate = (value: unknown) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const serialize = (order: any) => {
-  const { sourcePdfKey, signedPdfKey, attachments, ...safeOrder } = order;
-  void sourcePdfKey; void signedPdfKey; void attachments;
+const serialize = (order: any, publicView = false) => {
+  const { sourcePdfKey, signedPdfKey, attachments, projectManagers, ...safeOrder } = order;
+  void sourcePdfKey; void signedPdfKey; void attachments; void projectManagers;
   return {
     ...safeOrder,
     attachments: [],
+    projectManagers: (order.projectManagers || []).map((manager: any) => publicView ? {
+      id: manager.id,
+      name: manager.name,
+      phone: manager.phone || null,
+    } : manager),
     items: (order.items || []).map((item: any) => ({
       ...item,
       quantity: Number(item.quantity),
@@ -41,8 +48,8 @@ const serialize = (order: any) => {
   };
 };
 
-async function serializeWithPdfUrls(order: any) {
-  const serialized = serialize(order);
+async function serializeWithPdfUrls(order: any, publicView = false) {
+  const serialized = serialize(order, publicView);
   const attachments = await Promise.all((order.attachments || []).map(async (attachment: any) => ({
     id: attachment.id,
     uri: attachment.url ? await getPresignedUrl(attachment.url).catch(() => "") : "",
@@ -110,7 +117,7 @@ async function canAccessCompany(req: Request, companyId: string) {
   }));
 }
 
-async function resolveProjectAndAssignee(companyId: string, payload: any) {
+async function resolveProjectAndAssignee(companyId: string, payload: any, existingManagerIds: string[] = [], allowLegacySnapshot = false) {
   const project = await prisma.project.findFirst({
     where: { id: payload.projectId, company_id: companyId },
     include: { client: true, workContext: true, project_manager: true, company: { select: { signature: true } } },
@@ -130,6 +137,33 @@ async function resolveProjectAndAssignee(companyId: string, payload: any) {
       : null;
   if (!assignee) throw new Error("ASSIGNEE_NOT_FOUND");
 
+  const submittedManagerIds = Array.isArray(payload.projectManagers)
+    ? payload.projectManagers.map((manager: any) => String(manager?.userId || "")).filter(Boolean)
+    : project.project_manager_id ? [project.project_manager_id] : [];
+  const managerIds = [...new Set<string>(submittedManagerIds)];
+  if (managerIds.length > 20) throw new Error("TOO_MANY_PROJECT_MANAGERS");
+  const existingManagerIdSet = new Set(existingManagerIds);
+  const managers = managerIds.length ? await prisma.user.findMany({
+    where: {
+      id: { in: managerIds },
+      OR: [
+        ...(existingManagerIds.length ? [{ id: { in: existingManagerIds } }] : []),
+        { company_id: companyId },
+        { companies: { some: { companyId } } },
+      ],
+    },
+    select: { id: true, name: true, email: true, phone: true, isDisabled: true, office: { select: { name: true } } },
+  }) : [];
+  const managerById = new Map(managers
+    .filter((manager) => existingManagerIdSet.has(manager.id) || (!manager.isDisabled && !["worker", "master"].includes((manager.office?.name || "").toLowerCase())))
+    .map((manager) => [manager.id, manager]));
+  if (managerById.size !== managerIds.length) throw new Error("INVALID_PROJECT_MANAGER");
+  const projectManagers = managerIds.map((id, position) => {
+    const manager = managerById.get(id)!;
+    return { userId: manager.id, name: manager.name, email: manager.email || null, phone: manager.phone || null, position };
+  });
+  const primaryManager = projectManagers[0];
+
   return {
     project,
     assignee,
@@ -138,12 +172,13 @@ async function resolveProjectAndAssignee(companyId: string, payload: any) {
       projectNumber: project.contract_number ? String(project.contract_number) : null,
       projectName: project.client?.name || project.workContext?.Name || project.workContext?.label || "Project",
       projectAddress: project.workContext?.location || project.location || project.client?.location || project.client?.addressOffice || null,
-      projectManagerName: payload.projectManagerName?.trim() || project.project_manager?.name || null,
-      projectManagerPhone: payload.projectManagerPhone?.trim() || project.project_manager?.phone || null,
+      projectManagerName: primaryManager?.name || (allowLegacySnapshot ? String(payload.projectManagerName || "").trim() : "") || null,
+      projectManagerPhone: primaryManager?.phone || (allowLegacySnapshot ? String(payload.projectManagerPhone || "").trim() : "") || null,
       assigneeName: assignee.name,
       assigneeEmail: assignee.email || null,
       assigneePhone: assignee.phone || null,
     },
+    projectManagers,
   };
 }
 
@@ -182,7 +217,7 @@ export class WorkOrderController {
         ? await getPresignedUrl(order.company.avatar).catch(() => "")
         : "",
     };
-    return res.json({ data: await serializeWithPdfUrls({ ...order, company }) });
+    return res.json({ data: await serializeWithPdfUrls({ ...order, company }, true) });
   }
 
   async signPublic(req: Request, res: Response) {
@@ -223,7 +258,7 @@ export class WorkOrderController {
           ? await getPresignedUrl(order.company.avatar).catch(() => "")
           : "",
       };
-      return res.json({ data: await serializeWithPdfUrls({ ...order, company }) });
+      return res.json({ data: await serializeWithPdfUrls({ ...order, company }, true) });
     } catch (error) {
       console.error("[workOrder.signPublic]", error);
       return res.status(500).json({ error: "Unable to sign work order" });
@@ -243,7 +278,7 @@ export class WorkOrderController {
     if (!companyId) return res.status(400).json({ error: "Company ID is required" });
     if (!await canAccessCompany(req, companyId)) return res.status(403).json({ error: "Access denied" });
     const orders = await prisma.workOrder.findMany({ where: { companyId, ...(projectId ? { projectId } : {}) }, include: includeWorkOrder, orderBy: { createdAt: "desc" } });
-    return res.json({ data: orders.map(serialize) });
+    return res.json({ data: orders.map((order) => serialize(order)) });
   }
 
   async get(req: Request, res: Response) {
@@ -265,7 +300,7 @@ export class WorkOrderController {
       const attachmentChanges = await validateAttachments(payload, payload.companyId, userId);
       if (attachmentChanges.existingIds.length) throw new Error("INVALID_ATTACHMENT");
       stagedAttachmentKeys = attachmentChanges.create.map((attachment) => attachment.upload.key);
-      const { snapshot, companySignature } = await resolveProjectAndAssignee(payload.companyId, payload);
+      const { snapshot, companySignature, projectManagers } = await resolveProjectAndAssignee(payload.companyId, payload);
 
       const order = await withTransactionRetry(() => prisma.$transaction(async (tx) => {
         await tx.$executeRaw`
@@ -290,6 +325,7 @@ export class WorkOrderController {
             terms: payload.terms || null,
             managerSignature: companySignature,
             managerSignedAt: companySignature ? new Date() : null,
+            projectManagers: { create: projectManagers },
             attachments: { create: attachmentChanges.create.map((attachment) => ({
               url: attachment.upload.key,
               original_filename: attachment.upload.originalName,
@@ -314,6 +350,8 @@ export class WorkOrderController {
       if (!attachmentsPersisted) await Promise.all(stagedAttachmentKeys.map((key) => deleteS3ObjectQuietly(key)));
       if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") return res.status(404).json({ error: "Project not found" });
       if (error instanceof Error && error.message === "ASSIGNEE_NOT_FOUND") return res.status(404).json({ error: "Employee or subcontractor not found" });
+      if (error instanceof Error && error.message === "INVALID_PROJECT_MANAGER") return res.status(400).json({ error: "A selected project manager is invalid" });
+      if (error instanceof Error && error.message === "TOO_MANY_PROJECT_MANAGERS") return res.status(400).json({ error: "A maximum of 20 project managers is allowed" });
       if (error instanceof Error && error.message === "ATTACHMENT_LIMIT") return res.status(400).json({ error: "A maximum of 10 image attachments is allowed" });
       if (error instanceof Error && error.message === "INVALID_ATTACHMENT") return res.status(400).json({ error: "An image attachment is invalid" });
       console.error("[workOrder.create]", error);
@@ -325,13 +363,14 @@ export class WorkOrderController {
     let stagedAttachmentKeys: string[] = [];
     let attachmentsPersisted = false;
     try {
-      const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: { attachments: true } });
+      const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: { attachments: true, projectManagers: true } });
       if (!existing) return res.status(404).json({ error: "Work order not found" });
       if (!await canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: "Access denied" });
       const payload = { ...req.body, companyId: existing.companyId };
       const checked = validatePayload(payload);
       if (checked.error) return res.status(400).json({ error: checked.error });
-      const { snapshot, companySignature } = await resolveProjectAndAssignee(existing.companyId, payload);
+      const existingManagerIds = existing.projectManagers.flatMap((manager) => manager.userId ? [manager.userId] : []);
+      const { snapshot, companySignature, projectManagers } = await resolveProjectAndAssignee(existing.companyId, payload, existingManagerIds, existing.projectManagers.length === 0);
       const userId = (req as any).userId as string;
       const attachmentPayload = payload.attachments === undefined
         ? { ...payload, attachments: { existingIds: existing.attachments.map((attachment) => attachment.id), create: [] } }
@@ -345,6 +384,7 @@ export class WorkOrderController {
       const obsoletePdfKeys = [existing.sourcePdfKey, existing.signedPdfKey];
       const order = await prisma.$transaction(async (tx) => {
         await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
+        await tx.workOrderProjectManager.deleteMany({ where: { workOrderId: existing.id } });
         if (removedAttachments.length) await tx.imagesAttachments.deleteMany({ where: { id: { in: removedAttachments.map((attachment) => attachment.id) }, workOrderId: existing.id } });
         if (attachmentChanges.existingIds.length) await tx.imagesAttachments.updateMany({ where: { id: { in: attachmentChanges.existingIds }, workOrderId: existing.id }, data: { projectId: payload.projectId } });
         return tx.workOrder.update({
@@ -357,6 +397,7 @@ export class WorkOrderController {
             managerSignedAt: (companySignature || existing.managerSignature) ? (existing.managerSignedAt || new Date()) : null,
             status: "pending", approvedAt: null, canceledAt: null, assigneeSignature: null, assigneeSignedAt: null,
             sourcePdfKey: null, signedPdfKey: null, lastSentAt: null, publicToken: randomUUID(),
+            projectManagers: { create: projectManagers },
             attachments: { create: attachmentChanges.create.map((attachment) => ({
               url: attachment.upload.key,
               original_filename: attachment.upload.originalName,
@@ -381,6 +422,8 @@ export class WorkOrderController {
       if (!attachmentsPersisted) await Promise.all(stagedAttachmentKeys.map((key) => deleteS3ObjectQuietly(key)));
       if (error instanceof Error && error.message === "ATTACHMENT_LIMIT") return res.status(400).json({ error: "A maximum of 10 image attachments is allowed" });
       if (error instanceof Error && error.message === "INVALID_ATTACHMENT") return res.status(400).json({ error: "An image attachment is invalid" });
+      if (error instanceof Error && error.message === "INVALID_PROJECT_MANAGER") return res.status(400).json({ error: "A selected project manager is invalid" });
+      if (error instanceof Error && error.message === "TOO_MANY_PROJECT_MANAGERS") return res.status(400).json({ error: "A maximum of 20 project managers is allowed" });
       console.error("[workOrder.update]", error);
       return res.status(500).json({ error: "Unable to update work order" });
     }
