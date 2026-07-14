@@ -1246,6 +1246,7 @@ enum WorkOrderAssigneeType {
 enum WorkOrderStatus {
   pending
   approved
+  canceled
 }
 
 model WorkOrderNumberSequence {
@@ -1291,6 +1292,7 @@ model WorkOrder {
   assigneeSignature   String?               @db.LongText
   assigneeSignedAt    DateTime?
   approvedAt          DateTime?
+  canceledAt          DateTime?
   managerSignature    String?               @db.LongText
   managerSignedAt     DateTime?
   sourcePdfKey        String?               @db.Text

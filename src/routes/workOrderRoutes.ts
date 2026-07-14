@@ -29,6 +29,7 @@ workOrderRoutes.get("/", controller.list.bind(controller));
 workOrderRoutes.post("/", controller.create.bind(controller));
 workOrderRoutes.get("/:id", controller.get.bind(controller));
 workOrderRoutes.put("/:id", controller.update.bind(controller));
+workOrderRoutes.patch("/:id/cancel", controller.cancel.bind(controller));
 workOrderRoutes.delete("/:id", controller.remove.bind(controller));
 workOrderRoutes.post("/:id/send", uploadPdf, controller.send.bind(controller));
 

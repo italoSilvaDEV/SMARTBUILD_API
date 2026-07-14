@@ -198,7 +198,8 @@ export class WorkOrderController {
       const existing = await prisma.workOrder.findUnique({ where: { publicToken: req.params.publicToken } });
       if (!existing) return res.status(404).json({ error: "Work order not found" });
 
-      if (existing.status !== "approved") {
+      if (existing.status === "canceled") return res.status(409).json({ error: "This work order has been canceled" });
+      if (existing.status === "pending") {
         if (!existing.sourcePdfKey) return res.status(409).json({ error: "This work order must be sent again before it can be signed" });
         const signedAt = new Date();
         const sourcePdf = await getStagedObjectBuffer(existing.sourcePdfKey);
@@ -354,7 +355,7 @@ export class WorkOrderController {
             assigneeId: payload.assigneeId, ...snapshot, terms: payload.terms || null,
             managerSignature: companySignature || existing.managerSignature,
             managerSignedAt: (companySignature || existing.managerSignature) ? (existing.managerSignedAt || new Date()) : null,
-            status: "pending", approvedAt: null, assigneeSignature: null, assigneeSignedAt: null,
+            status: "pending", approvedAt: null, canceledAt: null, assigneeSignature: null, assigneeSignedAt: null,
             sourcePdfKey: null, signedPdfKey: null, lastSentAt: null, publicToken: randomUUID(),
             attachments: { create: attachmentChanges.create.map((attachment) => ({
               url: attachment.upload.key,
@@ -395,6 +396,20 @@ export class WorkOrderController {
     return res.status(204).send();
   }
 
+  async cancel(req: Request, res: Response) {
+    const existing = await prisma.workOrder.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Work order not found" });
+    if (!await canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: "Access denied" });
+    if (existing.status === "canceled") return res.status(409).json({ error: "Work order is already canceled" });
+
+    const order = await prisma.workOrder.update({
+      where: { id: existing.id },
+      data: { status: "canceled", canceledAt: new Date() },
+      include: includeWorkOrder,
+    });
+    return res.json({ data: await serializeWithPdfUrls(order) });
+  }
+
   async send(req: Request, res: Response) {
     const pdf = req.file;
     if (!pdf) return res.status(400).json({ error: "Work order PDF is required" });
@@ -408,6 +423,7 @@ export class WorkOrderController {
       });
       if (!order) return res.status(404).json({ error: "Work order not found" });
       if (!await canAccessCompany(req, order.companyId)) return res.status(403).json({ error: "Access denied" });
+      if (order.status === "canceled") return res.status(409).json({ error: "Canceled work orders cannot be sent" });
       const recipient = String(req.body.to || order.assigneeEmail || "").trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) return res.status(400).json({ error: "A valid recipient email is required" });
       const companyLogo = order.company.avatar ? await getPresignedUrl(order.company.avatar).catch(() => "") : "";
