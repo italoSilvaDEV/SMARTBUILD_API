@@ -60,25 +60,26 @@ model User {
   estimateEditAll Boolean? @default(false)
   isExtraPaidUser Boolean? @default(false)
 
-  token_recover_password       String?               @unique
+  token_recover_password       String?                   @unique
   autorId                      String?
   last_acess                   DateTime?
-  date_creation                DateTime              @default(now())
-  date_update                  DateTime              @updatedAt
+  date_creation                DateTime                  @default(now())
+  date_update                  DateTime                  @updatedAt
   office_id                    String
-  office                       Office                @relation(fields: [office_id], references: [id])
-  userLikedCostProject         CostProject[]         @relation("userLikedProject")
-  seller_project               Project[]             @relation("seller")
+  office                       Office                    @relation(fields: [office_id], references: [id])
+  userLikedCostProject         CostProject[]             @relation("userLikedProject")
+  seller_project               Project[]                 @relation("seller")
   ServiceStages                ServiceStages[]
   projectId                    String?
   UserServiceProject           UserServiceProject[]
   UserAttendance               UserAttendance[]
   attendanceBreaks             UserAttendanceBreak[]
-  timeCardEditRequests         TimeCardEditRequest[] @relation("TimeCardEditRequestEmployee")
-  reviewedTimeCardEditRequests TimeCardEditRequest[] @relation("TimeCardEditRequestReviewer")
+  timeCardEditRequests         TimeCardEditRequest[]     @relation("TimeCardEditRequestEmployee")
+  reviewedTimeCardEditRequests TimeCardEditRequest[]     @relation("TimeCardEditRequestReviewer")
   Activities                   Activities[]
-  project_manager_project      Project[]             @relation("project_manager")
-  project_manager_invoice      Invoice[]             @relation("project_manager_invoice")
+  project_manager_project      Project[]                 @relation("project_manager")
+  project_manager_invoice      Invoice[]                 @relation("project_manager_invoice")
+  workOrderProjectManagers     WorkOrderProjectManager[]
 
   InvoiceSendHistory InvoiceSendHistory[]
 
@@ -87,8 +88,8 @@ model User {
   company_id String?
 
   // Nova relação N:N através da tabela UserCompany
-  companies UserCompany[]
-  authIdentities UserAuthIdentity[]
+  companies         UserCompany[]
+  authIdentities    UserAuthIdentity[]
   deviceCredentials UserDeviceCredential[]
 
   Invoice            Invoice[]
@@ -300,29 +301,29 @@ model Audit {
 }
 
 model Company {
-  id                    String         @id @default(uuid())
-  avatar                String?
-  signature             String?        @db.Text
-  name                  String
-  date_creation         DateTime       @default(now())
-  date_update           DateTime       @updatedAt
-  address               String?
-  district              String?
-  numberHouse           String?
-  complement            String?
-  email                 String?
-  phone                 String?
-  webSiteUrl            String?
-  workStartTime         String? // Format: "HH:mm" (24-hour)
-  workEndTime           String? // Format: "HH:mm" (24-hour)
-  attendanceMode        AttendanceMode @default(manual)
-  projectVisibilityMode String?        @default("allActive") // assignedOnly, allActive
-  paidShortGapEnabled   Boolean?       @default(true)
-  accentColor String?
-  isActive              Boolean        @default(true) // false = arquivado (master)
-  createdFromMaster     Boolean        @default(false) // true = criado pelo fluxo New Client no Master
-  mobileSubscriptionStatus String      @default("active") @db.VarChar(32)
-  mobileSignupProvider     String?     @db.VarChar(32)
+  id                       String         @id @default(uuid())
+  avatar                   String?
+  signature                String?        @db.Text
+  name                     String
+  date_creation            DateTime       @default(now())
+  date_update              DateTime       @updatedAt
+  address                  String?
+  district                 String?
+  numberHouse              String?
+  complement               String?
+  email                    String?
+  phone                    String?
+  webSiteUrl               String?
+  workStartTime            String? // Format: "HH:mm" (24-hour)
+  workEndTime              String? // Format: "HH:mm" (24-hour)
+  attendanceMode           AttendanceMode @default(manual)
+  projectVisibilityMode    String?        @default("allActive") // assignedOnly, allActive
+  paidShortGapEnabled      Boolean?       @default(true)
+  accentColor              String?
+  isActive                 Boolean        @default(true) // false = arquivado (master)
+  createdFromMaster        Boolean        @default(false) // true = criado pelo fluxo New Client no Master
+  mobileSubscriptionStatus String         @default("active") @db.VarChar(32)
+  mobileSignupProvider     String?        @db.VarChar(32)
 
   // Relacionamento original 1:N (mantido)
   User User[]
@@ -344,8 +345,8 @@ model Company {
 
   invoices Invoice[] @relation(name: "CompanyToInvoice")
 
-  NotesContrac ContractNotes[]
-  contracts    Contract[]
+  NotesContrac            ContractNotes[]
+  contracts               Contract[]
   contractNumberSequences ContractNumberSequence[]
 
   stripeCustomerId String?
@@ -386,6 +387,9 @@ model Company {
   chats               Chat[]
   workerLiveLocations WorkerLiveLocation[]
   workerLocationPings WorkerLocationPing[]
+  workOrders          WorkOrder[]
+  workOrderSequence   WorkOrderNumberSequence?
+  workOrderSettings   WorkOrderSettings?
 }
 
 model ContractNotes {
@@ -813,6 +817,7 @@ model Project {
   customServiceSchedules CustomServiceSchedule[]
   tasks                  Task[]
   changeOrders           ChangeOrder[]
+  workOrders             WorkOrder[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -859,9 +864,9 @@ enum ContractFieldType {
 }
 
 model ContractNumberSequence {
-  id         String   @id @default(uuid())
-  companyId String   @unique
-  nextNumber Int     @default(1000)
+  id         String @id @default(uuid())
+  companyId  String @unique
+  nextNumber Int    @default(1000)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -872,24 +877,24 @@ model ContractNumberSequence {
 }
 
 model Contract {
-  id             String           @id @default(uuid())
-  number         Int
-  status         ContractStatus   @default(draft)
-  authType       ContractAuthType @default(none)
-  authCode       String?          @db.VarChar(9)
-  publicToken    String           @unique @default(uuid())
-  expirationDays Int              @default(7)
-  expiresAt      DateTime
-  sentAt         DateTime?
-  viewedAt       DateTime?
-  signedAt       DateTime?
-  canceledAt     DateTime?
-  clientSignature String?         @db.LongText
-  companySignatureText String?    @db.Text
-  companySignatureFontKey String  @default("classic") @db.VarChar(64)
-  clientSignatureFontKey  String  @default("classic") @db.VarChar(64)
-  multi_emails   String?          @db.Text
-  createdById    String?
+  id                      String           @id @default(uuid())
+  number                  Int
+  status                  ContractStatus   @default(draft)
+  authType                ContractAuthType @default(none)
+  authCode                String?          @db.VarChar(9)
+  publicToken             String           @unique @default(uuid())
+  expirationDays          Int              @default(7)
+  expiresAt               DateTime
+  sentAt                  DateTime?
+  viewedAt                DateTime?
+  signedAt                DateTime?
+  canceledAt              DateTime?
+  clientSignature         String?          @db.LongText
+  companySignatureText    String?          @db.Text
+  companySignatureFontKey String           @default("classic") @db.VarChar(64)
+  clientSignatureFontKey  String           @default("classic") @db.VarChar(64)
+  multi_emails            String?          @db.Text
+  createdById             String?
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   companyId String
@@ -1162,7 +1167,7 @@ model WorkContext {
   notes    String? @db.Text
   isActive Boolean @default(true)
 
-  projects Project[]
+  projects  Project[]
   contracts Contract[]
 
   createdAt DateTime @default(now())
@@ -1232,6 +1237,133 @@ model Subcontractor {
 
   @@unique([email, company_id])
   @@map("subcontractors")
+}
+
+enum WorkOrderAssigneeType {
+  employee
+  subcontractor
+}
+
+enum WorkOrderStatus {
+  pending
+  approved
+  canceled
+}
+
+model WorkOrderNumberSequence {
+  companyId  String @id
+  nextNumber Int    @default(1029)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("work_order_number_sequence")
+}
+
+model WorkOrderSettings {
+  id        String   @id @default(uuid())
+  terms     String?  @db.Text
+  companyId String   @unique
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("work_order_settings")
+}
+
+model WorkOrder {
+  id                  String                @id @default(uuid())
+  number              Int
+  status              WorkOrderStatus       @default(pending)
+  publicToken         String                @unique @default(uuid())
+  title               String
+  scope               String                @db.Text
+  startDate           DateTime
+  endDate             DateTime
+  assigneeType        WorkOrderAssigneeType
+  assigneeId          String
+  assigneeName        String
+  assigneeEmail       String?
+  assigneePhone       String?
+  projectNumber       String?
+  projectName         String
+  projectAddress      String?               @db.Text
+  projectManagerName  String?
+  projectManagerPhone String?
+  terms               String?               @db.Text
+  assigneeSignature   String?               @db.LongText
+  assigneeSignedAt    DateTime?
+  approvedAt          DateTime?
+  canceledAt          DateTime?
+  managerSignature    String?               @db.LongText
+  managerSignedAt     DateTime?
+  sourcePdfKey        String?               @db.Text
+  signedPdfKey        String?               @db.Text
+  lastSentAt          DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  companyId       String
+  company         Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId       String
+  project         Project                   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  items           WorkOrderItem[]
+  attachments     ImagesAttachments[]
+  emailLogs       WorkOrderEmailLog[]
+  projectManagers WorkOrderProjectManager[]
+
+  @@unique([companyId, number])
+  @@index([projectId])
+  @@index([companyId, createdAt])
+  @@map("work_order")
+}
+
+model WorkOrderProjectManager {
+  id          String    @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([workOrderId, userId])
+  @@index([workOrderId, position])
+  @@index([userId])
+  @@map("work_order_project_manager")
+}
+
+model WorkOrderItem {
+  id          String   @id @default(uuid())
+  type        String   @default("service")
+  name        String
+  description String?  @db.Text
+  quantity    Decimal  @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal  @default(0) @db.Decimal(12, 2)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId, position])
+  @@map("work_order_item")
+}
+
+model WorkOrderEmailLog {
+  id           String    @id @default(uuid())
+  recipient    String
+  status       String
+  errorMessage String?   @db.Text
+  sentAt       DateTime  @default(now())
+  workOrderId  String
+  workOrder    WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId, sentAt])
+  @@map("work_order_email_log")
 }
 
 enum TypePrice {
@@ -1401,6 +1533,7 @@ model UserAttendance {
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
+  @@index([company_id, check_out_time, user_id], map: "user_attendance_company_open_user_idx")
   @@map("user_attendance")
 }
 
@@ -1489,6 +1622,8 @@ model TimeLine {
   service_project_id   String
   UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id], onDelete: Cascade)
   userServiceProjectId String
+
+  @@index([user_id, userServiceProjectId, check_in_time], map: "timeline_user_assignment_recorded_idx")
 }
 
 model WorkerLiveLocation {
@@ -1512,6 +1647,13 @@ model WorkerLiveLocation {
   batteryLevel         Float?
   isInsideSite         Boolean?
   source               String   @default("mobile")
+  protocolVersion      Int?
+  appVersion           String?  @db.VarChar(64)
+  platform             String?  @db.VarChar(32)
+  queueDepth           Int?
+  permissions          Json?
+  services             Json?
+  taskState            Json?
   recordedAt           DateTime
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -1522,6 +1664,7 @@ model WorkerLiveLocation {
   @@unique([companyId, userId])
   @@index([companyId, recordedAt])
   @@index([userId, recordedAt])
+  @@index([recordedAt], map: "worker_live_locations_recorded_at_idx")
   @@map("worker_live_locations")
 }
 
@@ -1529,6 +1672,8 @@ model WorkerLocationPing {
   id                   String   @id @default(uuid())
   companyId            String
   userId               String
+  clientEventId        String?
+  protocolVersion      Int?
   attendanceId         String?
   userServiceProjectId String?
   serviceProjectId     String?
@@ -1552,9 +1697,11 @@ model WorkerLocationPing {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, userId, clientEventId], map: "worker_location_pings_company_user_client_event_key")
   @@index([companyId, recordedAt])
   @@index([companyId, userId, recordedAt])
   @@index([userId, recordedAt])
+  @@index([recordedAt], map: "worker_location_pings_recorded_at_idx")
   @@map("worker_location_pings")
 }
 
@@ -1906,11 +2053,11 @@ model EstimateServiceProject {
   id_service String?
   service    Service? @relation(fields: [id_service], references: [id])
 
-  hours      Decimal?
-  price      Decimal?
-  start_date String?
-  deadline   String?
-  idQuickbooks String?
+  hours         Decimal?
+  price         Decimal?
+  start_date    String?
+  deadline      String?
+  idQuickbooks  String?
   quickbooksRaw Json?
 
   date_creation  DateTime        @default(now())
@@ -1921,18 +2068,18 @@ model EstimateServiceProject {
 }
 
 model EstimateAiSession {
-  id            String   @id @default(uuid())
-  estimateId    String?  @unique
-  companyId     String?
-  createdById   String?
-  status        String   @default("active")
-  title         String?
+  id             String   @id @default(uuid())
+  estimateId     String?  @unique
+  companyId      String?
+  createdById    String?
+  status         String   @default("active")
+  title          String?
   lastResponseId String?
-  modelSimple   String?
-  modelDocument String?
-  metadata      Json?
-  date_creation DateTime @default(now())
-  date_update   DateTime @updatedAt
+  modelSimple    String?
+  modelDocument  String?
+  metadata       Json?
+  date_creation  DateTime @default(now())
+  date_update    DateTime @updatedAt
 
   estimate    Estimate?              @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   messages    EstimateAiMessage[]
@@ -1974,7 +2121,7 @@ model EstimateAiAttachment {
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt
 
-  session EstimateAiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session EstimateAiSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   message EstimateAiMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
@@ -2033,29 +2180,29 @@ model UserPermission {
 }
 
 model Subscription {
-  id                             String    @id @default(uuid())
+  id                             String            @id @default(uuid())
   companyId                      String
-  company                        Company   @relation(fields: [companyId], references: [id])
+  company                        Company           @relation(fields: [companyId], references: [id])
   planId                         String
-  plan                           Plan      @relation(fields: [planId], references: [id])
+  plan                           Plan              @relation(fields: [planId], references: [id])
   startDate                      DateTime // Data de início da assinatura (quando o plano foi comprado)
   endDate                        DateTime // Data de fim do plano (quando o plano expira)
-  isActive                       Boolean   @default(true) // Indica se o plano está ativo ou expirado
+  isActive                       Boolean           @default(true) // Indica se o plano está ativo ou expirado
   stripeSubscriptionId           String?
-  paymentFailed                  Boolean   @default(false)
-  stripeSubscriptionCanceled     Boolean   @default(false)
+  paymentFailed                  Boolean           @default(false)
+  stripeSubscriptionCanceled     Boolean           @default(false)
   stripeDateSubscriptionCanceled DateTime? // Data em que a assinatura será cancelada (para cancelamentos agendados)
-  billingProvider                BillingProvider @default(stripe)
+  billingProvider                BillingProvider   @default(stripe)
   storeProductId                 String?
-  storeTransactionId             String? @unique
+  storeTransactionId             String?           @unique
   storeOriginalTransactionId     String?
-  googlePurchaseToken            String? @unique @db.VarChar(512)
+  googlePurchaseToken            String?           @unique @db.VarChar(512)
   storeEnvironment               StoreEnvironment?
   autoRenewing                   Boolean?
   lastVerifiedAt                 DateTime?
-  fromCampaign                   Boolean   @default(false) // Indica se a assinatura foi criada através de uma campanha
+  fromCampaign                   Boolean           @default(false) // Indica se a assinatura foi criada através de uma campanha
   campaignId                     String? // ID da campanha (opcional)
-  campaign                       Campaign? @relation(fields: [campaignId], references: [id])
+  campaign                       Campaign?         @relation(fields: [campaignId], references: [id])
 
   @@index([billingProvider])
   @@index([storeOriginalTransactionId])
@@ -2097,17 +2244,17 @@ model UserAuthIdentity {
 }
 
 model UserDeviceCredential {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceId      String
-  tokenHash     String
-  platform      String?   @db.VarChar(32)
-  label         String?
-  lastUsedAt    DateTime?
-  revokedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  tokenHash  String
+  platform   String?   @db.VarChar(32)
+  label      String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([userId, deviceId])
   @@index([deviceId])
@@ -2787,6 +2934,9 @@ model ImagesAttachments {
 
   invoiceId String?
   invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  workOrderId String?
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
   date_creation DateTime @default(now())
   date_update   DateTime @updatedAt

@@ -1,17 +1,20 @@
 import { prisma } from "../utils/prisma";
 import { PushNotificationService } from "./PushNotificationService";
+import { getLatestLegacyTrackingFallbacks } from "./LegacyTrackingFallbackService";
 
 const prismaAny = prisma as any;
 
 export const TRACKING_SILENT_AFTER_MINUTES = 45;
 export const TRACKING_REMINDER_INTERVAL_MINUTES = 60;
 export const MAX_TRACKING_REMINDERS_PER_ATTENDANCE = 3;
+const TRACKING_LIVE_MAX_FUTURE_SKEW_MINUTES = 5;
 
 type OpenAttendanceRecord = {
   id: string;
   company_id: string | null;
   user_id: string;
   check_in_time: Date;
+  user_service_project_id?: string | null;
   user?: {
     id: string;
     name: string;
@@ -22,6 +25,7 @@ type OpenAttendanceRecord = {
 type LiveLocationRecord = {
   companyId: string;
   userId: string;
+  attendanceId?: string | null;
   recordedAt: Date;
 };
 
@@ -137,15 +141,24 @@ export function getTrackingSilentReferenceTime(
   return liveLocation?.recordedAt || attendance.check_in_time;
 }
 
-function hasTrackingSessionForAttendance(
-  attendance: Pick<OpenAttendanceRecord, "check_in_time">,
-  liveLocation?: Pick<LiveLocationRecord, "recordedAt"> | null
-) {
+export function getLiveLocationForAttendance<T extends Pick<LiveLocationRecord, "attendanceId" | "recordedAt">>(
+  attendance: Pick<OpenAttendanceRecord, "id" | "check_in_time">,
+  liveLocation?: T | null,
+  now = new Date()
+): T | null {
   if (!liveLocation?.recordedAt) {
-    return false;
+    return null;
   }
 
-  return liveLocation.recordedAt.getTime() >= attendance.check_in_time.getTime();
+  const isWithinAttendanceWindow =
+    liveLocation.recordedAt.getTime() >= attendance.check_in_time.getTime() &&
+    liveLocation.recordedAt.getTime() <=
+      now.getTime() + TRACKING_LIVE_MAX_FUTURE_SKEW_MINUTES * 60_000;
+  const belongsToAttendance = liveLocation.attendanceId
+    ? liveLocation.attendanceId === attendance.id
+    : liveLocation.recordedAt.getTime() >= attendance.check_in_time.getTime();
+
+  return belongsToAttendance && isWithinAttendanceWindow ? liveLocation : null;
 }
 
 export function getTrackingHealthSnapshot(
@@ -240,6 +253,7 @@ export async function runTrackingHealthCheckJob() {
         company_id: true,
         user_id: true,
         check_in_time: true,
+        user_service_project_id: true,
         user: {
           select: {
             id: true,
@@ -266,7 +280,6 @@ export async function runTrackingHealthCheckJob() {
     );
     const userIds = Array.from(new Set(attendances.map((attendance) => attendance.user_id)));
     const attendanceIds = attendances.map((attendance) => attendance.id);
-
     const [liveLocations, reminders] = await Promise.all([
       prisma.workerLiveLocation.findMany({
         where: {
@@ -276,6 +289,7 @@ export async function runTrackingHealthCheckJob() {
         select: {
           companyId: true,
           userId: true,
+          attendanceId: true,
           recordedAt: true,
         },
       }) as Promise<LiveLocationRecord[]>,
@@ -296,6 +310,23 @@ export async function runTrackingHealthCheckJob() {
     const liveLocationMap = new Map(
       liveLocations.map((location) => [`${location.companyId}:${location.userId}`, location])
     );
+    const validLiveLocationByAttendanceId = new Map<string, LiveLocationRecord>();
+    const fallbackAttendances = attendances.filter((attendance) => {
+      if (!attendance.company_id) return false;
+      const liveLocation = getLiveLocationForAttendance<LiveLocationRecord>(
+        attendance,
+        liveLocationMap.get(`${attendance.company_id}:${attendance.user_id}`) || null,
+        now
+      );
+      if (liveLocation) {
+        validLiveLocationByAttendanceId.set(attendance.id, liveLocation);
+        return false;
+      }
+      return true;
+    });
+    const legacyFallbackByAttendanceId = await getLatestLegacyTrackingFallbacks(
+      fallbackAttendances
+    );
     const remindersByAttendance = reminders.reduce<Record<string, TrackingReminderRecord[]>>(
       (acc, reminder) => {
         if (!acc[reminder.attendanceId]) {
@@ -310,13 +341,18 @@ export async function runTrackingHealthCheckJob() {
     for (const attendance of attendances) {
       if (!attendance.company_id) continue;
 
-      const liveLocation =
-        liveLocationMap.get(`${attendance.company_id}:${attendance.user_id}`) || null;
-
-      if (!hasTrackingSessionForAttendance(attendance, liveLocation)) {
-        continue;
-      }
-
+      const attendanceLiveLocation =
+        validLiveLocationByAttendanceId.get(attendance.id) || null;
+      const legacyTimelineRow = legacyFallbackByAttendanceId.get(attendance.id) || null;
+      const legacyLiveLocation: LiveLocationRecord | null = legacyTimelineRow
+        ? {
+            companyId: attendance.company_id,
+            userId: attendance.user_id,
+            attendanceId: attendance.id,
+            recordedAt: legacyTimelineRow.check_in_time,
+          }
+        : null;
+      const liveLocation = attendanceLiveLocation || legacyLiveLocation;
       const snapshot = getTrackingHealthSnapshot(attendance, liveLocation, now);
 
       if (snapshot.trackingHealth !== "silent") {

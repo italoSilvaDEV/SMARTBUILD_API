@@ -3,9 +3,11 @@ import { UserAttendanceController } from '../controllers/User/UserAttendanceCont
 import { checkToken } from '../middlewares/checkToken';
 import { TimeLineController } from '../controllers/User/TimeLineController';
 import { WorkerTrackingController } from '../controllers/tracking/WorkerTrackingController';
+import { TrackingConfigController } from '../controllers/tracking/TrackingConfigController';
 const userAttendanceControlller = new UserAttendanceController()
 const timeLineController = new TimeLineController()
 const workerTrackingController = new WorkerTrackingController()
+const trackingConfigController = new TrackingConfigController()
 const userAttendanceRoutes = Router();
 
 userAttendanceRoutes.post('/check-in', checkToken, userAttendanceControlller.checkIn.bind(userAttendanceControlller));
@@ -31,7 +33,7 @@ userAttendanceRoutes.get(
     userAttendanceControlller.getAttendanceByUserAndService.bind(userAttendanceControlller)
 );
 
-userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceControlller.updateAttendanceTimes.bind(userAttendanceControlller));
+userAttendanceRoutes.put('/user-attendance/:id/update-times', checkToken, userAttendanceControlller.updateAttendanceTimes.bind(userAttendanceControlller));
 
 userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine.bind(timeLineController));
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient.bind(timeLineController));
@@ -52,6 +54,7 @@ userAttendanceRoutes.post('/check-in-by-service', checkToken, userAttendanceCont
 // Nova rota para salvar lote de timeline
 userAttendanceRoutes.post('/timeline/batch', checkToken, userAttendanceControlller.saveTimelineBatch.bind(userAttendanceControlller));
 userAttendanceRoutes.post('/tracking/ping', checkToken, workerTrackingController.handlePing.bind(workerTrackingController));
+userAttendanceRoutes.get('/tracking/config', checkToken, trackingConfigController.handle.bind(trackingConfigController));
 userAttendanceRoutes.get('/tracking/history/worker/:workerId', checkToken, workerTrackingController.handleHistoryByWorker.bind(workerTrackingController));
 userAttendanceRoutes.post('/tracking/reminder/ack', checkToken, workerTrackingController.acknowledgeReminder.bind(workerTrackingController));
 

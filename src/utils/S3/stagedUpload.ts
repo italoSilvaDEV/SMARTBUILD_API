@@ -3,7 +3,7 @@ import path from "path";
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-export type StagedUploadPurpose = "estimate-pdf" | "estimate-attachment";
+export type StagedUploadPurpose = "estimate-pdf" | "estimate-attachment" | "work-order-attachment";
 
 export type StagedUploadReference = {
   key: string;
@@ -37,6 +37,11 @@ const ALLOWED_CONTENT_TYPES: Record<StagedUploadPurpose, Set<string>> = {
     "image/heic",
     "image/heif",
     "application/pdf",
+  ]),
+  "work-order-attachment": new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
   ]),
 };
 

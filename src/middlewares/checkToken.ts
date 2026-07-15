@@ -27,15 +27,34 @@ export function checkToken(req: Request, res: Response, next: NextFunction) {
 
     return res.status(400).json({ error: "Token not informed" });
   }
-  const token = authHeader && authHeader.split(" ")[1]
-  const secret = `${process.env.SECRET_JWT}`
-  Jwt.verify(token, String(secret), function (err, decoded: any) {
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme !== "Bearer" || !token) {
+    return res.status(401).json({ error: "Failed to authenticate token" });
+  }
+
+  const secret = process.env.SECRET_JWT;
+  if (!secret) {
+    console.error("SECRET_JWT is not configured");
+    return res.status(500).json({ error: "Authentication is not configured" });
+  }
+
+  Jwt.verify(token, secret, { algorithms: ["HS256"] }, function (err, decoded: any) {
     if (err) {
       return res.status(401).json({ error: "Failed to authenticate token" });
     }
 
+    // Purpose/type tokens are capabilities for narrow flows, never user sessions.
+    if (!decoded || typeof decoded !== "object" || decoded.purpose || decoded.type) {
+      return res.status(401).json({ error: "Failed to authenticate token" });
+    }
+
     // Atualizar last_acess do usuário com throttling
-    const userId = decoded?.userId || decoded?.id || decoded?.sub || req.headers['x-user-id'] as string;
+    const userId = typeof decoded.id === "string"
+      ? decoded.id
+      : (typeof decoded.sub === "string" ? decoded.sub : null);
+    if (!userId) {
+      return res.status(401).json({ error: "Failed to authenticate token" });
+    }
     (req as any).userId = userId;
 
     if (userId) {

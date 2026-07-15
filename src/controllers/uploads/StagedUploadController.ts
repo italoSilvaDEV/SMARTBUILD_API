@@ -11,7 +11,7 @@ const VALIDATION_ERRORS = new Set([
   "File type is not allowed for this upload",
 ]);
 
-const ALLOWED_PURPOSES = new Set<StagedUploadPurpose>(["estimate-pdf", "estimate-attachment"]);
+const ALLOWED_PURPOSES = new Set<StagedUploadPurpose>(["estimate-pdf", "estimate-attachment", "work-order-attachment"]);
 
 export class StagedUploadController {
   async presign(req: Request, res: Response) {

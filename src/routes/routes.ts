@@ -62,6 +62,7 @@ import { extraEmployeeRoutes } from './extraEmployeeRoutes'
 import contractRoutes from './contractRoutes'
 import { mobileAuthRoutes } from './mobileAuthRoutes'
 import { uploadRoutes } from './uploadRoutes'
+import { workOrderRoutes } from './workOrderRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -109,6 +110,7 @@ router.use(invoicePaymentRoutes);
 router.use(invoiceStatisticsRoutes);
 router.use(invoiceAutoEmailRoutes);
 router.use("/estimate", estimateRoutes);
+router.use("/work-orders", workOrderRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);
 router.use(pasteRoutes);
