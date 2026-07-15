@@ -11,6 +11,7 @@ import { NewUser } from "../../templateEmail/newUser";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { OWNER_FULL_ACCESS_DATA } from "../../utils/ownerFullAccess";
+import { issueRegistrationToken } from "../../utils/publicAccessTokens";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
@@ -142,7 +143,10 @@ export class CompanyController {
                 }
             });
 
-            return res.status(201).json(company);
+            return res.status(201).json({
+                ...company,
+                registrationToken: issueRegistrationToken(company.id, user.id),
+            });
         } catch (error: any) {
             console.error("36. Erro no processo:", error);
             return res.status(500).json({ error: error.message || "Internal error" });

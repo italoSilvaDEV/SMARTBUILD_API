@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
+import { issueEstimatePublicToken } from "../../utils/publicAccessTokens";
 
 const ESTIMATE_EMAIL_TOO_LARGE_MESSAGE =
   "The estimate PDF and attachments are too large to email. Please remove attachments or send the estimate link.";
@@ -660,6 +661,25 @@ export class EstimateController {
         return res.status(400).json({ error: "Invalid status" });
       }
 
+      if ((req as any).publicEstimateAccess) {
+        if (status !== "rejected") {
+          return res.status(403).json({ error: "Public estimate access can only decline an estimate" });
+        }
+
+        const currentEstimate = await prisma.estimate.findUnique({
+          where: { id },
+          select: { status: true, assignatureRequired: true }
+        });
+        if (!currentEstimate) {
+          return res.status(404).json({ error: "Estimate not found" });
+        }
+        const canRespond = currentEstimate.status === "pending"
+          || (currentEstimate.status === "approved" && currentEstimate.assignatureRequired === true);
+        if (!canRespond) {
+          return res.status(409).json({ error: "Estimate has already been answered" });
+        }
+      }
+
       const estimate = await prisma.estimate.update({
         where: { id },
         data: {
@@ -729,7 +749,8 @@ export class EstimateController {
     try {
       const { id } = req.params;
       const { signature, email } = req.body;
-      const decodedEmail = email ? Buffer.from(email.toString(), 'base64').toString() : 'unknown';
+      const decodedEmail = (req as any).publicEstimateEmail
+        || (email ? Buffer.from(email.toString(), 'base64').toString() : 'unknown');
       const estimate = await prisma.estimate.findUnique({
         where: { id },
         include: {
@@ -753,6 +774,14 @@ export class EstimateController {
 
       if (!estimate) {
         return res.status(404).json({ error: "Estimate not found" });
+      }
+
+      if ((req as any).publicEstimateAccess) {
+        const canRespond = estimate.status === "pending"
+          || (estimate.status === "approved" && estimate.assignatureRequired === true);
+        if (!canRespond) {
+          return res.status(409).json({ error: "Estimate has already been answered" });
+        }
       }
 
       if (estimate.serviceProjects.length > 0) {
@@ -1723,13 +1752,14 @@ export class EstimateController {
           maximumFractionDigits: 2
         }).format(Number(estimate.totalAmount));
 
-        const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimate.id}/${Buffer.from(estimate.project?.client?.email || '').toString('base64')}`;
         const companyName = estimate.project?.company?.name || 'SmartBuild';
         const projectDispName = estimate.project?.workContext?.location || estimate.project?.location || `Project #${estimate.project?.contract_number || 'N/A'}`;
 
         const subjectFixed = `Estimate ${estimateNumber} from ${companyName}`;
 
         for (const recipientEmail of uniqueRecipients) {
+          const estimateAccessToken = issueEstimatePublicToken(estimate.id, recipientEmail);
+          const reviewLink = `${process.env.URL_FRONT}/estimate-response/${estimate.id}/${encodeURIComponent(estimateAccessToken)}`;
           let recipientName = "Customer";
           if (recipientEmail === estimate.project?.client?.email && estimate.project?.client?.name) {
             recipientName = estimate.project.client.name;
@@ -1954,8 +1984,6 @@ export class EstimateController {
     }
   }
 } 
-
-
 
 
 

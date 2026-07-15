@@ -31,7 +31,7 @@ userAttendanceRoutes.get(
     userAttendanceControlller.getAttendanceByUserAndService.bind(userAttendanceControlller)
 );
 
-userAttendanceRoutes.put('/user-attendance/:id/update-times', userAttendanceControlller.updateAttendanceTimes.bind(userAttendanceControlller));
+userAttendanceRoutes.put('/user-attendance/:id/update-times', checkToken, userAttendanceControlller.updateAttendanceTimes.bind(userAttendanceControlller));
 
 userAttendanceRoutes.post('/time-line/check-in', checkToken, timeLineController.handleTimeLine.bind(timeLineController));
 userAttendanceRoutes.post('/time-line/check-in-client', checkToken, timeLineController.handleTimeLineClient.bind(timeLineController));
