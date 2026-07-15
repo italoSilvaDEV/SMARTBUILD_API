@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Prisma, type WorkerLocationPing } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
 import {
@@ -10,6 +11,151 @@ import {
   mapPingToReplayTrackPoint,
   ReplaySegmentBreakReason,
 } from "../../services/MapboxReplayMatchingService";
+import { getUserCompanyIds } from "../Files/fileAccess";
+
+const CLOSED_ATTENDANCE_FINAL_PING_GRACE_MINUTES = 15;
+const LIVE_PING_MAX_FUTURE_SKEW_MINUTES = 5;
+const TRACKING_TRANSACTION_MAX_ATTEMPTS = 2;
+
+type TrackingAttendanceContext = {
+  id: string;
+  user_id: string;
+  company_id: string | null;
+  check_in_time: Date;
+  check_out_time: Date | null;
+  user_service_project_id: string | null;
+  pending_project_id: string | null;
+  pending_project_name: string | null;
+  pending_project_latitude: number | null;
+  pending_project_longitude: number | null;
+  pending_project_radius: number | null;
+  UserServiceProject: {
+    id: string;
+    service_project_id: string | null;
+    service_project: {
+      id: string;
+      name: string | null;
+      company_id: string | null;
+      Project: {
+        id: string;
+        location: string | null;
+        lat: string | null;
+        log: string | null;
+        radius: number | null;
+        company_id: string | null;
+      } | null;
+    } | null;
+  } | null;
+};
+
+const trackingAttendanceSelect = {
+  id: true,
+  user_id: true,
+  company_id: true,
+  check_in_time: true,
+  check_out_time: true,
+  user_service_project_id: true,
+  pending_project_id: true,
+  pending_project_name: true,
+  pending_project_latitude: true,
+  pending_project_longitude: true,
+  pending_project_radius: true,
+  UserServiceProject: {
+    select: {
+      id: true,
+      service_project_id: true,
+          service_project: {
+            select: {
+              id: true,
+              name: true,
+              company_id: true,
+              Project: {
+            select: {
+              id: true,
+              location: true,
+              lat: true,
+              log: true,
+              radius: true,
+              company_id: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+function resolveAttendanceCompanyId(attendance: TrackingAttendanceContext | null) {
+  return (
+    attendance?.company_id ||
+    attendance?.UserServiceProject?.service_project?.company_id ||
+    attendance?.UserServiceProject?.service_project?.Project?.company_id ||
+    null
+  );
+}
+
+export function isRecentlyClosedAttendance(
+  attendance: Pick<TrackingAttendanceContext, "check_out_time">,
+  now = new Date()
+) {
+  if (!attendance.check_out_time) return false;
+  const ageMs = now.getTime() - attendance.check_out_time.getTime();
+  return ageMs >= -60_000 && ageMs <= CLOSED_ATTENDANCE_FINAL_PING_GRACE_MINUTES * 60_000;
+}
+
+export function shouldPublishTrackingPingLive(
+  attendance: Pick<TrackingAttendanceContext, "check_in_time" | "check_out_time"> | null,
+  pingRecordedAt: Date,
+  serverReceivedAt = new Date()
+) {
+  return (
+    !!attendance &&
+    attendance.check_out_time == null &&
+    pingRecordedAt.getTime() >= attendance.check_in_time.getTime() &&
+    pingRecordedAt.getTime() <=
+      serverReceivedAt.getTime() + LIVE_PING_MAX_FUTURE_SKEW_MINUTES * 60_000
+  );
+}
+
+function normalizeOptionalString(value: unknown, maxLength = 191): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return null;
+  return normalized;
+}
+
+function normalizeProtocolVersion(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 1000) return parsed;
+  }
+  return null;
+}
+
+function normalizeQueueDepth(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000) return undefined;
+  return parsed;
+}
+
+function normalizeDiagnosticJson(value: unknown): Prisma.InputJsonValue | undefined {
+  if (value == null) return undefined;
+  try {
+    const serialized = JSON.stringify(value);
+    if (!serialized || Buffer.byteLength(serialized, "utf8") > 4_096) return undefined;
+    return JSON.parse(serialized) as Prisma.InputJsonValue;
+  } catch {
+    return undefined;
+  }
+}
+
+function isUniqueConstraintError(error: any) {
+  return error?.code === "P2002";
+}
+
+function isRetryableTrackingTransactionError(error: any) {
+  return isUniqueConstraintError(error) || error?.code === "P2034";
+}
 
 function parseRequestedDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
@@ -97,32 +243,99 @@ export class WorkerTrackingController {
         projectRadiusMeters,
         source,
         companyId: bodyCompanyId,
+        clientEventId: rawClientEventId,
+        clientPingId,
+        protocolVersion: rawProtocolVersion,
+        trackingProtocolVersion,
+        protocol,
+        diagnostics: rawDiagnostics,
+        appVersion: rawAppVersion,
+        platform: rawPlatform,
+        queueDepth: rawQueueDepth,
+        permissions: rawPermissions,
+        services: rawServices,
+        taskState: rawTaskState,
       } = req.body || {};
 
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         return res.status(400).json({ error: "latitude and longitude are required" });
       }
 
+      if (Number(latitude) < -90 || Number(latitude) > 90 || Number(longitude) < -180 || Number(longitude) > 180) {
+        return res.status(400).json({ error: "latitude or longitude is outside the valid range" });
+      }
+
       const user = await prisma.user.findUnique({
         where: { id: authUserId },
-        select: { id: true, company_id: true },
+        select: {
+          id: true,
+          company_id: true,
+          companies: { select: { companyId: true } },
+        },
       });
 
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      let resolvedCompanyId = bodyCompanyId || user.company_id || null;
-      if (!resolvedCompanyId && attendanceId) {
-        const attendance = await prisma.userAttendance.findUnique({
-          where: { id: attendanceId },
-          select: { company_id: true },
-        });
-        resolvedCompanyId = attendance?.company_id || null;
+      const normalizedBodyCompanyId = normalizeOptionalString(bodyCompanyId);
+      const userCompanyIds = Array.from(
+        new Set(
+          [
+            user.company_id,
+            ...(user.companies || []).map((company) => company.companyId),
+          ].filter((companyId): companyId is string => !!companyId)
+        )
+      );
+      if (normalizedBodyCompanyId && !userCompanyIds.includes(normalizedBodyCompanyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
       }
 
-      if (!resolvedCompanyId) {
-        return res.status(400).json({ error: "Company could not be resolved for tracking ping" });
+      const hasExplicitAttendanceId = typeof attendanceId === "string" && !!attendanceId.trim();
+      let attendance: TrackingAttendanceContext | null = null;
+      if (hasExplicitAttendanceId) {
+        attendance = (await prisma.userAttendance.findUnique({
+          where: { id: String(attendanceId).trim() },
+          select: trackingAttendanceSelect,
+        })) as TrackingAttendanceContext | null;
+
+        if (!attendance) {
+          return res.status(404).json({ error: "Attendance not found" });
+        }
+        if (attendance.user_id !== authUserId) {
+          return res.status(403).json({ error: "Attendance does not belong to the authenticated user" });
+        }
+      } else {
+        const openAttendances = (await prisma.userAttendance.findMany({
+          where: {
+            user_id: authUserId,
+            check_out_time: null,
+          },
+          select: trackingAttendanceSelect,
+          orderBy: { check_in_time: "desc" },
+          take: 10,
+        })) as TrackingAttendanceContext[];
+
+        const normalizedUserServiceProjectId = normalizeOptionalString(userServiceProjectId);
+        const normalizedServiceProjectId = normalizeOptionalString(serviceProjectId);
+        attendance =
+          openAttendances.find((candidate) =>
+            normalizedUserServiceProjectId
+              ? candidate.user_service_project_id === normalizedUserServiceProjectId
+              : false
+          ) ||
+          openAttendances.find((candidate) =>
+            normalizedServiceProjectId
+              ? candidate.UserServiceProject?.service_project_id === normalizedServiceProjectId
+              : false
+          ) ||
+          openAttendances.find((candidate) =>
+            normalizedBodyCompanyId
+              ? resolveAttendanceCompanyId(candidate) === normalizedBodyCompanyId
+              : false
+          ) ||
+          openAttendances[0] ||
+          null;
       }
 
       const pingRecordedAt = recordedAt ? new Date(recordedAt) : new Date();
@@ -130,18 +343,87 @@ export class WorkerTrackingController {
         return res.status(400).json({ error: "Invalid recordedAt" });
       }
 
-      const payload = {
+      const inferredPingPredatesAttendance =
+        !!attendance &&
+        !hasExplicitAttendanceId &&
+        pingRecordedAt.getTime() < attendance.check_in_time.getTime();
+      const boundAttendance = inferredPingPredatesAttendance ? null : attendance;
+      const attendanceCompanyId = resolveAttendanceCompanyId(boundAttendance);
+      if (attendanceCompanyId && !userCompanyIds.includes(attendanceCompanyId)) {
+        return res.status(403).json({ error: "User does not have access to the attendance company" });
+      }
+
+      const resolvedCompanyId =
+        attendanceCompanyId ||
+        normalizedBodyCompanyId ||
+        (userCompanyIds.length === 1 ? userCompanyIds[0] : null);
+      if (!resolvedCompanyId || !userCompanyIds.includes(resolvedCompanyId)) {
+        return res.status(400).json({ error: "Company could not be resolved for tracking ping" });
+      }
+
+      const isFinalClosedAttendance = !!attendance && isRecentlyClosedAttendance(attendance);
+      if (attendance?.check_out_time && !isFinalClosedAttendance) {
+        return res.status(409).json({ error: "Attendance is already closed" });
+      }
+
+      const attendanceService = boundAttendance?.UserServiceProject?.service_project || null;
+      const attendanceProject = attendanceService?.Project || null;
+      const resolvedProjectId =
+        attendanceProject?.id || boundAttendance?.pending_project_id || normalizeOptionalString(projectId);
+      const resolvedProjectName =
+        attendanceProject?.location ||
+        boundAttendance?.pending_project_name ||
+        normalizeOptionalString(projectName);
+      const resolvedProjectLatitude =
+        attendanceProject?.lat ??
+        boundAttendance?.pending_project_latitude ??
+        (Number.isFinite(projectLatitude) ? Number(projectLatitude) : null);
+      const resolvedProjectLongitude =
+        attendanceProject?.log ??
+        boundAttendance?.pending_project_longitude ??
+        (Number.isFinite(projectLongitude) ? Number(projectLongitude) : null);
+      const resolvedProjectRadius =
+        attendanceProject?.radius ??
+        boundAttendance?.pending_project_radius ??
+        (Number.isFinite(projectRadiusMeters) ? Number(projectRadiusMeters) : null);
+      const clientEventId = normalizeOptionalString(rawClientEventId) || normalizeOptionalString(clientPingId);
+      const protocolVersion = normalizeProtocolVersion(
+        rawProtocolVersion,
+        trackingProtocolVersion,
+        protocol,
+        req.header("x-tracking-protocol")
+      );
+      const diagnostics =
+        rawDiagnostics && typeof rawDiagnostics === "object" && !Array.isArray(rawDiagnostics)
+          ? (rawDiagnostics as Record<string, unknown>)
+          : {};
+      const appVersion = normalizeOptionalString(
+        rawAppVersion ?? diagnostics.appVersion ?? req.header("x-app-version"),
+        64
+      );
+      const platform = normalizeOptionalString(
+        rawPlatform ?? diagnostics.platform ?? req.header("x-app-platform"),
+        32
+      );
+      const queueDepth = normalizeQueueDepth(rawQueueDepth ?? diagnostics.queueDepth);
+      const permissions = normalizeDiagnosticJson(rawPermissions ?? diagnostics.permissions);
+      const services = normalizeDiagnosticJson(rawServices ?? diagnostics.services);
+      const taskState = normalizeDiagnosticJson(rawTaskState ?? diagnostics.taskState);
+
+      const livePayload = {
         companyId: resolvedCompanyId,
         userId: authUserId,
-        attendanceId: attendanceId || null,
-        userServiceProjectId: userServiceProjectId || null,
-        serviceProjectId: serviceProjectId || null,
-        projectId: projectId || null,
-        projectName: projectName || null,
-        serviceTitle: serviceTitle || null,
-        projectLatitude: Number.isFinite(projectLatitude) ? Number(projectLatitude) : null,
-        projectLongitude: Number.isFinite(projectLongitude) ? Number(projectLongitude) : null,
-        projectRadiusMeters: Number.isFinite(projectRadiusMeters) ? Number(projectRadiusMeters) : null,
+        attendanceId: boundAttendance?.id || null,
+        userServiceProjectId:
+          boundAttendance?.user_service_project_id || normalizeOptionalString(userServiceProjectId),
+        serviceProjectId:
+          boundAttendance?.UserServiceProject?.service_project_id || normalizeOptionalString(serviceProjectId),
+        projectId: resolvedProjectId,
+        projectName: resolvedProjectName,
+        serviceTitle: attendanceService?.name || normalizeOptionalString(serviceTitle),
+        projectLatitude: resolvedProjectLatitude != null ? Number(resolvedProjectLatitude) : null,
+        projectLongitude: resolvedProjectLongitude != null ? Number(resolvedProjectLongitude) : null,
+        projectRadiusMeters: resolvedProjectRadius != null ? Number(resolvedProjectRadius) : null,
         latitude: Number(latitude),
         longitude: Number(longitude),
         accuracyMeters: Number.isFinite(accuracyMeters) ? Number(accuracyMeters) : null,
@@ -149,39 +431,175 @@ export class WorkerTrackingController {
         headingDegrees: Number.isFinite(headingDegrees) ? Number(headingDegrees) : null,
         batteryLevel: Number.isFinite(batteryLevel) ? Number(batteryLevel) : null,
         isInsideSite: typeof isInsideSite === "boolean" ? isInsideSite : null,
-        source: source || "mobile",
+        source: normalizeOptionalString(source) || "mobile",
+        protocolVersion: protocolVersion ?? undefined,
+        appVersion: appVersion ?? undefined,
+        platform: platform ?? undefined,
+        queueDepth,
+        permissions,
+        services,
+        taskState,
         recordedAt: pingRecordedAt,
       };
 
-      const [liveLocation, ping] = await prisma.$transaction([
-        prisma.workerLiveLocation.upsert({
-          where: {
-            companyId_userId: {
-              companyId: resolvedCompanyId,
-              userId: authUserId,
-            },
-          },
-          create: payload,
-          update: payload,
-        }),
-        prisma.workerLocationPing.create({
-          data: payload,
-        }),
-      ]);
+      const {
+        appVersion: _appVersion,
+        platform: _platform,
+        queueDepth: _queueDepth,
+        permissions: _permissions,
+        services: _services,
+        taskState: _taskState,
+        ...historyLocationPayload
+      } = livePayload;
+      const historyPayload = { ...historyLocationPayload, clientEventId };
+      const serverReceivedAt = new Date();
+      const shouldPublishLive = shouldPublishTrackingPingLive(
+        attendance,
+        pingRecordedAt,
+        serverReceivedAt
+      );
 
-      await markTrackingReminderRestored(authUserId, attendanceId || null);
+      let persistenceResult: {
+        liveLocation: any;
+        ping: any;
+        liveUpdated: boolean;
+        deduplicated: boolean;
+      } | null = null;
 
-      SocketService.emitToAll("live_tracking_updated", {
-        companyId: resolvedCompanyId,
-        workerId: authUserId,
-        emittedAt: new Date().toISOString(),
-        source: "worker_tracking_ping",
-      });
+      for (let attempt = 1; attempt <= TRACKING_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          persistenceResult = await prisma.$transaction(async (tx) => {
+            const existingPing = clientEventId
+              ? await tx.workerLocationPing.findUnique({
+                  where: {
+                    companyId_userId_clientEventId: {
+                      companyId: resolvedCompanyId,
+                      userId: authUserId,
+                      clientEventId,
+                    },
+                  },
+                })
+              : null;
+
+            const ping =
+              existingPing ||
+              (await tx.workerLocationPing.create({
+                data: historyPayload,
+              }));
+
+            if (existingPing || !shouldPublishLive) {
+              const liveLocation = shouldPublishLive
+                ? await tx.workerLiveLocation.findUnique({
+                    where: {
+                      companyId_userId: { companyId: resolvedCompanyId, userId: authUserId },
+                    },
+                  })
+                : null;
+              return {
+                liveLocation,
+                ping,
+                liveUpdated: false,
+                deduplicated: !!existingPing,
+              };
+            }
+
+            const updateResult = await tx.workerLiveLocation.updateMany({
+              where: {
+                companyId: resolvedCompanyId,
+                userId: authUserId,
+                OR: [
+                  { recordedAt: { lte: pingRecordedAt } },
+                  {
+                    recordedAt: {
+                      gt: new Date(
+                        serverReceivedAt.getTime() +
+                          LIVE_PING_MAX_FUTURE_SKEW_MINUTES * 60_000
+                      ),
+                    },
+                  },
+                ],
+              },
+              data: livePayload,
+            });
+
+            let liveUpdated = updateResult.count > 0;
+            let liveLocation = await tx.workerLiveLocation.findUnique({
+              where: {
+                companyId_userId: { companyId: resolvedCompanyId, userId: authUserId },
+              },
+            });
+
+            if (!liveLocation) {
+              liveLocation = await tx.workerLiveLocation.create({ data: livePayload });
+              liveUpdated = true;
+            }
+
+            return { liveLocation, ping, liveUpdated, deduplicated: false };
+          });
+          break;
+        } catch (error) {
+          if (!isRetryableTrackingTransactionError(error)) throw error;
+
+          if (clientEventId && isUniqueConstraintError(error)) {
+            const existingPing = await prisma.workerLocationPing.findUnique({
+              where: {
+                companyId_userId_clientEventId: {
+                  companyId: resolvedCompanyId,
+                  userId: authUserId,
+                  clientEventId,
+                },
+              },
+            });
+            if (existingPing) {
+              const liveLocation = shouldPublishLive
+                ? await prisma.workerLiveLocation.findUnique({
+                    where: {
+                      companyId_userId: { companyId: resolvedCompanyId, userId: authUserId },
+                    },
+                  })
+                : null;
+              persistenceResult = {
+                liveLocation,
+                ping: existingPing,
+                liveUpdated: false,
+                deduplicated: true,
+              };
+              break;
+            }
+          }
+
+          if (attempt === TRACKING_TRANSACTION_MAX_ATTEMPTS) throw error;
+        }
+      }
+
+      if (!persistenceResult) {
+        throw new Error("Tracking ping could not be persisted");
+      }
+
+      if (persistenceResult.liveUpdated && attendance?.id) {
+        try {
+          await markTrackingReminderRestored(authUserId, attendance.id);
+        } catch (error) {
+          console.error("[WorkerTrackingController.handlePing] Reminder restore failed:", error);
+        }
+      }
+
+      if (persistenceResult.liveUpdated) {
+        SocketService.emitToCompany(resolvedCompanyId, "live_tracking_updated", {
+          companyId: resolvedCompanyId,
+          workerId: authUserId,
+          attendanceId: attendance?.id || null,
+          emittedAt: new Date().toISOString(),
+          source: "worker_tracking_ping",
+        });
+      }
 
       return res.status(201).json({
         message: "Tracking ping saved successfully",
-        liveLocation,
-        pingId: ping.id,
+        liveLocation: persistenceResult.liveLocation,
+        pingId: persistenceResult.ping.id,
+        liveUpdated: persistenceResult.liveUpdated,
+        deduplicated: persistenceResult.deduplicated,
       });
     } catch (error) {
       console.error("[WorkerTrackingController.handlePing] Error:", error);
@@ -197,18 +615,20 @@ export class WorkerTrackingController {
       const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(req.query.timezoneOffsetMinutes) ?? 0;
       const authUserId = (req as any).userId as string | undefined;
 
+      if (!authUserId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
       if (!workerId) {
         return res.status(400).json({ error: "workerId is required" });
       }
 
-      const authUser = authUserId
-        ? await prisma.user.findUnique({
-            where: { id: authUserId },
-            select: { company_id: true },
-          })
-        : null;
+      const companyIds = await getUserCompanyIds(authUserId);
+      if (requestedCompanyId && !companyIds.includes(requestedCompanyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
 
-      const companyId = requestedCompanyId || authUser?.company_id || null;
+      const companyId = requestedCompanyId || companyIds[0] || null;
       if (!companyId) {
         return res.status(400).json({ error: "companyId is required" });
       }
@@ -219,7 +639,7 @@ export class WorkerTrackingController {
         timezoneOffsetMinutes
       );
 
-      const pings = await prisma.workerLocationPing.findMany({
+      const trackingPings = await prisma.workerLocationPing.findMany({
         where: {
           companyId,
           userId: workerId,
@@ -233,22 +653,166 @@ export class WorkerTrackingController {
         },
       });
 
+      const dateAttendances = await prisma.userAttendance.findMany({
+        where: {
+          user_id: workerId,
+          check_in_time: { lte: end },
+          OR: [{ check_out_time: null }, { check_out_time: { gte: start } }],
+          AND: [
+            {
+              OR: [
+                { company_id: companyId },
+                {
+                  UserServiceProject: {
+                    service_project: {
+                      OR: [{ company_id: companyId }, { Project: { company_id: companyId } }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          id: true,
+          check_in_time: true,
+          check_out_time: true,
+          user_service_project_id: true,
+        },
+        orderBy: { check_in_time: "asc" },
+      });
+
+      const legacyTimelineRows = await prisma.timeLine.findMany({
+        where: {
+          user_id: workerId,
+          check_in_time: { gte: start, lte: end },
+          service_project: {
+            OR: [{ company_id: companyId }, { Project: { company_id: companyId } }],
+          },
+        },
+        select: {
+          id: true,
+          userServiceProjectId: true,
+          service_project_id: true,
+          check_in_time: true,
+          check_in_latitude: true,
+          check_in_longitude: true,
+          is_local_work: true,
+          date_creation: true,
+          service_project: {
+            select: {
+              name: true,
+              projectId: true,
+              Project: {
+                select: {
+                  id: true,
+                  location: true,
+                  lat: true,
+                  log: true,
+                  radius: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { check_in_time: "asc" },
+      });
+
+      const legacyPings: WorkerLocationPing[] = legacyTimelineRows.map((row) => {
+        const matchingAttendances = dateAttendances.filter(
+          (attendance) =>
+            row.check_in_time.getTime() >= attendance.check_in_time.getTime() &&
+            (!attendance.check_out_time ||
+              row.check_in_time.getTime() <= attendance.check_out_time.getTime())
+        );
+        const attendance =
+          matchingAttendances.find(
+            (candidate) => candidate.user_service_project_id === row.userServiceProjectId
+          ) || matchingAttendances[matchingAttendances.length - 1] || null;
+        const project = row.service_project.Project;
+
+        return {
+          id: row.id,
+          companyId,
+          userId: workerId,
+          clientEventId: null,
+          protocolVersion: null,
+          attendanceId: attendance?.id || null,
+          userServiceProjectId: row.userServiceProjectId,
+          serviceProjectId: row.service_project_id,
+          projectId: row.service_project.projectId || project?.id || null,
+          projectName: project?.location || null,
+          serviceTitle: row.service_project.name,
+          projectLatitude: project?.lat != null ? Number(project.lat) : null,
+          projectLongitude: project?.log != null ? Number(project.log) : null,
+          projectRadiusMeters: project?.radius ?? null,
+          latitude: row.check_in_latitude,
+          longitude: row.check_in_longitude,
+          accuracyMeters: null,
+          speedMetersPerSecond: null,
+          headingDegrees: null,
+          batteryLevel: null,
+          isInsideSite: row.is_local_work,
+          source: "legacy-timeline",
+          recordedAt: row.check_in_time,
+          createdAt: row.date_creation,
+        };
+      });
+      const deduplicationBucketMs = 15_000;
+      const trackingPingsByTimeBucket = new Map<number, WorkerLocationPing[]>();
+      for (const trackingPing of trackingPings) {
+        const bucket = Math.floor(trackingPing.recordedAt.getTime() / deduplicationBucketMs);
+        const rows = trackingPingsByTimeBucket.get(bucket) || [];
+        rows.push(trackingPing);
+        trackingPingsByTimeBucket.set(bucket, rows);
+      }
+      const legacyOnlyPings = legacyPings.filter((legacyPing) => {
+        const bucket = Math.floor(legacyPing.recordedAt.getTime() / deduplicationBucketMs);
+        for (const candidateBucket of [bucket - 1, bucket, bucket + 1]) {
+          const candidates = trackingPingsByTimeBucket.get(candidateBucket) || [];
+          if (
+            candidates.some(
+              (trackingPing) =>
+                Math.abs(
+                  trackingPing.recordedAt.getTime() - legacyPing.recordedAt.getTime()
+                ) <= deduplicationBucketMs &&
+                getDistanceMeters(
+                  trackingPing.latitude,
+                  trackingPing.longitude,
+                  legacyPing.latitude,
+                  legacyPing.longitude
+                ) <= 10
+            )
+          ) {
+            return false;
+          }
+        }
+        return true;
+      });
+      const pings: WorkerLocationPing[] = [...trackingPings, ...legacyOnlyPings].sort(
+        (left, right) => left.recordedAt.getTime() - right.recordedAt.getTime()
+      );
+
       const attendanceIds = Array.from(
         new Set(pings.map((ping) => ping.attendanceId).filter((value): value is string => !!value))
       );
-      const attendanceMap = new Map(
-        (
-          await prisma.userAttendance.findMany({
-            where: {
-              id: { in: attendanceIds },
-            },
+      const knownAttendanceIds = new Set(dateAttendances.map((attendance) => attendance.id));
+      const missingAttendanceIds = attendanceIds.filter((id) => !knownAttendanceIds.has(id));
+      const missingAttendances = missingAttendanceIds.length
+        ? await prisma.userAttendance.findMany({
+            where: { id: { in: missingAttendanceIds }, user_id: workerId },
             select: {
               id: true,
               check_in_time: true,
               check_out_time: true,
+              user_service_project_id: true,
             },
           })
-        ).map((attendance) => [attendance.id, attendance])
+        : [];
+      const attendanceMap = new Map(
+        [...dateAttendances, ...missingAttendances]
+          .filter((attendance) => attendanceIds.includes(attendance.id))
+          .map((attendance) => [attendance.id, attendance])
       );
 
       const segments = pings.reduce<

@@ -1,7 +1,15 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
-import { getTrackingHealthSnapshot } from "../../services/TrackingHealthService";
+import {
+  getLiveLocationForAttendance,
+  getTrackingHealthSnapshot,
+} from "../../services/TrackingHealthService";
+import { userHasAccessToCompany } from "../Files/fileAccess";
+import {
+  getLatestLegacyTrackingFallbacks,
+  type LegacyTrackingFallbackRow,
+} from "../../services/LegacyTrackingFallbackService";
 
 type TrackingSourceRow = {
   id: string;
@@ -19,6 +27,14 @@ type TrackingSourceRow = {
   latitude: number;
   longitude: number;
   isInsideSite: boolean | null;
+  source?: string | null;
+  protocolVersion?: number | null;
+  appVersion?: string | null;
+  platform?: string | null;
+  queueDepth?: number | null;
+  permissions?: unknown;
+  services?: unknown;
+  taskState?: unknown;
   recordedAt: Date;
 };
 
@@ -27,6 +43,15 @@ type OpenAttendanceRow = {
   company_id: string | null;
   user_id: string;
   check_in_time: Date;
+  user_service_project_id?: string | null;
+  check_in_address?: string | null;
+  check_in_latitude?: number;
+  check_in_longitude?: number;
+  pending_project_id?: string | null;
+  pending_project_name?: string | null;
+  pending_project_latitude?: number | null;
+  pending_project_longitude?: number | null;
+  pending_project_radius?: number | null;
   UserServiceProject?: {
     id: string;
     service_project_id: string | null;
@@ -36,12 +61,37 @@ type OpenAttendanceRow = {
       Project?: {
         id: string;
         location: string | null;
-        lat: number | null;
-        log: number | null;
+        lat: string | null;
+        log: string | null;
         radius: number | null;
       } | null;
     } | null;
   } | null;
+};
+
+type LegacyTimelineRow = {
+  id: string;
+  user_id: string;
+  userServiceProjectId: string;
+  service_project_id: string;
+  check_in_time: Date;
+  check_in_latitude: number;
+  check_in_longitude: number;
+  is_local_work: boolean;
+};
+
+type HistoricalLegacyTimelineRow = LegacyTimelineRow & {
+  service_project: {
+    name: string | null;
+    projectId: string | null;
+    Project: {
+      id: string;
+      location: string | null;
+      lat: string | null;
+      log: string | null;
+      radius: number | null;
+    } | null;
+  };
 };
 
 type ProjectSiteRow = {
@@ -51,6 +101,105 @@ type ProjectSiteRow = {
   lng: number | null;
   radiusMeters: number | null;
 };
+
+const AVATAR_URL_CACHE_TTL_MS = 10 * 60_000;
+const AVATAR_URL_CACHE_ERROR_TTL_MS = 60_000;
+const AVATAR_URL_CACHE_MAX_ENTRIES = 2_000;
+const PROJECT_SITES_CACHE_TTL_MS = 60_000;
+const PROJECT_SITES_CACHE_MAX_ENTRIES = 250;
+
+type AsyncCacheEntry<T> = {
+  expiresAt: number;
+  value: Promise<T>;
+};
+
+const avatarUrlCache = new Map<string, AsyncCacheEntry<string | undefined>>();
+const projectSitesCache = new Map<string, AsyncCacheEntry<ProjectSiteRow[]>>();
+
+function evictOldestEntries<T>(cache: Map<string, AsyncCacheEntry<T>>, maximum: number) {
+  while (cache.size >= maximum) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
+  }
+}
+
+async function getCachedAvatarUrl(avatarKey: string) {
+  const now = Date.now();
+  const cached = avatarUrlCache.get(avatarKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+  if (cached) avatarUrlCache.delete(avatarKey);
+  evictOldestEntries(avatarUrlCache, AVATAR_URL_CACHE_MAX_ENTRIES);
+
+  const value = getPresignedUrl(avatarKey)
+    .then((url) => {
+      const entry = avatarUrlCache.get(avatarKey);
+      if (entry) entry.expiresAt = Date.now() + AVATAR_URL_CACHE_TTL_MS;
+      return url;
+    })
+    .catch(() => {
+      const entry = avatarUrlCache.get(avatarKey);
+      if (entry) entry.expiresAt = Date.now() + AVATAR_URL_CACHE_ERROR_TTL_MS;
+      return undefined;
+    });
+  avatarUrlCache.set(avatarKey, {
+    value,
+    expiresAt: now + AVATAR_URL_CACHE_TTL_MS,
+  });
+  return value;
+}
+
+async function getCachedProjectSites(companyId: string) {
+  const now = Date.now();
+  const cached = projectSitesCache.get(companyId);
+  if (cached && cached.expiresAt > now) return cached.value;
+  if (cached) projectSitesCache.delete(companyId);
+  evictOldestEntries(projectSitesCache, PROJECT_SITES_CACHE_MAX_ENTRIES);
+
+  const value = prisma.project
+    .findMany({
+      where: {
+        company_id: companyId,
+        status_project: {
+          in: ["In Progress", "Pre-Start", "Final walkthrough"],
+        },
+      },
+      select: {
+        id: true,
+        location: true,
+        lat: true,
+        log: true,
+        radius: true,
+      },
+      orderBy: { location: "asc" },
+    })
+    .then((projects) =>
+      projects
+        .map((project) => ({
+          id: project.id,
+          name: project.location || "Project site",
+          lat: project.lat != null ? Number(project.lat) : null,
+          lng: project.log != null ? Number(project.log) : null,
+          radiusMeters: project.radius != null ? Number(project.radius) : null,
+        }))
+        .filter(
+          (project): project is ProjectSiteRow =>
+            project.lat != null &&
+            project.lng != null &&
+            project.radiusMeters != null &&
+            project.radiusMeters > 0
+        )
+    )
+    .catch((error) => {
+      projectSitesCache.delete(companyId);
+      throw error;
+    });
+  projectSitesCache.set(companyId, {
+    value,
+    expiresAt: now + PROJECT_SITES_CACHE_TTL_MS,
+  });
+  return value;
+}
 
 function parseRequestedDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
@@ -100,6 +249,60 @@ function isSameDay(left: Date, right: Date) {
     left.getMonth() === right.getMonth() &&
     left.getDate() === right.getDate()
   );
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function distanceMeters(left: Pick<TrackingSourceRow, "latitude" | "longitude">, right: Pick<TrackingSourceRow, "latitude" | "longitude">) {
+  const earthRadiusMeters = 6_371_000;
+  const deltaLat = toRadians(right.latitude - left.latitude);
+  const deltaLng = toRadians(right.longitude - left.longitude);
+  const leftLat = toRadians(left.latitude);
+  const rightLat = toRadians(right.latitude);
+  const value =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(leftLat) * Math.cos(rightLat) * Math.sin(deltaLng / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function mergeDeduplicatedTrackingRows(
+  trackingRows: TrackingSourceRow[],
+  legacyRows: TrackingSourceRow[]
+) {
+  const bucketSizeMs = 15_000;
+  const modernRowsByWorkerAndTime = new Map<string, TrackingSourceRow[]>();
+  for (const row of trackingRows) {
+    const bucket = Math.floor(row.recordedAt.getTime() / bucketSizeMs);
+    const key = `${row.userId}:${bucket}`;
+    const rows = modernRowsByWorkerAndTime.get(key) || [];
+    rows.push(row);
+    modernRowsByWorkerAndTime.set(key, rows);
+  }
+
+  const legacyOnlyRows = legacyRows.filter((legacyRow) => {
+    const bucket = Math.floor(legacyRow.recordedAt.getTime() / bucketSizeMs);
+    for (const candidateBucket of [bucket - 1, bucket, bucket + 1]) {
+      const modernRows =
+        modernRowsByWorkerAndTime.get(`${legacyRow.userId}:${candidateBucket}`) || [];
+      if (
+        modernRows.some(
+          (modernRow) =>
+            Math.abs(modernRow.recordedAt.getTime() - legacyRow.recordedAt.getTime()) <=
+              bucketSizeMs && distanceMeters(modernRow, legacyRow) <= 10
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  return [...trackingRows, ...legacyOnlyRows].sort((left, right) => {
+    const workerComparison = left.userId.localeCompare(right.userId);
+    return workerComparison || left.recordedAt.getTime() - right.recordedAt.getTime();
+  });
 }
 
 async function buildProjectContext(sourceRows: TrackingSourceRow[]) {
@@ -179,6 +382,7 @@ async function buildProjectContext(sourceRows: TrackingSourceRow[]) {
 export class GetLiveTrackingByCompanyController {
   async handle(req: Request, res: Response) {
     const { companyId } = req.params;
+    const authUserId = (req as any).userId as string | undefined;
     const requestedDate = parseRequestedDate(req.query.date);
     const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(req.query.timezoneOffsetMinutes) ?? 0;
 
@@ -186,7 +390,15 @@ export class GetLiveTrackingByCompanyController {
       return res.status(400).json({ error: "Company ID is required" });
     }
 
+    if (!authUserId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     try {
+      if (!(await userHasAccessToCompany(authUserId, companyId))) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       const company = await prisma.company.findUnique({
         where: { id: companyId },
         select: { id: true },
@@ -215,17 +427,35 @@ export class GetLiveTrackingByCompanyController {
       );
       const useLiveLocations = isSameDay(effectiveLocalDate, localToday);
 
-      const openAttendances: OpenAttendanceRow[] = useLiveLocations
+      const rawOpenAttendances: OpenAttendanceRow[] = useLiveLocations
         ? ((await prisma.userAttendance.findMany({
             where: {
-              company_id: companyId,
               check_out_time: null,
+              OR: [
+                { company_id: companyId },
+                {
+                  UserServiceProject: {
+                    service_project: {
+                      OR: [{ company_id: companyId }, { Project: { company_id: companyId } }],
+                    },
+                  },
+                },
+              ],
             },
             select: {
               id: true,
               company_id: true,
               user_id: true,
               check_in_time: true,
+              user_service_project_id: true,
+              check_in_address: true,
+              check_in_latitude: true,
+              check_in_longitude: true,
+              pending_project_id: true,
+              pending_project_name: true,
+              pending_project_latitude: true,
+              pending_project_longitude: true,
+              pending_project_radius: true,
               UserServiceProject: {
                 select: {
                   id: true,
@@ -254,7 +484,16 @@ export class GetLiveTrackingByCompanyController {
           })) as OpenAttendanceRow[])
         : [];
 
-      const liveRows: TrackingSourceRow[] = useLiveLocations
+      const openAttendances = Array.from(
+        rawOpenAttendances.reduce((byWorker, attendance) => {
+          if (!byWorker.has(attendance.user_id)) {
+            byWorker.set(attendance.user_id, attendance);
+          }
+          return byWorker;
+        }, new Map<string, OpenAttendanceRow>()).values()
+      );
+
+      const liveRows: TrackingSourceRow[] = useLiveLocations && openAttendances.length
         ? await prisma.workerLiveLocation.findMany({
             where: {
               companyId,
@@ -265,8 +504,26 @@ export class GetLiveTrackingByCompanyController {
             orderBy: [{ recordedAt: "desc" }],
           })
         : [];
+      const liveRowByWorker = new Map(
+        liveRows.map((row) => [`${row.companyId}:${row.userId}`, row])
+      );
+      const validLiveRowByAttendanceId = new Map<string, TrackingSourceRow>();
+      const fallbackAttendances = openAttendances.filter((attendance) => {
+        const liveRow = getLiveLocationForAttendance(
+          attendance,
+          liveRowByWorker.get(`${companyId}:${attendance.user_id}`) || null
+        );
+        if (liveRow) {
+          validLiveRowByAttendanceId.set(attendance.id, liveRow);
+          return false;
+        }
+        return true;
+      });
+      const legacyFallbackRowsByAttendance = useLiveLocations
+        ? await getLatestLegacyTrackingFallbacks(fallbackAttendances)
+        : new Map<string, LegacyTrackingFallbackRow>();
 
-      const historyRows: TrackingSourceRow[] = !useLiveLocations
+      const trackingHistoryRows: TrackingSourceRow[] = !useLiveLocations
         ? await prisma.workerLocationPing.findMany({
             where: {
               companyId,
@@ -281,6 +538,73 @@ export class GetLiveTrackingByCompanyController {
             ],
           })
         : [];
+      const historicalLegacyTimelineRows: HistoricalLegacyTimelineRow[] = !useLiveLocations
+        ? ((await prisma.timeLine.findMany({
+            where: {
+              check_in_time: { gte: start, lte: end },
+              service_project: {
+                OR: [{ company_id: companyId }, { Project: { company_id: companyId } }],
+              },
+            },
+            select: {
+              id: true,
+              user_id: true,
+              userServiceProjectId: true,
+              service_project_id: true,
+              check_in_time: true,
+              check_in_latitude: true,
+              check_in_longitude: true,
+              is_local_work: true,
+              service_project: {
+                select: {
+                  name: true,
+                  projectId: true,
+                  Project: {
+                    select: {
+                      id: true,
+                      location: true,
+                      lat: true,
+                      log: true,
+                      radius: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: [{ user_id: "asc" }, { check_in_time: "asc" }],
+          })) as HistoricalLegacyTimelineRow[])
+        : [];
+      const normalizedHistoricalLegacyRows: TrackingSourceRow[] = historicalLegacyTimelineRows.map(
+        (row) => ({
+          id: row.id,
+          companyId,
+          userId: row.user_id,
+          attendanceId: null,
+          userServiceProjectId: row.userServiceProjectId,
+          serviceProjectId: row.service_project_id,
+          projectId: row.service_project.projectId || row.service_project.Project?.id || null,
+          projectName: row.service_project.Project?.location || null,
+          serviceTitle: row.service_project.name,
+          projectLatitude:
+            row.service_project.Project?.lat != null
+              ? Number(row.service_project.Project.lat)
+              : null,
+          projectLongitude:
+            row.service_project.Project?.log != null
+              ? Number(row.service_project.Project.log)
+              : null,
+          projectRadiusMeters: row.service_project.Project?.radius ?? null,
+          latitude: row.check_in_latitude,
+          longitude: row.check_in_longitude,
+          isInsideSite: row.is_local_work,
+          source: "legacy-timeline",
+          recordedAt: row.check_in_time,
+        })
+      );
+      const historyRows = mergeDeduplicatedTrackingRows(
+        trackingHistoryRows,
+        normalizedHistoricalLegacyRows
+      );
 
       const userIds = Array.from(
         new Set(
@@ -308,63 +632,55 @@ export class GetLiveTrackingByCompanyController {
             userAvatarMap.set(user.id, undefined);
             return;
           }
-          try {
-            userAvatarMap.set(user.id, await getPresignedUrl(user.avatar));
-          } catch {
-            userAvatarMap.set(user.id, undefined);
-          }
+          userAvatarMap.set(user.id, await getCachedAvatarUrl(user.avatar));
         })
       );
 
       const userMap = new Map(users.map((user) => [user.id, user]));
-      const { serviceProjectMap, projectMap } = await buildProjectContext(
-        useLiveLocations ? liveRows : historyRows
-      );
-      const projectSites: ProjectSiteRow[] = (
-        await prisma.project.findMany({
-          where: {
-            company_id: companyId,
-            status_project: {
-              in: ["In Progress", "Pre-Start", "Final walkthrough"],
-            },
-          },
-          select: {
-            id: true,
-            location: true,
-            lat: true,
-            log: true,
-            radius: true,
-          },
-          orderBy: {
-            location: "asc",
-          },
-        })
-      )
-        .map((project) => ({
-          id: project.id,
-          name: project.location || "Project site",
-          lat: project.lat != null ? Number(project.lat) : null,
-          lng: project.log != null ? Number(project.log) : null,
-          radiusMeters: project.radius != null ? Number(project.radius) : null,
-        }))
-        .filter(
-          (project) =>
-            project.lat != null &&
-            project.lng != null &&
-            project.radiusMeters != null &&
-            project.radiusMeters > 0
-        );
+      const { serviceProjectMap, projectMap } = useLiveLocations
+        ? { serviceProjectMap: new Map(), projectMap: new Map() }
+        : await buildProjectContext(historyRows);
+      const projectSites = await getCachedProjectSites(companyId);
 
       const sessions = useLiveLocations
         ? openAttendances
             .map((attendance) => {
               const workerId = attendance.user_id;
-              const latestRow =
-                liveRows.find((row) => row.userId === workerId && row.companyId === companyId) ||
-                null;
+              const attendanceLiveRow = validLiveRowByAttendanceId.get(attendance.id) || null;
               const user = userMap.get(workerId);
               const attendanceProject = attendance.UserServiceProject?.service_project?.Project;
               const attendanceService = attendance.UserServiceProject?.service_project;
+              const legacyTimelineRow = legacyFallbackRowsByAttendance.get(attendance.id) || null;
+              const legacyTrackingRow: TrackingSourceRow | null = legacyTimelineRow
+                ? {
+                    id: legacyTimelineRow.id,
+                    companyId,
+                    userId: workerId,
+                    attendanceId: attendance.id,
+                    userServiceProjectId: attendance.user_service_project_id || null,
+                    serviceProjectId: legacyTimelineRow.service_project_id,
+                    projectId: attendanceProject?.id || attendance.pending_project_id || null,
+                    projectName:
+                      attendanceProject?.location || attendance.pending_project_name || null,
+                    serviceTitle: attendanceService?.name || null,
+                    projectLatitude:
+                      attendanceProject?.lat != null
+                        ? Number(attendanceProject.lat)
+                        : attendance.pending_project_latitude ?? null,
+                    projectLongitude:
+                      attendanceProject?.log != null
+                        ? Number(attendanceProject.log)
+                        : attendance.pending_project_longitude ?? null,
+                    projectRadiusMeters:
+                      attendanceProject?.radius ?? attendance.pending_project_radius ?? null,
+                    latitude: legacyTimelineRow.check_in_latitude,
+                    longitude: legacyTimelineRow.check_in_longitude,
+                    isInsideSite: legacyTimelineRow.is_local_work,
+                    source: "legacy-timeline",
+                    recordedAt: legacyTimelineRow.check_in_time,
+                  }
+                : null;
+              const latestRow = attendanceLiveRow || legacyTrackingRow;
               const snapshot = getTrackingHealthSnapshot(attendance, latestRow, new Date());
               const lastPingAt = snapshot.lastPingAt?.toISOString() || null;
               const resolvedProjectId =
@@ -381,27 +697,68 @@ export class GetLiveTrackingByCompanyController {
               const resolvedProjectLat =
                 latestRow?.projectLatitude ??
                 (attendanceProject?.lat != null ? Number(attendanceProject.lat) : null) ??
+                attendance.pending_project_latitude ??
                 null;
               const resolvedProjectLng =
                 latestRow?.projectLongitude ??
                 (attendanceProject?.log != null ? Number(attendanceProject.log) : null) ??
+                attendance.pending_project_longitude ??
                 null;
               const resolvedProjectRadius =
                 latestRow?.projectRadiusMeters ??
                 (attendanceProject?.radius != null ? Number(attendanceProject.radius) : null) ??
+                attendance.pending_project_radius ??
                 null;
-              const latestTrackPoint = latestRow
+              const checkInFallbackRow: TrackingSourceRow | null =
+                !latestRow &&
+                Number.isFinite(attendance.check_in_latitude) &&
+                Number.isFinite(attendance.check_in_longitude)
+                  ? {
+                      id: `${attendance.id}-check-in`,
+                      companyId,
+                      userId: workerId,
+                      attendanceId: attendance.id,
+                      userServiceProjectId: attendance.user_service_project_id || null,
+                      serviceProjectId: attendance.UserServiceProject?.service_project_id || null,
+                      projectId: resolvedProjectId,
+                      projectName: resolvedProjectName,
+                      serviceTitle: attendanceService?.name || null,
+                      projectLatitude: resolvedProjectLat,
+                      projectLongitude: resolvedProjectLng,
+                      projectRadiusMeters: resolvedProjectRadius,
+                      latitude: Number(attendance.check_in_latitude),
+                      longitude: Number(attendance.check_in_longitude),
+                      isInsideSite:
+                        resolvedProjectLat != null &&
+                        resolvedProjectLng != null &&
+                        resolvedProjectRadius != null
+                          ? distanceMeters(
+                              {
+                                latitude: Number(attendance.check_in_latitude),
+                                longitude: Number(attendance.check_in_longitude),
+                              },
+                              { latitude: resolvedProjectLat, longitude: resolvedProjectLng }
+                            ) <= resolvedProjectRadius
+                          : false,
+                      source: "attendance-check-in",
+                      recordedAt: attendance.check_in_time,
+                    }
+                  : null;
+              const displayRow = latestRow || checkInFallbackRow;
+              const latestTrackPoint = displayRow
                 ? {
-                    id: latestRow.id,
-                    lat: latestRow.latitude,
-                    lng: latestRow.longitude,
-                    timestamp: latestRow.recordedAt.toISOString(),
-                    presence: (latestRow.isInsideSite ? "inside-site" : "outside-site") as
+                    id: displayRow.id,
+                    lat: displayRow.latitude,
+                    lng: displayRow.longitude,
+                    timestamp: displayRow.recordedAt.toISOString(),
+                    presence: (displayRow.isInsideSite ? "inside-site" : "outside-site") as
                       | "inside-site"
                       | "outside-site",
                   }
                 : null;
-              const status: "on-site" | "off-site" = latestRow?.isInsideSite ? "on-site" : "off-site";
+              const status: "on-site" | "off-site" = displayRow?.isInsideSite
+                ? "on-site"
+                : "off-site";
 
               return {
                 id: workerId,
@@ -427,6 +784,17 @@ export class GetLiveTrackingByCompanyController {
                 lastPingAgeMinutes: snapshot.lastPingAgeMinutes,
                 trackingHealth: snapshot.trackingHealth,
                 silentSince: snapshot.silentSince?.toISOString() || null,
+                trackingDiagnostics: attendanceLiveRow
+                  ? {
+                      protocolVersion: attendanceLiveRow.protocolVersion ?? null,
+                      appVersion: attendanceLiveRow.appVersion ?? null,
+                      platform: attendanceLiveRow.platform ?? null,
+                      queueDepth: attendanceLiveRow.queueDepth ?? null,
+                      permissions: attendanceLiveRow.permissions ?? null,
+                      services: attendanceLiveRow.services ?? null,
+                      taskState: attendanceLiveRow.taskState ?? null,
+                    }
+                  : null,
                 trackPoints: latestTrackPoint ? [latestTrackPoint] : [],
                 summary: {
                   insideMinutes: 0,

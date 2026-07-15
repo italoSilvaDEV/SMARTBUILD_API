@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ExtraEmployeeSubscriptionController } from "../controllers/stripe/ExtraEmployeeSubscriptionController";
+import { checkToken } from "../middlewares/checkToken";
 
 export const extraEmployeeRoutes = Router();
 
@@ -9,19 +10,19 @@ export const extraEmployeeRoutes = Router();
  */
 
 // Get current extra employee price configuration (admin)
-extraEmployeeRoutes.get("/config", ExtraEmployeeSubscriptionController.getConfig);
+extraEmployeeRoutes.get("/config", checkToken, ExtraEmployeeSubscriptionController.getConfig);
 
 // Update extra employee price (admin)
-extraEmployeeRoutes.put("/price", ExtraEmployeeSubscriptionController.updatePrice);
+extraEmployeeRoutes.put("/price", checkToken, ExtraEmployeeSubscriptionController.updatePrice);
 
 // Get extra employee status for a company
-extraEmployeeRoutes.get("/company/:companyId", ExtraEmployeeSubscriptionController.getExtraEmployeesStatus);
+extraEmployeeRoutes.get("/company/:companyId", checkToken, ExtraEmployeeSubscriptionController.getExtraEmployeesStatus);
 
 // Get extra paid users for a company
-extraEmployeeRoutes.get("/company/:companyId/users", ExtraEmployeeSubscriptionController.getExtraPaidUsers);
+extraEmployeeRoutes.get("/company/:companyId/users", checkToken, ExtraEmployeeSubscriptionController.getExtraPaidUsers);
 
 // Add extra employee seats to a company's subscription
-extraEmployeeRoutes.post("/company/:companyId", ExtraEmployeeSubscriptionController.addExtraEmployees);
+extraEmployeeRoutes.post("/company/:companyId", checkToken, ExtraEmployeeSubscriptionController.addExtraEmployees);
 
 // Remove extra employee seats from a company's subscription
-extraEmployeeRoutes.post("/company/:companyId/reduce", ExtraEmployeeSubscriptionController.reduceExtraEmployees);
+extraEmployeeRoutes.post("/company/:companyId/reduce", checkToken, ExtraEmployeeSubscriptionController.reduceExtraEmployees);

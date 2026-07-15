@@ -173,7 +173,7 @@ AND index_name = ${indexName}
 
     private async emitLiveTrackingUpdate(companyId: string | null | undefined, payload: Record<string, any>) {
         if (!companyId) return;
-        SocketService.emitToAll('live_tracking_updated', {
+        SocketService.emitToCompany(companyId, 'live_tracking_updated', {
             companyId,
             ...payload,
             emittedAt: new Date().toISOString(),
@@ -335,7 +335,7 @@ AND index_name = ${indexName}
                     is_local_work: isLocalWork,
                 },
             });
-            await this.emitLiveTrackingUpdate(serviceProject.Project?.company_id, {
+            await this.emitLiveTrackingUpdate(serviceProject.company_id || serviceProject.Project?.company_id, {
                 userId: user_id,
                 userServiceProjectId: user_service_project_id,
                 serviceProjectId: service_project_id,
@@ -441,7 +441,7 @@ AND index_name = ${indexName}
                 },
             });
 
-            await this.emitLiveTrackingUpdate(serviceProject.Project?.company_id, {
+            await this.emitLiveTrackingUpdate(serviceProject.company_id || serviceProject.Project?.company_id, {
                 userId: user_id,
                 userServiceProjectId: user_service_project_id,
                 serviceProjectId: service_project_id,

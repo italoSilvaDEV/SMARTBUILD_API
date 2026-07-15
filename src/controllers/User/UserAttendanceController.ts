@@ -9,7 +9,7 @@ const attendanceService = new AttendanceService();
 
 const emitLiveTrackingUpdate = (companyId: string | null | undefined, payload: Record<string, any>) => {
     if (!companyId) return;
-    SocketService.emitToAll('live_tracking_updated', {
+    SocketService.emitToCompany(companyId, 'live_tracking_updated', {
         companyId,
         ...payload,
         emittedAt: new Date().toISOString(),
