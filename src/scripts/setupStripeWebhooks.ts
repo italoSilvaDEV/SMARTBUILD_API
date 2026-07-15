@@ -1,9 +1,7 @@
-import dotenv from 'dotenv';
-import { setupWebhook } from '../config/stripeWebHook';
-
-dotenv.config();
+import 'dotenv/config';
 
 async function main() {
+  const { setupWebhook } = await import('../config/stripeWebHook');
   await setupWebhook();
 }
 
