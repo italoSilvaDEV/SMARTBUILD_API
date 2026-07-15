@@ -1533,6 +1533,7 @@ model UserAttendance {
 
   @@index([user_id], map: "user_attendance_user_id_fkey")
   @@index([user_service_project_id], map: "user_attendance_user_service_project_id_fkey")
+  @@index([company_id, check_out_time, user_id], map: "user_attendance_company_open_user_idx")
   @@map("user_attendance")
 }
 
@@ -1621,6 +1622,8 @@ model TimeLine {
   service_project_id   String
   UserServiceProject   UserServiceProject @relation(fields: [userServiceProjectId], references: [id], onDelete: Cascade)
   userServiceProjectId String
+
+  @@index([user_id, userServiceProjectId, check_in_time], map: "timeline_user_assignment_recorded_idx")
 }
 
 model WorkerLiveLocation {
@@ -1644,6 +1647,13 @@ model WorkerLiveLocation {
   batteryLevel         Float?
   isInsideSite         Boolean?
   source               String   @default("mobile")
+  protocolVersion      Int?
+  appVersion           String?  @db.VarChar(64)
+  platform             String?  @db.VarChar(32)
+  queueDepth           Int?
+  permissions          Json?
+  services             Json?
+  taskState            Json?
   recordedAt           DateTime
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -1654,6 +1664,7 @@ model WorkerLiveLocation {
   @@unique([companyId, userId])
   @@index([companyId, recordedAt])
   @@index([userId, recordedAt])
+  @@index([recordedAt], map: "worker_live_locations_recorded_at_idx")
   @@map("worker_live_locations")
 }
 
@@ -1661,6 +1672,8 @@ model WorkerLocationPing {
   id                   String   @id @default(uuid())
   companyId            String
   userId               String
+  clientEventId        String?
+  protocolVersion      Int?
   attendanceId         String?
   userServiceProjectId String?
   serviceProjectId     String?
@@ -1684,9 +1697,11 @@ model WorkerLocationPing {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, userId, clientEventId], map: "worker_location_pings_company_user_client_event_key")
   @@index([companyId, recordedAt])
   @@index([companyId, userId, recordedAt])
   @@index([userId, recordedAt])
+  @@index([recordedAt], map: "worker_location_pings_recorded_at_idx")
   @@map("worker_location_pings")
 }
 
