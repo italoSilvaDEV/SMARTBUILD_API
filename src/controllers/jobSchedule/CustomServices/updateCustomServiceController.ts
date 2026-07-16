@@ -241,6 +241,7 @@ export class UpdateCustomServiceController {
             ].filter(Boolean) as string[];
 
             await SchedulePushNotificationService.sendToEmails({
+                userIds: newWorkerIds,
                 emails: recipientEmails,
                 title: "Schedule updated",
                 body: `${body.name || customService.name || "Custom service"} schedule was updated.`,
@@ -260,5 +261,4 @@ export class UpdateCustomServiceController {
         }
     }
 }
-
 
