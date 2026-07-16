@@ -1381,6 +1381,7 @@ enum BidRequestRecipientStatus {
   submitted
   approved
   rejected
+  expired
 }
 
 model BidRequestNumberSequence {
