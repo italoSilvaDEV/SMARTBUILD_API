@@ -33,16 +33,12 @@ export class GetProjectsByCompanyController {
                     company_id: company.id,
                     status_project: {
                         in: ["In Progress", "Pre-Start"]
-                    },
-                    OR: [
-                        { start_date: null },
-                        { start_date: "" },
-                        { deadline: null },
-                        { deadline: "" }
-                    ]
+                    }
                 },
                 select: {
                     id: true,
+                    start_date: true,
+                    deadline: true,
                     location: true,
                     lat: true,
                     log: true,
@@ -99,6 +95,8 @@ export class GetProjectsByCompanyController {
                 return {
                     id: project.id,
                     contract_number: project.contract_number,
+                    start_date: project.start_date,
+                    deadline: project.deadline,
                     clientName: project.workContext?.Name || project.client?.name,
                     clientLocation: project.workContext?.location || project.client?.location || project.location,
                     clientLongitude: project.workContext?.longitude || project.client?.log || project.log,

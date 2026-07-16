@@ -4,8 +4,9 @@ import { getLatestLegacyTrackingFallbacks } from "./LegacyTrackingFallbackServic
 
 const prismaAny = prisma as any;
 
-export const TRACKING_SILENT_AFTER_MINUTES = 25;
-export const TRACKING_REMINDER_INTERVAL_MINUTES = 25;
+export const TRACKING_SILENT_AFTER_MINUTES = 45;
+export const TRACKING_REMINDER_INTERVAL_MINUTES = 60;
+export const MAX_TRACKING_REMINDERS_PER_ATTENDANCE = 3;
 const TRACKING_LIVE_MAX_FUTURE_SKEW_MINUTES = 5;
 
 type OpenAttendanceRecord = {
@@ -228,7 +229,6 @@ export async function markTrackingReminderRestored(
     where: {
       userId,
       attendanceId: resolvedAttendanceId,
-      acknowledgedAt: null,
       restoredAt: null,
     },
     data: {
@@ -378,6 +378,10 @@ export async function runTrackingHealthCheckJob() {
 
       const reminderNumberToSend =
         reminderChain.reduce((max, reminder) => Math.max(max, reminder.reminderNumber), 0) + 1;
+
+      if (reminderNumberToSend > MAX_TRACKING_REMINDERS_PER_ATTENDANCE) {
+        continue;
+      }
 
       const expoPushToken = attendance.user?.expoPushToken || null;
       if (!expoPushToken) {
