@@ -89,6 +89,22 @@ export class ChatController {
         }
       });
 
+      // A leitura ja e persistida em ChatMember.lastReadAt quando a conversa e
+      // aberta. Use esse cursor para calcular todos os contadores em uma unica
+      // consulta, evitando uma query extra por conversa a cada polling do app.
+      const unreadRows = await prisma.$queryRaw<Array<{ chatId: string; unreadCount: bigint | number | string }>>`
+        SELECT cm.chatId, COUNT(msg.id) AS unreadCount
+        FROM chat_members cm
+        INNER JOIN chat_messages msg ON msg.chatId = cm.chatId
+        WHERE cm.userId = ${userId}
+          AND msg.senderId <> ${userId}
+          AND msg.createdAt > cm.lastReadAt
+        GROUP BY cm.chatId
+      `;
+      const unreadByChatId = new Map(
+        unreadRows.map((row) => [row.chatId, Number(row.unreadCount) || 0])
+      );
+
       const chats = await Promise.all(chatMemberships.map(async (membership) => {
         const chat = membership.chat;
 
@@ -106,7 +122,7 @@ export class ChatController {
         return {
           ...chat,
           lastMessage: chat.messages[0] ? this.mapDeletedMessage(chat.messages[0] as any) : null,
-          unreadCount: 0 // Implementar lógica de unread depois
+          unreadCount: unreadByChatId.get(chat.id) || 0,
         };
       }));
 
