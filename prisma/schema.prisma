@@ -415,6 +415,8 @@ model Company {
   workOrders            WorkOrder[]
   workOrderSequence     WorkOrderNumberSequence?
   workOrderSettings     WorkOrderSettings?
+  bidRequests           BidRequest[]
+  bidRequestSequence    BidRequestNumberSequence?
 }
 
 model ContractNotes {
@@ -843,6 +845,7 @@ model Project {
   tasks                  Task[]
   changeOrders           ChangeOrder[]
   workOrders             WorkOrder[]
+  bidRequests            BidRequest[]
 
   @@index([client_id], map: "project_client_id_fkey")
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
@@ -1259,6 +1262,7 @@ model Subcontractor {
   subContractorServiceProjects SubContractorServiceProject[]
   SubcontractorPastes          SubcontractorPastes[]
   SubcontractorFiles           SubcontractorFiles[]
+  bidRequestRecipients         BidRequestRecipient[]
 
   @@unique([email, company_id])
   @@map("subcontractors")
@@ -1389,6 +1393,135 @@ model WorkOrderEmailLog {
 
   @@index([workOrderId, sentAt])
   @@map("work_order_email_log")
+}
+
+enum BidRequestStatus {
+  pending
+  finalized
+  canceled
+}
+
+enum BidRequestRecipientStatus {
+  pending
+  submitted
+  approved
+  rejected
+  expired
+}
+
+model BidRequestNumberSequence {
+  companyId  String  @id
+  nextNumber Int     @default(1001)
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("bid_request_number_sequence")
+}
+
+model BidRequest {
+  id                  String           @id @default(uuid())
+  number              Int
+  status              BidRequestStatus @default(pending)
+  title               String
+  scope               String           @db.Text
+  responseDeadline    DateTime
+  externalFolderUrl   String?          @db.Text
+  customMessage       String?          @db.Text
+  projectNumber       String?
+  projectName         String
+  projectAddress      String?          @db.Text
+  sentAt              DateTime?
+  finalizedAt         DateTime?
+  canceledAt          DateTime?
+  approvedRecipientId String?
+  approvedWorkOrderId String?
+  createdById         String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  companyId   String
+  company     Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  items       BidRequestItem[]
+  recipients  BidRequestRecipient[]
+  attachments BidRequestAttachment[]
+
+  @@unique([companyId, number])
+  @@index([companyId, createdAt])
+  @@index([projectId])
+  @@map("bid_request")
+}
+
+model BidRequestItem {
+  id             String     @id @default(uuid())
+  name           String
+  description    String?    @db.Text
+  quantity       Decimal    @default(1) @db.Decimal(12, 2)
+  suggestedValue Decimal?   @db.Decimal(14, 2)
+  position       Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  bidRequestId   String
+  bidRequest     BidRequest @relation(fields: [bidRequestId], references: [id], onDelete: Cascade)
+
+  @@index([bidRequestId, position])
+  @@map("bid_request_item")
+}
+
+model BidRequestRecipient {
+  id                 String                    @id @default(uuid())
+  publicToken        String                    @unique @default(uuid())
+  status             BidRequestRecipientStatus @default(pending)
+  subcontractorName  String
+  subcontractorEmail String
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  notes              String?                   @db.Text
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  bidRequestId       String
+  bidRequest         BidRequest                @relation(fields: [bidRequestId], references: [id], onDelete: Cascade)
+  subcontractorId    String
+  subcontractor      Subcontractor             @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  items              BidProposalItem[]
+
+  @@unique([bidRequestId, subcontractorId])
+  @@index([bidRequestId, status])
+  @@index([subcontractorId])
+  @@map("bid_request_recipient")
+}
+
+model BidProposalItem {
+  id           String              @id @default(uuid())
+  name         String
+  description  String?             @db.Text
+  quantity     Decimal             @default(1) @db.Decimal(12, 2)
+  unitPrice    Decimal             @default(0) @db.Decimal(14, 2)
+  position     Int                 @default(0)
+  isCustom     Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  recipientId  String
+  recipient    BidRequestRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  sourceItemId String?
+
+  @@index([recipientId, position])
+  @@map("bid_proposal_item")
+}
+
+model BidRequestAttachment {
+  id           String     @id @default(uuid())
+  key          String     @db.Text
+  originalName String
+  contentType  String
+  size         Int
+  createdAt    DateTime   @default(now())
+  bidRequestId String
+  bidRequest   BidRequest @relation(fields: [bidRequestId], references: [id], onDelete: Cascade)
+
+  @@index([bidRequestId])
+  @@map("bid_request_attachment")
 }
 
 enum TypePrice {
