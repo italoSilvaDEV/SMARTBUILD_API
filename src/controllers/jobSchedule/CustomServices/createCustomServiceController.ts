@@ -98,23 +98,17 @@ export class CreateCustomServiceController {
                 return service;
             });
 
-            const [workerRecipients, subcontractorRecipients] = await Promise.all([
-                prisma.user.findMany({
-                    where: { id: { in: workerIds } },
-                    select: { email: true }
-                }),
-                prisma.subcontractor.findMany({
+            const subcontractorRecipients = await prisma.subcontractor.findMany({
                     where: { id: { in: subcontractorIds } },
                     select: { email: true }
-                })
-            ]);
+                });
 
-            const recipientEmails = [
-                ...workerRecipients.map((u) => u.email),
-                ...subcontractorRecipients.map((s) => s.email)
-            ].filter(Boolean) as string[];
+            const recipientEmails = subcontractorRecipients
+                .map((subcontractor) => subcontractor.email)
+                .filter(Boolean) as string[];
 
             await SchedulePushNotificationService.sendToEmails({
+                userIds: workerIds,
                 emails: recipientEmails,
                 title: "New service assigned",
                 body: `You were assigned to ${customService.name || "a custom service"}.`,
@@ -137,5 +131,4 @@ export class CreateCustomServiceController {
         }
     }
 }
-
 

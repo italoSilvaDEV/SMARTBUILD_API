@@ -63,6 +63,8 @@ import contractRoutes from './contractRoutes'
 import { mobileAuthRoutes } from './mobileAuthRoutes'
 import { uploadRoutes } from './uploadRoutes'
 import { workOrderRoutes } from './workOrderRoutes'
+import { trackingConfigMasterRoutes } from './trackingConfigMasterRoutes'
+import { scheduleNotificationRoutes } from './scheduleNotificationRoutes'
 import { bidRequestRoutes } from './bidRequestRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
@@ -98,6 +100,7 @@ router.use(workedRours)
 router.use(subcontractorRoutes)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
+router.use("/master/tracking-config", trackingConfigMasterRoutes)
 router.use(stripeRoutes)
 router.use(paymentElementRoutes)
 router.use(quickbooksRoutes)
@@ -141,6 +144,7 @@ router.use(imagesAttachmentsRoutes)
 router.use(jobScheduleRoutes)
 router.use("/tasks", taskRoutes)
 router.use("/chats", chatRoutes)
+router.use("/schedule-notifications", scheduleNotificationRoutes)
 router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
 router.use(aiAssistantRoutes)

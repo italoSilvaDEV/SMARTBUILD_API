@@ -92,10 +92,12 @@ model User {
   authIdentities    UserAuthIdentity[]
   deviceCredentials UserDeviceCredential[]
 
-  Invoice            Invoice[]
-  TimeLine           TimeLine[]
-  WorkerLiveLocation WorkerLiveLocation[]
-  WorkerLocationPing WorkerLocationPing[]
+  Invoice                       Invoice[]
+  TimeLine                      TimeLine[]
+  WorkerLiveLocation            WorkerLiveLocation[]
+  WorkerLocationPing            WorkerLocationPing[]
+  trackingRuntimeConfigsUpdated TrackingRuntimeConfig[]      @relation("TrackingRuntimeConfigUpdatedBy")
+  trackingRuntimeConfigAudits   TrackingRuntimeConfigAudit[] @relation("TrackingRuntimeConfigAuditChangedBy")
 
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
@@ -138,6 +140,7 @@ model User {
   deletedChatMessages ChatMessage[]       @relation("DeletedChatMessages")
   chatMemberships     ChatMember[]
   createdChats        Chat[]              @relation("CreatedChats")
+  scheduleNotifications ScheduleNotification[]
   aiAssistantThreads  AIAssistantThread[]
 
   @@index([office_id], map: "User_office_id_fkey")
@@ -206,6 +209,26 @@ model ChatMessage {
   @@index([senderId])
   @@index([deletedById])
   @@map("chat_messages")
+}
+
+model ScheduleNotification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type            String
+  title           String
+  body            String  @db.Text
+  projectId       String?
+  serviceProjectId String?
+  subServiceId    String?
+  customServiceId String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@map("schedule_notifications")
 }
 
 enum AIAssistantMessageRole {
@@ -383,15 +406,17 @@ model Company {
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
 
-  offices             Office[]
-  chats               Chat[]
-  workerLiveLocations WorkerLiveLocation[]
-  workerLocationPings WorkerLocationPing[]
-  workOrders          WorkOrder[]
-  workOrderSequence   WorkOrderNumberSequence?
-  workOrderSettings   WorkOrderSettings?
-  bidRequests         BidRequest[]
-  bidRequestSequence  BidRequestNumberSequence?
+  offices               Office[]
+  chats                 Chat[]
+  workerLiveLocations   WorkerLiveLocation[]
+  workerLocationPings   WorkerLocationPing[]
+  trackingRuntimeConfig TrackingRuntimeConfig?
+  trackingConfigAudits  TrackingRuntimeConfigAudit[]
+  workOrders            WorkOrder[]
+  workOrderSequence     WorkOrderNumberSequence?
+  workOrderSettings     WorkOrderSettings?
+  bidRequests           BidRequest[]
+  bidRequestSequence    BidRequestNumberSequence?
 }
 
 model ContractNotes {
@@ -1854,6 +1879,43 @@ model WorkerTrackingReminder {
   @@index([companyId, userId, attendanceId])
   @@index([attendanceId, triggeredAt])
   @@map("worker_tracking_reminders")
+}
+
+model TrackingRuntimeConfig {
+  id              String   @id @db.VarChar(191)
+  scope           String   @db.VarChar(16)
+  companyId       String?  @unique
+  config          Json
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updatedBy User?    @relation("TrackingRuntimeConfigUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([scope])
+  @@index([updatedByUserId])
+  @@map("tracking_runtime_configs")
+}
+
+model TrackingRuntimeConfigAudit {
+  id              String   @id @default(uuid())
+  scope           String   @db.VarChar(16)
+  companyId       String?
+  action          String   @db.VarChar(32)
+  previousConfig  Json?
+  nextConfig      Json?
+  changedByUserId String?
+  changedByName   String?  @db.VarChar(191)
+  changedByEmail  String?  @db.VarChar(191)
+  createdAt       DateTime @default(now())
+
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  changedBy User?    @relation("TrackingRuntimeConfigAuditChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([scope, companyId, createdAt])
+  @@index([changedByUserId, createdAt])
+  @@map("tracking_runtime_config_audits")
 }
 
 enum TypeInvoiceBase {

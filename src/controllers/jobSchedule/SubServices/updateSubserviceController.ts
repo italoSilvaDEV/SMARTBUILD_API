@@ -235,6 +235,7 @@ export class UpdateSubserviceController {
             ].filter(Boolean) as string[];
 
             await SchedulePushNotificationService.sendToEmails({
+                userIds: newWorkerIds,
                 emails: recipientEmails,
                 title: "Schedule updated",
                 body: `${body.name || subservice.name || "Subservice"} schedule was updated.`,
@@ -254,5 +255,4 @@ export class UpdateSubserviceController {
         }
     }
 }
-
 
