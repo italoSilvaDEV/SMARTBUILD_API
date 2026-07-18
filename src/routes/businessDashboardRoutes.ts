@@ -11,6 +11,7 @@ businessDashboard.get("/cards/sparklines", checkToken, businessDashboardControll
 
 // Charts
 businessDashboard.get("/charts/sales", checkToken, businessDashboardController.salesChart);
+businessDashboard.get("/charts/sales/details", checkToken, businessDashboardController.salesChartDetails);
 businessDashboard.get("/charts/expenses", checkToken, businessDashboardController.expenses);
 businessDashboard.get("/charts/cashflow", checkToken, businessDashboardController.cashflowChart);
 businessDashboard.get("/charts/invoices", checkToken, businessDashboardController.invoicesChart);

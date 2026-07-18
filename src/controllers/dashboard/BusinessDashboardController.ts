@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
+import { DateTime } from 'luxon';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
 import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from '../../utils/paidShortGaps';
+import { applyEffectiveBreaksToAttendances } from '../../utils/attendanceBreaks';
 
 function applyDashboardPaidShortGaps(projects: any[]) {
     const attendances = projects.flatMap(project =>
@@ -29,6 +31,136 @@ const validPeriods = [
 ] as const;
 
 type DashboardPeriod = typeof validPeriods[number];
+
+const activeInvoiceFilter = {
+    AND: [
+        { OR: [{ cancel_invoice_edit: false }, { cancel_invoice_edit: null }] }
+    ],
+    status: { notIn: ['void'] }
+};
+
+function getDashboardDateBounds(period: DashboardPeriod, rangeEnd?: Date) {
+    const { startDate, endDate } = getDateRange(period);
+
+    return {
+        startDate: period === 'allPeriod' ? undefined : dayjs(startDate).startOf('day').toDate(),
+        endDate: dayjs(rangeEnd || endDate || new Date()).endOf('day').toDate()
+    };
+}
+
+async function getTimeCardTotal(companyId: string, period: DashboardPeriod, rangeEnd?: Date) {
+    const { startDate, endDate } = getDashboardDateBounds(period, rangeEnd);
+    const checkInFilter: { gte?: Date; lte: Date } = { lte: endDate };
+    if (startDate) checkInFilter.gte = startDate;
+
+    const attendances = await prisma.userAttendance.findMany({
+        where: {
+            check_in_time: checkInFilter,
+            AND: [
+                {
+                    OR: [
+                        { check_out_time: { lte: endDate } },
+                        { check_out_time: null }
+                    ]
+                },
+                {
+                    OR: [
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    Project: {
+                                        company_id: companyId,
+                                        status_project: {
+                                            in: ['Pre-Start', 'In Progress', 'Final walkthrough', 'Finished']
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    projectId: null,
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        select: {
+            id: true,
+            user_id: true,
+            date: true,
+            check_in_time: true,
+            check_out_time: true,
+            workStartTime: true,
+            workEndTime: true,
+            isOvertime: true,
+            user: {
+                select: {
+                    id: true,
+                    hourly_price: true,
+                    defaultBreakMinutes: true,
+                    manualBreakEnabled: true,
+                    paidShortGapEnabled: true
+                }
+            },
+            breakRecords: {
+                orderBy: { startedAt: 'asc' }
+            }
+        }
+    });
+
+    applyEffectiveBreaksToAttendances(attendances as any[]);
+    applyPaidShortGapsToAttendances(attendances as any[]);
+
+    const weeklyAttendances = new Map<string, { attendances: any[] }>();
+    attendances.forEach(attendance => {
+        if (!attendance.check_in_time || !attendance.user) return;
+
+        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
+        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
+        const week = weeklyAttendances.get(weekKey) || { attendances: [] };
+        week.attendances.push(attendance);
+        weeklyAttendances.set(weekKey, week);
+    });
+
+    let totalPrice = 0;
+
+    weeklyAttendances.forEach(week => {
+        let weeklyRegularHoursUsed = 0;
+        const sortedAttendances = [...week.attendances].sort(
+            (first, second) => new Date(first.check_in_time).getTime() - new Date(second.check_in_time).getTime()
+        );
+
+        sortedAttendances.forEach(attendance => {
+            if (!attendance.check_out_time || !attendance.user) return;
+
+            const hours = calcularHorasTrabalhadas(
+                attendance.check_in_time.toISOString(),
+                attendance.check_out_time.toISOString(),
+                attendance.workStartTime,
+                attendance.workEndTime,
+                attendance.user.defaultBreakMinutes || 0
+            );
+            const dailyHours = convertHHMMToDecimal(hours.normais)
+                + convertHHMMToDecimal(hours.extras)
+                + getPaidShortGapHours(attendance);
+            const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
+            const overtimeHours = Math.max(0, dailyHours - regularHours);
+            const hourlyRate = Number(attendance.user.hourly_price || 0);
+
+            weeklyRegularHoursUsed += regularHours;
+            totalPrice += attendance.isOvertime === true && overtimeHours > 0
+                ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
+                : dailyHours * hourlyRate;
+        });
+    });
+
+    return Number(totalPrice.toFixed(2));
+}
 
 async function validCompany(request: Request) {
     const authHeader = returnPayLoad(request)
@@ -229,7 +361,7 @@ export class BusinessDashboardController {
             if (period !== "allPeriod") {
                 dateFilter.gte = startDate;
                 if (endDate) {
-                    dateFilter.lte = endDate;
+                    dateFilter.lte = dayjs(endDate).endOf('day').toDate();
                 }
             }
 
@@ -238,6 +370,8 @@ export class BusinessDashboardController {
                 projects,
                 customers,
                 employees,
+                invoices,
+                timeCards,
                 inProgressProjects,
                 preStartProjects,
                 completedProjects,
@@ -291,6 +425,18 @@ export class BusinessDashboardController {
                         })
                     }
                 }),
+                // Total Invoices
+                prisma.invoice.count({
+                    where: {
+                        companyId: valid.response?.id,
+                        ...activeInvoiceFilter,
+                        ...(Object.keys(dateFilter).length > 0 && {
+                            createdAt: dateFilter
+                        })
+                    }
+                }),
+                // Total payroll cost represented by time cards
+                getTimeCardTotal(valid.response!.id, period as DashboardPeriod),
                 // In Progress Projects
                 prisma.project.count({
                     where: {
@@ -346,6 +492,8 @@ export class BusinessDashboardController {
                 projects,
                 customers: Number(customers),
                 employees,
+                invoices,
+                timeCards,
                 inProgressProjects,
                 preStartProjects,
                 completedProjects,
@@ -382,7 +530,9 @@ export class BusinessDashboardController {
                 estimates,
                 projects,
                 customers,
-                employees
+                employees,
+                invoices,
+                timeCards
             ] = await Promise.all([
                 Promise.all(buckets.map(async (bucket) => ({
                     label: bucket.label,
@@ -434,6 +584,20 @@ export class BusinessDashboardController {
                             date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
                         }
                     })
+                }))),
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await prisma.invoice.count({
+                        where: {
+                            companyId,
+                            ...activeInvoiceFilter,
+                            createdAt: getCumulativeDateFilter(selectedPeriod, bucket)
+                        }
+                    })
+                }))),
+                Promise.all(buckets.map(async (bucket) => ({
+                    label: bucket.label,
+                    value: await getTimeCardTotal(companyId!, selectedPeriod, bucket.endDate)
                 })))
             ]);
 
@@ -441,7 +605,9 @@ export class BusinessDashboardController {
                 estimates,
                 projects,
                 customers,
-                employees
+                employees,
+                invoices,
+                timeCards
             });
         } catch (error) {
             console.error("Error in cardSparklines:", error);
@@ -474,42 +640,41 @@ export class BusinessDashboardController {
                 });
             }
 
-            const { startDate, endDate } = getDateRange(period as string);
+            const selectedPeriod = period as DashboardPeriod;
+            const { startDate, endDate } = getDashboardDateBounds(selectedPeriod);
 
             const dateFilter: any = {};
-            if (period !== "allPeriod") {
+            if (selectedPeriod !== "allPeriod") {
                 dateFilter.gte = startDate;
-                if (endDate) {
-                    dateFilter.lte = endDate;
-                }
+                dateFilter.lte = endDate;
             }
 
-            const projects = await prisma.project.findMany({
+            const invoices = await prisma.invoice.findMany({
                 where: {
-                    company_id: valid.response?.id,
-                    status_project: {
-                        in: ["Accepted", "Pre-Start", "In Progress", "Final walkthrough", "Finished"]
-                    },
+                    companyId: valid.response?.id,
+                    ...activeInvoiceFilter,
+                    status: 'paid',
                     ...(Object.keys(dateFilter).length > 0 && {
-                        date_creation: dateFilter
+                        createdAt: dateFilter
                     })
                 },
                 select: {
-                    date_creation: true,
-                    price: true
+                    createdAt: true,
+                    totalAmount: true
                 }
             });
 
-            const salesByMonth = projects.reduce<Record<string, number>>((acc, project) => {
-                const monthYear = dayjs(project.date_creation).format('MMM YYYY');
-                acc[monthYear] = (acc[monthYear] || 0) + Number(project.price || 0);
+            const salesByMonth = invoices.reduce<Record<string, number>>((acc, invoice) => {
+                const monthKey = dayjs(invoice.createdAt).format('YYYY-MM');
+                acc[monthKey] = (acc[monthKey] || 0) + Number(invoice.totalAmount || 0);
                 return acc;
             }, {});
 
             const salesData = Object.entries(salesByMonth)
-                .sort((a, b) => dayjs(a[0], 'MMM YYYY').valueOf() - dayjs(b[0], 'MMM YYYY').valueOf())
-                .map(([month, value]) => ({
-                    month,
+                .sort(([firstMonth], [secondMonth]) => firstMonth.localeCompare(secondMonth))
+                .map(([monthKey, value]) => ({
+                    month: dayjs(`${monthKey}-01`).format('MMM YYYY'),
+                    monthKey,
                     value: Number(value.toFixed(2))
                 }));
 
@@ -517,6 +682,92 @@ export class BusinessDashboardController {
         } catch (error) {
             console.error("Error in salesChart:", error);
             return res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
+        }
+    }
+
+    async salesChartDetails(req: Request, res: Response) {
+        try {
+            const valid = await validCompany(req);
+            if (valid.status === 'error') {
+                return res.status(404).json({ error: valid.message });
+            }
+
+            const { monthKey, period = 'thisYear' } = req.query;
+            if (!(validPeriods as readonly string[]).includes(period as string)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(', ')}`
+                });
+            }
+
+            if (typeof monthKey !== 'string' || !/^\d{4}-\d{2}$/.test(monthKey)) {
+                return res.status(400).json({ error: 'monthKey must use YYYY-MM format' });
+            }
+
+            const monthStart = dayjs(`${monthKey}-01`).startOf('month');
+            if (!monthStart.isValid()) {
+                return res.status(400).json({ error: 'Invalid monthKey' });
+            }
+
+            const selectedPeriod = period as DashboardPeriod;
+            const { startDate: periodStart, endDate: periodEnd } = getDashboardDateBounds(selectedPeriod);
+            const rangeStart = periodStart && dayjs(periodStart).isAfter(monthStart)
+                ? dayjs(periodStart)
+                : monthStart;
+            const monthEnd = monthStart.endOf('month');
+            const rangeEnd = dayjs(periodEnd).isBefore(monthEnd) ? dayjs(periodEnd) : monthEnd;
+
+            if (rangeStart.isAfter(rangeEnd)) {
+                return res.json({ invoices: [], month: monthStart.format('MMM YYYY'), monthKey, total: 0 });
+            }
+
+            const invoices = await prisma.invoice.findMany({
+                where: {
+                    companyId: valid.response?.id,
+                    ...activeInvoiceFilter,
+                    status: 'paid',
+                    createdAt: {
+                        gte: rangeStart.toDate(),
+                        lte: rangeEnd.toDate()
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    externalInvoiceId: true,
+                    invoiceType: true,
+                    projectId: true,
+                    status: true,
+                    totalAmount: true,
+                    createdAt: true,
+                    project: {
+                        select: {
+                            contract_number: true,
+                            client: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            const normalizedInvoices = invoices.map(invoice => ({
+                ...invoice,
+                totalAmount: Number(invoice.totalAmount)
+            }));
+            const total = normalizedInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+
+            return res.json({
+                invoices: normalizedInvoices,
+                month: monthStart.format('MMM YYYY'),
+                monthKey,
+                total: Number(total.toFixed(2))
+            });
+        } catch (error) {
+            console.error('Error in salesChartDetails:', error);
+            return res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
         }
     }
 
