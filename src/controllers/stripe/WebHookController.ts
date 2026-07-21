@@ -410,6 +410,15 @@ export class StripeWebHooksController {
                         // Verificar se houve mudança de plano
                         const planChanged = oldPlanId !== plan.id;
                         const allowedEmployeesChanged = oldAllowedEmployees !== (plan.allowedEmployees ?? 0);
+
+                        // Sincronizar as permissões ANTES de persistir o novo plano ou ajustar
+                        // vagas extras. Se uma etapa secundária falhar, o próximo webhook ainda
+                        // enxerga o plano antigo e pode repetir a sincronização com segurança.
+                        await syncAllOfficePermissionsOnPlanChange(
+                            localSub.companyId,
+                            oldPlanId,
+                            plan.id
+                        );
                         
                         // Atualizar a empresa com o novo plano e allowedEmployees
                         await prisma.company.update({
@@ -429,15 +438,23 @@ export class StripeWebHooksController {
                         // Se o plano aumentou as vagas, ajustar extras automaticamente
                         if (planChanged || allowedEmployeesChanged) {
                             console.log(`   • Mudança de plano detectada. oldAllowed=${oldAllowedEmployees}, newAllowed=${plan.allowedEmployees}, oldExtra=${oldExtraEmployees}`);
-                            await StripeSubscriptionItemService.handlePlanUpgrade(
-                                localSub.companyId,
-                                oldAllowedEmployees,
-                                plan.allowedEmployees ?? 0
-                            );
+                            try {
+                                await StripeSubscriptionItemService.handlePlanUpgrade(
+                                    localSub.companyId,
+                                    oldAllowedEmployees,
+                                    plan.allowedEmployees ?? 0
+                                );
+                            } catch (extraEmployeeError) {
+                                // O plano pago e suas permissões não podem ficar parcialmente
+                                // aplicados por uma inconsistência no item opcional de extras.
+                                // O bloco abaixo ainda reconcilia extraEmployees com os itens que
+                                // realmente vieram do Stripe.
+                                console.error(
+                                    "[ExtraEmployee] Failed to reconcile seats after plan change; continuing webhook:",
+                                    extraEmployeeError
+                                );
+                            }
                         }
-
-                        // Sincroniza permissões de todos os offices (exceto Worker)
-                        await syncAllOfficePermissionsOnPlanChange(localSub.companyId, oldPlanId, plan.id);
                     } else {
                         console.log("    Nenhum plano correspondente encontrado nos items");
                     }
