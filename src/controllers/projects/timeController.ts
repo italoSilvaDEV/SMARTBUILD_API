@@ -4,6 +4,7 @@ import { TimeService } from "../../services/TimeService";
 import { getByWorkerIdController } from "../TimeCards/getByWorkerIdController";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
+import { getAttendancePresenceSummaries } from "../../services/TrackingPresenceSummaryService";
 
 const timeService = new TimeService();
 const timeCardsWorkerController = new getByWorkerIdController();
@@ -285,26 +286,51 @@ export class TimeController {
             });
 
             // Agrupar apenas a última atividade por usuário
-            const latestByWorker: Record<string, any> = {};
+            const latestAttendanceByWorker: Record<string, any> = {};
             attendances.forEach(att => {
-                if (!latestByWorker[att.user_id] || new Date(att.check_in_time) > new Date(latestByWorker[att.user_id].check_in_time)) {
-                    latestByWorker[att.user_id] = {
-                        name: att.user.name,
-                        serviceName: att.UserServiceProject?.service_project?.name,
-                        address: att.check_in_address,
-                        status: att.check_out_time ? 'Out' : 'In',
-                        check_in_time: att.check_in_time,
-                        user_service_project_id: att.user_service_project_id,
-                        check_out_time: att.check_out_time,
-                        client: {
-                            clientName: att.UserServiceProject?.service_project?.Project?.client?.name,
-                            clientAddress: att.UserServiceProject?.service_project?.Project?.location
-                        }
-                    };
+                if (
+                    !latestAttendanceByWorker[att.user_id] ||
+                    new Date(att.check_in_time) > new Date(latestAttendanceByWorker[att.user_id].check_in_time)
+                ) {
+                    latestAttendanceByWorker[att.user_id] = att;
                 }
             });
 
-            const workers = Object.values(latestByWorker);
+            const latestAttendances = Object.values(latestAttendanceByWorker) as typeof attendances;
+            const presenceSummaries = await getAttendancePresenceSummaries(
+                String(id),
+                latestAttendances.map(attendance => ({
+                    attendanceId: attendance.id,
+                    userId: attendance.user_id,
+                    userServiceProjectId: attendance.user_service_project_id,
+                    checkInAt: attendance.check_in_time,
+                    checkOutAt: attendance.check_out_time,
+                })),
+                startDate,
+                endDeadline
+            );
+            const workers = latestAttendances.map(att => ({
+                attendance_id: att.id,
+                user_id: att.user_id,
+                name: att.user.name,
+                serviceName: att.UserServiceProject?.service_project?.name,
+                address: att.check_in_address,
+                status: att.check_out_time ? 'Out' : 'In',
+                check_in_time: att.check_in_time,
+                user_service_project_id: att.user_service_project_id,
+                check_out_time: att.check_out_time,
+                summary: presenceSummaries.get(att.id) || {
+                    totalMinutes: 0,
+                    insideMinutes: 0,
+                    outsideMinutes: 0,
+                    untrackedMinutes: 0,
+                    pointCount: 0,
+                },
+                client: {
+                    clientName: att.UserServiceProject?.service_project?.Project?.client?.name,
+                    clientAddress: att.UserServiceProject?.service_project?.Project?.location
+                }
+            }));
             const pageSize = 10;
 
             return res.json({
