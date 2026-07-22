@@ -12,6 +12,13 @@ interface ExpoPushMessage {
   channelId?: string;
 }
 
+interface ExpoPushTicket {
+  status?: "ok" | "error";
+  id?: string;
+  message?: string;
+  details?: { error?: string };
+}
+
 export class PushNotificationService {
   /**
    * Envia push notification para um ou mais Expo Push Tokens.
@@ -20,7 +27,7 @@ export class PushNotificationService {
   static async sendPushNotifications(messages: ExpoPushMessage[]): Promise<void> {
     // Filtrar mensagens sem token válido
     const validMessages = messages.filter(
-      (m) => m.to && m.to.startsWith("ExponentPushToken[")
+      (m) => m.to && /^(ExponentPushToken|ExpoPushToken)\[/.test(m.to)
     );
 
     if (validMessages.length === 0) return;
@@ -28,18 +35,31 @@ export class PushNotificationService {
     try {
       // Expo aceita batch de até 100 notificações por request
       const chunks = this.chunkArray(validMessages, 100);
+      let acceptedCount = 0;
 
       for (const chunk of chunks) {
-        await axios.post(EXPO_PUSH_URL, chunk, {
+        const response = await axios.post<{ data?: ExpoPushTicket[] }>(EXPO_PUSH_URL, chunk, {
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
         });
+
+        const tickets = Array.isArray(response.data?.data) ? response.data.data : [];
+        acceptedCount += tickets.filter((ticket) => ticket.status === "ok").length;
+
+        tickets.forEach((ticket, index) => {
+          if (ticket.status !== "error") return;
+          console.error("[PushNotificationService] Expo rejected push", {
+            token: this.maskToken(chunk[index]?.to),
+            error: ticket.details?.error || "UNKNOWN_PUSH_ERROR",
+            message: ticket.message || "Push notification was rejected",
+          });
+        });
       }
 
       console.log(
-        `[PushNotificationService] Sent ${validMessages.length} push notification(s)`
+        `[PushNotificationService] Expo accepted ${acceptedCount}/${validMessages.length} push notification(s)`
       );
     } catch (error: any) {
       // Não lançar erro para não quebrar o fluxo principal (envio de mensagem)
@@ -77,5 +97,10 @@ export class PushNotificationService {
       chunks.push(array.slice(i, i + size));
     }
     return chunks;
+  }
+
+  private static maskToken(token?: string): string {
+    if (!token || token.length < 16) return "unknown";
+    return `${token.slice(0, 12)}...${token.slice(-5)}`;
   }
 }

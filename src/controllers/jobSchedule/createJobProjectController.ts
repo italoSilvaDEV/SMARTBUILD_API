@@ -173,23 +173,17 @@ export class CreateJobProjectController {
                 }
             })
 
-            const [workerRecipients, subcontractorRecipients] = await Promise.all([
-                prisma.user.findMany({
-                    where: { id: { in: body.users?.map((u) => u.id) || [] } },
-                    select: { email: true }
-                }),
-                prisma.subcontractor.findMany({
+            const subcontractorRecipients = await prisma.subcontractor.findMany({
                     where: { id: { in: body.subcontractors?.map((s) => s.id) || [] } },
                     select: { email: true }
-                })
-            ]);
+                });
 
-            const recipientEmails = [
-                ...workerRecipients.map((u) => u.email),
-                ...subcontractorRecipients.map((s) => s.email)
-            ].filter(Boolean) as string[];
+            const recipientEmails = subcontractorRecipients
+                .map((subcontractor) => subcontractor.email)
+                .filter(Boolean) as string[];
 
             await SchedulePushNotificationService.sendToEmails({
+                userIds: body.users?.map((user) => user.id) || [],
                 emails: recipientEmails,
                 title: "New service assigned",
                 body: `You were assigned to ${serviceProject.name || "a service"}.`,
@@ -212,5 +206,4 @@ export class CreateJobProjectController {
         }
     }
 }
-
 

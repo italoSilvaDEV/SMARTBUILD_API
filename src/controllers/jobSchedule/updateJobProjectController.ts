@@ -249,6 +249,7 @@ export class UpdateJobProjectController {
             ].filter(Boolean) as string[];
 
             await SchedulePushNotificationService.sendToEmails({
+                userIds: newWorkerIds,
                 emails: recipientEmails,
                 title: "Schedule updated",
                 body: `${serviceProject.name || "Service"} schedule was updated.`,
@@ -268,5 +269,4 @@ export class UpdateJobProjectController {
         }
     }
 }
-
 

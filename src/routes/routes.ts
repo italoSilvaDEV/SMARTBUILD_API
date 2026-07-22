@@ -63,6 +63,9 @@ import contractRoutes from './contractRoutes'
 import { mobileAuthRoutes } from './mobileAuthRoutes'
 import { uploadRoutes } from './uploadRoutes'
 import { workOrderRoutes } from './workOrderRoutes'
+import { trackingConfigMasterRoutes } from './trackingConfigMasterRoutes'
+import { scheduleNotificationRoutes } from './scheduleNotificationRoutes'
+import { bidRequestRoutes } from './bidRequestRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -97,6 +100,7 @@ router.use(workedRours)
 router.use(subcontractorRoutes)
 router.use("/service-project-stages", serviceStageRoutes);
 router.use(userAttendanceRoutes)
+router.use("/master/tracking-config", trackingConfigMasterRoutes)
 router.use(stripeRoutes)
 router.use(paymentElementRoutes)
 router.use(quickbooksRoutes)
@@ -111,6 +115,7 @@ router.use(invoiceStatisticsRoutes);
 router.use(invoiceAutoEmailRoutes);
 router.use("/estimate", estimateRoutes);
 router.use("/work-orders", workOrderRoutes);
+router.use("/bid-requests", bidRequestRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);
 router.use(pasteRoutes);
@@ -139,6 +144,7 @@ router.use(imagesAttachmentsRoutes)
 router.use(jobScheduleRoutes)
 router.use("/tasks", taskRoutes)
 router.use("/chats", chatRoutes)
+router.use("/schedule-notifications", scheduleNotificationRoutes)
 router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
 router.use(aiAssistantRoutes)
