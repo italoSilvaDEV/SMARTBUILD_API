@@ -316,13 +316,22 @@ export class UserAttendanceController {
             if (!attendance) return res.status(404).json({ error: 'Attendance record not found' });
 
             let userServiceProject = await prisma.userServiceProject.findFirst({
-                where: { user_id: attendance.user_id, service_project_id: newServiceProjectId }
+                where: { user_id: attendance.user_id, service_project_id: newServiceProjectId, removed_at: null }
             });
 
             if (!userServiceProject) {
-                userServiceProject = await prisma.userServiceProject.create({
-                    data: { user_id: attendance.user_id, service_project_id: newServiceProjectId }
+                const removedUserServiceProject = await prisma.userServiceProject.findFirst({
+                    where: { user_id: attendance.user_id, service_project_id: newServiceProjectId, removed_at: { not: null } }
                 });
+
+                userServiceProject = removedUserServiceProject
+                    ? await prisma.userServiceProject.update({
+                        where: { id: removedUserServiceProject.id },
+                        data: { removed_at: null, assigned_at: new Date() }
+                    })
+                    : await prisma.userServiceProject.create({
+                        data: { user_id: attendance.user_id, service_project_id: newServiceProjectId }
+                    });
             }
 
             const updated = await prisma.userAttendance.update({
@@ -506,7 +515,8 @@ export class UserAttendanceController {
                     ...(visibilityMode === 'assignedOnly' ? {
                         UserServiceProject: {
                             some: {
-                                user_id: userId as string
+                                user_id: userId as string,
+                                removed_at: null
                             }
                         }
                     } : {}),
@@ -514,7 +524,7 @@ export class UserAttendanceController {
                 },
                 include: {
                     Project: { include: { client: true } },
-                    UserServiceProject: { where: { user_id: userId as string }, take: 1 }
+                    UserServiceProject: { where: { user_id: userId as string, removed_at: null }, take: 1 }
                 },
                 orderBy: { date_creation: 'desc' }
             });

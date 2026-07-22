@@ -32,8 +32,8 @@ export class DeleteSubserviceController {
                             project: { include: { client: true, workContext: true } }
                         }
                     },
-                    userServiceProject: { include: { user: true } },
-                    subContractorServiceProjects: { include: { subcontractor: true } }
+                    userServiceProject: { where: { removed_at: null }, include: { user: true } },
+                    subContractorServiceProjects: { where: { removed_at: null }, include: { subcontractor: true } }
                 }
             });
 
@@ -42,7 +42,14 @@ export class DeleteSubserviceController {
             const project = subservice.serviceProject?.Project || subservice.custom_service_schedule?.project;
             if (!project) return res.status(404).json({ error: "Project context not found" });
 
-            await prisma.subServicesProject.delete({ where: { id: subserviceId } });
+            await prisma.subServicesProject.update({
+                where: { id: subserviceId },
+                data: {
+                    start_date: null,
+                    deadline: null,
+                    scheduleCompleted: false
+                }
+            });
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || "Not specified";
@@ -98,7 +105,7 @@ export class DeleteSubserviceController {
                 }
             }
 
-            return res.status(200).json({ message: "Subservice deleted and notifications sent" });
+            return res.status(200).json({ message: "Subservice unscheduled and notifications sent" });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ error: "Internal server error" });

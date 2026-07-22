@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
 import { normalizeScheduleDateValue } from "../../utils/dateUtils";
+import {
+    upsertSubcontractorAssignmentLink,
+    upsertUserAssignmentLink
+} from "../../utils/scheduleAssignmentLinks";
 
 interface User {
     id: string
@@ -122,25 +126,12 @@ export class CreateJobProjectController {
                         })
                     }
 
-                    const userServiceProjectExists = await prisma.userServiceProject.findUnique({
-                        where: {
-                            user_id_service_project_id: {
-                                user_id: user.id,
-                                service_project_id: serviceProject.id
-                            }
-                        }
-                    })
-
-                    if (!userServiceProjectExists) {
-                        await prisma.userServiceProject.create({
-                            data: {
-                                user_id: user.id,
-                                service_project_id: serviceProject.id,
-                                assigned_at: new Date().toISOString(),
-                                category_id: body.categoryId || null,
-                            }
-                        })
-                    }
+                    await upsertUserAssignmentLink(
+                        prisma,
+                        user.id,
+                        { service_project_id: serviceProject.id },
+                        body.categoryId || null
+                    )
                 }
             }
 
@@ -159,24 +150,12 @@ export class CreateJobProjectController {
                         })
                     }
 
-                    const subcontractorServiceProjectExists = await prisma.subContractorServiceProject.findUnique({
-                        where: {
-                            subcontractor_id_service_project_id: {
-                                subcontractor_id: subcontractor.id,
-                                service_project_id: serviceProject.id
-                            }
-                        }
-                    })
-
-                    if (!subcontractorServiceProjectExists) {
-                        await prisma.subContractorServiceProject.create({
-                            data: {
-                                subcontractor_id: subcontractor.id,
-                                service_project_id: serviceProject.id,
-                                category_id: body.categoryId || null,
-                            }
-                        })
-                    }
+                    await upsertSubcontractorAssignmentLink(
+                        prisma,
+                        subcontractor.id,
+                        { service_project_id: serviceProject.id },
+                        body.categoryId || null
+                    )
                 }
             }
 

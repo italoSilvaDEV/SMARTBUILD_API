@@ -4,6 +4,12 @@ import { jobScheduleGlobalTemplate, ScheduleChange } from "../../templateEmail/j
 import { sendEmail } from "../../utils/sendEmail";
 import { SchedulePushNotificationService } from "../../services/SchedulePushNotificationService";
 import { normalizeScheduleDateValue, formatDateForEmail } from "../../utils/dateUtils";
+import {
+    softRemoveSubcontractorAssignmentLinks,
+    softRemoveUserAssignmentLinks,
+    upsertSubcontractorAssignmentLink,
+    upsertUserAssignmentLink
+} from "../../utils/scheduleAssignmentLinks";
 
 interface UserInput {
     id: string;
@@ -68,11 +74,13 @@ export class UpdateJobProjectController {
                         }
                     },
                     UserServiceProject: {
+                        where: { removed_at: null },
                         include: {
                             user: true
                         }
                     },
                     subContractorServiceProjects: {
+                        where: { removed_at: null },
                         include: {
                             subcontractor: true
                         }
@@ -124,34 +132,27 @@ export class UpdateJobProjectController {
             const subsToRemove = currentSubIds.filter(id => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter(id => !currentSubIds.includes(id));
 
-            await prisma.$transaction([
-                prisma.serviceProject.update({
+            await prisma.$transaction(async (tx) => {
+                await tx.serviceProject.update({
                     where: { id: body.serviceProjectId },
                     data: {
                         ...(startDateOnly != null && { start_date: startDateOnly }),
                         ...(deadlineOnly != null && { deadline: deadlineOnly }),
                         description: body.description
                     }
-                }),
-                prisma.userServiceProject.deleteMany({
-                    where: {
-                        service_project_id: body.serviceProjectId,
-                        user_id: { in: workersToRemove }
-                    }
-                }),
-                ...workersToAdd.map(id => prisma.userServiceProject.create({
-                    data: { service_project_id: body.serviceProjectId, user_id: id }
-                })),
-                prisma.subContractorServiceProject.deleteMany({
-                    where: {
-                        service_project_id: body.serviceProjectId,
-                        subcontractor_id: { in: subsToRemove }
-                    }
-                }),
-                ...subsToAdd.map(id => prisma.subContractorServiceProject.create({
-                    data: { service_project_id: body.serviceProjectId, subcontractor_id: id }
-                }))
-            ]);
+                });
+
+                await softRemoveUserAssignmentLinks(tx, { service_project_id: body.serviceProjectId }, workersToRemove);
+                await softRemoveSubcontractorAssignmentLinks(tx, { service_project_id: body.serviceProjectId }, subsToRemove);
+
+                for (const id of workersToAdd) {
+                    await upsertUserAssignmentLink(tx, id, { service_project_id: body.serviceProjectId });
+                }
+
+                for (const id of subsToAdd) {
+                    await upsertSubcontractorAssignmentLink(tx, id, { service_project_id: body.serviceProjectId });
+                }
+            });
 
             const projectLocation = serviceProject.Project?.workContext?.location || serviceProject.Project?.location || "Not specified";
             const contractNumber = serviceProject.Project?.contract_number || "N/A";

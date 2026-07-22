@@ -7,6 +7,7 @@ import { google } from "googleapis";
 import { prisma } from "../../utils/prisma";
 import { OWNER_FULL_ACCESS_DATA, grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { resolveEffectivePermissions } from "../../utils/planPermissions";
 
 type MobileProvider = "google" | "apple";
 type StorePlatform = "ios" | "android";
@@ -491,11 +492,11 @@ async function getMobilePlan(productId?: string) {
 
   const inferredPrice = productId ? inferMobilePlanPrice(productId) : null;
   const byInferredPrice = inferredPrice
-    ? plans.find((plan) => Number(plan.price || 0) === inferredPrice)
+    ? plans.find((plan) => Math.trunc(Number(plan.price || 0)) === inferredPrice)
     : null;
   if (byInferredPrice) return byInferredPrice;
 
-  const byPrice = plans.find((plan) => Number(plan.price || 0) === 29);
+  const byPrice = plans.find((plan) => Math.trunc(Number(plan.price || 0)) === 29);
   if (byPrice) return byPrice;
 
   const fallback = plans.find((plan) => plan.validityType !== "FREE") || plans[0];
@@ -661,7 +662,11 @@ async function buildAuthResponse(userId: string, companyId?: string | null) {
 
   const officePermissions =
     selectedLink.office?.userPermissions?.map((item) => item.permission.description).filter(Boolean) || [];
-  const permissions = officePermissions.length > 0 ? officePermissions : status.permissions;
+  const permissions = resolveEffectivePermissions(
+    status.permissions,
+    officePermissions,
+    selectedLink.office?.name,
+  );
 
   return {
     msg: "Authentication completed successfully!",

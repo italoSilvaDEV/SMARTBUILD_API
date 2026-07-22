@@ -23,31 +23,23 @@ export class DeleteJobProjectController {
                 where: { id: serviceProjectId },
                 include: {
                     Project: { include: { client: true, workContext: true } },
-                    UserServiceProject: { include: { user: true } },
-                    subContractorServiceProjects: { include: { subcontractor: true } }
+                    UserServiceProject: { where: { removed_at: null }, include: { user: true } },
+                    subContractorServiceProjects: { where: { removed_at: null }, include: { subcontractor: true } }
                 }
             });
 
             if (!serviceProject) return res.status(404).json({ error: "Service project not found" });
 
-            await prisma.$transaction([
-                prisma.serviceProject.update({
-                    where: {
-                        id: serviceProjectId
-                    },
-                    data: {
-                        start_date: null,
-                        deadline: null,
-                        scheduleCompleted: false
-                    }
-                }),
-                prisma.userServiceProject.deleteMany({
-                    where: { service_project_id: serviceProjectId }
-                }),
-                prisma.subContractorServiceProject.deleteMany({
-                    where: { service_project_id: serviceProjectId }
-                })
-            ]);
+            await prisma.serviceProject.update({
+                where: {
+                    id: serviceProjectId
+                },
+                data: {
+                    start_date: null,
+                    deadline: null,
+                    scheduleCompleted: false
+                }
+            });
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = serviceProject.Project?.location || "Not specified";
@@ -104,7 +96,7 @@ export class DeleteJobProjectController {
                 }
             }
 
-            return res.status(200).json({ message: "Service project deleted and notifications sent" });
+            return res.status(200).json({ message: "Service project unscheduled and notifications sent" });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ error: "Internal server error" });

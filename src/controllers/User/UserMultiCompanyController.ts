@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import Jwt from "jsonwebtoken";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { stripeConfig } from "../../config/stripe";
+import { resolveEffectivePermissions } from "../../utils/planPermissions";
 
 export class UserMultiCompanyController {
   async authenticateMultiCompany(req: Request, res: Response) {
@@ -190,7 +191,19 @@ export class UserMultiCompanyController {
           id: companyId
         },
         include: {
-          Plan: true
+          Plan: {
+            include: {
+              permissionGroup: {
+                include: {
+                  GroupPermissionsList: {
+                    include: {
+                      Permissions: true
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       });
 
@@ -207,6 +220,7 @@ export class UserMultiCompanyController {
       let stripeSubscriptionCanceled = false;
       let paymentFailed = false;
       let permissions: string[] = [];
+      let planPermissions: string[] = [];
 
       const selectedOffice = userCompany?.office;
 
@@ -233,6 +247,10 @@ export class UserMultiCompanyController {
       }
 
       if (company?.id) {
+
+        planPermissions = company.Plan?.permissionGroup?.GroupPermissionsList
+          ?.map((item) => item.Permissions.description)
+          .filter(Boolean) || [];
 
 
         planInfo = company.Plan ? {
@@ -351,6 +369,12 @@ export class UserMultiCompanyController {
           });
         }
       }
+
+      permissions = resolveEffectivePermissions(
+        planPermissions,
+        permissions,
+        selectedOffice?.name,
+      );
 
       const token = Jwt.sign(
         {

@@ -35,8 +35,8 @@ export class DeleteCustomServiceController {
                 where: { id: customServiceId },
                 include: {
                     project: { include: { client: true, workContext: true } },
-                    userServiceProjects: { include: { user: true } },
-                    subContractorServiceProjects: { include: { subcontractor: true } }
+                    userServiceProjects: { where: { removed_at: null }, include: { user: true } },
+                    subContractorServiceProjects: { where: { removed_at: null }, include: { subcontractor: true } }
                 }
             });
 
@@ -45,7 +45,14 @@ export class DeleteCustomServiceController {
             const project = customService.project;
             if (!project) return res.status(404).json({ error: "Project not found" });
 
-            await prisma.customServiceSchedule.delete({ where: { id: customServiceId } });
+            await prisma.customServiceSchedule.update({
+                where: { id: customServiceId },
+                data: {
+                    start_date: null,
+                    deadline: null,
+                    scheduleCompleted: false
+                }
+            });
 
             const companyLogo = company.avatar ? await getPresignedUrl(company.avatar) : "";
             const projectLocation = project.location || "Not specified";
@@ -102,7 +109,7 @@ export class DeleteCustomServiceController {
                 }
             }
 
-            return res.status(200).json({ message: "Custom service deleted and notifications sent" });
+            return res.status(200).json({ message: "Custom service unscheduled and notifications sent" });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ error: "Internal server error" });
