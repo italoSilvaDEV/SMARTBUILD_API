@@ -83,11 +83,13 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             UserServiceProject: {
+              where: { removed_at: null },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
+              where: { removed_at: null },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },
@@ -108,11 +110,13 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             userServiceProjects: {
+              where: { removed_at: null },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
+              where: { removed_at: null },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },
@@ -150,11 +154,13 @@ export class GetDispatchJobsByCompanyController {
               },
             },
             userServiceProject: {
+              where: { removed_at: null },
               include: {
                 user: { select: { id: true, name: true, avatar: true } },
               },
             },
             subContractorServiceProjects: {
+              where: { removed_at: null },
               include: {
                 subcontractor: { select: { id: true, name: true } },
               },

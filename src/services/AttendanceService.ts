@@ -91,22 +91,41 @@ export class AttendanceService {
         let userServiceProject = await tx.userServiceProject.findFirst({
             where: {
                 user_id,
-                service_project_id
+                service_project_id,
+                removed_at: null
             }
         });
 
         if (!userServiceProject) {
+            const removedUserServiceProject = await tx.userServiceProject.findFirst({
+                where: {
+                    user_id,
+                    service_project_id,
+                    removed_at: { not: null }
+                }
+            });
+
             if (visibilityMode === 'assignedOnly') {
                 throw new Error('NOT_ASSIGNED');
             }
 
-            userServiceProject = await tx.userServiceProject.create({
-                data: {
-                    user_id,
-                    service_project_id,
-                    assigned_at: date ? new Date(date) : new Date()
-                }
-            });
+            if (removedUserServiceProject) {
+                userServiceProject = await tx.userServiceProject.update({
+                    where: { id: removedUserServiceProject.id },
+                    data: {
+                        removed_at: null,
+                        assigned_at: date ? new Date(date) : new Date()
+                    }
+                });
+            } else {
+                userServiceProject = await tx.userServiceProject.create({
+                    data: {
+                        user_id,
+                        service_project_id,
+                        assigned_at: date ? new Date(date) : new Date()
+                    }
+                });
+            }
 
             if (!serviceStatus || serviceStatus === 'In Progress' || serviceStatus === 'Scheduled') {
                 await tx.serviceProject.update({

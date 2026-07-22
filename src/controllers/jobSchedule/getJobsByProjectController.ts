@@ -51,6 +51,7 @@ export class GetJobsByProjectController {
                         }
                     },
                     UserServiceProject: {
+                        where: { removed_at: null },
                         select: {
                             user: {
                                 select: {
@@ -66,6 +67,7 @@ export class GetJobsByProjectController {
                         }
                     },
                     subContractorServiceProjects: {
+                        where: { removed_at: null },
                         select: {
                             subcontractor: {
                                 select: {
@@ -89,6 +91,10 @@ export class GetJobsByProjectController {
                         }
                     },
                     subServicesProjects: {
+                        where: {
+                            start_date: { not: null },
+                            deadline: { not: null },
+                        },
                         select: {
                             id: true,
                             name: true,
@@ -98,6 +104,7 @@ export class GetJobsByProjectController {
                             scheduleCompleted: true,
                             category: { select: { id: true, category_name: true } },
                             userServiceProject: {
+                                where: { removed_at: null },
                                 select: {
                                     user: {
                                         select: {
@@ -113,6 +120,7 @@ export class GetJobsByProjectController {
                                 }
                             },
                             subContractorServiceProjects: {
+                                where: { removed_at: null },
                                 select: {
                                     subcontractor: {
                                         select: {

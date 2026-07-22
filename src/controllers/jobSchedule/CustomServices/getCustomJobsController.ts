@@ -46,7 +46,9 @@ export class GetCustomJobsController {
 
             const customJobs = await prisma.customServiceSchedule.findMany({
                 where: {
-                    projectId: project.id
+                    projectId: project.id,
+                    start_date: { not: null },
+                    deadline: { not: null },
                 },
                 select: {
                     id: true,
@@ -67,6 +69,7 @@ export class GetCustomJobsController {
                     scheduleCompleted: true,
                     category: { select: { id: true, category_name: true } },
                     userServiceProjects: {
+                        where: { removed_at: null },
                         select: {
                             user: {
                                 select: {
@@ -82,6 +85,7 @@ export class GetCustomJobsController {
                         }
                     },
                     subContractorServiceProjects: {
+                        where: { removed_at: null },
                         select: {
                             subcontractor: {
                                 select: {
@@ -95,6 +99,10 @@ export class GetCustomJobsController {
                         }
                     },
                     subServicesProjects: {
+                        where: {
+                            start_date: { not: null },
+                            deadline: { not: null },
+                        },
                         select: {
                             id: true,
                             name: true,
@@ -104,6 +112,7 @@ export class GetCustomJobsController {
                             scheduleCompleted: true,
                             category: { select: { id: true, category_name: true } },
                             subContractorServiceProjects: {
+                                where: { removed_at: null },
                                 select: {
                                     subcontractor: {
                                         select: {
@@ -117,6 +126,7 @@ export class GetCustomJobsController {
                                 }
                             },
                             userServiceProject: {
+                                where: { removed_at: null },
                                 select: {
                                     user: {
                                         select: {

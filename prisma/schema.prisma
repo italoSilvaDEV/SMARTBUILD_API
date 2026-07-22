@@ -1593,8 +1593,9 @@ model SubcontractorService {
 
 // Relacionamento entre User e ServiceProject
 model UserServiceProject {
-  id          String   @id @default(uuid())
-  assigned_at DateTime @default(now())
+  id          String    @id @default(uuid())
+  assigned_at DateTime  @default(now())
+  removed_at  DateTime?
 
   user    User   @relation(fields: [user_id], references: [id])
   user_id String
@@ -1625,7 +1626,8 @@ model UserServiceProject {
 }
 
 model SubContractorServiceProject {
-  id String @id @default(uuid())
+  id         String    @id @default(uuid())
+  removed_at DateTime?
 
   subcontractor    Subcontractor @relation(fields: [subcontractor_id], references: [id], onDelete: Cascade)
   subcontractor_id String

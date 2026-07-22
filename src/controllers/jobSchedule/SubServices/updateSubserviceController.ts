@@ -4,6 +4,12 @@ import { sendEmail } from "../../../utils/sendEmail";
 import { ScheduleChange } from "../../../templateEmail/jobScheduleGlobalTemplate";
 import { SchedulePushNotificationService } from "../../../services/SchedulePushNotificationService";
 import { normalizeScheduleDateValue, formatDateForEmail } from "../../../utils/dateUtils";
+import {
+    softRemoveSubcontractorAssignmentLinks,
+    softRemoveUserAssignmentLinks,
+    upsertSubcontractorAssignmentLink,
+    upsertUserAssignmentLink
+} from "../../../utils/scheduleAssignmentLinks";
 
 interface UserInput {
     id: string;
@@ -56,8 +62,8 @@ export class UpdateSubserviceController {
                             project: { include: { client: true, workContext: true } }
                         }
                     },
-                    userServiceProject: { include: { user: true } },
-                    subContractorServiceProjects: { include: { subcontractor: true } }
+                    userServiceProject: { where: { removed_at: null }, include: { user: true } },
+                    subContractorServiceProjects: { where: { removed_at: null }, include: { subcontractor: true } }
                 }
             }) as any;
 
@@ -88,13 +94,13 @@ export class UpdateSubserviceController {
             }
 
             const currentWorkerIds = subservice.userServiceProject.map((usp: any) => usp.user_id);
-            const newWorkerIds = Array.from(new Set(body.users?.map(u => u.id) || []));
+            const newWorkerIds = body.users ? Array.from(new Set(body.users.map(u => u.id))) : currentWorkerIds;
 
             const workersToRemove = currentWorkerIds.filter((id: string) => !newWorkerIds.includes(id));
             const workersToAdd = newWorkerIds.filter((id: string) => !currentWorkerIds.includes(id));
 
             const currentSubIds = subservice.subContractorServiceProjects.map((s: any) => s.subcontractor_id);
-            const newSubIds = Array.from(new Set(body.subcontractors?.map(s => s.id) || []));
+            const newSubIds = body.subcontractors ? Array.from(new Set(body.subcontractors.map(s => s.id))) : currentSubIds;
 
             const subsToRemove = currentSubIds.filter((id: string) => !newSubIds.includes(id));
             const subsToAdd = newSubIds.filter((id: string) => !currentSubIds.includes(id));
@@ -111,28 +117,15 @@ export class UpdateSubserviceController {
                     }
                 });
 
-                if (workersToRemove.length > 0) {
-                    await tx.userServiceProject.deleteMany({
-                        where: { sub_service_project_id: body.subserviceId, user_id: { in: workersToRemove } }
-                    });
-                }
-
-                if (subsToRemove.length > 0) {
-                    await tx.subContractorServiceProject.deleteMany({
-                        where: { sub_service_project_id: body.subserviceId, subcontractor_id: { in: subsToRemove } }
-                    });
-                }
+                await softRemoveUserAssignmentLinks(tx, { sub_service_project_id: body.subserviceId }, workersToRemove);
+                await softRemoveSubcontractorAssignmentLinks(tx, { sub_service_project_id: body.subserviceId }, subsToRemove);
 
                 for (const workerId of workersToAdd) {
-                    await tx.userServiceProject.create({
-                        data: { sub_service_project_id: body.subserviceId, user_id: workerId }
-                    });
+                    await upsertUserAssignmentLink(tx, workerId, { sub_service_project_id: body.subserviceId });
                 }
 
                 for (const subId of subsToAdd) {
-                    await tx.subContractorServiceProject.create({
-                        data: { sub_service_project_id: body.subserviceId, subcontractor_id: subId }
-                    });
+                    await upsertSubcontractorAssignmentLink(tx, subId, { sub_service_project_id: body.subserviceId });
                 }
             });
 

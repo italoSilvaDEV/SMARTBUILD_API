@@ -17,6 +17,7 @@ import S3Storage from "../../utils/S3/s3Storage";
 import { stripeConfig } from "../../config/stripe";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
+import { resolveEffectivePermissions } from "../../utils/planPermissions";
 
 
 export class UserController {
@@ -1880,7 +1881,11 @@ export class UserController {
       }
 
       // Usar permissões do Office se disponíveis, senão usar permissões do plano
-      const finalPermissions = officePermissions.length > 0 ? officePermissions : permissions;
+      const finalPermissions = resolveEffectivePermissions(
+        permissions,
+        officePermissions,
+        office?.name,
+      );
 
       // Retornar no mesmo formato do getSubscriptionStatus
       return res.json({

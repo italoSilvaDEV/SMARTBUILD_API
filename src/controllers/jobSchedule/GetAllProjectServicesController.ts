@@ -21,6 +21,7 @@ export class GetAllProjectServicesController {
       // "services" = SubContractorServiceProject vinculados a ServiceProject do projeto (não ServiceProject direto)
       const subcontractorServiceProjects = await prisma.subContractorServiceProject.findMany({
         where: {
+          removed_at: null,
           service_project_id: { not: null },
           service_project: { projectId },
         },
