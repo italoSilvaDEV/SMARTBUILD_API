@@ -12,8 +12,10 @@ export async function upsertUserAssignmentLink(
   db: any,
   userId: string,
   target: AssignmentTarget,
-  categoryId?: string | null
+  categoryId?: string | null,
+  assignedAt?: string | Date | null
 ) {
+  const assignmentDate = assignedAt ? new Date(assignedAt) : new Date();
   const existing = await db.userServiceProject.findFirst({
     where: {
       user_id: userId,
@@ -26,7 +28,7 @@ export async function upsertUserAssignmentLink(
       where: { id: existing.id },
       data: {
         removed_at: null,
-        assigned_at: new Date(),
+        assigned_at: assignmentDate,
         ...withCategory(categoryId),
       },
     });
@@ -36,6 +38,7 @@ export async function upsertUserAssignmentLink(
     data: {
       user_id: userId,
       ...target,
+      assigned_at: assignmentDate,
       ...withCategory(categoryId),
     },
   });

@@ -1854,6 +1854,7 @@ export class ProjectController {
           stages: true,
           Activities: true,
           UserServiceProject: {
+            where: { removed_at: null },
             select: {
               id: true,
               user: {
@@ -3398,5 +3399,4 @@ export class ProjectController {
     }
   }
 }
-
 
