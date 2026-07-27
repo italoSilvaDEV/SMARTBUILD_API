@@ -7,6 +7,7 @@ import {
   softRemoveUserAssignmentLinks,
   upsertUserAssignmentLink,
 } from "../../utils/scheduleAssignmentLinks";
+import { userCanViewFinancials } from "../../utils/financialAccess";
 
 export class UserServiceProjectController {
   // Criar um novo UserServiceProject
@@ -485,15 +486,40 @@ export class UserServiceProjectController {
 
   async getCostsByServiceProject(req: Request, res: Response) {
     const { serviceProjectId } = req.params;
+    const userId = (req as any).userId as string | undefined;
 
     if (!serviceProjectId) {
       return res.status(400).json({ error: "ServiceProjectId is required." });
     }
 
     try {
+      const serviceProject = await prisma.serviceProject.findUnique({
+        where: { id: serviceProjectId },
+        select: {
+          company_id: true,
+          Project: {
+            select: {
+              company_id: true,
+            },
+          },
+        },
+      });
+
+      if (!serviceProject) {
+        return res.status(404).json({ error: "Service project not found." });
+      }
+
+      const companyId =
+        serviceProject.Project?.company_id ?? serviceProject.company_id;
+
+      const canViewAllCosts = await userCanViewFinancials(userId, companyId);
+
       const costs = await prisma.costProject.findMany({
         where: {
           serviceProjectId,
+          // Workers keep seeing what they submitted, but never another
+          // employee's or an administrator's material costs.
+          ...(canViewAllCosts ? {} : { userId }),
         },
         include: {
           invoiceCostProject: true, // Inclui informações do arquivo relacionado, se houver

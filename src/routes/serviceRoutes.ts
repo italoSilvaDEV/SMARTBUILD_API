@@ -95,12 +95,11 @@ serviceRoutes.post('/services_with_details/:id', checkToken, userServiceProjectC
 serviceRoutes.get('/services/details-geral/:id', checkToken, userServiceProjectController.getServiceProjectDetailsGeral);
 
 // custos do serviço app
-serviceRoutes.get( "/costs/:serviceProjectId",  userServiceProjectController.getCostsByServiceProject);
+serviceRoutes.get("/costs/:serviceProjectId", checkToken, userServiceProjectController.getCostsByServiceProject);
 
 // Lista projetos agrupados por endereço (todos os projetos em andamento)
 serviceRoutes.get('/projects-grouped-by-address', checkToken, userServiceProjectController.getProjectsGroupedByAddress);
 
 export { serviceRoutes }
-
 
 

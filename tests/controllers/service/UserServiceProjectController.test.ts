@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { UserServiceProjectController } from "../../../src/controllers/service/UserServiceProjectController";
 import { prisma } from "../../../src/utils/prisma";
+import { userCanViewFinancials } from "../../../src/utils/financialAccess";
 
 jest.mock("../../../src/utils/prisma", () => {
   const mockedPrisma: any = {
@@ -19,6 +20,9 @@ jest.mock("../../../src/utils/prisma", () => {
       update: jest.fn(),
       create: jest.fn(),
     },
+    costProject: {
+      findMany: jest.fn(),
+    },
   };
 
   mockedPrisma.$transaction = jest.fn(async (callback) => callback(mockedPrisma));
@@ -31,6 +35,10 @@ jest.mock("../../../src/utils/S3/getPresignedUrl", () => ({
 
 jest.mock("../../../src/helpers/featureToggle", () => ({
   isMultiCompanyEnabled: jest.fn().mockResolvedValue(false),
+}));
+
+jest.mock("../../../src/utils/financialAccess", () => ({
+  userCanViewFinancials: jest.fn(),
 }));
 
 describe("UserServiceProjectController", () => {
@@ -141,5 +149,82 @@ describe("UserServiceProjectController", () => {
     });
     expect((prisma.userServiceProject as any).delete).toBeUndefined();
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("limits users without financial access to costs they submitted", async () => {
+    (prisma.serviceProject.findUnique as jest.Mock).mockResolvedValue({
+      company_id: "company-1",
+      Project: { company_id: "company-1" },
+    });
+    (userCanViewFinancials as jest.Mock).mockResolvedValue(false);
+    (prisma.costProject.findMany as jest.Mock).mockResolvedValue([]);
+
+    await controller.getCostsByServiceProject(
+      {
+        params: { serviceProjectId: "service-1" },
+        userId: "worker-1",
+      } as unknown as Request,
+      res as Response
+    );
+
+    expect(userCanViewFinancials).toHaveBeenCalledWith(
+      "worker-1",
+      "company-1"
+    );
+    expect(prisma.costProject.findMany).toHaveBeenCalledWith({
+      where: {
+        serviceProjectId: "service-1",
+        userId: "worker-1",
+      },
+      include: {
+        invoiceCostProject: true,
+      },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([]);
+  });
+
+  it("keeps the existing cost response for financial users", async () => {
+    (prisma.serviceProject.findUnique as jest.Mock).mockResolvedValue({
+      company_id: "company-1",
+      Project: { company_id: "company-1" },
+    });
+    (userCanViewFinancials as jest.Mock).mockResolvedValue(true);
+    (prisma.costProject.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "cost-1",
+        material_name: "Lumber",
+        price: 12.5,
+        amout: 3,
+        invoiceCostProject: null,
+      },
+    ]);
+
+    await controller.getCostsByServiceProject(
+      {
+        params: { serviceProjectId: "service-1" },
+        userId: "admin-1",
+      } as unknown as Request,
+      res as Response
+    );
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(prisma.costProject.findMany).toHaveBeenCalledWith({
+      where: {
+        serviceProjectId: "service-1",
+      },
+      include: {
+        invoiceCostProject: true,
+      },
+    });
+    expect(res.json).toHaveBeenCalledWith([
+      {
+        id: "cost-1",
+        title: "Lumber",
+        price: "12.50",
+        quantity: 3,
+        invoice: null,
+      },
+    ]);
   });
 });
