@@ -281,6 +281,120 @@ export class WorkOrderController {
     return res.json({ data: orders.map((order) => serialize(order)) });
   }
 
+  async listMineByProject(req: Request, res: Response) {
+    const projectId = String(req.params.projectId || "");
+    const userId = (req as any).userId as string | undefined;
+    if (!projectId) return res.status(400).json({ error: "Project ID is required" });
+    if (!userId) return res.status(401).json({ error: "Authenticated user not found" });
+
+    const orders = await prisma.workOrder.findMany({
+      where: {
+        projectId,
+        OR: [
+          { assigneeType: "employee", assigneeId: userId },
+          { projectManagers: { some: { userId } } },
+        ],
+      },
+      include: includeWorkOrder,
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json({ data: orders.map((order) => serialize(order)) });
+  }
+
+  async getMine(req: Request, res: Response) {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: "Authenticated user not found" });
+
+    const order = await prisma.workOrder.findFirst({
+      where: {
+        id: req.params.id,
+        OR: [
+          { assigneeType: "employee", assigneeId: userId },
+          { projectManagers: { some: { userId } } },
+        ],
+      },
+      include: includePublicWorkOrder,
+    });
+    if (!order) return res.status(404).json({ error: "Work order not found" });
+
+    const data = await serializeWithPdfUrls(order);
+    return res.json({
+      data: {
+        ...data,
+        canSign: order.assigneeType === "employee" && order.assigneeId === userId,
+      },
+    });
+  }
+
+  async signMine(req: Request, res: Response) {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: "Authenticated user not found" });
+
+    const signature = typeof req.body.signature === "string" ? req.body.signature.trim() : "";
+    if (!/^data:image\/(png|jpe?g);base64,/i.test(signature)) {
+      return res.status(400).json({ error: "A valid signature is required" });
+    }
+    if (signature.length > 6_000_000) {
+      return res.status(413).json({ error: "Signature image is too large" });
+    }
+
+    try {
+      const existing = await prisma.workOrder.findFirst({
+        where: {
+          id: req.params.id,
+          assigneeType: "employee",
+          assigneeId: userId,
+        },
+      });
+      if (!existing) return res.status(404).json({ error: "Work order not found" });
+      if (existing.status === "canceled") {
+        return res.status(409).json({ error: "This work order has been canceled" });
+      }
+
+      if (existing.status === "pending") {
+        if (!existing.sourcePdfKey) {
+          return res.status(409).json({ error: "This work order must be sent again before it can be signed" });
+        }
+        const signedAt = new Date();
+        const sourcePdf = await getStagedObjectBuffer(existing.sourcePdfKey);
+        const signedPdf = await signWorkOrderPdf(sourcePdf, signature, signedAt);
+        const signedPdfKey = pdfKey(existing, "signed");
+        await putS3ObjectBuffer({ key: signedPdfKey, body: signedPdf, contentType: "application/pdf" });
+        const updated = await prisma.workOrder.updateMany({
+          where: {
+            id: existing.id,
+            status: "pending",
+            assigneeType: "employee",
+            assigneeId: userId,
+          },
+          data: {
+            status: "approved",
+            approvedAt: signedAt,
+            assigneeSignature: signature,
+            assigneeSignedAt: signedAt,
+            signedPdfKey,
+          },
+        });
+        if (updated.count === 0) await deleteS3ObjectQuietly(signedPdfKey);
+      }
+
+      const order = await prisma.workOrder.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: includePublicWorkOrder,
+      });
+      return res.json({
+        data: {
+          ...await serializeWithPdfUrls(order),
+          canSign: order.assigneeType === "employee" && order.assigneeId === userId,
+        },
+      });
+    } catch (error) {
+      console.error("[workOrder.signMine]", error);
+      return res.status(500).json({ error: "Unable to sign work order" });
+    }
+  }
+
   async get(req: Request, res: Response) {
     const order = await prisma.workOrder.findUnique({ where: { id: req.params.id }, include: includeWorkOrder });
     if (!order) return res.status(404).json({ error: "Work order not found" });
