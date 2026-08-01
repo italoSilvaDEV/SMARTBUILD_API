@@ -281,6 +281,24 @@ export class WorkOrderController {
     return res.json({ data: orders.map((order) => serialize(order)) });
   }
 
+  async listMine(req: Request, res: Response) {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: "Authenticated user not found" });
+
+    const orders = await prisma.workOrder.findMany({
+      where: {
+        OR: [
+          { assigneeType: "employee", assigneeId: userId },
+          { projectManagers: { some: { userId } } },
+        ],
+      },
+      include: includeWorkOrder,
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json({ data: orders.map((order) => serialize(order)) });
+  }
+
   async listMineByProject(req: Request, res: Response) {
     const projectId = String(req.params.projectId || "");
     const userId = (req as any).userId as string | undefined;

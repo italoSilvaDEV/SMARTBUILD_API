@@ -86,6 +86,25 @@ describe("employee project records compatibility", () => {
     expect(response.json).toHaveBeenCalledWith({ data: [] });
   });
 
+  it("lists all work orders related to the authenticated employee", async () => {
+    prismaMock.workOrder.findMany.mockResolvedValue([]);
+    const request = { userId: "worker-1" } as any;
+    const response = createResponse();
+
+    await new WorkOrderController().listMine(request, response);
+
+    expect(prismaMock.workOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        OR: [
+          { assigneeType: "employee", assigneeId: "worker-1" },
+          { projectManagers: { some: { userId: "worker-1" } } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    }));
+    expect(response.json).toHaveBeenCalledWith({ data: [] });
+  });
+
   it("does not allow a related manager to sign as the assigned employee", async () => {
     prismaMock.workOrder.findFirst.mockResolvedValue(null);
     const request = {
