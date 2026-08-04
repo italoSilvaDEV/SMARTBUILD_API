@@ -142,6 +142,71 @@ export class TaskController {
   }
 
   // Listar tasks atribuídas a um usuário
+  // List only project tasks assigned to the authenticated user.
+  async listMineByProject(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+      const userId = (req as any).userId as string | undefined;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!userId) {
+        return res.status(401).json({ error: "Authenticated user not found" });
+      }
+      if (!prisma || !prisma.task) {
+        throw new Error("Prisma client or Task model is not initialized");
+      }
+
+      const tasks = await prisma.task.findMany({
+        where: {
+          projectId,
+          assignedUserId: userId,
+        },
+        include: {
+          project: {
+            select: { id: true, contract_number: true, location: true },
+          },
+          assignedUser: {
+            select: { id: true, name: true, avatar: true },
+          },
+          files: true,
+          serviceProject: {
+            select: { id: true, name: true },
+          },
+          _count: {
+            select: { comments: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const tasksWithUrls = await Promise.all(tasks.map(async (task: any) => {
+        const filesWithUrls = await Promise.all(task.files.map(async (file: any) => ({
+          ...file,
+          url: await getPresignedUrl(file.url),
+        })));
+        const avatar = task.assignedUser?.avatar
+          ? await getPresignedUrl(task.assignedUser.avatar)
+          : null;
+
+        return {
+          ...task,
+          files: filesWithUrls,
+          commentCount: task._count?.comments || 0,
+          assignedUser: task.assignedUser
+            ? { ...task.assignedUser, avatar }
+            : null,
+        };
+      }));
+
+      return res.json(tasksWithUrls);
+    } catch (error: any) {
+      console.error("[TaskController.listMineByProject] Error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  }
+
   async listByUser(req: Request, res: Response) {
     try {
       const { userId } = req.params;

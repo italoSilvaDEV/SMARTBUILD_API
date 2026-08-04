@@ -54,12 +54,21 @@ export class GetAllEstimatesByCompanyController {
     async handle(req: Request, res: Response) {
         const { companyId } = req.params
 
-        const { period = "allPeriod", statusFilters, startDate: queryStartDate, endDate: queryEndDate } = req.query;
+        const {
+            period = "allPeriod",
+            statusFilters,
+            startDate: queryStartDate,
+            endDate: queryEndDate,
+            view,
+            page = "1",
+            per_page = "20",
+            search = "",
+        } = req.query;
 
         const parseFilter = (filter: any) => {
             if (!filter) return undefined;
-            if (Array.isArray(filter)) return filter as string[];
-            return [filter as string];
+            if (Array.isArray(filter)) return filter.flatMap((value) => String(value).split(","));
+            return String(filter).split(",");
         };
 
         const statusArr = parseFilter(statusFilters);
@@ -130,6 +139,105 @@ export class GetAllEstimatesByCompanyController {
         }
 
         try {
+            if (view === "summary") {
+                const pageNumber = Math.max(Number(page) || 1, 1);
+                const take = Math.min(Math.max(Number(per_page) || 20, 1), 50);
+                const skip = (pageNumber - 1) * take;
+                const normalizedSearch = String(search).trim();
+                const compactNumberSearch = normalizedSearch.replace(/[^0-9]/g, "");
+                const where: any = {
+                    project: {
+                        company_id: companyId,
+                        ...projectFilterBySeller,
+                        status_project: { in: ["Pending", "Accepted"] },
+                    },
+                    isStandaloneEstimate: false,
+                    ...(statusArr && statusArr.length > 0 && {
+                        status: { in: statusArr },
+                    }),
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        date_creation: dateFilter,
+                    }),
+                    ...(normalizedSearch && {
+                        OR: [
+                            { number: { contains: normalizedSearch } },
+                            ...(compactNumberSearch && compactNumberSearch !== normalizedSearch
+                                ? [{ number: { contains: compactNumberSearch } }]
+                                : []),
+                            { project: { client: { name: { contains: normalizedSearch } } } },
+                            { project: { location: { contains: normalizedSearch } } },
+                        ],
+                    }),
+                };
+
+                const [estimates, total] = await prisma.$transaction([
+                    prisma.estimate.findMany({
+                        where,
+                        select: {
+                            id: true,
+                            number: true,
+                            totalAmount: true,
+                            finalAmount: true,
+                            status: true,
+                            date_creation: true,
+                            isStandaloneEstimate: true,
+                            assignatureRequired: true,
+                            projectId: true,
+                            project: {
+                                select: {
+                                    id: true,
+                                    location: true,
+                                    status_project: true,
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                        },
+                                    },
+                                },
+                            },
+                            PdfProject: {
+                                select: {
+                                    id: true,
+                                    uri: true,
+                                    templateNumber: true,
+                                    original_file_name: true,
+                                },
+                                orderBy: { date_creation: "desc" },
+                                take: 1,
+                            },
+                        },
+                        orderBy: [{ date_creation: "desc" }, { id: "desc" }],
+                        skip,
+                        take,
+                    }),
+                    prisma.estimate.count({ where }),
+                ]);
+
+                const data = await Promise.all(estimates.map(async (estimate) => ({
+                    ...estimate,
+                    totalAmount: Number(estimate.totalAmount),
+                    finalAmount: estimate.finalAmount == null ? null : Number(estimate.finalAmount),
+                    PdfProject: estimate.PdfProject.length > 0
+                        ? {
+                            ...estimate.PdfProject[0],
+                            uri: estimate.PdfProject[0].uri
+                                ? await getPresignedUrl(estimate.PdfProject[0].uri)
+                                : null,
+                        }
+                        : null,
+                })));
+
+                return res.status(200).json({
+                    data,
+                    total,
+                    page: pageNumber,
+                    per_page: take,
+                    hasMore: skip + data.length < total,
+                });
+            }
+
             const estimates = await prisma.estimate.findMany({
                 where: {
                     project: {

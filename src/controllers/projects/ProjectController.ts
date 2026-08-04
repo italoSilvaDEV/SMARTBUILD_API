@@ -168,7 +168,7 @@ export interface IputServiceData extends IServicesData {
 
 export class ProjectController {
   async getAllProjects(req: Request, res: Response) {
-    const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate } = req.query;
+    const { company_id, id_seller, status_project, page, search, period = "allPeriod", startDate: queryStartDate, endDate: queryEndDate, view } = req.query;
     const query: any = {};
     const userId = (req as any).userId as string | undefined;
     // console.log("valor do userId", userId);
@@ -244,48 +244,106 @@ export class ProjectController {
     }
 
     if (search) {
+      const normalizedSearch = String(search).trim();
+      const numericSearch = Number(normalizedSearch);
       query.OR = [
-        {
-          contract_number: {
-            equals: Number(search),
-          },
-        },
+        ...(Number.isFinite(numericSearch)
+          ? [{ contract_number: { equals: numericSearch } }]
+          : []),
         {
           client: {
             name: {
-              contains: search,
+              contains: normalizedSearch,
             },
           },
         },
         {
           user: {
             name: {
-              contains: search,
+              contains: normalizedSearch,
             },
           },
         },
         {
           location: {
             // Alterado de client.location para project.location
-            contains: search,
+            contains: normalizedSearch,
           },
         },
       ];
     }
 
-    const per_page = Number(req.query.per_page) || 30;
-    const take = Math.min(per_page, 1000);
-    const pageNumber = Number(page);
+    const isSummary = view === "summary";
+    const per_page = Number(req.query.per_page) || (isSummary ? 20 : 30);
+    const take = Math.min(Math.max(per_page, 1), isSummary ? 50 : 1000);
+    const pageNumber = Math.max(Number(page) || 0, 0);
     const skip = pageNumber * take;
+    const projectWhere = {
+      status_project: {
+        in: ["In Progress", "Finished", "Pre-Start", "Final walkthrough"]
+      },
+      ...query
+    };
 
     try {
+      if (isSummary) {
+        const [projects, total] = await prisma.$transaction([
+          prisma.project.findMany({
+            where: projectWhere,
+            select: {
+              id: true,
+              contract_number: true,
+              status_project: true,
+              date_creation: true,
+              location: true,
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  location: true,
+                },
+              },
+              serviceProject: {
+                select: {
+                  hours: true,
+                  price: true,
+                },
+              },
+            },
+            skip,
+            take,
+            orderBy: [{ date_creation: "desc" }, { id: "desc" }],
+          }),
+          prisma.project.count({ where: projectWhere }),
+        ]);
+
+        const summaryProjects = projects.map((project) => ({
+          id: project.id,
+          contract_number: project.contract_number,
+          status_project: project.status_project,
+          date_creation: project.date_creation,
+          location: project.location,
+          client: project.client,
+          price_project: project.serviceProject.reduce(
+            (sum, service) => sum + Number(service.hours) * Number(service.price),
+            0,
+          ),
+        }));
+
+        return res.json({
+          projects: summaryProjects,
+          total,
+          amount: skip + summaryProjects.length,
+          page: pageNumber,
+          per_page: take,
+          hasMore: skip + summaryProjects.length < total,
+        });
+      }
+
       const projects = await prisma.project.findMany({
-        where: {
-          status_project: {
-            in: ["In Progress", "Finished", "Pre-Start", "Final walkthrough"]
-          },
-          ...query
-        },
+        where: projectWhere,
         select: {
           id: true,
           contract_number: true,

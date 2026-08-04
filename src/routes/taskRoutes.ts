@@ -17,6 +17,7 @@ const upload = multer(uploadConfig.upload("./public/tmp/task-files"));
 // CRUD de Tasks
 taskRoutes.post("/", checkToken, (req, res) => taskController.create(req, res));
 taskRoutes.get("/company/:companyId", checkToken, (req, res) => taskDispatchController.listByCompany(req, res));
+taskRoutes.get("/my/project/:projectId", checkToken, (req, res) => taskController.listMineByProject(req, res));
 taskRoutes.get("/project/:projectId", checkToken, (req, res) => taskController.listByProject(req, res));
 taskRoutes.get("/user/:userId", checkToken, (req, res) => taskController.listByUser(req, res));
 taskRoutes.get("/:id", checkToken, (req, res) => taskDispatchController.getById(req, res));
