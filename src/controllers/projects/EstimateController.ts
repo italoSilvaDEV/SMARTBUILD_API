@@ -17,150 +17,17 @@ import path from 'path';
 import mime from 'mime-types';
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { issueEstimatePublicToken } from "../../utils/publicAccessTokens";
-import sharp from "sharp";
+import {
+  SIGNATURE_TOO_WEAK_MESSAGE,
+  validateEstimateClientSignature,
+} from "../../utils/estimateSignatureValidation";
 
 const ESTIMATE_EMAIL_TOO_LARGE_MESSAGE =
   "The estimate PDF and attachments are too large to email. Please remove attachments or send the estimate link.";
 const ESTIMATE_EMAIL_HARD_LIMIT_BYTES = Number(process.env.ESTIMATE_EMAIL_HARD_LIMIT_BYTES || 28 * 1024 * 1024);
 const ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES = Number(process.env.ESTIMATE_EMAIL_PAYLOAD_OVERHEAD_BYTES || 512 * 1024);
-const SIGNATURE_TOO_WEAK_MESSAGE = "Please provide a clearer signature before confirming.";
-const SIGNATURE_MAX_BYTES = Number(process.env.ESTIMATE_SIGNATURE_MAX_BYTES || 6_000_000);
-const SIGNATURE_MIN_INK_PIXELS = Number(process.env.ESTIMATE_SIGNATURE_MIN_INK_PIXELS || 80);
-const SIGNATURE_MIN_WIDTH = Number(process.env.ESTIMATE_SIGNATURE_MIN_WIDTH || 20);
-const SIGNATURE_MIN_HEIGHT = Number(process.env.ESTIMATE_SIGNATURE_MIN_HEIGHT || 6);
-const SIGNATURE_ALPHA_THRESHOLD = 20;
-const SIGNATURE_BACKGROUND_DIFF_THRESHOLD = 40;
 
 const formatEmailPayloadBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
-
-const getSignatureBuffer = (signature: unknown): Buffer | null => {
-  if (typeof signature !== "string") return null;
-  if (!/^data:image\/(png|jpe?g);base64,/i.test(signature)) return null;
-
-  const base64Data = signature.replace(/^data:image\/[a-z]+;base64,/i, "");
-  if (!base64Data.trim()) return null;
-
-  return Buffer.from(base64Data, "base64");
-};
-
-const colorDistance = (
-  r: number,
-  g: number,
-  b: number,
-  bg: { r: number; g: number; b: number }
-) => Math.abs(r - bg.r) + Math.abs(g - bg.g) + Math.abs(b - bg.b);
-
-const getBackgroundColorFromCorners = (
-  data: Buffer,
-  width: number,
-  height: number
-): { r: number; g: number; b: number } => {
-  const sampleSize = Math.min(12, width, height);
-  let background = { r: 255, g: 255, b: 255 };
-  let maxBrightness = -1;
-
-  const samplePixel = (x: number, y: number) => {
-    const index = (y * width + x) * 4;
-    const alpha = data[index + 3];
-    if (alpha <= SIGNATURE_ALPHA_THRESHOLD) return;
-
-    const r = data[index];
-    const g = data[index + 1];
-    const b = data[index + 2];
-    const brightness = r + g + b;
-
-    if (brightness > maxBrightness) {
-      background = { r, g, b };
-      maxBrightness = brightness;
-    }
-  };
-
-  for (let y = 0; y < sampleSize; y += 1) {
-    for (let x = 0; x < sampleSize; x += 1) {
-      samplePixel(x, y);
-      samplePixel(width - 1 - x, y);
-      samplePixel(x, height - 1 - y);
-      samplePixel(width - 1 - x, height - 1 - y);
-    }
-  }
-
-  return background;
-};
-
-const validateEstimateClientSignature = async (signature: unknown) => {
-  const signatureBuffer = getSignatureBuffer(signature);
-  if (!signatureBuffer) {
-    return { valid: false, error: "A valid signature image is required." };
-  }
-
-  if (signatureBuffer.length > SIGNATURE_MAX_BYTES) {
-    return { valid: false, error: "Signature image is too large." };
-  }
-
-  try {
-    const { data, info } = await sharp(signatureBuffer)
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    const background = getBackgroundColorFromCorners(data, info.width, info.height);
-    const totalPixels = info.width * info.height;
-    let transparentPixels = 0;
-
-    for (let index = 3; index < data.length; index += 4) {
-      if (data[index] <= SIGNATURE_ALPHA_THRESHOLD) {
-        transparentPixels += 1;
-      }
-    }
-
-    const hasTransparentBackground = transparentPixels > 0 && transparentPixels / totalPixels > 0.01;
-
-    let minX = info.width;
-    let minY = info.height;
-    let maxX = 0;
-    let maxY = 0;
-    let inkPixels = 0;
-
-    for (let y = 0; y < info.height; y += 1) {
-      for (let x = 0; x < info.width; x += 1) {
-        const index = (y * info.width + x) * 4;
-        const alpha = data[index + 3];
-        if (alpha <= SIGNATURE_ALPHA_THRESHOLD) continue;
-
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-        const isInk = hasTransparentBackground
-          ? true
-          : colorDistance(r, g, b, background) > SIGNATURE_BACKGROUND_DIFF_THRESHOLD &&
-            (r < 245 || g < 245 || b < 245);
-
-        if (!isInk) continue;
-
-        inkPixels += 1;
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-
-    const inkWidth = inkPixels > 0 ? maxX - minX + 1 : 0;
-    const inkHeight = inkPixels > 0 ? maxY - minY + 1 : 0;
-    const valid =
-      inkPixels >= SIGNATURE_MIN_INK_PIXELS &&
-      inkWidth >= SIGNATURE_MIN_WIDTH &&
-      inkHeight >= SIGNATURE_MIN_HEIGHT;
-
-    if (!valid) {
-      return { valid: false, error: SIGNATURE_TOO_WEAK_MESSAGE };
-    }
-
-    return { valid: true };
-  } catch (error) {
-    console.error("[EstimateSignature] Invalid signature image:", error);
-    return { valid: false, error: "A valid signature image is required." };
-  }
-};
 
 export class EstimateController {
 
@@ -890,8 +757,31 @@ export class EstimateController {
         || (email ? Buffer.from(email.toString(), 'base64').toString() : 'unknown');
       const signatureValidation = await validateEstimateClientSignature(signature);
       if (!signatureValidation.valid) {
+        console.warn("[EstimateSignature] Rejected signature", {
+          estimateId: estimateIdForLog,
+          reason: signatureValidation.reason || "unknown",
+          suspiciousSignals: signatureValidation.suspiciousSignals || [],
+          metrics: signatureValidation.metrics || null,
+          userAgent: req.get("user-agent") || null,
+          clientHints: {
+            browser: req.get("sec-ch-ua") || null,
+            mobile: req.get("sec-ch-ua-mobile") || null,
+            platform: req.get("sec-ch-ua-platform") || null,
+          },
+        });
         return res.status(400).json({ error: signatureValidation.error || SIGNATURE_TOO_WEAK_MESSAGE });
       }
+
+      console.info("[EstimateSignature] Validated signature", {
+        estimateId: estimateIdForLog,
+        metrics: signatureValidation.metrics || null,
+        userAgent: req.get("user-agent") || null,
+        clientHints: {
+          browser: req.get("sec-ch-ua") || null,
+          mobile: req.get("sec-ch-ua-mobile") || null,
+          platform: req.get("sec-ch-ua-platform") || null,
+        },
+      });
 
       const estimate = await prisma.estimate.findUnique({
         where: { id },
