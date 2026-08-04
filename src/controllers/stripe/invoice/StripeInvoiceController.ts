@@ -13,6 +13,51 @@ type Estimate = {
     id: string;
 }
 
+function getInvoiceDateFilter(period: string) {
+    const now = new Date();
+    let start: Date | undefined;
+    let end: Date | undefined;
+
+    switch (period) {
+        case "thisYear":
+            start = new Date(now.getFullYear(), 0, 1);
+            break;
+        case "thisQuarter": {
+            const quarter = Math.floor(now.getMonth() / 3);
+            start = new Date(now.getFullYear(), quarter * 3, 1);
+            break;
+        }
+        case "last3Months":
+            start = new Date(now);
+            start.setMonth(now.getMonth() - 3);
+            break;
+        case "lastMonth":
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+            break;
+        case "thisMonth":
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+        case "last30Days":
+            start = new Date(now);
+            start.setDate(now.getDate() - 30);
+            break;
+        default:
+            return undefined;
+    }
+
+    return {
+        ...(start ? { gte: start } : {}),
+        ...(end ? { lte: end } : {}),
+    };
+}
+
+function parseQueryList(value: unknown) {
+    if (!value) return [];
+    const values = Array.isArray(value) ? value : [value];
+    return values.flatMap((item) => String(item).split(",")).filter(Boolean);
+}
+
 // Função auxiliar para garantir que a descrição completa não ultrapasse 500 caracteres
 function createSafeDescription(serviceName: string, description: string): string {
     const separator = " - ";
@@ -704,13 +749,153 @@ export class StripeController {
         const {
             searchTerm = "",
             page = 1,
-            itemsPerPage = 10
+            itemsPerPage = 10,
+            period = "allPeriod",
+            statusFilters,
+            typeFilters,
+            view,
         } = req.query;
 
         try {
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
-            const itemsLimit = Number(itemsPerPage);
+            const isSummary = view === "summary";
+            const itemsLimit = Math.min(Math.max(Number(itemsPerPage) || (isSummary ? 20 : 10), 1), isSummary ? 50 : 1000);
             const search = typeof searchTerm === 'string' ? searchTerm : "";
+
+            if (isSummary) {
+                const statuses = parseQueryList(statusFilters);
+                const types = parseQueryList(typeFilters);
+                const statusValues = [
+                    ...(statuses.includes("pending") ? ["open", "partial"] : []),
+                    ...(statuses.includes("paid") ? ["paid"] : []),
+                ];
+                const dateFilter = getInvoiceDateFilter(String(period));
+                const summaryFilter: any = {
+                    companyId,
+                    OR: [
+                        { cancel_invoice_edit: false },
+                        { cancel_invoice_edit: null },
+                    ],
+                    ...(statusValues.length > 0 ? { status: { in: statusValues } } : {}),
+                    ...(dateFilter ? { createdAt: dateFilter } : {}),
+                    ...(types.length === 1 && types[0] === "stripe"
+                        ? { invoiceType: "stripe" }
+                        : types.length === 1 && types[0] === "other"
+                            ? { invoiceType: { not: "stripe" } }
+                            : {}),
+                    ...(search.trim() ? {
+                        AND: [{
+                            OR: [
+                                { externalInvoiceId: { contains: search.trim() } },
+                                { stripeInvoiceId: { contains: search.trim() } },
+                                { description: { contains: search.trim() } },
+                                { project: { client: { name: { contains: search.trim() } } } },
+                                { project: { client: { email: { contains: search.trim() } } } },
+                                { project: { client: { location: { contains: search.trim() } } } },
+                            ],
+                        }],
+                    } : {}),
+                };
+
+                const [invoices, total] = await prisma.$transaction([
+                    prisma.invoice.findMany({
+                        where: summaryFilter,
+                        select: {
+                            id: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            description: true,
+                            dueDate: true,
+                            estimateId: true,
+                            externalInvoiceId: true,
+                            ignoreChecked: true,
+                            invoiceType: true,
+                            invoiceTypeStripe: true,
+                            invoiceUrl: true,
+                            isStandaloneInvoice: true,
+                            lastPaymentAt: true,
+                            paymentMethodType: true,
+                            projectId: true,
+                            status: true,
+                            stripeInvoiceId: true,
+                            totalAmount: true,
+                            type_invoicebase: true,
+                            project: {
+                                select: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            location: true,
+                                        },
+                                    },
+                                },
+                            },
+                            InvoiceTimeline: {
+                                select: {
+                                    id: true,
+                                    description: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                },
+                                orderBy: { date_creation: "desc" },
+                                take: 8,
+                            },
+                            PdfProject: {
+                                select: {
+                                    id: true,
+                                    uri: true,
+                                    original_file_name: true,
+                                    templateNumber: true,
+                                },
+                                orderBy: { date_creation: "desc" },
+                                take: 1,
+                            },
+                            pdfInvoicePaids: {
+                                select: {
+                                    id: true,
+                                    uri: true,
+                                    original_file_name: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                    invoiceId: true,
+                                },
+                            },
+                        },
+                        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                        skip: pageNumber * itemsLimit,
+                        take: itemsLimit,
+                    }),
+                    prisma.invoice.count({ where: summaryFilter }),
+                ]);
+
+                const summaryInvoices = await Promise.all(invoices.map(async (invoice) => ({
+                    ...invoice,
+                    totalAmount: Number(invoice.totalAmount),
+                    PdfProject: await Promise.all(invoice.PdfProject.map(async (pdf) => ({
+                        ...pdf,
+                        uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
+                    }))),
+                    pdfInvoicePaids: invoice.pdfInvoicePaids
+                        ? {
+                            ...invoice.pdfInvoicePaids,
+                            uri: invoice.pdfInvoicePaids.uri
+                                ? await getPresignedUrl(invoice.pdfInvoicePaids.uri)
+                                : null,
+                        }
+                        : null,
+                })));
+
+                return res.status(200).json({
+                    total,
+                    invoices: summaryInvoices,
+                    page: pageNumber + 1,
+                    itemsPerPage: itemsLimit,
+                    hasMore: (pageNumber + 1) * itemsLimit < total,
+                });
+            }
 
             const filtro = {
                 companyId,
