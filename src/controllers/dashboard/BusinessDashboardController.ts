@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { returnPayLoad } from '../../config/returnPayLoad';
 import dayjs from 'dayjs';
@@ -7,6 +8,11 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calc
 import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from '../../utils/paidShortGaps';
 import { applyEffectiveBreaksToAttendances } from '../../utils/attendanceBreaks';
+import {
+    getSeriesTotal,
+    mapCumulativeCountRow,
+    normalizeDashboardNumber
+} from '../../utils/mobileDashboardSummary';
 
 function applyDashboardPaidShortGaps(projects: any[]) {
     const attendances = projects.flatMap(project =>
@@ -328,7 +334,356 @@ function getCumulativeDateFilter(period: DashboardPeriod, bucket: SparklineBucke
     return dateFilter;
 }
 
+type MobileDashboardCountSeries = {
+    customers: Array<{ label: string; value: number }>;
+    employees: Array<{ label: string; value: number }>;
+    estimates: Array<{ label: string; value: number }>;
+    invoices: Array<{ label: string; value: number }>;
+    projects: Array<{ label: string; value: number }>;
+};
+
+type DashboardAttendance = Awaited<ReturnType<typeof findDashboardAttendances>>[number];
+
+async function queryCumulativeCounts({
+    buckets,
+    dateColumn,
+    from,
+    period,
+    where
+}: {
+    buckets: SparklineBucket[];
+    dateColumn: Prisma.Sql;
+    from: Prisma.Sql;
+    period: DashboardPeriod;
+    where: Prisma.Sql;
+}) {
+    if (buckets.length === 0) return [];
+
+    const expressions = buckets.map((bucket, index) => Prisma.sql`
+        COALESCE(SUM(CASE WHEN ${dateColumn} <= ${bucket.endDate} THEN 1 ELSE 0 END), 0)
+        AS ${Prisma.raw(`bucket${index}`)}
+    `);
+    const periodStart = period === "allPeriod"
+        ? null
+        : dayjs(getDateRange(period).startDate).startOf('day').toDate();
+    const maximumEndDate = buckets[buckets.length - 1].endDate;
+    const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+        SELECT ${Prisma.join(expressions)}
+        ${from}
+        WHERE ${where}
+          AND ${dateColumn} <= ${maximumEndDate}
+          ${periodStart ? Prisma.sql`AND ${dateColumn} >= ${periodStart}` : Prisma.empty}
+    `);
+
+    return mapCumulativeCountRow(rows[0], buckets);
+}
+
+async function getMobileCountSeries(
+    companyId: string,
+    period: DashboardPeriod,
+    buckets: SparklineBucket[]
+): Promise<MobileDashboardCountSeries> {
+    const [estimates, projects, customers, employees, invoices] = await Promise.all([
+        queryCumulativeCounts({
+            buckets,
+            dateColumn: Prisma.sql`e.date_creation`,
+            from: Prisma.sql`FROM \`Estimate\` e INNER JOIN \`project\` p ON p.id = e.projectId`,
+            period,
+            where: Prisma.sql`
+                p.company_id = ${companyId}
+                AND p.status_project IN ('Pending', 'Accepted')
+                AND e.status IN ('approved', 'pending', 'canceled')
+            `
+        }),
+        queryCumulativeCounts({
+            buckets,
+            dateColumn: Prisma.sql`p.date_creation`,
+            from: Prisma.sql`FROM \`project\` p`,
+            period,
+            where: Prisma.sql`
+                p.company_id = ${companyId}
+                AND p.status_project IN ('Pre-Start', 'In Progress', 'Final walkthrough', 'Finished')
+            `
+        }),
+        queryCumulativeCounts({
+            buckets,
+            dateColumn: Prisma.sql`c.date_creation`,
+            from: Prisma.sql`FROM \`Client\` c`,
+            period,
+            where: Prisma.sql`c.company_id = ${companyId}`
+        }),
+        queryCumulativeCounts({
+            buckets,
+            dateColumn: Prisma.sql`u.date_creation`,
+            from: Prisma.sql`FROM \`User\` u INNER JOIN \`Office\` o ON o.id = u.office_id`,
+            period,
+            where: Prisma.sql`
+                u.company_id = ${companyId}
+                AND u.isDisabled = false
+                AND o.name = 'Worker'
+            `
+        }),
+        queryCumulativeCounts({
+            buckets,
+            dateColumn: Prisma.sql`i.createdAt`,
+            from: Prisma.sql`FROM \`Invoice\` i`,
+            period,
+            where: Prisma.sql`
+                i.companyId = ${companyId}
+                AND (i.cancel_invoice_edit = false OR i.cancel_invoice_edit IS NULL)
+                AND i.status <> 'void'
+            `
+        })
+    ]);
+
+    return { customers, employees, estimates, invoices, projects };
+}
+
+function findDashboardAttendances(
+    companyId: string,
+    period: DashboardPeriod,
+    maximumEndDate: Date
+) {
+    const checkInFilter: { gte?: Date; lte: Date } = { lte: maximumEndDate };
+    if (period !== "allPeriod") {
+        checkInFilter.gte = dayjs(getDateRange(period).startDate).startOf('day').toDate();
+    }
+
+    return prisma.userAttendance.findMany({
+        where: {
+            check_in_time: checkInFilter,
+            AND: [
+                {
+                    OR: [
+                        { check_out_time: { lte: maximumEndDate } },
+                        { check_out_time: null }
+                    ]
+                },
+                {
+                    OR: [
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    Project: {
+                                        company_id: companyId,
+                                        status_project: {
+                                            in: ['Pre-Start', 'In Progress', 'Final walkthrough', 'Finished']
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            UserServiceProject: {
+                                service_project: {
+                                    projectId: null,
+                                    company_id: companyId
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        select: {
+            id: true,
+            user_id: true,
+            date: true,
+            check_in_time: true,
+            check_out_time: true,
+            workStartTime: true,
+            workEndTime: true,
+            isOvertime: true,
+            user: {
+                select: {
+                    id: true,
+                    hourly_price: true,
+                    defaultBreakMinutes: true,
+                    manualBreakEnabled: true,
+                    paidShortGapEnabled: true
+                }
+            },
+            breakRecords: {
+                orderBy: { startedAt: 'asc' as const }
+            }
+        }
+    });
+}
+
+function buildTimeCardCostEvents(attendances: DashboardAttendance[]) {
+    applyEffectiveBreaksToAttendances(attendances as any[]);
+    applyPaidShortGapsToAttendances(attendances as any[]);
+
+    const weeklyAttendances = new Map<string, DashboardAttendance[]>();
+    attendances.forEach(attendance => {
+        if (!attendance.check_in_time || !attendance.check_out_time || !attendance.user) return;
+
+        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
+        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
+        const week = weeklyAttendances.get(weekKey) || [];
+        week.push(attendance);
+        weeklyAttendances.set(weekKey, week);
+    });
+
+    const events: Array<{ date: Date; value: number }> = [];
+    weeklyAttendances.forEach(week => {
+        let weeklyRegularHoursUsed = 0;
+        const sortedAttendances = [...week].sort(
+            (first, second) => first.check_in_time.getTime() - second.check_in_time.getTime()
+        );
+
+        sortedAttendances.forEach(attendance => {
+            if (!attendance.check_out_time || !attendance.user) return;
+
+            const hours = calcularHorasTrabalhadas(
+                attendance.check_in_time.toISOString(),
+                attendance.check_out_time.toISOString(),
+                attendance.workStartTime,
+                attendance.workEndTime,
+                attendance.user.defaultBreakMinutes || 0
+            );
+            const dailyHours = convertHHMMToDecimal(hours.normais)
+                + convertHHMMToDecimal(hours.extras)
+                + getPaidShortGapHours(attendance);
+            const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
+            const overtimeHours = Math.max(0, dailyHours - regularHours);
+            const hourlyRate = Number(attendance.user.hourly_price || 0);
+            const value = attendance.isOvertime === true && overtimeHours > 0
+                ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
+                : dailyHours * hourlyRate;
+
+            weeklyRegularHoursUsed += regularHours;
+            events.push({ date: attendance.check_out_time, value });
+        });
+    });
+
+    return events.sort((first, second) => first.date.getTime() - second.date.getTime());
+}
+
+async function getMobileTimeCardSeries(
+    companyId: string,
+    period: DashboardPeriod,
+    buckets: SparklineBucket[]
+) {
+    if (buckets.length === 0) return [];
+
+    const maximumEndDate = buckets[buckets.length - 1].endDate;
+    const attendances = await findDashboardAttendances(companyId, period, maximumEndDate);
+    const events = buildTimeCardCostEvents(attendances);
+    let eventIndex = 0;
+    let runningTotal = 0;
+
+    return buckets.map(bucket => {
+        while (eventIndex < events.length && events[eventIndex].date <= bucket.endDate) {
+            runningTotal += events[eventIndex].value;
+            eventIndex += 1;
+        }
+
+        return {
+            label: bucket.label,
+            value: Number(runningTotal.toFixed(2))
+        };
+    });
+}
+
+async function getMobileSalesPerformance(companyId: string, period: DashboardPeriod) {
+    const { startDate, endDate } = getDashboardDateBounds(period);
+    const rows = await prisma.$queryRaw<Array<{ monthKey: string; value: unknown }>>(Prisma.sql`
+        SELECT DATE_FORMAT(i.createdAt, '%Y-%m') AS monthKey,
+               COALESCE(SUM(i.totalAmount), 0) AS value
+        FROM \`Invoice\` i
+        WHERE i.companyId = ${companyId}
+          AND (i.cancel_invoice_edit = false OR i.cancel_invoice_edit IS NULL)
+          AND i.status = 'paid'
+          ${startDate ? Prisma.sql`AND i.createdAt >= ${startDate}` : Prisma.empty}
+          AND i.createdAt <= ${endDate}
+        GROUP BY DATE_FORMAT(i.createdAt, '%Y-%m')
+        ORDER BY monthKey ASC
+    `);
+
+    return rows.map(row => ({
+        month: dayjs(`${row.monthKey}-01`).format('MMM YYYY'),
+        monthKey: row.monthKey,
+        value: Number(normalizeDashboardNumber(row.value).toFixed(2))
+    }));
+}
+
 export class BusinessDashboardController {
+    async mobileSummary(req: Request, res: Response) {
+        try {
+            const valid = await validCompany(req);
+            if (valid.status === 'error' || !valid.response?.id) {
+                return res.status(404).json({ error: valid.message });
+            }
+
+            const period = String(req.query.period || "thisYear");
+            if (!(validPeriods as readonly string[]).includes(period)) {
+                return res.status(400).json({
+                    error: `Invalid period. Valid values are: ${validPeriods.join(", ")}`
+                });
+            }
+
+            const selectedPeriod = period as DashboardPeriod;
+            const companyId = valid.response.id;
+            const buckets = buildSparklineBuckets(selectedPeriod);
+            const [countSeries, timeCards, projectsOverview, salesPerformance, customerTotal] = await Promise.all([
+                getMobileCountSeries(companyId, selectedPeriod, buckets),
+                getMobileTimeCardSeries(companyId, selectedPeriod, buckets),
+                prisma.project.groupBy({
+                    by: ['status_project'],
+                    where: {
+                        company_id: companyId,
+                        status_project: {
+                            in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
+                        },
+                        ...(selectedPeriod !== "allPeriod" && {
+                            date_creation: {
+                                gte: getDateRange(selectedPeriod).startDate,
+                                lte: getDateRange(selectedPeriod).endDate
+                                    ? dayjs(getDateRange(selectedPeriod).endDate).endOf('day').toDate()
+                                    : undefined
+                            }
+                        })
+                    },
+                    _count: true
+                }),
+                getMobileSalesPerformance(companyId, selectedPeriod),
+                prisma.client.count({ where: { company_id: companyId } })
+            ]);
+
+            const projectOverviewTotal = projectsOverview.reduce((sum, project) => sum + project._count, 0);
+            const projectsOverviewResponse = projectsOverview.map(project => ({
+                label: project.status_project,
+                value: project._count,
+                percentage: projectOverviewTotal > 0
+                    ? (project._count / projectOverviewTotal) * 100
+                    : 0
+            }));
+
+            return res.json({
+                cards: {
+                    customers: customerTotal,
+                    employees: getSeriesTotal(countSeries.employees),
+                    estimates: getSeriesTotal(countSeries.estimates),
+                    invoices: getSeriesTotal(countSeries.invoices),
+                    projects: getSeriesTotal(countSeries.projects),
+                    timeCards: getSeriesTotal(timeCards)
+                },
+                projectsOverview: projectsOverviewResponse,
+                salesPerformance,
+                sparklines: {
+                    ...countSeries,
+                    timeCards
+                }
+            });
+        } catch (error) {
+            console.error("Error in mobileSummary:", error);
+            return res.status(500).json({
+                error: error instanceof Error ? error.message : "Internal server error"
+            });
+        }
+    }
+
     async dashboardCards(req: Request, res: Response) {
         try {
             const valid = await validCompany(req);

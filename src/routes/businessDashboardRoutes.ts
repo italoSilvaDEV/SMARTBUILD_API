@@ -5,6 +5,9 @@ import { BusinessDashboardController } from "../controllers/dashboard/BusinessDa
 const businessDashboard = Router()
 const businessDashboardController = new BusinessDashboardController();
 
+// Mobile aggregate. Existing dashboard routes remain unchanged for the web app.
+businessDashboard.get("/mobile-summary", checkToken, businessDashboardController.mobileSummary);
+
 // Cards
 businessDashboard.get("/cards", checkToken, businessDashboardController.dashboardCards);
 businessDashboard.get("/cards/sparklines", checkToken, businessDashboardController.cardSparklines);

@@ -2161,7 +2161,7 @@ model Estimate {
   id              String                @id @default(uuid())
   number          String
   approvedAt      DateTime              @default(now())
-  clientSignature String?               @db.Text
+  clientSignature String?               @db.LongText
   totalAmount     Decimal
   markupType      EstimateDiscountType?
   markupValue     Decimal?
