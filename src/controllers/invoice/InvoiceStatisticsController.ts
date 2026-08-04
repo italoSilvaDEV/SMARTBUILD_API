@@ -2,6 +2,12 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import dayjs from "dayjs";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
+import {
+  buildInvoiceTypeFilter,
+  expandInvoiceStatusFilters,
+  getPendingInvoiceAmount,
+  PENDING_INVOICE_STATUSES,
+} from "../../utils/invoiceListFilters";
 
 function getDateRange(periodType: string) {
     const now = new Date();
@@ -48,30 +54,6 @@ function getDateRange(periodType: string) {
     return { startDate, endDate };
 }
 
-const PENDING_INVOICE_STATUSES = ["open", "draft", "partial"];
-
-const getPendingInvoiceAmount = (invoice: any): number => {
-  const status = String(invoice.status || "").toLowerCase();
-
-  if (status === "partial") {
-    const balanceRemaining = invoice.balanceRemaining;
-    if (balanceRemaining !== null && balanceRemaining !== undefined) {
-      return Math.max(0, Number(balanceRemaining) || 0);
-    }
-
-    const paidAmount = invoice.payment?.amount;
-    if (paidAmount !== null && paidAmount !== undefined) {
-      return Math.max(0, (Number(invoice.totalAmount) || 0) - (Number(paidAmount) || 0));
-    }
-  }
-
-  if (status === "open" || status === "draft") {
-    return Number(invoice.totalAmount) || 0;
-  }
-
-  return 0;
-};
-
 export class InvoiceStatisticsController {
   async getInvoiceStatistics(req: Request, res: Response) { 
     const { companyId } = req.params;
@@ -101,29 +83,8 @@ export class InvoiceStatisticsController {
         typeFilters
       } = req.query;
 
-      // Tratar filtros como arrays
-      const parseFilter = (filter: any) => {
-        if (!filter) return undefined;
-        if (Array.isArray(filter)) return filter as string[];
-        return [filter as string];
-      };
-
-      let statusArr = parseFilter(statusFilters)?.filter(Boolean) ?? [];
-      // Mapear "pending" do front para os valores do banco.
-      if (statusArr.includes("pending")) {
-        statusArr = [...statusArr.filter(s => s !== "pending"), ...PENDING_INVOICE_STATUSES];
-        statusArr = [...new Set(statusArr)];
-      }
-
-      let typeArr = parseFilter(typeFilters)?.filter((t: string) => t && t.trim() !== "") ?? [];
-      // Tipos no banco: custom, stripe, quickbooks. "Other" representa apenas custom.
-      typeArr = typeArr.map((t: string) => (t.toLowerCase() === "other" ? "custom" : t.toLowerCase()));
-      typeArr = [...new Set(typeArr)];
-
-      const extraFilters: any = {};
-      if (typeArr.length > 0) {
-        extraFilters.invoiceType = { in: typeArr };
-      }
+      const statusArr = expandInvoiceStatusFilters(statusFilters);
+      const invoiceTypeFilter = buildInvoiceTypeFilter(typeFilters);
 
       const validPeriods = [
         "thisYear",
@@ -198,10 +159,10 @@ export class InvoiceStatisticsController {
 
       const baseWhere = {
         companyId,
-        ...extraFilters,
         status: statusArr.length > 0 ? { in: statusArr } : { notIn: ['void'] },
         AND: [
           { OR: [{ cancel_invoice_edit: false }, { cancel_invoice_edit: null }] },
+          ...(invoiceTypeFilter ? [invoiceTypeFilter] : []),
           ...(hasUserFilter ? [invoiceFilterByUser] : [])
         ]
       };
@@ -212,7 +173,12 @@ export class InvoiceStatisticsController {
           ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
         },
         include: {
-          payment: true
+          payment: true,
+          paymentApplications: {
+            select: {
+              amountApplied: true
+            }
+          }
         }
       });
 
@@ -226,7 +192,12 @@ export class InvoiceStatisticsController {
           ]
         },
         include: {
-          payment: true
+          payment: true,
+          paymentApplications: {
+            select: {
+              amountApplied: true
+            }
+          }
         }
       });
 
@@ -240,7 +211,12 @@ export class InvoiceStatisticsController {
           ]
         },
         include: {
-          payment: true
+          payment: true,
+          paymentApplications: {
+            select: {
+              amountApplied: true
+            }
+          }
         }
       });
 
@@ -306,10 +282,10 @@ export class InvoiceStatisticsController {
       // Dados para estatísticas de status (para o front-end criar o gráfico de pizza)
       const statusCountWhere = (statusFilter: string | { in: string[] }) => ({
         companyId,
-        ...extraFilters,
         status: statusFilter,
         AND: [
           { OR: [{ cancel_invoice_edit: false }, { cancel_invoice_edit: null }] },
+          ...(invoiceTypeFilter ? [invoiceTypeFilter] : []),
           ...(hasUserFilter ? [invoiceFilterByUser] : [])
         ],
         ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
@@ -320,7 +296,7 @@ export class InvoiceStatisticsController {
           where: statusCountWhere('paid')
         }),
         pending: await prisma.invoice.count({
-          where: statusCountWhere({ in: PENDING_INVOICE_STATUSES })
+          where: statusCountWhere({ in: [...PENDING_INVOICE_STATUSES] })
         }),
         canceled: await prisma.invoice.count({
           where: statusCountWhere('void')
@@ -331,10 +307,10 @@ export class InvoiceStatisticsController {
       const invoices = await prisma.invoice.findMany({
         where: {
           companyId,
-          ...extraFilters,
           status: 'paid',
           AND: [
             { OR: [{ cancel_invoice_edit: false }, { cancel_invoice_edit: null }] },
+            ...(invoiceTypeFilter ? [invoiceTypeFilter] : []),
             ...(hasUserFilter ? [invoiceFilterByUser] : [])
           ],
           ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
