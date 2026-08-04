@@ -3,6 +3,10 @@ import Stripe from "stripe";
 import { stripeConfig } from "../../../config/stripe";
 import { prisma } from "../../../utils/prisma";
 import { getPresignedUrl } from "../../../utils/S3/getPresignedUrl";
+import {
+    buildInvoiceTypeFilter,
+    expandInvoiceStatusFilters,
+} from "../../../utils/invoiceListFilters";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -50,12 +54,6 @@ function getInvoiceDateFilter(period: string) {
         ...(start ? { gte: start } : {}),
         ...(end ? { lte: end } : {}),
     };
-}
-
-function parseQueryList(value: unknown) {
-    if (!value) return [];
-    const values = Array.isArray(value) ? value : [value];
-    return values.flatMap((item) => String(item).split(",")).filter(Boolean);
 }
 
 // Função auxiliar para garantir que a descrição completa não ultrapasse 500 caracteres
@@ -763,28 +761,22 @@ export class StripeController {
             const search = typeof searchTerm === 'string' ? searchTerm : "";
 
             if (isSummary) {
-                const statuses = parseQueryList(statusFilters);
-                const types = parseQueryList(typeFilters);
-                const statusValues = [
-                    ...(statuses.includes("pending") ? ["open", "partial"] : []),
-                    ...(statuses.includes("paid") ? ["paid"] : []),
-                ];
+                const statusValues = expandInvoiceStatusFilters(statusFilters);
+                const invoiceTypeFilter = buildInvoiceTypeFilter(typeFilters);
                 const dateFilter = getInvoiceDateFilter(String(period));
                 const summaryFilter: any = {
                     companyId,
-                    OR: [
-                        { cancel_invoice_edit: false },
-                        { cancel_invoice_edit: null },
-                    ],
                     ...(statusValues.length > 0 ? { status: { in: statusValues } } : {}),
                     ...(dateFilter ? { createdAt: dateFilter } : {}),
-                    ...(types.length === 1 && types[0] === "stripe"
-                        ? { invoiceType: "stripe" }
-                        : types.length === 1 && types[0] === "other"
-                            ? { invoiceType: { not: "stripe" } }
-                            : {}),
-                    ...(search.trim() ? {
-                        AND: [{
+                    AND: [
+                        {
+                            OR: [
+                                { cancel_invoice_edit: false },
+                                { cancel_invoice_edit: null },
+                            ],
+                        },
+                        ...(invoiceTypeFilter ? [invoiceTypeFilter] : []),
+                        ...(search.trim() ? [{
                             OR: [
                                 { externalInvoiceId: { contains: search.trim() } },
                                 { stripeInvoiceId: { contains: search.trim() } },
@@ -793,8 +785,8 @@ export class StripeController {
                                 { project: { client: { email: { contains: search.trim() } } } },
                                 { project: { client: { location: { contains: search.trim() } } } },
                             ],
-                        }],
-                    } : {}),
+                        }] : []),
+                    ],
                 };
 
                 const [invoices, total] = await prisma.$transaction([
@@ -814,12 +806,29 @@ export class StripeController {
                             invoiceUrl: true,
                             isStandaloneInvoice: true,
                             lastPaymentAt: true,
+                            balanceRemaining: true,
+                            totalAmountPaid: true,
+                            totalAmountPaidQbo: true,
                             paymentMethodType: true,
                             projectId: true,
                             status: true,
                             stripeInvoiceId: true,
                             totalAmount: true,
                             type_invoicebase: true,
+                            payment: {
+                                select: {
+                                    amount: true,
+                                    createdAt: true,
+                                    paidAt: true,
+                                    paymentMethod: true,
+                                },
+                            },
+                            paymentApplications: {
+                                select: {
+                                    amountApplied: true,
+                                    appliedAt: true,
+                                },
+                            },
                             project: {
                                 select: {
                                     client: {
