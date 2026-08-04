@@ -48,6 +48,30 @@ function getDateRange(periodType: string) {
     return { startDate, endDate };
 }
 
+const PENDING_INVOICE_STATUSES = ["open", "draft", "partial"];
+
+const getPendingInvoiceAmount = (invoice: any): number => {
+  const status = String(invoice.status || "").toLowerCase();
+
+  if (status === "partial") {
+    const balanceRemaining = invoice.balanceRemaining;
+    if (balanceRemaining !== null && balanceRemaining !== undefined) {
+      return Math.max(0, Number(balanceRemaining) || 0);
+    }
+
+    const paidAmount = invoice.payment?.amount;
+    if (paidAmount !== null && paidAmount !== undefined) {
+      return Math.max(0, (Number(invoice.totalAmount) || 0) - (Number(paidAmount) || 0));
+    }
+  }
+
+  if (status === "open" || status === "draft") {
+    return Number(invoice.totalAmount) || 0;
+  }
+
+  return 0;
+};
+
 export class InvoiceStatisticsController {
   async getInvoiceStatistics(req: Request, res: Response) { 
     const { companyId } = req.params;
@@ -85,21 +109,18 @@ export class InvoiceStatisticsController {
       };
 
       let statusArr = parseFilter(statusFilters)?.filter(Boolean) ?? [];
-      // Mapear "pending" do front para os valores do banco (open, draft)
+      // Mapear "pending" do front para os valores do banco.
       if (statusArr.includes("pending")) {
-        statusArr = [...statusArr.filter(s => s !== "pending"), "open", "draft"];
+        statusArr = [...statusArr.filter(s => s !== "pending"), ...PENDING_INVOICE_STATUSES];
         statusArr = [...new Set(statusArr)];
       }
 
       let typeArr = parseFilter(typeFilters)?.filter((t: string) => t && t.trim() !== "") ?? [];
-      // Mapear "other" do front para o valor do banco (custom). Tipos no banco: custom, stripe, quickbooks
-      typeArr = typeArr.map((t: string) => (t.toLowerCase() === "other" ? "custom" : t));
+      // Tipos no banco: custom, stripe, quickbooks. "Other" representa apenas custom.
+      typeArr = typeArr.map((t: string) => (t.toLowerCase() === "other" ? "custom" : t.toLowerCase()));
       typeArr = [...new Set(typeArr)];
 
       const extraFilters: any = {};
-      if (statusArr.length > 0) {
-        extraFilters.status = { in: statusArr };
-      }
       if (typeArr.length > 0) {
         extraFilters.invoiceType = { in: typeArr };
       }
@@ -178,7 +199,7 @@ export class InvoiceStatisticsController {
       const baseWhere = {
         companyId,
         ...extraFilters,
-        status: statusArr ? { in: statusArr } : { notIn: ['void'] },
+        status: statusArr.length > 0 ? { in: statusArr } : { notIn: ['void'] },
         AND: [
           { OR: [{ cancel_invoice_edit: false }, { cancel_invoice_edit: null }] },
           ...(hasUserFilter ? [invoiceFilterByUser] : [])
@@ -189,6 +210,9 @@ export class InvoiceStatisticsController {
         where: {
           ...baseWhere,
           ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
+        },
+        include: {
+          payment: true
         }
       });
 
@@ -200,6 +224,9 @@ export class InvoiceStatisticsController {
             ...(baseWhere.AND as object[]),
             { createdAt: { gte: currentPeriodStart, lte: currentPeriodEnd } }
           ]
+        },
+        include: {
+          payment: true
         }
       });
 
@@ -211,6 +238,9 @@ export class InvoiceStatisticsController {
             ...(baseWhere.AND as object[]),
             { createdAt: { gte: previousPeriodStart, lte: previousPeriodEnd } }
           ]
+        },
+        include: {
+          payment: true
         }
       });
 
@@ -223,8 +253,7 @@ export class InvoiceStatisticsController {
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
       
       const totalInvoicePending = allInvoices
-        .filter(invoice => ['open', 'draft'].includes(invoice.status))
-        .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+        .reduce((sum, invoice) => sum + getPendingInvoiceAmount(invoice), 0);
 
       // Calcular totais do período atual para comparação
       const currentPeriodTotalInvoices = currentPeriodInvoices.reduce((sum, invoice) => 
@@ -235,8 +264,7 @@ export class InvoiceStatisticsController {
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
       
       const currentPeriodTotalInvoicePending = currentPeriodInvoices
-        .filter(invoice => ['open', 'draft'].includes(invoice.status))
-        .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+        .reduce((sum, invoice) => sum + getPendingInvoiceAmount(invoice), 0);
 
       // Calcular totais do período anterior
       const lastPeriodTotalInvoices = lastPeriodInvoices.reduce((sum, invoice) => 
@@ -247,8 +275,7 @@ export class InvoiceStatisticsController {
         .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
       
       const lastPeriodTotalInvoicePending = lastPeriodInvoices
-        .filter(invoice => ['open', 'draft'].includes(invoice.status))
-        .reduce((sum, invoice) => sum + Number(invoice.totalAmount), 0);
+        .reduce((sum, invoice) => sum + getPendingInvoiceAmount(invoice), 0);
 
       // Calcular diferenças percentuais
       const calculatePercentageDifference = (current: number, previous: number): number => {
@@ -293,7 +320,7 @@ export class InvoiceStatisticsController {
           where: statusCountWhere('paid')
         }),
         pending: await prisma.invoice.count({
-          where: statusCountWhere({ in: ['open', 'draft'] })
+          where: statusCountWhere({ in: PENDING_INVOICE_STATUSES })
         }),
         canceled: await prisma.invoice.count({
           where: statusCountWhere('void')
