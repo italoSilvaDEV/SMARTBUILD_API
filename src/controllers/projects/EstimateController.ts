@@ -905,6 +905,7 @@ export class EstimateController {
           },
           project: {
             include: {
+              user: true,
               client: true,
               company: true,
               serviceProject: true,
@@ -926,50 +927,6 @@ export class EstimateController {
         }
       }
 
-      if (estimate.serviceProjects.length > 0) {
-        const projectId = estimate.projectId;
-        const companyId = estimate.project.company_id ?? undefined;
-
-        for (const service of estimate.serviceProjects) {
-          const existingSibling = await prisma.serviceProject.findFirst({
-            where: { estimateServiceId: service.id }
-          });
-
-          if (existingSibling) {
-            await prisma.serviceProject.update({
-              where: { id: existingSibling.id },
-              data: {
-                projectId,
-                ...(companyId && { company_id: companyId })
-              }
-            });
-          } else {
-            await prisma.serviceProject.create({
-              data: {
-                name: service.name,
-                description: service.description ?? "",
-                hours: service.hours ?? 0,
-                price: service.price ?? 0,
-                id_service: service.id_service ?? undefined,
-                projectId,
-                ...(companyId && { company_id: companyId }),
-                estimateServiceId: service.id
-              }
-            });
-          }
-        }
-      }
-
-      await prisma.estimate.update({
-        where: { id },
-        data: {
-          clientSignature: JSON.stringify({ signature }),
-          status: "approved",
-          assignatureRequired: false,
-          date_update: new Date()
-        }
-      });
-
       const pdfProject = await prisma.pdfProject.findFirst({
         where: { estimate_id: estimate.id }
       });
@@ -986,16 +943,9 @@ export class EstimateController {
       }
       const originalPdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-      let modifiedPdfBuffer: Buffer = originalPdfBuffer;
-      if (signature) {
-        try {
-          modifiedPdfBuffer = Buffer.from(
-            await addClientSignatureImageToPdfBuffer(originalPdfBuffer, signature)
-          );
-        } catch (signatureError) {
-          console.error('Error processing signature:', signatureError);
-        }
-      }
+      const modifiedPdfBuffer = Buffer.from(
+        await addClientSignatureImageToPdfBuffer(originalPdfBuffer, signature)
+      );
 
       const s3 = new S3Client({
         region: process.env.AMAZON_S3_REGION,
@@ -1018,43 +968,76 @@ export class EstimateController {
 
       await s3.send(putObjectCommand);
 
-      await prisma.pdfProject.update({
-        where: { id: pdfProject.id },
-        data: {
-          uri: newFileName
-        }
-      });
-
-      const project = await prisma.project.findUnique({
-        where: { id: estimate.projectId },
-        include: {
-          user: true,
-          client: true,
-          company: true,
-          workContext: true,
-          serviceProject: true
-        }
-      });
-
-      if (!project) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-
-      if (project.status_project !== "Accepted" &&
-        project.status_project !== "Pre-Start" &&
-        project.status_project !== "In Progress" &&
-        project.status_project !== "Final walkthrough" &&
-        project.status_project !== "Finished"
-      ) {
-        await prisma.project.update({
+      const project = estimate.project;
+      const acceptedProjectStatuses = new Set([
+        "Accepted",
+        "Pre-Start",
+        "In Progress",
+        "Final walkthrough",
+        "Finished",
+      ]);
+      const approvedEstimate = await prisma.$transaction(async (tx) => {
+        const existingSiblings = await tx.serviceProject.findMany({
           where: {
-            id: project.id
+            estimateServiceId: { in: estimate.serviceProjects.map((service) => service.id) }
           },
+          select: { id: true, estimateServiceId: true }
+        });
+        const siblingByEstimateServiceId = new Map(
+          existingSiblings.map((sibling) => [sibling.estimateServiceId, sibling])
+        );
+
+        for (const service of estimate.serviceProjects) {
+          const existingSibling = siblingByEstimateServiceId.get(service.id);
+
+          if (existingSibling) {
+            await tx.serviceProject.update({
+              where: { id: existingSibling.id },
+              data: {
+                projectId: estimate.projectId,
+                ...(project.company_id && { company_id: project.company_id })
+              }
+            });
+          } else {
+            await tx.serviceProject.create({
+              data: {
+                name: service.name,
+                description: service.description ?? "",
+                hours: service.hours ?? 0,
+                price: service.price ?? 0,
+                id_service: service.id_service ?? undefined,
+                projectId: estimate.projectId,
+                ...(project.company_id && { company_id: project.company_id }),
+                estimateServiceId: service.id
+              }
+            });
+          }
+        }
+
+        await tx.pdfProject.update({
+          where: { id: pdfProject.id },
+          data: { uri: newFileName }
+        });
+
+        const updatedEstimate = await tx.estimate.update({
+          where: { id },
           data: {
-            status_project: "Accepted"
+            clientSignature: JSON.stringify({ signature }),
+            status: "approved",
+            assignatureRequired: false,
+            date_update: new Date()
           }
         });
-      }
+
+        if (!acceptedProjectStatuses.has(project.status_project)) {
+          await tx.project.update({
+            where: { id: project.id },
+            data: { status_project: "Accepted" }
+          });
+        }
+
+        return updatedEstimate;
+      }, { timeout: 30_000 });
 
       const companyAvatar = project.company?.avatar ? await getPresignedUrl(project.company.avatar) : "";
       const totalFormatted = new Intl.NumberFormat('en-US', {
@@ -1139,13 +1122,13 @@ export class EstimateController {
         estimate.id
       );
 
-      return res.json(estimate);
+      return res.json(approvedEstimate);
     } catch (error) {
       console.error("[estimate.sign] Failed to add signature to estimate", {
         estimateId: estimateIdForLog,
         error,
       });
-      return res.status(500).json({ error: "Failed to add signature to estimate" });
+      return res.status(500).json({ error: "We could not save your signature. Please try again." });
     }
   }
 
