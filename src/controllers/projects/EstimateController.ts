@@ -56,20 +56,23 @@ const getBackgroundColorFromCorners = (
   height: number
 ): { r: number; g: number; b: number } => {
   const sampleSize = Math.min(12, width, height);
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let count = 0;
+  let background = { r: 255, g: 255, b: 255 };
+  let maxBrightness = -1;
 
   const samplePixel = (x: number, y: number) => {
     const index = (y * width + x) * 4;
     const alpha = data[index + 3];
     if (alpha <= SIGNATURE_ALPHA_THRESHOLD) return;
 
-    r += data[index];
-    g += data[index + 1];
-    b += data[index + 2];
-    count += 1;
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const brightness = r + g + b;
+
+    if (brightness > maxBrightness) {
+      background = { r, g, b };
+      maxBrightness = brightness;
+    }
   };
 
   for (let y = 0; y < sampleSize; y += 1) {
@@ -81,15 +84,7 @@ const getBackgroundColorFromCorners = (
     }
   }
 
-  if (count === 0) {
-    return { r: 255, g: 255, b: 255 };
-  }
-
-  return {
-    r: Math.round(r / count),
-    g: Math.round(g / count),
-    b: Math.round(b / count),
-  };
+  return background;
 };
 
 const validateEstimateClientSignature = async (signature: unknown) => {
@@ -108,6 +103,16 @@ const validateEstimateClientSignature = async (signature: unknown) => {
       .raw()
       .toBuffer({ resolveWithObject: true });
     const background = getBackgroundColorFromCorners(data, info.width, info.height);
+    const totalPixels = info.width * info.height;
+    let transparentPixels = 0;
+
+    for (let index = 3; index < data.length; index += 4) {
+      if (data[index] <= SIGNATURE_ALPHA_THRESHOLD) {
+        transparentPixels += 1;
+      }
+    }
+
+    const hasTransparentBackground = transparentPixels > 0 && transparentPixels / totalPixels > 0.01;
 
     let minX = info.width;
     let minY = info.height;
@@ -124,9 +129,10 @@ const validateEstimateClientSignature = async (signature: unknown) => {
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
-        const isInk =
-          colorDistance(r, g, b, background) > SIGNATURE_BACKGROUND_DIFF_THRESHOLD &&
-          (r < 245 || g < 245 || b < 245);
+        const isInk = hasTransparentBackground
+          ? true
+          : colorDistance(r, g, b, background) > SIGNATURE_BACKGROUND_DIFF_THRESHOLD &&
+            (r < 245 || g < 245 || b < 245);
 
         if (!isInk) continue;
 
