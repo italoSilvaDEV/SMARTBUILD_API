@@ -177,24 +177,145 @@ export class GetAllEstimatesByCompanyController {
                             id: true,
                             number: true,
                             totalAmount: true,
+                            balanceDue: true,
+                            amountPaid: true,
+                            markupType: true,
+                            markupValue: true,
+                            markupAmount: true,
+                            discountType: true,
+                            discountValue: true,
+                            discountAmount: true,
+                            depositType: true,
+                            depositValue: true,
+                            depositAmount: true,
                             finalAmount: true,
                             status: true,
+                            description: true,
+                            canceledAt: true,
+                            canceledById: true,
+                            terms: true,
                             date_creation: true,
+                            type_estimate: true,
+                            multi_emails: true,
                             isStandaloneEstimate: true,
                             assignatureRequired: true,
-                            projectId: true,
                             project: {
                                 select: {
                                     id: true,
-                                    location: true,
                                     status_project: true,
+                                    autorId: true,
+                                    location: true,
+                                    lat: true,
+                                    log: true,
+                                    radius: true,
                                     client: {
+                                        select: {
+                                            id: true,
+                                            avatar: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            addressOffice: true,
+                                            city_and_state: true,
+                                            date_creation: true,
+                                            date_update: true,
+                                            workContexts: {
+                                                where: {
+                                                    isActive: true,
+                                                },
+                                                select: {
+                                                    id: true,
+                                                    Name: true,
+                                                    Email: true,
+                                                    phone: true,
+                                                    addressOffice: true,
+                                                    type: true,
+                                                },
+                                            },
+                                        },
+                                    },
+                                    workContext: {
+                                        select: {
+                                            id: true,
+                                            Name: true,
+                                            Email: true,
+                                            phone: true,
+                                            addressOffice: true,
+                                            type: true,
+                                        },
+                                    },
+                                    user: {
                                         select: {
                                             id: true,
                                             name: true,
                                             email: true,
+                                            avatar: true,
                                         },
                                     },
+                                    serviceProject: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            description: true,
+                                            hours: true,
+                                            price: true,
+                                            status: true,
+                                        },
+                                    },
+                                    company: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            address: true,
+                                            district: true,
+                                            numberHouse: true,
+                                            avatar: true,
+                                            complement: true,
+                                            webSiteUrl: true,
+                                            NotesContrac: {
+                                                select: {
+                                                    id: true,
+                                                    notes: true,
+                                                    updatedAt: true,
+                                                    createdAt: true,
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                            serviceProjects: {
+                                orderBy: [
+                                    { pos: "asc" },
+                                    { date_creation: "asc" },
+                                    { id: "asc" },
+                                ],
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    description: true,
+                                    quantity: true,
+                                    unitPrice: true,
+                                    lineTotal: true,
+                                    originalUnitPrice: true,
+                                    originalLineTotal: true,
+                                    notes: true,
+                                    pos: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                },
+                            },
+                            timelineEvents: {
+                                orderBy: {
+                                    date_creation: "asc",
+                                },
+                                select: {
+                                    id: true,
+                                    description: true,
+                                    date_creation: true,
+                                    date_update: true,
                                 },
                             },
                             PdfProject: {
@@ -204,9 +325,18 @@ export class GetAllEstimatesByCompanyController {
                                     templateNumber: true,
                                     original_file_name: true,
                                 },
-                                orderBy: { date_creation: "desc" },
-                                take: 1,
                             },
+                            imagesAttachments: {
+                                select: {
+                                    id: true,
+                                    url: true,
+                                    original_filename: true,
+                                    title: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                },
+                            },
+                            InvoicePaymentTimeLine: true,
                         },
                         orderBy: [{ date_creation: "desc" }, { id: "desc" }],
                         skip,
@@ -215,19 +345,90 @@ export class GetAllEstimatesByCompanyController {
                     prisma.estimate.count({ where }),
                 ]);
 
-                const data = await Promise.all(estimates.map(async (estimate) => ({
-                    ...estimate,
-                    totalAmount: Number(estimate.totalAmount),
-                    finalAmount: estimate.finalAmount == null ? null : Number(estimate.finalAmount),
-                    PdfProject: estimate.PdfProject.length > 0
+                const data = await Promise.all(estimates.map(async (estimate) => {
+                    const invoices = await prisma.invoice.findMany({
+                        where: {
+                            estimateId: estimate.id,
+                            status: "paid",
+                        },
+                        select: {
+                            totalAmount: true,
+                        },
+                    });
+                    const totalInvoices = invoices.reduce(
+                        (totalPaid, invoice) => totalPaid + Number(invoice.totalAmount),
+                        0,
+                    );
+                    const effectiveTotal = getEstimateEffectiveTotal({
+                        totalAmount: estimate.totalAmount,
+                        finalAmount: estimate.finalAmount,
+                        discountAmount: estimate.discountAmount,
+                    });
+                    const balanceDue = estimate.balanceDue !== null && estimate.balanceDue !== undefined
+                        ? Number(estimate.balanceDue)
+                        : Number((effectiveTotal - totalInvoices).toFixed(2));
+                    const pdf = estimate.PdfProject[0];
+                    const pdfProject = pdf
                         ? {
-                            ...estimate.PdfProject[0],
-                            uri: estimate.PdfProject[0].uri
-                                ? await getPresignedUrl(estimate.PdfProject[0].uri)
-                                : null,
+                            ...pdf,
+                            uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
                         }
-                        : null,
-                })));
+                        : null;
+                    const imagesAttachments = await Promise.all(estimate.imagesAttachments.map(async (image) => ({
+                        ...image,
+                        url: image.url ? await getPresignedUrl(image.url) : null,
+                    })));
+                    const clientAvatar = estimate.project.client?.avatar
+                        ? await getPresignedUrl(estimate.project.client.avatar)
+                        : null;
+                    const userAvatar = estimate.project.user?.avatar
+                        ? await getPresignedUrl(estimate.project.user.avatar)
+                        : null;
+                    const companyAvatar = estimate.project.company?.avatar
+                        ? await getPresignedUrl(estimate.project.company.avatar)
+                        : null;
+
+                    return {
+                        ...estimate,
+                        totalAmount: Number(estimate.totalAmount),
+                        balanceDue,
+                        amountPaid: Number(totalInvoices),
+                        markupValue: estimate.markupValue == null ? null : Number(estimate.markupValue),
+                        markupAmount: estimate.markupAmount == null ? null : Number(estimate.markupAmount),
+                        discountValue: estimate.discountValue == null ? null : Number(estimate.discountValue),
+                        discountAmount: estimate.discountAmount == null ? null : Number(estimate.discountAmount),
+                        depositValue: estimate.depositValue == null ? null : Number(estimate.depositValue),
+                        depositAmount: estimate.depositAmount == null ? null : Number(estimate.depositAmount),
+                        finalAmount: estimate.finalAmount == null ? null : Number(estimate.finalAmount),
+                        project: {
+                            ...estimate.project,
+                            client: estimate.project.client
+                                ? { ...estimate.project.client, avatar: clientAvatar }
+                                : null,
+                            user: estimate.project.user
+                                ? { ...estimate.project.user, avatar: userAvatar }
+                                : null,
+                            company: estimate.project.company
+                                ? { ...estimate.project.company, avatar: companyAvatar }
+                                : null,
+                        },
+                        PdfProject: pdfProject,
+                        imagesAttachments,
+                        serviceProjects: estimate.serviceProjects.map((service, index) => ({
+                            ...service,
+                            lineTotal: Number(service.lineTotal),
+                            unitPrice: Number(service.unitPrice),
+                            quantity: Number(service.quantity),
+                            originalUnitPrice: service.originalUnitPrice == null
+                                ? null
+                                : Number(service.originalUnitPrice),
+                            originalLineTotal: service.originalLineTotal == null
+                                ? null
+                                : Number(service.originalLineTotal),
+                            pos: Number(service.pos ?? index),
+                        })),
+                    };
+                }));
 
                 return res.status(200).json({
                     data,

@@ -1420,40 +1420,70 @@ export class StripeController {
                 const [invoices, total] = await prisma.$transaction([
                     prisma.invoice.findMany({
                         where: summaryFilter,
-                        select: {
-                            id: true,
-                            createdAt: true,
-                            updatedAt: true,
-                            description: true,
-                            dueDate: true,
-                            estimateId: true,
-                            externalInvoiceId: true,
-                            ignoreChecked: true,
-                            invoiceType: true,
-                            invoiceTypeStripe: true,
-                            invoiceUrl: true,
-                            isStandaloneInvoice: true,
-                            lastPaymentAt: true,
-                            balanceRemaining: true,
-                            totalAmountPaid: true,
-                            totalAmountPaidQbo: true,
-                            paymentMethodType: true,
-                            projectId: true,
-                            status: true,
-                            stripeInvoiceId: true,
-                            totalAmount: true,
-                            type_invoicebase: true,
+                        include: {
+                            company: true,
+                            estimate: {
+                                select: {
+                                    id: true,
+                                    totalAmount: true,
+                                    amountPaid: true,
+                                    balanceDue: true,
+                                },
+                            },
+                            InvoiceSendHistory: {
+                                orderBy: {
+                                    sentAt: "desc",
+                                },
+                            },
+                            PdfProject: true,
+                            pdfInvoicePaids: true,
+                            project: {
+                                include: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            location: true,
+                                        },
+                                    },
+                                    serviceProject: true,
+                                },
+                            },
                             payment: {
                                 select: {
+                                    id: true,
+                                    paymentMethod: true,
+                                    notes: true,
+                                    paidAt: true,
                                     amount: true,
                                     createdAt: true,
-                                    paidAt: true,
-                                    paymentMethod: true,
+                                },
+                            },
+                            project_manager: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                },
+                            },
+                            PaymentIntents: {
+                                select: {
+                                    id: true,
+                                    stripePaymentIntentId: true,
+                                    status: true,
+                                    amount: true,
+                                    surchargeAmount: true,
+                                    currency: true,
+                                    paymentMethodType: true,
+                                    createdAt: true,
                                 },
                             },
                             paymentApplications: {
                                 select: {
                                     id: true,
+                                    amountApplied: true,
                                     appliedAt: true,
                                     paymentTransaction: {
                                         select: {
@@ -1464,54 +1494,25 @@ export class StripeController {
                                         },
                                     },
                                 },
-                            },
-                            PaymentIntents: {
-                                select: {
-                                    id: true,
-                                    createdAt: true,
-                                    paymentMethodType: true,
-                                    status: true,
+                                orderBy: {
+                                    appliedAt: "desc",
                                 },
                             },
-                            project: {
-                                select: {
-                                    client: {
-                                        select: {
-                                            id: true,
-                                            name: true,
-                                            email: true,
-                                            phone: true,
-                                            location: true,
-                                        },
-                                    },
-                                },
-                            },
+                            InvoiceItems: true,
                             InvoiceTimeline: {
-                                select: {
-                                    id: true,
-                                    description: true,
-                                    date_creation: true,
-                                    date_update: true,
-                                },
-                                orderBy: { date_creation: "desc" },
-                                take: 8,
-                            },
-                            PdfProject: {
-                                select: {
-                                    id: true,
-                                    uri: true,
-                                    original_file_name: true,
-                                    templateNumber: true,
+                                orderBy: {
+                                    date_creation: "asc",
                                 },
                             },
-                            pdfInvoicePaids: {
+                            imagesAttachments: {
                                 select: {
                                     id: true,
-                                    uri: true,
-                                    original_file_name: true,
+                                    url: true,
+                                    original_filename: true,
+                                    type_images_attachments: true,
+                                    title: true,
                                     date_creation: true,
                                     date_update: true,
-                                    invoiceId: true,
                                 },
                             },
                         },
@@ -1525,24 +1526,36 @@ export class StripeController {
                     prisma.invoice.count({ where: summaryFilter }),
                 ]);
 
-                const summaryInvoices = await Promise.all(invoices.map(async (invoice) => ({
-                    ...invoice,
-                    // The mobile UI expects the historical ascending order and
-                    // reverses the last entries when it opens the timeline.
-                    InvoiceTimeline: [...invoice.InvoiceTimeline].reverse(),
-                    PdfProject: await Promise.all(invoice.PdfProject.map(async (pdf) => ({
+                const summaryInvoices = await Promise.all(invoices.map(async (invoice) => {
+                    const pdfProjects = await Promise.all(invoice.PdfProject.map(async (pdf) => ({
                         ...pdf,
                         uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
-                    }))),
-                    pdfInvoicePaids: invoice.pdfInvoicePaids
+                    })));
+                    const paidInvoicePdf = invoice.pdfInvoicePaids
                         ? {
                             ...invoice.pdfInvoicePaids,
                             uri: invoice.pdfInvoicePaids.uri
                                 ? await getPresignedUrl(invoice.pdfInvoicePaids.uri)
                                 : null,
                         }
-                        : null,
-                })));
+                        : null;
+                    const imagesAttachments = await Promise.all(invoice.imagesAttachments.map(async (image) => ({
+                        ...image,
+                        url: image.url ? await getPresignedUrl(image.url) : null,
+                    })));
+                    const avatar = invoice.company?.avatar
+                        ? await getPresignedUrl(invoice.company.avatar)
+                        : null;
+
+                    return {
+                        ...invoice,
+                        avatar,
+                        lastSentAt: invoice.InvoiceSendHistory[0]?.sentAt || null,
+                        PdfProject: pdfProjects,
+                        pdfInvoicePaids: paidInvoicePdf,
+                        imagesAttachments,
+                    };
+                }));
 
                 return res.status(200).json({
                     total,
