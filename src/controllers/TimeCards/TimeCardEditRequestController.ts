@@ -4,6 +4,7 @@ import { SocketService } from "../../services/SocketService";
 import { PushNotificationService } from "../../services/PushNotificationService";
 import { AttendanceService } from "../../services/AttendanceService";
 import { Prisma } from "@prisma/client";
+import { validateAttendanceTimeRange } from "../../utils/attendanceTimeValidation";
 import axios from "axios";
 
 type ReviewStatus = "approved" | "denied";
@@ -593,10 +594,9 @@ export class TimeCardEditRequestController {
         return res.status(400).json({ error: "requestedCheckOutTime is invalid." });
       }
 
-      if (parsedCheckOut && parsedCheckIn >= parsedCheckOut) {
-        return res.status(400).json({
-          error: "Requested check-in must be earlier than requested check-out.",
-        });
+      const validationError = validateAttendanceTimeRange(parsedCheckIn, parsedCheckOut);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
       }
 
       if (normalizedClientRequestId) {
@@ -993,9 +993,30 @@ export class TimeCardEditRequestController {
           return res.status(400).json({ error: "approvedCheckOutTime is invalid." });
         }
 
-        if (finalCheckOut && finalCheckIn >= finalCheckOut) {
-          return res.status(400).json({
-            error: "Approved check-in must be earlier than approved check-out.",
+        const validationError = validateAttendanceTimeRange(finalCheckIn, finalCheckOut);
+        if (validationError) {
+          return res.status(400).json({ error: validationError });
+        }
+
+        const overlappingAttendance = await prisma.userAttendance.findFirst({
+          where: {
+            ...(requestRecord.attendanceId
+              ? { id: { not: requestRecord.attendanceId } }
+              : {}),
+            user_id: requestRecord.employeeId,
+            ...(finalCheckOut ? { check_in_time: { lt: finalCheckOut } } : {}),
+            OR: [
+              { check_out_time: null },
+              { check_out_time: { gt: finalCheckIn } },
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (overlappingAttendance) {
+          return res.status(409).json({
+            error: "ATTENDANCE_OVERLAP",
+            conflictingAttendanceId: overlappingAttendance.id,
           });
         }
 
