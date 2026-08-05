@@ -6,7 +6,11 @@ import dayjs from 'dayjs';
 import { DateTime } from 'luxon';
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from '../../utils/calculaHoraExtra';
 import { isMultiCompanyEnabled } from '../../helpers/featureToggle';
-import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from '../../utils/paidShortGaps';
+import {
+    applyPaidShortGapsToAttendances,
+    getPaidShortGapEligibleAt,
+    getPaidShortGapHours
+} from '../../utils/paidShortGaps';
 import { applyEffectiveBreaksToAttendances } from '../../utils/attendanceBreaks';
 import {
     getSeriesTotal,
@@ -52,6 +56,56 @@ function getDashboardDateBounds(period: DashboardPeriod, rangeEnd?: Date) {
         startDate: period === 'allPeriod' ? undefined : dayjs(startDate).startOf('day').toDate(),
         endDate: dayjs(rangeEnd || endDate || new Date()).endOf('day').toDate()
     };
+}
+
+function calculateTimeCardTotal(attendances: any[]) {
+    applyEffectiveBreaksToAttendances(attendances);
+    applyPaidShortGapsToAttendances(attendances);
+
+    const weeklyAttendances = new Map<string, { attendances: any[] }>();
+    attendances.forEach(attendance => {
+        if (!attendance.check_in_time || !attendance.user) return;
+
+        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
+        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
+        const week = weeklyAttendances.get(weekKey) || { attendances: [] };
+        week.attendances.push(attendance);
+        weeklyAttendances.set(weekKey, week);
+    });
+
+    let totalPrice = 0;
+
+    weeklyAttendances.forEach(week => {
+        let weeklyRegularHoursUsed = 0;
+        const sortedAttendances = [...week.attendances].sort(
+            (first, second) => new Date(first.check_in_time).getTime() - new Date(second.check_in_time).getTime()
+        );
+
+        sortedAttendances.forEach(attendance => {
+            if (!attendance.check_out_time || !attendance.user) return;
+
+            const hours = calcularHorasTrabalhadas(
+                attendance.check_in_time.toISOString(),
+                attendance.check_out_time.toISOString(),
+                attendance.workStartTime,
+                attendance.workEndTime,
+                attendance.user.defaultBreakMinutes || 0
+            );
+            const dailyHours = convertHHMMToDecimal(hours.normais)
+                + convertHHMMToDecimal(hours.extras)
+                + getPaidShortGapHours(attendance);
+            const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
+            const overtimeHours = Math.max(0, dailyHours - regularHours);
+            const hourlyRate = Number(attendance.user.hourly_price || 0);
+
+            weeklyRegularHoursUsed += regularHours;
+            totalPrice += attendance.isOvertime === true && overtimeHours > 0
+                ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
+                : dailyHours * hourlyRate;
+        });
+    });
+
+    return Number(totalPrice.toFixed(2));
 }
 
 async function getTimeCardTotal(companyId: string, period: DashboardPeriod, rangeEnd?: Date) {
@@ -119,53 +173,7 @@ async function getTimeCardTotal(companyId: string, period: DashboardPeriod, rang
         }
     });
 
-    applyEffectiveBreaksToAttendances(attendances as any[]);
-    applyPaidShortGapsToAttendances(attendances as any[]);
-
-    const weeklyAttendances = new Map<string, { attendances: any[] }>();
-    attendances.forEach(attendance => {
-        if (!attendance.check_in_time || !attendance.user) return;
-
-        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
-        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
-        const week = weeklyAttendances.get(weekKey) || { attendances: [] };
-        week.attendances.push(attendance);
-        weeklyAttendances.set(weekKey, week);
-    });
-
-    let totalPrice = 0;
-
-    weeklyAttendances.forEach(week => {
-        let weeklyRegularHoursUsed = 0;
-        const sortedAttendances = [...week.attendances].sort(
-            (first, second) => new Date(first.check_in_time).getTime() - new Date(second.check_in_time).getTime()
-        );
-
-        sortedAttendances.forEach(attendance => {
-            if (!attendance.check_out_time || !attendance.user) return;
-
-            const hours = calcularHorasTrabalhadas(
-                attendance.check_in_time.toISOString(),
-                attendance.check_out_time.toISOString(),
-                attendance.workStartTime,
-                attendance.workEndTime,
-                attendance.user.defaultBreakMinutes || 0
-            );
-            const dailyHours = convertHHMMToDecimal(hours.normais)
-                + convertHHMMToDecimal(hours.extras)
-                + getPaidShortGapHours(attendance);
-            const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
-            const overtimeHours = Math.max(0, dailyHours - regularHours);
-            const hourlyRate = Number(attendance.user.hourly_price || 0);
-
-            weeklyRegularHoursUsed += regularHours;
-            totalPrice += attendance.isOvertime === true && overtimeHours > 0
-                ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
-                : dailyHours * hourlyRate;
-        });
-    });
-
-    return Number(totalPrice.toFixed(2));
+    return calculateTimeCardTotal(attendances as any[]);
 }
 
 async function validCompany(request: Request) {
@@ -322,18 +330,6 @@ function buildSparklineBuckets(period: DashboardPeriod) {
     });
 }
 
-function getCumulativeDateFilter(period: DashboardPeriod, bucket: SparklineBucket) {
-    const dateFilter: any = {
-        lte: bucket.endDate
-    };
-
-    if (period !== "allPeriod") {
-        dateFilter.gte = getDateRange(period).startDate;
-    }
-
-    return dateFilter;
-}
-
 type MobileDashboardCountSeries = {
     customers: Array<{ label: string; value: number }>;
     employees: Array<{ label: string; value: number }>;
@@ -341,8 +337,6 @@ type MobileDashboardCountSeries = {
     invoices: Array<{ label: string; value: number }>;
     projects: Array<{ label: string; value: number }>;
 };
-
-type DashboardAttendance = Awaited<ReturnType<typeof findDashboardAttendances>>[number];
 
 async function queryCumulativeCounts({
     buckets,
@@ -365,7 +359,7 @@ async function queryCumulativeCounts({
     `);
     const periodStart = period === "allPeriod"
         ? null
-        : dayjs(getDateRange(period).startDate).startOf('day').toDate();
+        : getDateRange(period).startDate;
     const maximumEndDate = buckets[buckets.length - 1].endDate;
     const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
         SELECT ${Prisma.join(expressions)}
@@ -510,56 +504,6 @@ function findDashboardAttendances(
     });
 }
 
-function buildTimeCardCostEvents(attendances: DashboardAttendance[]) {
-    applyEffectiveBreaksToAttendances(attendances as any[]);
-    applyPaidShortGapsToAttendances(attendances as any[]);
-
-    const weeklyAttendances = new Map<string, DashboardAttendance[]>();
-    attendances.forEach(attendance => {
-        if (!attendance.check_in_time || !attendance.check_out_time || !attendance.user) return;
-
-        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
-        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
-        const week = weeklyAttendances.get(weekKey) || [];
-        week.push(attendance);
-        weeklyAttendances.set(weekKey, week);
-    });
-
-    const events: Array<{ date: Date; value: number }> = [];
-    weeklyAttendances.forEach(week => {
-        let weeklyRegularHoursUsed = 0;
-        const sortedAttendances = [...week].sort(
-            (first, second) => first.check_in_time.getTime() - second.check_in_time.getTime()
-        );
-
-        sortedAttendances.forEach(attendance => {
-            if (!attendance.check_out_time || !attendance.user) return;
-
-            const hours = calcularHorasTrabalhadas(
-                attendance.check_in_time.toISOString(),
-                attendance.check_out_time.toISOString(),
-                attendance.workStartTime,
-                attendance.workEndTime,
-                attendance.user.defaultBreakMinutes || 0
-            );
-            const dailyHours = convertHHMMToDecimal(hours.normais)
-                + convertHHMMToDecimal(hours.extras)
-                + getPaidShortGapHours(attendance);
-            const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
-            const overtimeHours = Math.max(0, dailyHours - regularHours);
-            const hourlyRate = Number(attendance.user.hourly_price || 0);
-            const value = attendance.isOvertime === true && overtimeHours > 0
-                ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
-                : dailyHours * hourlyRate;
-
-            weeklyRegularHoursUsed += regularHours;
-            events.push({ date: attendance.check_out_time, value });
-        });
-    });
-
-    return events.sort((first, second) => first.date.getTime() - second.date.getTime());
-}
-
 async function getMobileTimeCardSeries(
     companyId: string,
     period: DashboardPeriod,
@@ -567,21 +511,95 @@ async function getMobileTimeCardSeries(
 ) {
     if (buckets.length === 0) return [];
 
-    const maximumEndDate = buckets[buckets.length - 1].endDate;
+    // getTimeCardTotal historically treats every bucket boundary as the end of
+    // that calendar day. Preserve that contract while loading the attendance
+    // rows only once for the complete series.
+    const bucketEndDates = buckets.map(bucket => dayjs(bucket.endDate).endOf('day').toDate());
+    const maximumEndDate = bucketEndDates[bucketEndDates.length - 1];
     const attendances = await findDashboardAttendances(companyId, period, maximumEndDate);
-    const events = buildTimeCardCostEvents(attendances);
-    let eventIndex = 0;
-    let runningTotal = 0;
 
-    return buckets.map(bucket => {
-        while (eventIndex < events.length && events[eventIndex].date <= bucket.endDate) {
-            runningTotal += events[eventIndex].value;
-            eventIndex += 1;
+    applyEffectiveBreaksToAttendances(attendances as any[]);
+    applyPaidShortGapsToAttendances(attendances as any[]);
+
+    const weeklyAttendances = new Map<string, Array<{
+        attendance: typeof attendances[number];
+        baseDailyHours: number;
+        paidGapEligibleAt: Date | null;
+        paidGapHours: number;
+    }>>();
+
+    attendances.forEach(attendance => {
+        if (!attendance.check_in_time || !attendance.user) return;
+
+        let baseDailyHours = 0;
+        if (attendance.check_out_time) {
+            const hours = calcularHorasTrabalhadas(
+                attendance.check_in_time.toISOString(),
+                attendance.check_out_time.toISOString(),
+                attendance.workStartTime,
+                attendance.workEndTime,
+                attendance.user.defaultBreakMinutes || 0
+            );
+            baseDailyHours = convertHHMMToDecimal(hours.normais)
+                + convertHHMMToDecimal(hours.extras);
         }
+
+        const weekStart = DateTime.fromJSDate(attendance.check_in_time).startOf('week').plus({ days: 1 });
+        const weekKey = `${attendance.user.id}-${weekStart.toISODate()}`;
+        const week = weeklyAttendances.get(weekKey) || [];
+        week.push({
+            attendance,
+            baseDailyHours,
+            paidGapEligibleAt: getPaidShortGapEligibleAt(attendance),
+            paidGapHours: getPaidShortGapHours(attendance),
+        });
+        weeklyAttendances.set(weekKey, week);
+    });
+
+    weeklyAttendances.forEach(week => {
+        week.sort(
+            (first, second) => first.attendance.check_in_time.getTime()
+                - second.attendance.check_in_time.getTime()
+        );
+    });
+
+    return buckets.map((bucket, bucketIndex) => {
+        const bucketEndDate = bucketEndDates[bucketIndex];
+        let totalPrice = 0;
+
+        weeklyAttendances.forEach(week => {
+            let weeklyRegularHoursUsed = 0;
+
+            week.forEach(metric => {
+                const { attendance } = metric;
+                if (
+                    attendance.check_in_time > bucketEndDate
+                    || (attendance.check_out_time && attendance.check_out_time > bucketEndDate)
+                    || !attendance.check_out_time
+                    || !attendance.user
+                ) {
+                    return;
+                }
+
+                const paidGapHours = metric.paidGapEligibleAt
+                    && metric.paidGapEligibleAt <= bucketEndDate
+                    ? metric.paidGapHours
+                    : 0;
+                const dailyHours = metric.baseDailyHours + paidGapHours;
+                const regularHours = Math.min(dailyHours, Math.max(0, 40 - weeklyRegularHoursUsed));
+                const overtimeHours = Math.max(0, dailyHours - regularHours);
+                const hourlyRate = Number(attendance.user.hourly_price || 0);
+
+                weeklyRegularHoursUsed += regularHours;
+                totalPrice += attendance.isOvertime === true && overtimeHours > 0
+                    ? (regularHours * hourlyRate) + (overtimeHours * hourlyRate * 1.5)
+                    : dailyHours * hourlyRate;
+            });
+        });
 
         return {
             label: bucket.label,
-            value: Number(runningTotal.toFixed(2))
+            value: Number(totalPrice.toFixed(2))
         };
     });
 }
@@ -882,86 +900,15 @@ export class BusinessDashboardController {
             const companyId = valid.response?.id;
 
             const [
-                estimates,
-                projects,
-                customers,
-                employees,
-                invoices,
+                countSeries,
                 timeCards
             ] = await Promise.all([
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await prisma.estimate.count({
-                        where: {
-                            project: {
-                                company_id: companyId,
-                                status_project: {
-                                    in: ["Pending", "Accepted"]
-                                }
-                            },
-                            status: {
-                                in: ["approved", "pending", "canceled"]
-                            },
-                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
-                        }
-                    })
-                }))),
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await prisma.project.count({
-                        where: {
-                            company_id: companyId,
-                            status_project: {
-                                in: ["Pre-Start", "In Progress", "Final walkthrough", "Finished"]
-                            },
-                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
-                        }
-                    })
-                }))),
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await prisma.client.count({
-                        where: {
-                            company_id: companyId,
-                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
-                        }
-                    })
-                }))),
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await prisma.user.count({
-                        where: {
-                            company_id: companyId,
-                            isDisabled: false,
-                            office: {
-                                name: "Worker"
-                            },
-                            date_creation: getCumulativeDateFilter(selectedPeriod, bucket)
-                        }
-                    })
-                }))),
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await prisma.invoice.count({
-                        where: {
-                            companyId,
-                            ...activeInvoiceFilter,
-                            createdAt: getCumulativeDateFilter(selectedPeriod, bucket)
-                        }
-                    })
-                }))),
-                Promise.all(buckets.map(async (bucket) => ({
-                    label: bucket.label,
-                    value: await getTimeCardTotal(companyId!, selectedPeriod, bucket.endDate)
-                })))
+                getMobileCountSeries(companyId!, selectedPeriod, buckets),
+                getMobileTimeCardSeries(companyId!, selectedPeriod, buckets)
             ]);
 
             return res.json({
-                estimates,
-                projects,
-                customers,
-                employees,
-                invoices,
+                ...countSeries,
                 timeCards
             });
         } catch (error) {
