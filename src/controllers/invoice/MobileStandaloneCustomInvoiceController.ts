@@ -11,6 +11,7 @@ import { StripeController } from "../stripe/StripeController";
 import { UnifiedInvoiceController } from "./UnifiedInvoiceController";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
+import { getInvoiceWorkSiteAddress } from "../../utils/invoiceWorkSite";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
@@ -183,7 +184,7 @@ export class MobileStandaloneCustomInvoiceController {
       const companyAddress = formatCompanyAddress(company);
       const workContextDetails = workContext
         ? {
-            address: workContext.addressOffice || workContext.location || "",
+            address: getInvoiceWorkSiteAddress(workContext),
             email: workContext.Email || "",
             name: workContext.Name || workContext.label || "",
             phone: workContext.phone || "",
@@ -275,7 +276,7 @@ export class MobileStandaloneCustomInvoiceController {
             company_id: payload.companyId,
             contract_number: projectNumber,
             lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
+            location: getInvoiceWorkSiteAddress(workContext, client.location || client.addressOffice),
             log: workContext?.longitude?.toString() || "",
             price: servicesTotal,
             radius: workContext?.radius || client.radius || null,
@@ -724,7 +725,7 @@ export class MobileStandaloneCustomInvoiceController {
           type: typeValue,
         },
         client: {
-          address: client?.addressOffice || project?.location || "",
+          address: client?.location || client?.addressOffice || "",
           email: client?.email || "",
           id: client?.id || "",
           name: client?.name || "",
@@ -844,7 +845,7 @@ export class MobileStandaloneCustomInvoiceController {
       const companyAddress = formatCompanyAddress(company);
       const workContextDetails = workContext
         ? {
-            address: workContext.addressOffice || workContext.location || "",
+            address: getInvoiceWorkSiteAddress(workContext),
             email: workContext.Email || "",
             name: workContext.Name || workContext.label || "",
             phone: workContext.phone || "",
@@ -918,7 +919,7 @@ export class MobileStandaloneCustomInvoiceController {
             client_id: client.id,
             company_id: payload.companyId,
             lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
+            location: getInvoiceWorkSiteAddress(workContext, client.location || client.addressOffice),
             log: workContext?.longitude?.toString() || "",
             price: servicesTotal,
             radius: workContext?.radius || client.radius || null,
@@ -1186,12 +1187,13 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const dueDate = payload.dueDate ? normalizeDate(payload.dueDate) : invoice.dueDate || new Date();
   const invoiceNumber = invoice.externalInvoiceId || payload.invoiceNumber || invoice.id;
   const showPaymentMethods = payload.showPaymentMethods !== false;
+  const workSiteAddress = getInvoiceWorkSiteAddress(workContext, undefined, invoice.project.location);
   const pdfInput: InvoicePdfInput = {
     amountPaid,
     apiBalanceDue,
     balanceDue: invoiceAmount,
     client: {
-      address: client.addressOffice || client.location || invoice.project.location || "",
+      address: client.location || client.addressOffice || "",
       email: client.email || "",
       name: client.name || "Client",
       phone: client.phone || "",
@@ -1222,12 +1224,12 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
     services,
     showPaymentMethods,
     totalInvoice: apiBalanceDue > 0 ? apiBalanceDue : servicesTotal,
-    workContext: workContext
+    workContext: workContext || workSiteAddress
       ? {
-          address: workContext.addressOffice || workContext.location || "",
-          email: workContext.Email || "",
-          name: workContext.Name || workContext.label || "",
-          phone: workContext.phone || "",
+          address: workSiteAddress,
+          email: workContext?.Email || "",
+          name: workContext?.Name || workContext?.label || "Work Site",
+          phone: workContext?.phone || "",
         }
       : null,
   };

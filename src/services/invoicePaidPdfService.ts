@@ -7,6 +7,7 @@ import { prisma } from "../utils/prisma";
 import { deleteFileFromS3 } from "../utils/S3/deleteFileFromS3";
 import { getPresignedUrl } from "../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../utils/S3/uploadFIleS3";
+import { getInvoiceWorkSiteAddress } from "../utils/invoiceWorkSite";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
@@ -304,13 +305,15 @@ function buildPaidInvoiceHtml(input: {
   const project = invoice.project || invoice.estimate?.project;
   const billToAddress =
     input.client?.location ||
-    project?.location ||
-    input.workContext?.location ||
-    input.workContext?.addressOffice ||
+    input.client?.addressOffice ||
     "";
   const clientName = input.client?.name || input.workContext?.Name || "Client";
   const clientEmail = input.client?.email || input.workContext?.Email || "";
   const clientPhone = input.client?.phone || input.workContext?.phone || "";
+  const workSiteAddress = getInvoiceWorkSiteAddress(input.workContext, undefined, project?.location);
+  const workSiteName = input.workContext?.Name || input.workContext?.label || "Work Site";
+  const workSiteEmail = input.workContext?.Email || "";
+  const workSitePhone = input.workContext?.phone || "";
   const paymentMethodLabel =
     invoice.invoiceType === "stripe"
       ? "Stripe"
@@ -586,6 +589,19 @@ function buildPaidInvoiceHtml(input: {
                   ${clientEmail ? `<div>${escapeHtml(clientEmail)}</div>` : ""}
                 </div>
               </div>
+              ${
+                workSiteAddress || workSiteEmail || workSitePhone
+                  ? `<div class="card">
+                      <div class="label">Work Site</div>
+                      <div class="person">${escapeHtml(workSiteName)}</div>
+                      <div class="muted">
+                        ${workSiteAddress ? `<div>${escapeHtml(workSiteAddress)}</div>` : ""}
+                        ${workSitePhone ? `<div>${escapeHtml(workSitePhone)}</div>` : ""}
+                        ${workSiteEmail ? `<div>${escapeHtml(workSiteEmail)}</div>` : ""}
+                      </div>
+                    </div>`
+                  : ""
+              }
             </div>
 
             <div class="card">

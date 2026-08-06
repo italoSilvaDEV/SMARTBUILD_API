@@ -8,6 +8,7 @@ import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInv
 import { stripeConfig } from "../../config/stripe";
 import { sendEmail } from "../../utils/sendEmail";
 import { formatInvoicePaymentDate } from "../../utils/invoicePaymentDate";
+import { getInvoiceWorkSiteAddress } from "../../utils/invoiceWorkSite";
 
 const stripe = stripeConfig.getClient();
 
@@ -1171,6 +1172,7 @@ export class CustomInvoiceController {
           project: {
             include: {
               client: true,
+              workContext: true,
               company: {
                 include: {
                   NotesContrac: true
@@ -1226,6 +1228,19 @@ export class CustomInvoiceController {
 
       // Preparar os dados para o PDF
       const clientName = invoice.project.client.name;
+      const clientAddress =
+        invoice.project.client.location ||
+        invoice.project.client.addressOffice ||
+        "";
+      const workSiteName =
+        invoice.project.workContext?.Name ||
+        invoice.project.workContext?.label ||
+        clientName;
+      const workSiteAddress = getInvoiceWorkSiteAddress(
+        invoice.project.workContext,
+        undefined,
+        invoice.project.location,
+      );
       const invoiceCode = invoice.externalInvoiceId;
       const invoiceAmount = `$${Number(invoice.totalAmount).toFixed(2)}`;
       const company = invoice.project.company;
@@ -1268,15 +1283,15 @@ export class CustomInvoiceController {
       columnText1.push(
         "Bill to",
         clientName,
-        invoice.project.location || "",
+        clientAddress,
         invoice.project.client.city_and_state || "",
       );
 
       columnText2.push(
-        "Ship to",
-        clientName,
-        invoice.project.location || "",
-        invoice.project.client.city_and_state || "",
+        "Work Site",
+        workSiteName,
+        workSiteAddress,
+        "",
       );
 
       // Montar o endereço completo

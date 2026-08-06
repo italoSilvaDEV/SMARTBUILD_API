@@ -193,6 +193,8 @@ export class GetAllEstimatesByCompanyController {
                                             id: true,
                                             name: true,
                                             email: true,
+                                            location: true,
+                                            addressOffice: true,
                                         },
                                     },
                                 },
@@ -293,6 +295,7 @@ export class GetAllEstimatesByCompanyController {
                                     name: true,
                                     email: true,
                                     phone: true,
+                                    location: true,
                                     addressOffice: true,
                                     city_and_state: true,
                                     date_creation: true,
@@ -306,6 +309,7 @@ export class GetAllEstimatesByCompanyController {
                                             Name: true,
                                             Email: true,
                                             phone: true,
+                                            location: true,
                                             addressOffice: true,
                                             type: true
                                         }
@@ -318,6 +322,7 @@ export class GetAllEstimatesByCompanyController {
                                     Name: true,
                                     Email: true,
                                     phone: true,
+                                    location: true,
                                     addressOffice: true,
                                     type: true,
                                 }
