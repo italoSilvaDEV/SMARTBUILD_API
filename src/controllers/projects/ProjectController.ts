@@ -656,6 +656,7 @@ export class ProjectController {
           project_manager: projectManagerWithAvatar,
           balanceDue: balanceDue,
           amountPaid: Number(totalAmountPaid),
+          realClient: project.client,
           client: {
             ...project.client,
             location: project.location,
@@ -950,6 +951,7 @@ export class ProjectController {
           amountPaid: totalAmountPaid,
           InvoicePaymentTimeLine: allPaymentTimeline,
 
+          realClient: project.client,
           client: {
             ...project.client,
             location: project.location, // Substitui client.location por project.location
