@@ -23,6 +23,7 @@ type VerifiedSocialProfile = {
 
 type VerifiedStorePurchase = {
   active: boolean;
+  appAccountToken?: string | null;
   productId: string;
   transactionId?: string | null;
   originalTransactionId?: string | null;
@@ -324,24 +325,39 @@ async function verifyApplePurchase(input: {
     };
   }
 
-  const resolved = input.signedTransactionInfo
-    ? { environment: "production" as const, payload: decodeJwtPayload<any>(input.signedTransactionInfo) }
-    : await fetchAppleTransaction(String(input.transactionId || ""));
+  const clientPayload = !input.transactionId && input.signedTransactionInfo
+    ? decodeJwtPayload<any>(input.signedTransactionInfo)
+    : null;
+  const transactionId = String(input.transactionId || clientPayload?.transactionId || "");
+  if (!transactionId) throw new Error("Apple transaction id is required.");
+
+  // Never trust the transaction JWS received from the device by itself. The
+  // transaction is fetched again from Apple's authenticated server API.
+  const resolved = await fetchAppleTransaction(transactionId);
 
   const payload = resolved.payload;
   const productId = String(payload.productId || "");
   assertAllowedMobileProduct(productId);
+  if (input.productId && input.productId !== productId) {
+    throw new Error("Apple transaction product does not match the selected plan.");
+  }
+
+  const expectedBundleId = process.env.APP_STORE_BUNDLE_ID || process.env.APPLE_BUNDLE_ID || "com.struxpro.app";
+  if (payload.bundleId && payload.bundleId !== expectedBundleId) {
+    throw new Error("Apple transaction belongs to a different app.");
+  }
 
   const startDate = new Date(Number(payload.purchaseDate || Date.now()));
   const endDate = new Date(Number(payload.expiresDate || 0));
   return {
-    active: endDate > new Date(),
+    active: !payload.revocationDate && endDate > new Date(),
+    appAccountToken: payload.appAccountToken ? String(payload.appAccountToken) : null,
     productId,
-    transactionId: String(payload.transactionId || input.transactionId || ""),
-    originalTransactionId: String(payload.originalTransactionId || payload.transactionId || input.transactionId || ""),
+    transactionId: String(payload.transactionId || transactionId),
+    originalTransactionId: String(payload.originalTransactionId || payload.transactionId || transactionId),
     startDate,
     endDate,
-    autoRenewing: true,
+    autoRenewing: null,
     environment: resolved.environment,
   };
 }
@@ -425,29 +441,19 @@ async function updateExistingStoreSubscription(input: {
   purchase: VerifiedStorePurchase;
   paymentFailed?: boolean;
 }) {
-  const where =
-    input.billingProvider === "apple"
-      ? {
-          OR: [
-            { storeOriginalTransactionId: input.purchase.originalTransactionId || undefined },
-            { storeTransactionId: input.purchase.transactionId || undefined },
-          ],
-        }
-      : { googlePurchaseToken: input.purchase.googlePurchaseToken || undefined };
-
-  const subscription = await prisma.subscription.findFirst({
-    where: {
-      billingProvider: input.billingProvider,
-      ...where,
-    },
-  });
+  const subscription = await findExistingStoreSubscription(
+    input.billingProvider,
+    input.purchase,
+  );
 
   if (!subscription) return null;
 
   const isActive = input.purchase.active;
-  await prisma.subscription.update({
+  const plan = await getMobilePlan(input.purchase.productId);
+  const updatedSubscription = await prisma.subscription.update({
     where: { id: subscription.id },
     data: {
+      planId: plan.id,
       startDate: input.purchase.startDate,
       endDate: input.purchase.endDate,
       isActive,
@@ -465,10 +471,149 @@ async function updateExistingStoreSubscription(input: {
     },
   });
 
-  await prisma.company.update({
-    where: { id: subscription.companyId },
-    data: { mobileSubscriptionStatus: isActive ? "active" : "expired" },
+  if (isActive) {
+    await prisma.subscription.updateMany({
+      where: {
+        billingProvider: input.billingProvider,
+        companyId: subscription.companyId,
+        id: { not: subscription.id },
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+    await ensureCompanyPlanSetup(subscription.companyId, plan);
+  } else {
+    const otherActiveSubscription = await prisma.subscription.findFirst({
+      where: {
+        companyId: subscription.companyId,
+        id: { not: subscription.id },
+        isActive: true,
+        endDate: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!otherActiveSubscription) {
+      await prisma.company.update({
+        where: { id: subscription.companyId },
+        data: { mobileSubscriptionStatus: "expired" },
+      });
+    }
+  }
+
+  return updatedSubscription;
+}
+
+async function findExistingStoreSubscription(
+  billingProvider: "apple" | "google",
+  purchase: VerifiedStorePurchase,
+) {
+  if (billingProvider === "apple") {
+    if (purchase.transactionId) {
+      const exactTransaction = await prisma.subscription.findFirst({
+        where: { billingProvider, storeTransactionId: purchase.transactionId },
+      });
+      if (exactTransaction) return exactTransaction;
+    }
+
+    if (purchase.originalTransactionId) {
+      return prisma.subscription.findFirst({
+        where: {
+          billingProvider,
+          storeOriginalTransactionId: purchase.originalTransactionId,
+        },
+        orderBy: { startDate: "desc" },
+      });
+    }
+
+    throw new Error("Apple subscription identifier is missing.");
+  }
+
+  if (!purchase.googlePurchaseToken) throw new Error("Google purchase token is missing.");
+  return prisma.subscription.findFirst({
+    where: { billingProvider, googlePurchaseToken: purchase.googlePurchaseToken },
   });
+}
+
+async function persistVerifiedStoreSubscription(input: {
+  billingProvider: "apple" | "google";
+  companyId: string;
+  purchase: VerifiedStorePurchase;
+  rejectActiveStripe?: boolean;
+}) {
+  if (input.purchase.appAccountToken && input.purchase.appAccountToken !== input.companyId) {
+    throw new Error("This App Store purchase is linked to a different SmartBuild company.");
+  }
+
+  const existing = await findExistingStoreSubscription(input.billingProvider, input.purchase);
+
+  if (existing && existing.companyId !== input.companyId) {
+    throw new Error("This store subscription is already linked to another SmartBuild company.");
+  }
+
+  if (input.rejectActiveStripe) {
+    const activeStripeSubscription = await prisma.subscription.findFirst({
+      where: {
+        billingProvider: "stripe",
+        companyId: input.companyId,
+        endDate: { gt: new Date() },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    if (activeStripeSubscription) {
+      throw new Error("This company already has an active web subscription.");
+    }
+  }
+
+  const plan = await getMobilePlan(input.purchase.productId);
+  const subscription = await prisma.$transaction(async (tx) => {
+    await tx.subscription.updateMany({
+      where: {
+        billingProvider: input.billingProvider,
+        companyId: input.companyId,
+        isActive: true,
+        ...(existing ? { id: { not: existing.id } } : {}),
+      },
+      data: { isActive: false },
+    });
+
+    const data = {
+      autoRenewing: input.purchase.autoRenewing ?? null,
+      billingProvider: input.billingProvider,
+      endDate: input.purchase.endDate,
+      googlePurchaseToken: input.purchase.googlePurchaseToken || null,
+      isActive: input.purchase.active,
+      lastVerifiedAt: new Date(),
+      paymentFailed: false,
+      planId: plan.id,
+      startDate: input.purchase.startDate,
+      storeEnvironment: input.purchase.environment,
+      storeOriginalTransactionId: input.purchase.originalTransactionId || null,
+      storeProductId: input.purchase.productId,
+      storeTransactionId: input.purchase.transactionId || null,
+      stripeSubscriptionCanceled: false,
+    } as const;
+
+    if (existing) {
+      return tx.subscription.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+
+    return tx.subscription.create({
+      data: {
+        ...data,
+        companyId: input.companyId,
+      },
+    });
+  });
+
+  if (input.purchase.active) {
+    await ensureCompanyPlanSetup(input.companyId, plan);
+  }
 
   return subscription;
 }
@@ -925,36 +1070,11 @@ export class MobileAuthController {
       const pending = verifyPendingToken(pendingToken);
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
-      const plan = await getMobilePlan(purchase.productId);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.subscription.updateMany({
-          where: { companyId: pending.companyId, isActive: true },
-          data: { isActive: false },
-        });
-
-        await tx.subscription.create({
-          data: {
-            companyId: pending.companyId,
-            planId: plan.id,
-            startDate: purchase.startDate,
-            endDate: purchase.endDate,
-            isActive: true,
-            billingProvider: platform === "ios" ? "apple" : "google",
-            storeProductId: purchase.productId,
-            storeTransactionId: purchase.transactionId || null,
-            storeOriginalTransactionId: purchase.originalTransactionId || null,
-            googlePurchaseToken: purchase.googlePurchaseToken || null,
-            storeEnvironment: purchase.environment,
-            autoRenewing: purchase.autoRenewing ?? null,
-            lastVerifiedAt: new Date(),
-            paymentFailed: false,
-            stripeSubscriptionCanceled: false,
-          },
-        });
+      await persistVerifiedStoreSubscription({
+        billingProvider: platform === "ios" ? "apple" : "google",
+        companyId: pending.companyId,
+        purchase,
       });
-
-      await ensureCompanyPlanSetup(pending.companyId, plan);
       return res.json(await buildAuthResponse(pending.userId, pending.companyId));
     } catch (error: any) {
       console.error("[MobileAuth.verifyPurchase]", error);
@@ -980,34 +1100,12 @@ export class MobileAuthController {
 
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
-      const plan = await getMobilePlan(purchase.productId);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.subscription.updateMany({
-          where: { companyId: userCompany.companyId, isActive: true },
-          data: { isActive: false },
-        });
-        await tx.subscription.create({
-          data: {
-            companyId: userCompany.companyId,
-            planId: plan.id,
-            startDate: purchase.startDate,
-            endDate: purchase.endDate,
-            isActive: true,
-            billingProvider: platform === "ios" ? "apple" : "google",
-            storeProductId: purchase.productId,
-            storeTransactionId: purchase.transactionId || null,
-            storeOriginalTransactionId: purchase.originalTransactionId || null,
-            googlePurchaseToken: purchase.googlePurchaseToken || null,
-            storeEnvironment: purchase.environment,
-            autoRenewing: purchase.autoRenewing ?? null,
-            lastVerifiedAt: new Date(),
-            paymentFailed: false,
-            stripeSubscriptionCanceled: false,
-          },
-        });
+      await persistVerifiedStoreSubscription({
+        billingProvider: platform === "ios" ? "apple" : "google",
+        companyId: userCompany.companyId,
+        purchase,
+        rejectActiveStripe: true,
       });
-      await ensureCompanyPlanSetup(userCompany.companyId, plan);
 
       return res.json(await buildAuthResponse(userId, userCompany.companyId));
     } catch (error: any) {

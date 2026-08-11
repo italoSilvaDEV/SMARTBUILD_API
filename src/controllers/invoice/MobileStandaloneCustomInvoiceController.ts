@@ -11,6 +11,8 @@ import { StripeController } from "../stripe/StripeController";
 import { UnifiedInvoiceController } from "./UnifiedInvoiceController";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
+import { getInvoiceWorkSiteAddress } from "../../utils/invoiceWorkSite";
+import { stripeConfig } from "../../config/stripe";
 
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
 
@@ -118,6 +120,74 @@ export class MobileStandaloneCustomInvoiceController {
     this.unifiedInvoiceController = new UnifiedInvoiceController();
   }
 
+  private async syncStandaloneInvoiceProvider({
+    coefficient,
+    existingInvoiceType,
+    invoiceAmount,
+    invoiceId,
+    payload,
+    req,
+    requestedInvoiceType,
+    services,
+    showPaymentMethods,
+    typeValue,
+  }: {
+    coefficient: number;
+    existingInvoiceType?: string | null;
+    invoiceAmount: number;
+    invoiceId: string;
+    payload: MobileStandaloneCustomInvoicePayload;
+    req: Request;
+    requestedInvoiceType: "custom" | "quickbooks" | "stripe";
+    services: NormalizedServiceLine[];
+    showPaymentMethods: boolean;
+    typeValue: string;
+  }) {
+    if (requestedInvoiceType === "custom" && normalizeInvoiceType(existingInvoiceType) === "custom") {
+      return;
+    }
+
+    const delegatedReq = withRequestOverrides(req, {
+      body: {
+        coefficientPerfentage: coefficient,
+        date_creation: payload.dateCreation,
+        description: payload.description || "",
+        dueDate: payload.dueDate,
+        invoiceType: requestedInvoiceType,
+        isStandaloneInvoice: true,
+        multi_emails: normalizeEmailList(payload.additionalEmails).join(","),
+        services: services.map((service) => ({
+          description: service.description,
+          name: service.name,
+          price: service.unitPrice,
+          quantity: service.quantity,
+          total: service.lineTotal,
+          totalAmount: service.lineTotal,
+        })),
+        showPaymentMethods,
+        totalAmount: invoiceAmount,
+        type_invoicebase: "project",
+        type_value: typeValue,
+        userId: payload.sellerUserId,
+      },
+      params: { ...req.params, invoiceId },
+    });
+    const delegatedRes = createCapturedResponse();
+
+    if (requestedInvoiceType === "quickbooks") {
+      await this.quickBooksController.updateInvoice(delegatedReq, delegatedRes.response);
+    } else if (requestedInvoiceType === "stripe") {
+      await this.stripeController.updateInvoice(delegatedReq, delegatedRes.response);
+    } else {
+      await this.customInvoiceController.updateInvoice(delegatedReq, delegatedRes.response);
+    }
+
+    if (delegatedRes.statusCode >= 400) {
+      const message = delegatedRes.body?.error || delegatedRes.body?.message || "Could not synchronize invoice provider.";
+      throw new Error(message);
+    }
+  }
+
   async handle(req: Request, res: Response) {
     const payload = req.body as MobileStandaloneCustomInvoicePayload;
 
@@ -139,6 +209,9 @@ export class MobileStandaloneCustomInvoiceController {
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
+
+      const requestedInvoiceType = normalizeInvoiceType(payload.paymentMethod);
+      await assertInvoiceProviderAvailable(requestedInvoiceType, payload.companyId);
 
       const seller = await prisma.user.findFirst({
         where: {
@@ -183,7 +256,7 @@ export class MobileStandaloneCustomInvoiceController {
       const companyAddress = formatCompanyAddress(company);
       const workContextDetails = workContext
         ? {
-            address: workContext.addressOffice || workContext.location || "",
+            address: getInvoiceWorkSiteAddress(workContext),
             email: workContext.Email || "",
             name: workContext.Name || workContext.label || "",
             phone: workContext.phone || "",
@@ -210,7 +283,7 @@ export class MobileStandaloneCustomInvoiceController {
         dueDate,
         invoiceAmount,
         invoiceNumber,
-        invoiceType: "custom",
+        invoiceType: requestedInvoiceType,
         services,
         showPaymentMethods,
         totalInvoice: servicesTotal,
@@ -275,7 +348,7 @@ export class MobileStandaloneCustomInvoiceController {
             company_id: payload.companyId,
             contract_number: projectNumber,
             lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
+            location: getInvoiceWorkSiteAddress(workContext, client.location || client.addressOffice),
             log: workContext?.longitude?.toString() || "",
             price: servicesTotal,
             radius: workContext?.radius || client.radius || null,
@@ -308,7 +381,8 @@ export class MobileStandaloneCustomInvoiceController {
             description: payload.description || "",
             dueDate,
             externalInvoiceId: invoiceNumber,
-            invoiceType: "custom",
+            invoiceType: requestedInvoiceType,
+            invoiceTypeStripe: requestedInvoiceType === "stripe" ? "payment_element" : null,
             isStandaloneInvoice: true,
             multi_emails: normalizeEmailList(payload.additionalEmails).join(","),
             percentageCoefficient: coefficient,
@@ -444,7 +518,10 @@ export class MobileStandaloneCustomInvoiceController {
           },
         });
 
-        if (quickBooksConfig?.isActive) {
+        const shouldCreateQuickBooksInvoice =
+          requestedInvoiceType === "quickbooks" || quickBooksConfig?.isActive === true;
+
+        if (shouldCreateQuickBooksInvoice) {
           const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
             where: { company_id: payload.companyId },
           });
@@ -477,8 +554,12 @@ export class MobileStandaloneCustomInvoiceController {
                 where: { id: result.invoice.id },
                 data: {
                   docNumberQuickBooksContabio: quickBooksResult.docNumber || null,
+                  externalDocNumber: quickBooksResult.docNumber || null,
                   idQuickbookContabio: quickBooksResult.quickbooksId,
+                  idQuickBooksRef: quickBooksResult.quickbooksId,
+                  invoiceUrl: quickBooksResult.invoiceUrl || null,
                   qboCustomerRef: quickBooksResult.qboCustomerRef || null,
+                  status: quickBooksResult.status || result.invoice.status,
                 },
               });
             }
@@ -513,6 +594,14 @@ export class MobileStandaloneCustomInvoiceController {
             invoice: { connect: { id: result.invoice.id } },
           },
         });
+
+        if (requestedInvoiceType === "quickbooks") {
+          return res.status(502).json({
+            error: `The invoice was saved locally, but QuickBooks could not create it: ${quickBooksError}`,
+            invoiceId: result.invoice.id,
+            projectId: result.project.id,
+          });
+        }
       }
 
       fireAndForgetUpsertEstimateToQBO(payload.companyId, (req as any).userId, result.estimate.id);
@@ -556,6 +645,9 @@ export class MobileStandaloneCustomInvoiceController {
       });
     } catch (error: any) {
       console.error("[MobileStandaloneCustomInvoice] Error:", error);
+      if (error instanceof InvoiceProviderUnavailableError) {
+        return res.status(409).json({ error: error.message, code: "INVOICE_PROVIDER_UNAVAILABLE" });
+      }
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }
@@ -575,6 +667,14 @@ export class MobileStandaloneCustomInvoiceController {
         isStandaloneInvoice: false,
         type_invoicebase: invoiceBaseType,
       };
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { company_id: true },
+      });
+      if (!project?.company_id) {
+        return res.status(404).json({ error: "Project or company not found." });
+      }
+      await assertInvoiceProviderAvailable(payload.invoiceType, project.company_id);
       const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, projectId } });
       const delegatedRes = createCapturedResponse();
 
@@ -609,6 +709,9 @@ export class MobileStandaloneCustomInvoiceController {
       });
     } catch (error: any) {
       console.error("[MobileProjectInvoice:create] Error:", error);
+      if (error instanceof InvoiceProviderUnavailableError) {
+        return res.status(409).json({ error: error.message, code: "INVOICE_PROVIDER_UNAVAILABLE" });
+      }
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }
@@ -619,7 +722,7 @@ export class MobileStandaloneCustomInvoiceController {
     try {
       const existingInvoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
-        select: { estimateId: true, invoiceType: true, type_invoicebase: true },
+        select: { companyId: true, estimateId: true, invoiceType: true, type_invoicebase: true },
       });
 
       if (!existingInvoice) {
@@ -642,6 +745,10 @@ export class MobileStandaloneCustomInvoiceController {
         isStandaloneInvoice: false,
         type_invoicebase: invoiceBaseType,
       };
+      if (!existingInvoice.companyId) {
+        return res.status(400).json({ error: "Invoice company is missing." });
+      }
+      await assertInvoiceProviderAvailable(payload.invoiceType, existingInvoice.companyId);
       const delegatedReq = withRequestOverrides(req, { body: payload, params: { ...req.params, invoiceId } });
       const delegatedRes = createCapturedResponse();
 
@@ -677,6 +784,9 @@ export class MobileStandaloneCustomInvoiceController {
       });
     } catch (error: any) {
       console.error("[MobileProjectInvoice:update] Error:", error);
+      if (error instanceof InvoiceProviderUnavailableError) {
+        return res.status(409).json({ error: error.message, code: "INVOICE_PROVIDER_UNAVAILABLE" });
+      }
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }
@@ -703,10 +813,6 @@ export class MobileStandaloneCustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (invoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
-      }
-
       const project = invoice.project;
       const client = project?.client;
       const workContext = project?.workContext;
@@ -724,7 +830,7 @@ export class MobileStandaloneCustomInvoiceController {
           type: typeValue,
         },
         client: {
-          address: client?.addressOffice || project?.location || "",
+          address: client?.location || client?.addressOffice || "",
           email: client?.email || "",
           id: client?.id || "",
           name: client?.name || "",
@@ -736,7 +842,7 @@ export class MobileStandaloneCustomInvoiceController {
         dueDate: invoice.dueDate,
         invoiceId: invoice.id,
         invoiceNumber: invoice.externalInvoiceId || "",
-        paymentMethod: "custom",
+        paymentMethod: normalizeInvoiceType(invoice.invoiceType),
         projectId: invoice.projectId,
         services: invoice.InvoiceItems.map((item, index) => ({
           description: item.description || "",
@@ -787,10 +893,6 @@ export class MobileStandaloneCustomInvoiceController {
         return res.status(404).json({ error: "Invoice not found" });
       }
 
-      if (existingInvoice.invoiceType !== "custom") {
-        return res.status(400).json({ error: "Only custom invoices can be edited in the mobile builder." });
-      }
-
       if (["paid", "void"].includes(String(existingInvoice.status || "").toLowerCase())) {
         return res.status(400).json({ error: "Paid or void invoices cannot be edited." });
       }
@@ -807,6 +909,9 @@ export class MobileStandaloneCustomInvoiceController {
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
+
+      const requestedInvoiceType = normalizeInvoiceType(payload.paymentMethod || existingInvoice.invoiceType);
+      await assertInvoiceProviderAvailable(requestedInvoiceType, payload.companyId);
 
       const seller = await prisma.user.findFirst({
         where: { id: payload.sellerUserId },
@@ -844,12 +949,25 @@ export class MobileStandaloneCustomInvoiceController {
       const companyAddress = formatCompanyAddress(company);
       const workContextDetails = workContext
         ? {
-            address: workContext.addressOffice || workContext.location || "",
+            address: getInvoiceWorkSiteAddress(workContext),
             email: workContext.Email || "",
             name: workContext.Name || workContext.label || "",
             phone: workContext.phone || "",
           }
         : null;
+
+      await this.syncStandaloneInvoiceProvider({
+        coefficient,
+        existingInvoiceType: existingInvoice.invoiceType,
+        invoiceAmount,
+        invoiceId: existingInvoice.id,
+        payload,
+        req,
+        requestedInvoiceType,
+        services,
+        showPaymentMethods,
+        typeValue,
+      });
 
       const pdfInput: InvoicePdfInput = {
         client: {
@@ -871,7 +989,7 @@ export class MobileStandaloneCustomInvoiceController {
         dueDate,
         invoiceAmount,
         invoiceNumber,
-        invoiceType: "custom",
+        invoiceType: requestedInvoiceType,
         services,
         showPaymentMethods,
         totalInvoice: servicesTotal,
@@ -918,7 +1036,7 @@ export class MobileStandaloneCustomInvoiceController {
             client_id: client.id,
             company_id: payload.companyId,
             lat: workContext?.latitude?.toString() || "",
-            location: workContext?.addressOffice || workContext?.location || client.addressOffice || client.location || "",
+            location: getInvoiceWorkSiteAddress(workContext, client.location || client.addressOffice),
             log: workContext?.longitude?.toString() || "",
             price: servicesTotal,
             radius: workContext?.radius || client.radius || null,
@@ -956,7 +1074,8 @@ export class MobileStandaloneCustomInvoiceController {
             description: payload.description || "",
             dueDate,
             externalInvoiceId: invoiceNumber,
-            invoiceType: "custom",
+            invoiceType: requestedInvoiceType,
+            invoiceTypeStripe: requestedInvoiceType === "stripe" ? "payment_element" : null,
             percentageCoefficient: coefficient,
             project_manager_id: undefined,
             showPaymentMethods,
@@ -1060,6 +1179,9 @@ export class MobileStandaloneCustomInvoiceController {
       });
     } catch (error: any) {
       console.error("[MobileStandaloneCustomInvoice:update] Error:", error);
+      if (error instanceof InvoiceProviderUnavailableError) {
+        return res.status(409).json({ error: error.message, code: "INVOICE_PROVIDER_UNAVAILABLE" });
+      }
       return res.status(500).json({ error: error?.message || "Internal Server Error" });
     }
   }
@@ -1112,9 +1234,90 @@ function getInvoiceIdFromControllerResponse(body: any) {
   return body?.invoice?.id || body?.databaseInvoice?.id || body?.invoiceId || body?.id || null;
 }
 
-function normalizeInvoiceType(invoiceType?: string | null) {
-  if (invoiceType === "quickbooks" || invoiceType === "custom") return invoiceType;
-  return "stripe";
+function normalizeInvoiceType(invoiceType?: string | null): "custom" | "quickbooks" | "stripe" {
+  if (invoiceType === "quickbooks" || invoiceType === "stripe") return invoiceType;
+  return "custom";
+}
+
+function getInvoiceProviderLabel(invoiceType?: string | null) {
+  if (invoiceType === "stripe") return "Stripe";
+  if (invoiceType === "quickbooks") return "QuickBooks";
+  return "Other";
+}
+
+async function assertInvoiceProviderAvailable(
+  invoiceType: "custom" | "quickbooks" | "stripe",
+  companyId: string,
+) {
+  if (invoiceType === "custom") return;
+
+  if (invoiceType === "quickbooks") {
+    const account = await prisma.quickBooksAccount.findUnique({
+      where: { company_id: companyId },
+      select: {
+        accessToken: true,
+        isDisabled: true,
+        needsReauthorization: true,
+        realmId: true,
+        refreshToken: true,
+      },
+    });
+
+    if (
+      !account ||
+      account.isDisabled ||
+      account.needsReauthorization ||
+      !account.realmId ||
+      !account.accessToken ||
+      !account.refreshToken
+    ) {
+      throw new InvoiceProviderUnavailableError(
+        "QuickBooks is not connected or needs to be reauthorized. Reconnect it before creating this invoice.",
+      );
+    }
+
+    return;
+  }
+
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { stripeAccountId: true },
+  });
+
+  if (!company?.stripeAccountId) {
+    throw new InvoiceProviderUnavailableError(
+      "Stripe is not connected. Complete Stripe onboarding before creating this invoice.",
+    );
+  }
+
+  let account;
+  try {
+    account = await stripeConfig.getClient().accounts.retrieve(company.stripeAccountId);
+  } catch {
+    throw new InvoiceProviderUnavailableError(
+      "Stripe connection could not be verified. Reconnect Stripe before creating this invoice.",
+    );
+  }
+
+  const pendingRequirements = account.requirements?.currently_due || [];
+  const isReady =
+    account.details_submitted &&
+    account.charges_enabled &&
+    account.payouts_enabled &&
+    pendingRequirements.length === 0;
+
+  if (!isReady) {
+    throw new InvoiceProviderUnavailableError(
+      "Stripe onboarding is incomplete. Finish the pending requirements before creating this invoice.",
+    );
+  }
+}
+
+class InvoiceProviderUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvoiceProviderUnavailableError";
+  }
 }
 
 async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, payload: any) {
@@ -1186,12 +1389,13 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
   const dueDate = payload.dueDate ? normalizeDate(payload.dueDate) : invoice.dueDate || new Date();
   const invoiceNumber = invoice.externalInvoiceId || payload.invoiceNumber || invoice.id;
   const showPaymentMethods = payload.showPaymentMethods !== false;
+  const workSiteAddress = getInvoiceWorkSiteAddress(workContext, undefined, invoice.project.location);
   const pdfInput: InvoicePdfInput = {
     amountPaid,
     apiBalanceDue,
     balanceDue: invoiceAmount,
     client: {
-      address: client.addressOffice || client.location || invoice.project.location || "",
+      address: client.location || client.addressOffice || "",
       email: client.email || "",
       name: client.name || "Client",
       phone: client.phone || "",
@@ -1222,12 +1426,12 @@ async function generateAndAttachMobileProjectInvoicePdf(invoiceId: string, paylo
     services,
     showPaymentMethods,
     totalInvoice: apiBalanceDue > 0 ? apiBalanceDue : servicesTotal,
-    workContext: workContext
+    workContext: workContext || workSiteAddress
       ? {
-          address: workContext.addressOffice || workContext.location || "",
-          email: workContext.Email || "",
-          name: workContext.Name || workContext.label || "",
-          phone: workContext.phone || "",
+          address: workSiteAddress,
+          email: workContext?.Email || "",
+          name: workContext?.Name || workContext?.label || "Work Site",
+          phone: workContext?.phone || "",
         }
       : null,
   };
@@ -1878,7 +2082,7 @@ function buildProfessionalInvoiceHtml(input: InvoicePdfInput) {
                 <div style="margin-bottom:16px;">
                   <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                     <span style="font-size:11px;color:#6b7280;">Payment Method:</span>
-                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${input.invoiceType === "stripe" ? "Stripe" : "Other"}</span>
+                    <span style="font-size:11px;color:#1a1a1a;font-weight:500;">${getInvoiceProviderLabel(input.invoiceType)}</span>
                   </div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                     <span style="font-size:11px;color:#6b7280;">Supervisor:</span>
