@@ -1842,7 +1842,10 @@ export class UserController {
       else {
         // Para planos PAGOS (não-FREE), usar os valores da assinatura local
         if (subscription) {
-          isExpired = !subscription.isActive;
+          isExpired =
+            !subscription.isActive ||
+            ((subscription.billingProvider === "apple" || subscription.billingProvider === "google") &&
+              new Date(subscription.endDate) < new Date());
           stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
           paymentFailed = subscription.paymentFailed;
         }
