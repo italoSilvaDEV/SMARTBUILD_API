@@ -38,7 +38,7 @@ export function checkToken(req: Request, res: Response, next: NextFunction) {
     return res.status(500).json({ error: "Authentication is not configured" });
   }
 
-  Jwt.verify(token, secret, { algorithms: ["HS256"] }, function (err, decoded: any) {
+  Jwt.verify(token, secret, { algorithms: ["HS256"] }, async function (err, decoded: any) {
     if (err) {
       return res.status(401).json({ error: "Failed to authenticate token" });
     }
@@ -55,6 +55,21 @@ export function checkToken(req: Request, res: Response, next: NextFunction) {
     if (!userId) {
       return res.status(401).json({ error: "Failed to authenticate token" });
     }
+
+    try {
+      const sessionUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isDisabled: true },
+      });
+
+      if (!sessionUser || sessionUser.isDisabled) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    } catch (error) {
+      console.error("Failed to validate session user:", error);
+      return res.status(503).json({ error: "Unable to validate access" });
+    }
+
     (req as any).userId = userId;
 
     if (userId) {

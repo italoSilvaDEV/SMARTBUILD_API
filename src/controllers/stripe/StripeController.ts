@@ -7,6 +7,10 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import dotenv from "dotenv";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
+import {
+    buildInvoiceTypeFilter,
+    expandInvoiceStatusFilters,
+} from "../../utils/invoiceListFilters";
 
 dotenv.config();
 
@@ -1308,7 +1312,10 @@ export class StripeController {
             itemsPerPage = 10,
             period = "allPeriod",
             startDate: queryStartDate,
-            endDate: queryEndDate
+            endDate: queryEndDate,
+            statusFilters,
+            typeFilters,
+            view,
         } = req.query;
 
         const userId = (req as any).userId as string | undefined;
@@ -1369,8 +1376,195 @@ export class StripeController {
             }
 
             const pageNumber = Number(page) > 0 ? Number(page) - 1 : 0;
-            const itemsLimit = Number(itemsPerPage);
+            const isSummary = view === "summary";
+            const requestedItemsLimit = Number(itemsPerPage);
+            const itemsLimit = isSummary
+                ? Math.min(Math.max(requestedItemsLimit || 20, 1), 50)
+                : requestedItemsLimit;
             const search = typeof searchTerm === 'string' ? searchTerm : "";
+
+            if (isSummary) {
+                const statusValues = expandInvoiceStatusFilters(statusFilters);
+                const invoiceTypeFilter = buildInvoiceTypeFilter(typeFilters);
+                const normalizedSearch = search.trim();
+                const summaryFilter: any = {
+                    companyId,
+                    status: statusValues.length > 0
+                        ? { in: statusValues }
+                        : { notIn: ["void"] },
+                    ...(Object.keys(dateFilter).length > 0 && {
+                        createdAt: dateFilter
+                    }),
+                    AND: [
+                        {
+                            OR: [
+                                { cancel_invoice_edit: false },
+                                { cancel_invoice_edit: null },
+                            ],
+                        },
+                        ...(Object.keys(invoiceFilterByUser).length > 0 ? [invoiceFilterByUser] : []),
+                        ...(invoiceTypeFilter ? [invoiceTypeFilter] : []),
+                        ...(normalizedSearch ? [{
+                            OR: [
+                                { externalInvoiceId: { contains: normalizedSearch } },
+                                { stripeInvoiceId: { contains: normalizedSearch } },
+                                { description: { contains: normalizedSearch } },
+                                { project: { client: { name: { contains: normalizedSearch } } } },
+                                { project: { client: { email: { contains: normalizedSearch } } } },
+                                { project: { client: { location: { contains: normalizedSearch } } } },
+                            ],
+                        }] : []),
+                    ],
+                };
+
+                const [invoices, total] = await prisma.$transaction([
+                    prisma.invoice.findMany({
+                        where: summaryFilter,
+                        include: {
+                            company: true,
+                            estimate: {
+                                select: {
+                                    id: true,
+                                    totalAmount: true,
+                                    amountPaid: true,
+                                    balanceDue: true,
+                                },
+                            },
+                            InvoiceSendHistory: {
+                                orderBy: {
+                                    sentAt: "desc",
+                                },
+                            },
+                            PdfProject: true,
+                            pdfInvoicePaids: true,
+                            project: {
+                                include: {
+                                    client: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            phone: true,
+                                            location: true,
+                                        },
+                                    },
+                                    serviceProject: true,
+                                },
+                            },
+                            payment: {
+                                select: {
+                                    id: true,
+                                    paymentMethod: true,
+                                    notes: true,
+                                    paidAt: true,
+                                    amount: true,
+                                    createdAt: true,
+                                },
+                            },
+                            project_manager: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                },
+                            },
+                            PaymentIntents: {
+                                select: {
+                                    id: true,
+                                    stripePaymentIntentId: true,
+                                    status: true,
+                                    amount: true,
+                                    surchargeAmount: true,
+                                    currency: true,
+                                    paymentMethodType: true,
+                                    createdAt: true,
+                                },
+                            },
+                            paymentApplications: {
+                                select: {
+                                    id: true,
+                                    amountApplied: true,
+                                    appliedAt: true,
+                                    paymentTransaction: {
+                                        select: {
+                                            id: true,
+                                            externalPaymentId: true,
+                                            paymentMethodType: true,
+                                            txnDate: true,
+                                        },
+                                    },
+                                },
+                                orderBy: {
+                                    appliedAt: "desc",
+                                },
+                            },
+                            InvoiceItems: true,
+                            InvoiceTimeline: {
+                                orderBy: {
+                                    date_creation: "asc",
+                                },
+                            },
+                            imagesAttachments: {
+                                select: {
+                                    id: true,
+                                    url: true,
+                                    original_filename: true,
+                                    type_images_attachments: true,
+                                    title: true,
+                                    date_creation: true,
+                                    date_update: true,
+                                },
+                            },
+                        },
+                        orderBy: [
+                            { externalInvoiceId: "desc" },
+                            { id: "desc" },
+                        ],
+                        skip: pageNumber * itemsLimit,
+                        take: itemsLimit,
+                    }),
+                    prisma.invoice.count({ where: summaryFilter }),
+                ]);
+
+                const summaryInvoices = await Promise.all(invoices.map(async (invoice) => {
+                    const pdfProjects = await Promise.all(invoice.PdfProject.map(async (pdf) => ({
+                        ...pdf,
+                        uri: pdf.uri ? await getPresignedUrl(pdf.uri) : null,
+                    })));
+                    const paidInvoicePdf = invoice.pdfInvoicePaids
+                        ? {
+                            ...invoice.pdfInvoicePaids,
+                            uri: invoice.pdfInvoicePaids.uri
+                                ? await getPresignedUrl(invoice.pdfInvoicePaids.uri)
+                                : null,
+                        }
+                        : null;
+                    const imagesAttachments = await Promise.all(invoice.imagesAttachments.map(async (image) => ({
+                        ...image,
+                        url: image.url ? await getPresignedUrl(image.url) : null,
+                    })));
+                    const avatar = invoice.company?.avatar
+                        ? await getPresignedUrl(invoice.company.avatar)
+                        : null;
+
+                    return {
+                        ...invoice,
+                        avatar,
+                        lastSentAt: invoice.InvoiceSendHistory[0]?.sentAt || null,
+                        PdfProject: pdfProjects,
+                        pdfInvoicePaids: paidInvoicePdf,
+                        imagesAttachments,
+                    };
+                }));
+
+                return res.status(200).json({
+                    total,
+                    invoices: summaryInvoices,
+                    page: pageNumber + 1,
+                    itemsPerPage: itemsLimit,
+                    hasMore: (pageNumber + 1) * itemsLimit < total,
+                });
+            }
 
             const filtro: any = {
                 companyId,

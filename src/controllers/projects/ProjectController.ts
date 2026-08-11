@@ -16,6 +16,7 @@ import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
+import { userCanViewFinancials } from "../../utils/financialAccess";
 
 function projectAttendanceTotals(attendances: Array<{
   user_id: string;
@@ -782,6 +783,12 @@ export class ProjectController {
         return res.status(404).json({ error: "Project not found" });
       }
 
+      const canViewFinancials = await userCanViewFinancials(
+        (req as any).userId,
+        project.company_id
+      );
+      const requestingUserId = (req as any).userId as string;
+
       const totalAmount = project.serviceProject.reduce((total, service) => {
         return total + Number(service.hours) * Number(service.price)
       }, 0)
@@ -801,29 +808,35 @@ export class ProjectController {
       }, 0)
 
       if (project) {
-        const costProjects = await Promise.all(
-          project.serviceProject.flatMap(async (serviceProject) =>
-            Promise.all(
-              serviceProject.costProject.map(async (cost) => ({
-                id: cost.id,
-                material_name: cost.material_name,
-                transaction_type: cost.transaction_type,
-                price: cost.price,
-                amout: cost.amout,
-                date_creation: cost.date_creation,
-                cost_date: cost.cost_date,
-                service_project_id: cost.ServiceProject?.id,
-                service_project_name: cost.ServiceProject?.name,
-                invoice_cost_project_id: cost.invoiceCostProject?.id,
-                project_cost_invoice_exists: cost.invoiceCostProject?.project_cost_invoice_exists,
-                invoice_cost_project: cost.invoiceCostProject?.uri
-                  ? await getPresignedUrl(String(cost.invoiceCostProject.uri))
-                  : null,
-              }))
+        const flatCostProjects = (
+          await Promise.all(
+            project.serviceProject.flatMap(async (serviceProject) =>
+              Promise.all(
+                serviceProject.costProject
+                  .filter(
+                    (cost) =>
+                      canViewFinancials || cost.userId === requestingUserId
+                  )
+                  .map(async (cost) => ({
+                    id: cost.id,
+                    material_name: cost.material_name,
+                    transaction_type: cost.transaction_type,
+                    price: cost.price,
+                    amout: cost.amout,
+                    date_creation: cost.date_creation,
+                    cost_date: cost.cost_date,
+                    service_project_id: cost.ServiceProject?.id,
+                    service_project_name: cost.ServiceProject?.name,
+                    invoice_cost_project_id: cost.invoiceCostProject?.id,
+                    project_cost_invoice_exists: cost.invoiceCostProject?.project_cost_invoice_exists,
+                    invoice_cost_project: cost.invoiceCostProject?.uri
+                      ? await getPresignedUrl(String(cost.invoiceCostProject.uri))
+                      : null,
+                  }))
+              )
             )
           )
-        );
-        const flatCostProjects = costProjects.flat(); // Achata o array de arrays em um único array
+        ).flat();
 
         const costofwork = flatCostProjects.reduce((total, cost) => {
           const lineTotal = Number(cost.price) * Number(cost.amout);
@@ -946,6 +959,28 @@ export class ProjectController {
 
         res.json({
           ...project,
+          serviceProject: canViewFinancials
+            ? project.serviceProject
+            : project.serviceProject.map((serviceProject) => ({
+              ...serviceProject,
+              costProject: serviceProject.costProject.filter(
+                (cost) => cost.userId === requestingUserId
+              ),
+            })),
+          invoiceCostProject: canViewFinancials
+            ? project.invoiceCostProject
+            : project.invoiceCostProject
+              .filter((invoice) =>
+                invoice.costProject.some(
+                  (cost) => cost.userId === requestingUserId
+                )
+              )
+              .map((invoice) => ({
+                ...invoice,
+                costProject: invoice.costProject.filter(
+                  (cost) => cost.userId === requestingUserId
+                ),
+              })),
           cover_photo: coverPhotoUrl,
           balanceDue: balanceDue,
           amountPaid: totalAmountPaid,
@@ -1914,6 +1949,7 @@ export class ProjectController {
           stages: true,
           Activities: true,
           UserServiceProject: {
+            where: { removed_at: null },
             select: {
               id: true,
               user: {
@@ -3458,5 +3494,3 @@ export class ProjectController {
     }
   }
 }
-
-

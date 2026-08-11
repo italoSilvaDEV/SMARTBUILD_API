@@ -37,8 +37,17 @@ export function getPaidShortGapHours(attendance: any) {
   return getPaidShortGapMinutes(attendance) / 60;
 }
 
+export function getPaidShortGapEligibleAt(attendance: any): Date | null {
+  const value = attendance?.__paidShortGapEligibleAt;
+  if (!value) return null;
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
 export function applyPaidShortGapsToAttendances(attendances: any[]) {
   const paidGapByAttendance = new Map<string, number>();
+  const paidGapEligibleAtByAttendance = new Map<string, Date>();
   const groupedAttendances = new Map<string, any[]>();
   const identitiesByGroup = new Map<string, Set<string>>();
 
@@ -85,11 +94,29 @@ export function applyPaidShortGapsToAttendances(attendances: any[]) {
         currentIdentity,
         (paidGapByAttendance.get(currentIdentity) || 0) + gapMinutes
       );
+
+      // A historical dashboard bucket only contains the next attendance after
+      // that record itself satisfies the bucket query. Keep that eligibility
+      // boundary so a single full-range read can reproduce every old bucket.
+      const nextOut = next?.check_out_time
+        ? new Date(next.check_out_time).getTime()
+        : nextIn;
+      paidGapEligibleAtByAttendance.set(
+        currentIdentity,
+        new Date(Math.max(nextIn, nextOut))
+      );
     }
   });
 
   attendances.forEach((attendance) => {
-    attendance.__paidShortGapMinutes = paidGapByAttendance.get(getAttendanceIdentity(attendance)) || 0;
+    const identity = getAttendanceIdentity(attendance);
+    attendance.__paidShortGapMinutes = paidGapByAttendance.get(identity) || 0;
+    Object.defineProperty(attendance, "__paidShortGapEligibleAt", {
+      configurable: true,
+      enumerable: false,
+      value: paidGapEligibleAtByAttendance.get(identity) || null,
+      writable: true,
+    });
   });
 
   return attendances;

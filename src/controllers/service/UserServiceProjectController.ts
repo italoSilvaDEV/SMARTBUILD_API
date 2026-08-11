@@ -3,6 +3,11 @@ import { prisma } from "../../utils/prisma";
 import { Prisma } from "@prisma/client";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import {
+  softRemoveUserAssignmentLinks,
+  upsertUserAssignmentLink,
+} from "../../utils/scheduleAssignmentLinks";
+import { userCanViewFinancials } from "../../utils/financialAccess";
 
 export class UserServiceProjectController {
   // Criar um novo UserServiceProject
@@ -10,6 +15,18 @@ export class UserServiceProjectController {
   async create(req: Request, res: Response) {
     try {
       const { user_ids, service_project_id, assigned_at } = req.body;
+
+      if (!service_project_id || !Array.isArray(user_ids)) {
+        return res.status(400).json({
+          error: "Service project ID and user IDs are required.",
+        });
+      }
+
+      const requestedUserIds = [
+        ...new Set(user_ids.filter(
+          (id: unknown): id is string => typeof id === "string" && id.length > 0
+        )),
+      ];
 
       // Verifica se o projeto existe
       const serviceProjectExists = await prisma.serviceProject.findUnique({
@@ -22,13 +39,13 @@ export class UserServiceProjectController {
 
       // Verifica se todos os usuários existem
       const usersExist = await prisma.user.findMany({
-        where: { id: { in: user_ids } },
+        where: { id: { in: requestedUserIds } },
         select: { id: true },
       });
 
       const existingUserIds = usersExist.map((user) => user.id);
 
-      const invalidUserIds = user_ids.filter(
+      const invalidUserIds = requestedUserIds.filter(
         (id: string) => !existingUserIds.includes(id)
       );
 
@@ -39,78 +56,58 @@ export class UserServiceProjectController {
         });
       }
 
-      // Obtém relações já existentes
-      const existingRelations = await prisma.userServiceProject.findMany({
+      // Considera somente os vínculos ativos. Vínculos removidos continuam no
+      // banco para preservar pontos, timelines e demais dados históricos.
+      const activeRelations = await prisma.userServiceProject.findMany({
         where: {
           service_project_id,
-          user_id: { in: user_ids },
+          removed_at: null,
         },
         select: { user_id: true },
       });
 
-      const associatedUserIds = existingRelations.map(
+      const activeUserIds = activeRelations.map(
         (relation) => relation.user_id
       );
 
-      // Busca usuários que não possuem dados relacionados em outras tabelas
-      const removableRelations = await prisma.userServiceProject.findMany({
-        where: {
-          service_project_id,
-          user_id: { notIn: user_ids },
-        },
-        select: {
-          id: true,
-          user_id: true,
-        },
-      });
-
-      const removableUserIds = [];
-
-      for (const relation of removableRelations) {
-        const hasDependencies = await prisma.userAttendance.findFirst({
-          where: { user_service_project_id: relation.id },
-        });
-
-        if (!hasDependencies) {
-          removableUserIds.push(relation.user_id);
-        }
-      }
-
-      // Remove apenas usuários sem dependências
-      if (removableUserIds.length > 0) {
-        await prisma.userServiceProject.deleteMany({
-          where: {
-            service_project_id,
-            user_id: { in: removableUserIds },
-          },
-        });
-      }
-
-      // Filtra IDs que não estão associados
-      const newUserIds = user_ids.filter(
-        (id: string) => !associatedUserIds.includes(id)
+      const removedUserIds = activeUserIds.filter(
+        (id) => !requestedUserIds.includes(id)
+      );
+      const addedUserIds = requestedUserIds.filter(
+        (id) => !activeUserIds.includes(id)
       );
 
-      // Cria novas relações
-      const newRelations = await prisma.userServiceProject.createMany({
-        data: newUserIds.map((user_id: string) => ({
-          user_id,
-          service_project_id,
-          assigned_at: assigned_at || new Date(),
-        })),
+      await prisma.$transaction(async (tx) => {
+        await softRemoveUserAssignmentLinks(
+          tx,
+          { service_project_id },
+          removedUserIds
+        );
+
+        for (const userId of addedUserIds) {
+          await upsertUserAssignmentLink(
+            tx,
+            userId,
+            { service_project_id },
+            undefined,
+            assigned_at
+          );
+        }
+
+        if (serviceProjectExists.status == null && requestedUserIds.length > 0) {
+          await tx.serviceProject.update({
+            where: { id: service_project_id },
+            data: {
+              status: "Scheduled",
+            },
+          });
+        }
       });
-      if (serviceProjectExists.status == null) {
-        await prisma.serviceProject.update({
-          where: { id: service_project_id },
-          data: {
-            status: 'Scheduled'
-          }
-        });
-      }
+
       res.status(201).json({
-        message: `${newRelations.count} users successfully added to the project.`,
-        addedUserIds: newUserIds,
-        removedUserIds: removableUserIds,
+        message: "Service team updated successfully.",
+        addedUserIds,
+        removedUserIds,
       });
     } catch (error: any) {
       console.error(error);
@@ -121,32 +118,34 @@ export class UserServiceProjectController {
     }
   }
 
-  /** Remove the user-service link (UserServiceProject) by id. Does NOT delete existing attendance records. */
+  /** Soft-removes the user-service link. Attendance and timeline history stay intact. */
   async deleteLink(req: Request, res: Response) {
     try {
-      const { id } = req.params; // UserServiceProject id
+      const { id } = req.params;
       const existing = await prisma.userServiceProject.findUnique({
         where: { id },
-        select: { id: true },
+        select: { id: true, removed_at: true },
       });
       if (!existing) {
         return res.status(404).json({ error: "Link not found." });
       }
-      const attendanceCount = await prisma.userAttendance.count({
-        where: { user_service_project_id: id },
-      });
-      if (attendanceCount > 0) {
-        return res.status(409).json({
-          error: "Cannot remove link.",
-          code: "HAS_ATTENDANCE_RECORDS",
-          message: "This user has attendance records for this service. Removing the link would affect historical data. Attendance records are preserved.",
-        });
+      if (existing.removed_at) {
+        return res.status(200).json({ message: "Link already removed." });
       }
-      await prisma.userServiceProject.delete({ where: { id } });
-      return res.status(200).json({ message: "Link removed successfully." });
+
+      await prisma.userServiceProject.update({
+        where: { id },
+        data: { removed_at: new Date() },
+      });
+      return res.status(200).json({
+        message: "Link removed successfully. Attendance history was preserved.",
+      });
     } catch (error: any) {
       console.error(error);
-      return res.status(500).json({ error: "Error while removing link.", details: error.message });
+      return res.status(500).json({
+        error: "Error while removing link.",
+        details: error.message,
+      });
     }
   }
 
@@ -195,6 +194,7 @@ export class UserServiceProjectController {
             }
           },
           UserServiceProject: {
+            where: { removed_at: null },
             select: {
               service_project: {
                 select: {
@@ -246,7 +246,10 @@ export class UserServiceProjectController {
       const { id } = req.params;
 
       const userServiceProject = await prisma.userServiceProject.findMany({
-        where: { user_id: { equals: id } },
+        where: {
+          user_id: { equals: id },
+          removed_at: null,
+        },
         include: {
           service_project: true,
         },
@@ -268,6 +271,7 @@ export class UserServiceProjectController {
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
           user_id: id,
+          removed_at: null,
           service_project: {
             name: search ? { contains: search.toLowerCase() } : undefined,
             // Filtrar apenas serviços ativos ou sem status definido
@@ -325,6 +329,7 @@ export class UserServiceProjectController {
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
           user_id: id,
+          removed_at: null,
           service_project: {
             name: search ? { contains: search.toLowerCase() } : undefined,
           },
@@ -481,15 +486,40 @@ export class UserServiceProjectController {
 
   async getCostsByServiceProject(req: Request, res: Response) {
     const { serviceProjectId } = req.params;
+    const userId = (req as any).userId as string | undefined;
 
     if (!serviceProjectId) {
       return res.status(400).json({ error: "ServiceProjectId is required." });
     }
 
     try {
+      const serviceProject = await prisma.serviceProject.findUnique({
+        where: { id: serviceProjectId },
+        select: {
+          company_id: true,
+          Project: {
+            select: {
+              company_id: true,
+            },
+          },
+        },
+      });
+
+      if (!serviceProject) {
+        return res.status(404).json({ error: "Service project not found." });
+      }
+
+      const companyId =
+        serviceProject.Project?.company_id ?? serviceProject.company_id;
+
+      const canViewAllCosts = await userCanViewFinancials(userId, companyId);
+
       const costs = await prisma.costProject.findMany({
         where: {
           serviceProjectId,
+          // Workers keep seeing what they submitted, but never another
+          // employee's or an administrator's material costs.
+          ...(canViewAllCosts ? {} : { userId }),
         },
         include: {
           invoiceCostProject: true, // Inclui informações do arquivo relacionado, se houver

@@ -9,6 +9,7 @@ import { stripeConfig } from "../../config/stripe";
 import { sendEmail } from "../../utils/sendEmail";
 import { formatInvoicePaymentDate } from "../../utils/invoicePaymentDate";
 import { getInvoiceWorkSiteAddress } from "../../utils/invoiceWorkSite";
+import { normalizeInvoiceCoefficient } from "../../utils/invoiceCoefficient";
 
 const stripe = stripeConfig.getClient();
 
@@ -147,6 +148,10 @@ export class CustomInvoiceController {
       }
 
       const dueDateObj = dueDate ? new Date(dueDate) : new Date();
+      const normalizedCoefficient = normalizeInvoiceCoefficient(
+        coefficientPerfentage,
+        type_value,
+      );
 
       let finalTotalAmount = 0;
       const lineItems: any[] = [];
@@ -154,7 +159,7 @@ export class CustomInvoiceController {
       if (services && Array.isArray(services)) {
         for (const item of services) {
           const serviceAmount = item.total || (item.quantity * item.price);
-          const adjustedAmount = serviceAmount * (coefficientPerfentage || 1);
+          const adjustedAmount = serviceAmount * normalizedCoefficient;
 
           if (isNaN(adjustedAmount) || adjustedAmount <= 0) {
             continue;
@@ -212,7 +217,7 @@ export class CustomInvoiceController {
             companyId: project.company_id,
             user_id: userId,
             type_value: type_value,
-            percentageCoefficient: coefficientPerfentage,
+            percentageCoefficient: normalizedCoefficient,
             type_invoicebase: type_invoicebase,
             estimateId: estimateId,
             multi_emails: multi_emails,
@@ -313,7 +318,7 @@ export class CustomInvoiceController {
               type_invoicebase: type_invoicebase,
               dueDate: dueDate,
               userId: userId,
-              coefficientPerfentage: coefficientPerfentage,
+              coefficientPerfentage: normalizedCoefficient,
               services: qbServices,
               type_value: type_value,
               totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
@@ -1400,6 +1405,10 @@ export class CustomInvoiceController {
       const companyId = existingInvoice.project.company.id;
 
       const dueDateObj = dueDate ? new Date(dueDate) : existingInvoice.dueDate;
+      const normalizedCoefficient = normalizeInvoiceCoefficient(
+        coefficientPerfentage,
+        type_value || existingInvoice.type_value,
+      );
 
       // RULE 3: If converting FROM stripe to custom/quickbooks, validate PaymentIntents first
       if (existingInvoice.invoiceType === "stripe") {
@@ -1473,7 +1482,7 @@ export class CustomInvoiceController {
             dueDate: dueDateObj,
             description: description || existingInvoice.description,
             type_value: type_value || existingInvoice.type_value,
-            percentageCoefficient: coefficientPerfentage,
+            percentageCoefficient: normalizedCoefficient,
             showPaymentMethods: showPaymentMethods ?? true,
             invoiceType: newInvoiceType,
             invoiceTypeStripe: null,
@@ -1600,7 +1609,7 @@ export class CustomInvoiceController {
               type_invoicebase: (existingInvoice as any).type_invoicebase,
               dueDate: dueDate,
               userId: userId,
-              coefficientPerfentage: coefficientPerfentage,
+              coefficientPerfentage: normalizedCoefficient,
               showPaymentMethods: showPaymentMethods ?? true,
               services: qbServicesForCreate,
               type_value: type_value,
@@ -1658,7 +1667,7 @@ export class CustomInvoiceController {
               description: description || `Updated Invoice for Project ${project.contract_number}`,
               dueDate: dueDate,
               userId: userId,
-              coefficientPerfentage: coefficientPerfentage,
+              coefficientPerfentage: normalizedCoefficient,
               showPaymentMethods: showPaymentMethods ?? true,
               services: qbServices,
               totalAmountTarget: totalAmount, // Passar o valor total exato do banco local
@@ -1732,7 +1741,7 @@ export class CustomInvoiceController {
                 type_invoicebase: (existingInvoice as any).type_invoicebase, // se existir no modelo
                 dueDate: dueDate,
                 userId: userId,
-                coefficientPerfentage: coefficientPerfentage,
+                coefficientPerfentage: normalizedCoefficient,
                 services: qbServicesForCreate,
                 type_value: type_value,
                 totalAmountTarget: (totalAmount ?? 0),

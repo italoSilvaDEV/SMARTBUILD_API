@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { createServer } from 'http';
 import { SocketService } from './services/SocketService';
 import { router } from './routes/routes';
@@ -56,6 +57,9 @@ app.use('/webhooks', express.raw({ type: '*/*' }), assistantWhatsappWebhookRoute
 app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
 
 //  DEPOIS registrar o express.json para as outras rotas
+// Compress API payloads without changing their JSON contract. Webhooks stay
+// above this middleware so their raw-body verification path remains untouched.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '25mb' }));
 app.use(router)
 
@@ -75,4 +79,3 @@ app.use(express.static('public'));
 server.listen(4003, () =>
   console.log("server is running on http://localhost:4003")
 )
-

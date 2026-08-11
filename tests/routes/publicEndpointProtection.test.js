@@ -41,6 +41,7 @@ describe("routes that must never be public", () => {
     ["quickBooksConfigRoutes.ts", "patch", "/company/:companyId"],
     ["quickBooksConfigRoutes.ts", "delete", "/company/:companyId/:configType"],
     ["userAttendanceRoutes.ts", "put", "/user-attendance/:id/update-times"],
+    ["serviceRoutes.ts", "get", "/costs/:serviceProjectId"],
   ];
 
   it.each(protectedRoutes)("protects %s %s %s with checkToken", (fileName, method, routePath) => {
