@@ -2,9 +2,12 @@ import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
 import { PushNotificationService } from "../../services/PushNotificationService";
+import { AttendanceService } from "../../services/AttendanceService";
+import { Prisma } from "@prisma/client";
 import axios from "axios";
 
 type ReviewStatus = "approved" | "denied";
+type RequestType = "correction" | "missing_entry";
 
 interface AuthRequest extends Request {
   userId?: string;
@@ -14,6 +17,56 @@ const MANAGEMENT_OFFICES_BLOCKED = new Set(["worker", "master"]);
 
 const TIMECARD_REQUEST_LINK = "/time-cards?tab=requests";
 const PDFSHIFT_API_URL = "https://api.pdfshift.io/v3/convert/pdf";
+const TIMECARD_REQUEST_PERMISSION = "Time Cards - Requests";
+const attendanceService = new AttendanceService();
+
+const requestInclude = {
+  employee: {
+    select: { id: true, name: true, avatar: true, expoPushToken: true },
+  },
+  reviewer: {
+    select: { id: true, name: true, avatar: true },
+  },
+  attendance: {
+    select: {
+      id: true,
+      check_in_time: true,
+      check_out_time: true,
+      date: true,
+      note: true,
+      UserServiceProject: {
+        select: {
+          service_project: {
+            select: {
+              id: true,
+              name: true,
+              Project: {
+                select: {
+                  id: true,
+                  location: true,
+                  client: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  serviceProject: {
+    select: {
+      id: true,
+      name: true,
+      Project: {
+        select: {
+          id: true,
+          location: true,
+          client: { select: { name: true } },
+        },
+      },
+    },
+  },
+} as const;
 
 function parseOptionalDate(value: unknown): Date | null {
   if (value === undefined || value === null || value === "") return null;
@@ -47,9 +100,14 @@ function formatDateTimeForPdf(value: Date | null | undefined): string {
 }
 
 function mapTimeCardEditRequest(record: any) {
+  const serviceProject =
+    record.serviceProject || record.attendance?.UserServiceProject?.service_project;
+
   return {
     id: record.id,
+    requestType: record.requestType || "correction",
     attendanceId: record.attendanceId,
+    serviceProjectId: record.serviceProjectId,
     employeeId: record.employeeId,
     reviewerId: record.reviewerId,
     companyId: record.companyId,
@@ -62,7 +120,9 @@ function mapTimeCardEditRequest(record: any) {
     approvedCheckOutTime: toIso(record.approvedCheckOutTime),
     reason: record.reason,
     employeeNote: record.employeeNote,
+    approvedAttendanceNote: record.approvedAttendanceNote,
     managerNote: record.managerNote,
+    clientRequestId: record.clientRequestId,
     employeeSignature: record.employeeSignature,
     managerSignature: record.managerSignature,
     reviewedAt: toIso(record.reviewedAt),
@@ -88,6 +148,7 @@ function mapTimeCardEditRequest(record: any) {
           checkInTime: toIso(record.attendance.check_in_time),
           checkOutTime: toIso(record.attendance.check_out_time),
           workDate: toIso(record.attendance.date),
+          note: record.attendance.note ?? null,
           serviceName:
             record.attendance.UserServiceProject?.service_project?.name ?? null,
           projectName:
@@ -96,6 +157,15 @@ function mapTimeCardEditRequest(record: any) {
           clientName:
             record.attendance.UserServiceProject?.service_project?.Project?.client
               ?.name ?? null,
+        }
+      : null,
+    service: serviceProject
+      ? {
+          id: serviceProject.id,
+          name: serviceProject.name,
+          projectId: serviceProject.Project?.id ?? null,
+          projectName: serviceProject.Project?.location ?? null,
+          clientName: serviceProject.Project?.client?.name ?? null,
         }
       : null,
   };
@@ -118,7 +188,15 @@ export class TimeCardEditRequestController {
       },
       include: {
         office: {
-          select: { name: true },
+          select: {
+            name: true,
+            userPermissions: {
+              where: {
+                permission: { description: TIMECARD_REQUEST_PERMISSION },
+              },
+              select: { id: true },
+            },
+          },
         },
       },
     });
@@ -126,7 +204,9 @@ export class TimeCardEditRequestController {
     if (!membership) return false;
 
     const officeName = membership.office?.name?.trim().toLowerCase() || "";
-    return !MANAGEMENT_OFFICES_BLOCKED.has(officeName);
+    if (officeName === "owner") return true;
+    if (MANAGEMENT_OFFICES_BLOCKED.has(officeName)) return false;
+    return (membership.office?.userPermissions?.length || 0) > 0;
   }
 
   private async notifyOfficeUsersAboutRequest(params: {
@@ -135,6 +215,7 @@ export class TimeCardEditRequestController {
     actorName: string;
     requestId: string;
     workDate: Date;
+    requestType: RequestType;
   }): Promise<void> {
     const memberships = await prisma.userCompany.findMany({
       where: {
@@ -145,6 +226,12 @@ export class TimeCardEditRequestController {
         office: {
           select: {
             name: true,
+            userPermissions: {
+              where: {
+                permission: { description: TIMECARD_REQUEST_PERMISSION },
+              },
+              select: { id: true },
+            },
           },
         },
       },
@@ -153,7 +240,9 @@ export class TimeCardEditRequestController {
     const recipients = memberships
       .filter((membership) => {
         const officeName = membership.office?.name?.trim().toLowerCase() || "";
-        return !MANAGEMENT_OFFICES_BLOCKED.has(officeName);
+        if (officeName === "owner") return true;
+        if (MANAGEMENT_OFFICES_BLOCKED.has(officeName)) return false;
+        return (membership.office?.userPermissions?.length || 0) > 0;
       })
       .map((membership) => membership.userId)
       .filter((userId) => userId !== params.actorId);
@@ -167,7 +256,10 @@ export class TimeCardEditRequestController {
       year: "numeric",
     });
 
-    const message = `${params.actorName} requested a time card edit for ${workDateText}.`;
+    const message =
+      params.requestType === "missing_entry"
+        ? `${params.actorName} requested a missing time entry for ${workDateText}.`
+        : `${params.actorName} requested a time card correction for ${workDateText}.`;
 
     for (const userId of uniqueRecipients) {
       const notification = await prisma.feedNotification.create({
@@ -205,11 +297,16 @@ export class TimeCardEditRequestController {
     requestId: string;
     status: ReviewStatus;
     employeeToken: string | null;
+    requestType: RequestType;
   }): Promise<void> {
+    const requestLabel =
+      params.requestType === "missing_entry"
+        ? "missing time entry request"
+        : "time card correction request";
     const message =
       params.status === "approved"
-        ? `Your time card edit request was approved by ${params.actorName}.`
-        : `Your time card edit request was denied by ${params.actorName}.`;
+        ? `Your ${requestLabel} was approved by ${params.actorName}.`
+        : `Your ${requestLabel} was denied by ${params.actorName}.`;
 
     const notification = await prisma.feedNotification.create({
       data: {
@@ -248,6 +345,7 @@ export class TimeCardEditRequestController {
             type: "timecard_edit_request_reviewed",
             requestId: params.requestId,
             status: params.status,
+            requestType: params.requestType,
           },
         },
       ]);
@@ -256,6 +354,10 @@ export class TimeCardEditRequestController {
 
   private buildReviewPdfHtml(record: any): { html: string; css: string } {
     const reviewStatus = record.status || "pending";
+    const isMissingEntry = record.requestType === "missing_entry";
+    const requestTitle = isMissingEntry
+      ? "Missing Time Entry Request Review"
+      : "Time Card Correction Request Review";
     const employeeSignature = record.employeeSignature || "";
     const managerSignature = record.managerSignature || "";
     const employeeName = record.employee?.name || "Unknown";
@@ -275,11 +377,11 @@ export class TimeCardEditRequestController {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Time Card Edit Review</title>
+          <title>${escapeHtml(requestTitle)}</title>
         </head>
         <body>
           <div class="document">
-            <h1>Time Card Edit Request Review</h1>
+            <h1>${escapeHtml(requestTitle)}</h1>
             <p class="meta">Generated at: ${escapeHtml(formatDateTimeForPdf(new Date()))}</p>
 
             <section class="block">
@@ -287,15 +389,17 @@ export class TimeCardEditRequestController {
               <p><strong>Name:</strong> ${escapeHtml(employeeName)}</p>
               <p><strong>Work Date:</strong> ${escapeHtml(workDate)}</p>
               <p><strong>Status:</strong> <span class="badge ${escapeHtml(reviewStatus)}">${escapeHtml(reviewStatus)}</span></p>
+              <p><strong>Project:</strong> ${escapeHtml(record.serviceProject?.Project?.location || record.attendance?.UserServiceProject?.service_project?.Project?.location || "-")}</p>
+              <p><strong>Service:</strong> ${escapeHtml(record.serviceProject?.name || record.attendance?.UserServiceProject?.service_project?.name || "-")}</p>
             </section>
 
             <section class="block">
-              <h2>Original vs Requested</h2>
+              <h2>${isMissingEntry ? "Requested Time Entry" : "Original vs Requested"}</h2>
               <table>
                 <thead>
                   <tr>
                     <th>Field</th>
-                    <th>Original</th>
+                    ${isMissingEntry ? "" : "<th>Original</th>"}
                     <th>Requested</th>
                     <th>Approved</th>
                   </tr>
@@ -303,13 +407,13 @@ export class TimeCardEditRequestController {
                 <tbody>
                   <tr>
                     <td>Clock In</td>
-                    <td>${escapeHtml(formatDateTimeForPdf(record.originalCheckInTime))}</td>
+                    ${isMissingEntry ? "" : `<td>${escapeHtml(formatDateTimeForPdf(record.originalCheckInTime))}</td>`}
                     <td>${escapeHtml(formatDateTimeForPdf(record.requestedCheckInTime))}</td>
                     <td>${escapeHtml(formatDateTimeForPdf(record.approvedCheckInTime))}</td>
                   </tr>
                   <tr>
                     <td>Clock Out</td>
-                    <td>${escapeHtml(formatDateTimeForPdf(record.originalCheckOutTime))}</td>
+                    ${isMissingEntry ? "" : `<td>${escapeHtml(formatDateTimeForPdf(record.originalCheckOutTime))}</td>`}
                     <td>${escapeHtml(formatDateTimeForPdf(record.requestedCheckOutTime))}</td>
                     <td>${escapeHtml(formatDateTimeForPdf(record.approvedCheckOutTime))}</td>
                   </tr>
@@ -321,6 +425,7 @@ export class TimeCardEditRequestController {
               <h2>Notes</h2>
               <p><strong>Reason:</strong> ${escapeHtml(record.reason || "-")}</p>
               <p><strong>Employee Note:</strong> ${escapeHtml(record.employeeNote || "-")}</p>
+              <p><strong>Approved Attendance Note:</strong> ${escapeHtml(record.approvedAttendanceNote || "-")}</p>
               <p><strong>Employee Signed By:</strong> ${escapeHtml(employeeName)}</p>
               <p><strong>Employee Signed At:</strong> ${escapeHtml(formatDateTimeForPdf(record.createdAt))}</p>
               <p><strong>Manager Note:</strong> ${escapeHtml(record.managerNote || "-")}</p>
@@ -411,19 +516,70 @@ export class TimeCardEditRequestController {
       }
 
       const {
+        requestType: rawRequestType,
         attendanceId,
+        companyId: requestedCompanyId,
+        serviceProjectId,
         requestedCheckInTime,
         requestedCheckOutTime,
         reason,
         employeeNote,
         employeeSignature,
+        clientRequestId,
       } = req.body;
 
-      if (!attendanceId || !requestedCheckInTime || !reason || !employeeSignature) {
+      const requestType: RequestType =
+        rawRequestType === "missing_entry" ? "missing_entry" : "correction";
+
+      if (
+        rawRequestType !== undefined &&
+        rawRequestType !== "correction" &&
+        rawRequestType !== "missing_entry"
+      ) {
+        return res.status(400).json({
+          error: "requestType must be either 'correction' or 'missing_entry'.",
+        });
+      }
+
+      if (!requestedCheckInTime || !reason || !employeeSignature) {
         return res.status(400).json({
           error:
-            "attendanceId, requestedCheckInTime, reason and employeeSignature are required.",
+            "requestedCheckInTime, reason and employeeSignature are required.",
         });
+      }
+
+      if (requestType === "correction" && !attendanceId) {
+        return res.status(400).json({ error: "attendanceId is required for corrections." });
+      }
+
+      if (
+        requestType === "missing_entry" &&
+        (!requestedCompanyId || !serviceProjectId || !requestedCheckOutTime)
+      ) {
+        return res.status(400).json({
+          error:
+            "companyId, serviceProjectId and requestedCheckOutTime are required for missing entries.",
+        });
+      }
+
+      const normalizedReason = String(reason).trim();
+      const normalizedEmployeeNote =
+        typeof employeeNote === "string" && employeeNote.trim().length > 0
+          ? employeeNote.trim()
+          : null;
+      const normalizedClientRequestId =
+        typeof clientRequestId === "string" && clientRequestId.trim().length > 0
+          ? clientRequestId.trim()
+          : null;
+
+      if (!normalizedReason || normalizedReason.length > 5000) {
+        return res.status(400).json({ error: "Reason must be between 1 and 5000 characters." });
+      }
+      if (normalizedEmployeeNote && normalizedEmployeeNote.length > 5000) {
+        return res.status(400).json({ error: "Note cannot exceed 5000 characters." });
+      }
+      if (normalizedClientRequestId && normalizedClientRequestId.length > 191) {
+        return res.status(400).json({ error: "clientRequestId is too long." });
       }
 
       const parsedCheckIn = parseOptionalDate(requestedCheckInTime);
@@ -437,10 +593,138 @@ export class TimeCardEditRequestController {
         return res.status(400).json({ error: "requestedCheckOutTime is invalid." });
       }
 
-      if (parsedCheckOut && parsedCheckIn > parsedCheckOut) {
+      if (parsedCheckOut && parsedCheckIn >= parsedCheckOut) {
         return res.status(400).json({
-          error: "Requested check-in cannot be later than requested check-out.",
+          error: "Requested check-in must be earlier than requested check-out.",
         });
+      }
+
+      if (normalizedClientRequestId) {
+        const idempotentRequest = await prisma.timeCardEditRequest.findFirst({
+          where: { employeeId: requesterId, clientRequestId: normalizedClientRequestId },
+          include: requestInclude,
+        });
+        if (idempotentRequest) {
+          return res.status(200).json(mapTimeCardEditRequest(idempotentRequest));
+        }
+      }
+
+      if (requestType === "missing_entry") {
+        const companyId = String(requestedCompanyId);
+        const membership = await prisma.userCompany.findUnique({
+          where: { userId_companyId: { userId: requesterId, companyId } },
+          select: { userId: true },
+        });
+        if (!membership) {
+          return res.status(403).json({ error: "You do not belong to this company." });
+        }
+
+        const requester = await prisma.user.findUnique({
+          where: { id: requesterId },
+          select: {
+            id: true,
+            name: true,
+            isDisabled: true,
+            projectVisibilityMode: true,
+            company: { select: { projectVisibilityMode: true } },
+          },
+        });
+        if (!requester || requester.isDisabled) {
+          return res.status(403).json({ error: "This employee is not active." });
+        }
+
+        const serviceProject = await prisma.serviceProject.findUnique({
+          where: { id: String(serviceProjectId) },
+          include: { Project: true },
+        });
+        if (!serviceProject || serviceProject.Project?.company_id !== companyId) {
+          return res.status(404).json({ error: "Service was not found in this company." });
+        }
+        if (
+          serviceProject.status === "Canceled" ||
+          ["Canceled", "Declined", "Rejected"].includes(
+            serviceProject.Project?.status_project || ""
+          )
+        ) {
+          return res.status(400).json({ error: "This project or service is not active." });
+        }
+
+        const visibilityMode =
+          requester.projectVisibilityMode ||
+          requester.company?.projectVisibilityMode ||
+          "allActive";
+        if (visibilityMode === "assignedOnly") {
+          const assignment = await prisma.userServiceProject.findFirst({
+            where: {
+              user_id: requesterId,
+              service_project_id: serviceProject.id,
+              assigned_at: { lte: parsedCheckIn },
+              OR: [
+                { removed_at: null },
+                { removed_at: { gte: parsedCheckIn } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!assignment) {
+            return res.status(403).json({
+              error: "You were not assigned to this service during the requested time.",
+            });
+          }
+        }
+
+        const existingPendingRequest = await prisma.timeCardEditRequest.findFirst({
+          where: {
+            requestType: "missing_entry",
+            employeeId: requesterId,
+            serviceProjectId: serviceProject.id,
+            status: "pending",
+            requestedCheckInTime: parsedCheckIn,
+            requestedCheckOutTime: parsedCheckOut,
+          },
+          include: requestInclude,
+        });
+        if (existingPendingRequest) {
+          return res.status(409).json({
+            error: "There is already a pending request for this time entry.",
+          });
+        }
+
+        const created = await prisma.timeCardEditRequest.create({
+          data: {
+            requestType,
+            attendanceId: null,
+            serviceProjectId: serviceProject.id,
+            employeeId: requesterId,
+            companyId,
+            originalCheckInTime: null,
+            originalCheckOutTime: null,
+            requestedCheckInTime: parsedCheckIn,
+            requestedCheckOutTime: parsedCheckOut,
+            reason: normalizedReason,
+            employeeNote: normalizedEmployeeNote,
+            employeeSignature: String(employeeSignature).trim(),
+            clientRequestId: normalizedClientRequestId,
+            status: "pending",
+          },
+          include: requestInclude,
+        });
+
+        await this.notifyOfficeUsersAboutRequest({
+          companyId,
+          actorId: requesterId,
+          actorName: requester.name,
+          requestId: created.id,
+          workDate: parsedCheckIn,
+          requestType,
+        }).catch((notificationError) => {
+          console.error(
+            "[TimeCardEditRequestController.create] Notification failed:",
+            notificationError
+          );
+        });
+
+        return res.status(201).json(mapTimeCardEditRequest(created));
       }
 
       const attendance = await prisma.userAttendance.findUnique({
@@ -489,6 +773,14 @@ export class TimeCardEditRequestController {
         });
       }
 
+      const membership = await prisma.userCompany.findUnique({
+        where: { userId_companyId: { userId: requesterId, companyId } },
+        select: { userId: true },
+      });
+      if (!membership) {
+        return res.status(403).json({ error: "You no longer belong to this company." });
+      }
+
       const existingPendingRequest = await prisma.timeCardEditRequest.findFirst({
         where: {
           attendanceId: attendance.id,
@@ -505,56 +797,23 @@ export class TimeCardEditRequestController {
 
       const created = await prisma.timeCardEditRequest.create({
         data: {
+          requestType,
           attendanceId: attendance.id,
+          serviceProjectId:
+            attendance.UserServiceProject?.service_project?.id || null,
           employeeId: requesterId,
           companyId,
           originalCheckInTime: attendance.check_in_time,
           originalCheckOutTime: attendance.check_out_time,
           requestedCheckInTime: parsedCheckIn,
           requestedCheckOutTime: parsedCheckOut,
-          reason: String(reason).trim(),
-          employeeNote:
-            typeof employeeNote === "string" && employeeNote.trim().length > 0
-              ? employeeNote.trim()
-              : null,
+          reason: normalizedReason,
+          employeeNote: normalizedEmployeeNote,
           employeeSignature: String(employeeSignature).trim(),
+          clientRequestId: normalizedClientRequestId,
           status: "pending",
         },
-        include: {
-          employee: {
-            select: { id: true, name: true, avatar: true },
-          },
-          reviewer: {
-            select: { id: true, name: true, avatar: true },
-          },
-          attendance: {
-            select: {
-              id: true,
-              check_in_time: true,
-              check_out_time: true,
-              date: true,
-              UserServiceProject: {
-                select: {
-                  service_project: {
-                    select: {
-                      name: true,
-                      Project: {
-                        select: {
-                          location: true,
-                          client: {
-                            select: {
-                              name: true,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        include: requestInclude,
       });
 
       await this.notifyOfficeUsersAboutRequest({
@@ -563,13 +822,22 @@ export class TimeCardEditRequestController {
         actorName: attendance.user.name,
         requestId: created.id,
         workDate: attendance.date,
+        requestType,
+      }).catch((notificationError) => {
+        console.error(
+          "[TimeCardEditRequestController.create] Notification failed:",
+          notificationError
+        );
       });
 
       return res.status(201).json(mapTimeCardEditRequest(created));
     } catch (error: any) {
       console.error("[TimeCardEditRequestController.create] Error:", error);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return res.status(409).json({ error: "This request was already submitted." });
+      }
       return res.status(500).json({
-        error: error?.message || "Failed to create time card edit request.",
+        error: "Failed to create time card request.",
       });
     }
   }
@@ -585,39 +853,7 @@ export class TimeCardEditRequestController {
         where: {
           employeeId: requesterId,
         },
-        include: {
-          employee: {
-            select: { id: true, name: true, avatar: true },
-          },
-          reviewer: {
-            select: { id: true, name: true, avatar: true },
-          },
-          attendance: {
-            select: {
-              id: true,
-              check_in_time: true,
-              check_out_time: true,
-              date: true,
-              UserServiceProject: {
-                select: {
-                  service_project: {
-                    select: {
-                      name: true,
-                      Project: {
-                        select: {
-                          location: true,
-                          client: {
-                            select: { name: true },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        include: requestInclude,
         orderBy: {
           createdAt: "desc",
         },
@@ -627,7 +863,7 @@ export class TimeCardEditRequestController {
     } catch (error: any) {
       console.error("[TimeCardEditRequestController.listMine] Error:", error);
       return res.status(500).json({
-        error: error?.message || "Failed to fetch your edit requests.",
+        error: "Failed to fetch your time card requests.",
       });
     }
   }
@@ -662,39 +898,7 @@ export class TimeCardEditRequestController {
           companyId,
           ...(parsedStatus ? { status: parsedStatus as any } : {}),
         },
-        include: {
-          employee: {
-            select: { id: true, name: true, avatar: true },
-          },
-          reviewer: {
-            select: { id: true, name: true, avatar: true },
-          },
-          attendance: {
-            select: {
-              id: true,
-              check_in_time: true,
-              check_out_time: true,
-              date: true,
-              UserServiceProject: {
-                select: {
-                  service_project: {
-                    select: {
-                      name: true,
-                      Project: {
-                        select: {
-                          location: true,
-                          client: {
-                            select: { name: true },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        include: requestInclude,
         orderBy: {
           createdAt: "desc",
         },
@@ -704,7 +908,7 @@ export class TimeCardEditRequestController {
     } catch (error: any) {
       console.error("[TimeCardEditRequestController.listByCompany] Error:", error);
       return res.status(500).json({
-        error: error?.message || "Failed to fetch company edit requests.",
+        error: "Failed to fetch company time card requests.",
       });
     }
   }
@@ -717,8 +921,14 @@ export class TimeCardEditRequestController {
       }
 
       const { id } = req.params;
-      const { status, managerNote, managerSignature, approvedCheckInTime, approvedCheckOutTime } =
-        req.body;
+      const {
+        status,
+        managerNote,
+        managerSignature,
+        approvedCheckInTime,
+        approvedCheckOutTime,
+        approvedAttendanceNote,
+      } = req.body;
 
       if (!id) {
         return res.status(400).json({ error: "Request id is required." });
@@ -738,40 +948,7 @@ export class TimeCardEditRequestController {
 
       const requestRecord = await prisma.timeCardEditRequest.findUnique({
         where: { id },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              name: true,
-              expoPushToken: true,
-            },
-          },
-          attendance: {
-            select: {
-              id: true,
-              check_in_time: true,
-              check_out_time: true,
-              date: true,
-              UserServiceProject: {
-                select: {
-                  service_project: {
-                    select: {
-                      name: true,
-                      Project: {
-                        select: {
-                          location: true,
-                          client: {
-                            select: { name: true },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        include: requestInclude,
       });
 
       if (!requestRecord) {
@@ -802,6 +979,7 @@ export class TimeCardEditRequestController {
 
       let finalCheckIn: Date | null = null;
       let finalCheckOut: Date | null = null;
+      let finalAttendanceNote: string | null = null;
 
       if (status === "approved") {
         const approvedCheckIn = parseOptionalDate(approvedCheckInTime);
@@ -823,75 +1001,113 @@ export class TimeCardEditRequestController {
           return res.status(400).json({ error: "approvedCheckOutTime is invalid." });
         }
 
-        if (finalCheckOut && finalCheckIn > finalCheckOut) {
+        if (finalCheckOut && finalCheckIn >= finalCheckOut) {
           return res.status(400).json({
-            error: "Approved check-in cannot be later than approved check-out.",
+            error: "Approved check-in must be earlier than approved check-out.",
           });
+        }
+
+        if (requestRecord.requestType === "missing_entry" && !finalCheckOut) {
+          return res.status(400).json({
+            error: "Approved check-out is required for a missing time entry.",
+          });
+        }
+
+        if (approvedAttendanceNote !== undefined) {
+          finalAttendanceNote = String(approvedAttendanceNote).trim() || null;
+        } else if (requestRecord.employeeNote) {
+          finalAttendanceNote = requestRecord.employeeNote;
+        } else {
+          finalAttendanceNote = requestRecord.attendance?.note || null;
+        }
+
+        if (finalAttendanceNote && finalAttendanceNote.length > 5000) {
+          return res.status(400).json({ error: "Attendance note cannot exceed 5000 characters." });
         }
       }
 
-      const updated = await prisma.$transaction(async (tx) => {
-        if (status === "approved" && finalCheckIn) {
-          await tx.userAttendance.update({
-            where: {
-              id: requestRecord.attendanceId,
-            },
+      const updated = await prisma.$transaction(
+        async (tx) => {
+          const claim = await tx.timeCardEditRequest.updateMany({
+            where: { id: requestRecord.id, status: "pending" },
             data: {
-              check_in_time: finalCheckIn,
-              check_out_time: finalCheckOut,
+              status,
+              reviewerId,
+              reviewedAt: new Date(),
+              managerNote:
+                typeof managerNote === "string" && managerNote.trim().length > 0
+                  ? managerNote.trim()
+                  : null,
+              managerSignature: String(managerSignature).trim(),
+              approvedCheckInTime: status === "approved" ? finalCheckIn : null,
+              approvedCheckOutTime: status === "approved" ? finalCheckOut : null,
+              approvedAttendanceNote:
+                status === "approved" ? finalAttendanceNote : null,
             },
           });
-        }
 
-        return tx.timeCardEditRequest.update({
-          where: { id: requestRecord.id },
-          data: {
-            status,
-            reviewerId,
-            reviewedAt: new Date(),
-            managerNote:
-              typeof managerNote === "string" && managerNote.trim().length > 0
-                ? managerNote.trim()
-                : null,
-            managerSignature: String(managerSignature).trim(),
-            approvedCheckInTime: status === "approved" ? finalCheckIn : null,
-            approvedCheckOutTime: status === "approved" ? finalCheckOut : null,
-          },
-          include: {
-            employee: {
-              select: { id: true, name: true, avatar: true },
-            },
-            reviewer: {
-              select: { id: true, name: true, avatar: true },
-            },
-            attendance: {
-              select: {
-                id: true,
-                check_in_time: true,
-                check_out_time: true,
-                date: true,
-                UserServiceProject: {
-                  select: {
-                    service_project: {
-                      select: {
-                        name: true,
-                        Project: {
-                          select: {
-                            location: true,
-                            client: {
-                              select: { name: true },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
+          if (claim.count !== 1) {
+            throw new Error("REQUEST_ALREADY_REVIEWED");
+          }
+
+          let attendanceId = requestRecord.attendanceId;
+          if (status === "approved" && finalCheckIn) {
+            if (requestRecord.requestType === "missing_entry") {
+              if (!requestRecord.serviceProjectId || !finalCheckOut) {
+                throw new Error("MISSING_ENTRY_CONTEXT_INVALID");
+              }
+
+              const result = await attendanceService.createClosedAttendanceInTransaction(
+                tx,
+                {
+                  user_id: requestRecord.employeeId,
+                  service_project_id: requestRecord.serviceProjectId,
+                  check_in_time: finalCheckIn,
+                  check_out_time: finalCheckOut,
+                  date: finalCheckIn,
+                  note: finalAttendanceNote,
                 },
-              },
-            },
-          },
-        });
-      });
+                {
+                  preserveAssignmentState: true,
+                  expectedCompanyId: requestRecord.companyId,
+                }
+              );
+              attendanceId = result.attendance.id;
+            } else {
+              if (!requestRecord.attendanceId) {
+                throw new Error("ATTENDANCE_NOT_FOUND");
+              }
+              await tx.userAttendance.update({
+                where: { id: requestRecord.attendanceId },
+                data: {
+                  check_in_time: finalCheckIn,
+                  check_out_time: finalCheckOut,
+                  note: finalAttendanceNote,
+                },
+              });
+            }
+          }
+
+          if (attendanceId !== requestRecord.attendanceId) {
+            await tx.timeCardEditRequest.update({
+              where: { id: requestRecord.id },
+              data: { attendanceId },
+            });
+          }
+
+          const result = await tx.timeCardEditRequest.findUnique({
+            where: { id: requestRecord.id },
+            include: requestInclude,
+          });
+          if (!result) {
+            throw new Error("REQUEST_NOT_FOUND");
+          }
+          return result;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        }
+      );
 
       await this.notifyEmployeeAboutReview({
         employeeId: requestRecord.employee.id,
@@ -900,13 +1116,51 @@ export class TimeCardEditRequestController {
         requestId: updated.id,
         status,
         employeeToken: requestRecord.employee.expoPushToken,
+        requestType: requestRecord.requestType as RequestType,
+      }).catch((notificationError) => {
+        console.error(
+          "[TimeCardEditRequestController.review] Notification failed:",
+          notificationError
+        );
       });
 
       return res.json(mapTimeCardEditRequest(updated));
     } catch (error: any) {
       console.error("[TimeCardEditRequestController.review] Error:", error);
+      const conflictErrors = new Set([
+        "REQUEST_ALREADY_REVIEWED",
+        "DUPLICATE_ATTENDANCE",
+        "ATTENDANCE_OVERLAP",
+      ]);
+      if (conflictErrors.has(error?.message)) {
+        const message =
+          error.message === "REQUEST_ALREADY_REVIEWED"
+            ? "This request has already been reviewed."
+            : error.message === "ATTENDANCE_OVERLAP"
+              ? "This time entry overlaps another attendance record."
+              : "This attendance record already exists.";
+        return res.status(409).json({ error: message });
+      }
+      if (
+        [
+          "NOT_ASSIGNED",
+          "SERVICE_COMPANY_MISMATCH",
+          "PROJECT_INACTIVE",
+          "SERVICE_CANCELED",
+          "SERVICE_NOT_FOUND",
+          "USER_NOT_FOUND",
+          "INVALID_ATTENDANCE_TIME",
+          "CHECK_OUT_BEFORE_CHECK_IN",
+          "ATTENDANCE_NOT_FOUND",
+          "MISSING_ENTRY_CONTEXT_INVALID",
+        ].includes(error?.message)
+      ) {
+        return res.status(400).json({
+          error: "The requested time entry can no longer be approved with its current project data.",
+        });
+      }
       return res.status(500).json({
-        error: error?.message || "Failed to review time card edit request.",
+        error: "Failed to review time card request.",
       });
     }
   }
@@ -927,25 +1181,7 @@ export class TimeCardEditRequestController {
 
       const requestRecord = await prisma.timeCardEditRequest.findUnique({
         where: { id },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          reviewer: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          attendance: {
-            select: {
-              date: true,
-            },
-          },
-        },
+        include: requestInclude,
       });
 
       if (!requestRecord) {
@@ -968,7 +1204,7 @@ export class TimeCardEditRequestController {
 
       const pdfBuffer = await this.generateReviewPdfBuffer(requestRecord);
 
-      const fileName = `timecard-edit-review-${requestRecord.id}.pdf`;
+      const fileName = `timecard-request-review-${requestRecord.id}.pdf`;
       if (asBase64) {
         return res.json({
           fileName,

@@ -38,7 +38,7 @@ export class UserAttendanceController {
     // Check-in consolidado (usado pelo App)
     async checkInByServiceProject(req: Request, res: Response): Promise<void> {
         try {
-            const { user_id, service_project_id, address, latitude, longitude } = req.body;
+            const { user_id, service_project_id, address, latitude, longitude, note } = req.body;
 
             if (!user_id || !service_project_id) {
                 res.status(400).json({ error: 'user_id and service_project_id are required.' });
@@ -50,7 +50,8 @@ export class UserAttendanceController {
                 service_project_id,
                 address,
                 latitude,
-                longitude
+                longitude,
+                note
             });
 
             if (result.alreadyOpen) {
@@ -132,13 +133,14 @@ export class UserAttendanceController {
     async checkOut(req: Request, res: Response): Promise<void> {
         try {
             const { id } = req.params;
-            const { address, latitude, longitude } = req.body;
+            const { address, latitude, longitude, note } = req.body;
 
             const updatedAttendance = await attendanceService.processCheckOut({
                 attendance_id: id,
                 address,
                 latitude,
-                longitude
+                longitude,
+                note
             });
 
             emitLiveTrackingUpdate(updatedAttendance?.company_id, {
@@ -281,7 +283,7 @@ export class UserAttendanceController {
     async updateAttendanceTimes(req: Request, res: Response): Promise<void> {
         try {
             const { id } = req.params;
-            const { check_in_time, check_out_time } = req.body;
+            const { check_in_time, check_out_time, note } = req.body;
 
             const checkInDate = new Date(check_in_time);
             const checkOutDate = check_out_time ? new Date(check_out_time) : null;
@@ -291,9 +293,20 @@ export class UserAttendanceController {
                 return;
             }
 
+            const normalizedNote =
+                typeof note === 'string' && note.trim().length > 0 ? note.trim() : null;
+            if (normalizedNote && normalizedNote.length > 5000) {
+                res.status(400).json({ error: 'Note cannot exceed 5000 characters.' });
+                return;
+            }
+
             const updated = await prisma.userAttendance.update({
                 where: { id },
-                data: { check_in_time: checkInDate, check_out_time: checkOutDate },
+                data: {
+                    check_in_time: checkInDate,
+                    check_out_time: checkOutDate,
+                    ...(note !== undefined ? { note: normalizedNote } : {}),
+                },
             });
 
             res.status(200).json(updated);
@@ -434,7 +447,7 @@ export class UserAttendanceController {
     // Clock In/Out unificado
     async clockInOut(req: Request, res: Response) {
         try {
-            const { userId, serviceProjectId, checkInTime, checkOutTime, date } = req.body;
+            const { userId, serviceProjectId, checkInTime, checkOutTime, date, note } = req.body;
             if (!userId || !serviceProjectId || !date) return res.status(400).json({ error: "Required data not provided" });
 
             if (!checkInTime && checkOutTime) {
@@ -448,7 +461,10 @@ export class UserAttendanceController {
 
                 const updated = await prisma.userAttendance.update({
                     where: { id: active.id },
-                    data: { check_out_time: new Date(checkOutTime) }
+                    data: {
+                        check_out_time: new Date(checkOutTime),
+                        note: typeof note === 'string' ? note.trim() || null : undefined,
+                    }
                 });
                 return res.status(200).json({ success: true, data: updated });
             } else if (checkInTime && checkOutTime) {
@@ -458,7 +474,8 @@ export class UserAttendanceController {
                     service_project_id: serviceProjectId,
                     check_in_time: checkInTime,
                     check_out_time: checkOutTime,
-                    date: date
+                    date: date,
+                    note
                 });
 
                 return res.status(201).json({ success: true, data: result.attendance });
@@ -468,7 +485,8 @@ export class UserAttendanceController {
                     user_id: userId,
                     service_project_id: serviceProjectId,
                     check_in_time: checkInTime,
-                    date: date
+                    date: date,
+                    note
                 });
                 
                 if (checkOutTime) {
@@ -489,11 +507,17 @@ export class UserAttendanceController {
     // Listar projetos disponíveis para check-in
     async getAvailableProjectsForCheckIn(req: Request, res: Response): Promise<void> {
         try {
-            const { userId, companyId, search } = req.query;
-            if (!userId) { res.status(400).json({ error: 'User ID is required.' }); return; }
+            const { userId, companyId, search, purpose } = req.query;
+            const authenticatedUserId = (req as any).userId as string | undefined;
+            if (!authenticatedUserId) { res.status(401).json({ error: 'Unauthorized.' }); return; }
+            if (userId && userId !== authenticatedUserId) {
+                res.status(403).json({ error: 'You can only list your own available projects.' });
+                return;
+            }
+            const resolvedUserId = authenticatedUserId;
 
             const user = await prisma.user.findUnique({
-                where: { id: userId as string },
+                where: { id: resolvedUserId },
                 include: { companies: true, company: true }
             });
 
@@ -508,15 +532,19 @@ export class UserAttendanceController {
                 where: {
                     OR: [{ status: { not: "Canceled" } }, { status: null }],
                     Project: {
-                        status_project: { in: ["In Progress", "Final walkthrough", "Pre-Start"] },
+                        status_project: {
+                            in: purpose === 'missing_entry'
+                                ? ["In Progress", "Final walkthrough", "Pre-Start", "Finished"]
+                                : ["In Progress", "Final walkthrough", "Pre-Start"]
+                        },
                         company_id: { in: finalCompanyIds }
                     },
                     // Se o modo for 'assignedOnly', filtra apenas onde o usuário está atribuído
                     ...(visibilityMode === 'assignedOnly' ? {
                         UserServiceProject: {
                             some: {
-                                user_id: userId as string,
-                                removed_at: null
+                                user_id: resolvedUserId,
+                                ...(purpose === 'missing_entry' ? {} : { removed_at: null })
                             }
                         }
                     } : {}),
@@ -524,14 +552,24 @@ export class UserAttendanceController {
                 },
                 include: {
                     Project: { include: { client: true } },
-                    UserServiceProject: { where: { user_id: userId as string, removed_at: null }, take: 1 }
+                    UserServiceProject: { where: { user_id: resolvedUserId, removed_at: null }, take: 1 }
                 },
                 orderBy: { date_creation: 'desc' }
             });
 
+            const shouldIncludeCoverPhoto = purpose !== 'missing_entry';
+            const coverPhotoUrlPromises = new Map<string, Promise<string>>();
+
             const formatted = await Promise.all(serviceProjects.map(async (sp) => {
                 let coverPhotoUrl = null;
-                if (sp.Project?.cover_photo) coverPhotoUrl = await getPresignedUrl(sp.Project.cover_photo);
+                if (shouldIncludeCoverPhoto && sp.Project?.cover_photo) {
+                    let coverPhotoUrlPromise = coverPhotoUrlPromises.get(sp.Project.cover_photo);
+                    if (!coverPhotoUrlPromise) {
+                        coverPhotoUrlPromise = getPresignedUrl(sp.Project.cover_photo);
+                        coverPhotoUrlPromises.set(sp.Project.cover_photo, coverPhotoUrlPromise);
+                    }
+                    coverPhotoUrl = await coverPhotoUrlPromise;
+                }
 
                 return {
                     id: sp.id,

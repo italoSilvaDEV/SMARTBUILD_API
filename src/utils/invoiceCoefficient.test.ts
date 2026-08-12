@@ -1,3 +1,5 @@
+import { describe, expect, it } from "@jest/globals";
+
 import { normalizeInvoiceCoefficient } from "./invoiceCoefficient";
 
 describe("normalizeInvoiceCoefficient", () => {

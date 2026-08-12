@@ -267,8 +267,6 @@ export class GetAllEstimatesByCompanyController {
                                             id: true,
                                             name: true,
                                             email: true,
-                                            location: true,
-                                            addressOffice: true,
                                             phone: true,
                                             address: true,
                                             district: true,

@@ -452,6 +452,7 @@ export class getByWorkerIdController {
 
                     workersWithCorrectOvertime.push({
                         id: attendance.id,
+                        note: attendance.note,
                         check_in_time: attendance.check_in_time,
                         check_out_time: attendance.check_out_time,
                         check_in_address: checkInAddress,
