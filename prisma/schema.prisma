@@ -556,6 +556,7 @@ model ServiceProject {
   company            Company?             @relation(fields: [company_id], references: [id])
   company_id         String?
   TimeLine           TimeLine[]
+  timeCardRequests   TimeCardEditRequest[]
 
   scheduleCompleted Boolean? @default(false)
 
@@ -1688,6 +1689,7 @@ model UserAttendance {
   workEndTime   String?
 
   isOvertime   Boolean?              @default(false)
+  note         String?               @db.Text
   editRequests TimeCardEditRequest[]
   breakRecords UserAttendanceBreak[]
 
@@ -1719,6 +1721,11 @@ enum TimeCardEditRequestStatus {
   denied
 }
 
+enum TimeCardEditRequestType {
+  correction
+  missing_entry
+}
+
 enum AttendanceServiceSelectionStatus {
   pending
   selected
@@ -1727,8 +1734,13 @@ enum AttendanceServiceSelectionStatus {
 model TimeCardEditRequest {
   id String @id @default(uuid())
 
-  attendanceId String
-  attendance   UserAttendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  requestType TimeCardEditRequestType @default(correction)
+
+  attendanceId String?
+  attendance   UserAttendance? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+
+  serviceProjectId String?
+  serviceProject   ServiceProject? @relation(fields: [serviceProjectId], references: [id], onDelete: SetNull)
 
   employeeId String
   employee   User   @relation("TimeCardEditRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1739,7 +1751,7 @@ model TimeCardEditRequest {
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  originalCheckInTime  DateTime
+  originalCheckInTime  DateTime?
   originalCheckOutTime DateTime?
 
   requestedCheckInTime  DateTime
@@ -1748,9 +1760,12 @@ model TimeCardEditRequest {
   approvedCheckInTime  DateTime?
   approvedCheckOutTime DateTime?
 
-  reason       String  @db.Text
-  employeeNote String? @db.Text
-  managerNote  String? @db.Text
+  reason                 String  @db.Text
+  employeeNote           String? @db.Text
+  approvedAttendanceNote String? @db.Text
+  managerNote            String? @db.Text
+
+  clientRequestId String? @db.VarChar(191)
 
   employeeSignature String  @db.Text
   managerSignature  String? @db.Text
@@ -1761,9 +1776,11 @@ model TimeCardEditRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([employeeId, clientRequestId])
   @@index([companyId, status])
   @@index([employeeId, createdAt])
   @@index([attendanceId])
+  @@index([serviceProjectId])
   @@map("timecard_edit_requests")
 }
 

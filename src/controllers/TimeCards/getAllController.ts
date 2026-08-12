@@ -871,6 +871,8 @@ export class getAllController {
                         if (serviceId) payrollUser.servicesCount.add(serviceId);
                         payrollUser.total += attendancePrice;
                         payrollUser.workers.push({
+                            attendanceId: attendance.id,
+                            note: attendance.note,
                             project: displayProject,
                             date: attendance.date,
                             in: attendance.check_in_time,
