@@ -557,9 +557,19 @@ export class UserAttendanceController {
                 orderBy: { date_creation: 'desc' }
             });
 
+            const shouldIncludeCoverPhoto = purpose !== 'missing_entry';
+            const coverPhotoUrlPromises = new Map<string, Promise<string>>();
+
             const formatted = await Promise.all(serviceProjects.map(async (sp) => {
                 let coverPhotoUrl = null;
-                if (sp.Project?.cover_photo) coverPhotoUrl = await getPresignedUrl(sp.Project.cover_photo);
+                if (shouldIncludeCoverPhoto && sp.Project?.cover_photo) {
+                    let coverPhotoUrlPromise = coverPhotoUrlPromises.get(sp.Project.cover_photo);
+                    if (!coverPhotoUrlPromise) {
+                        coverPhotoUrlPromise = getPresignedUrl(sp.Project.cover_photo);
+                        coverPhotoUrlPromises.set(sp.Project.cover_photo, coverPhotoUrlPromise);
+                    }
+                    coverPhotoUrl = await coverPhotoUrlPromise;
+                }
 
                 return {
                     id: sp.id,
