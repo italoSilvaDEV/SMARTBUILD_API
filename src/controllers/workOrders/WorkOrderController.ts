@@ -201,6 +201,9 @@ function validatePayload(payload: any) {
   if (String(payload.terms || "").length > 60000) {
     return { error: "Terms are too long" };
   }
+  if (payload.showServicePrices !== undefined && typeof payload.showServicePrices !== "boolean") {
+    return { error: "showServicePrices must be a boolean" };
+  }
   return { startDate, endDate, items };
 }
 
@@ -454,6 +457,7 @@ export class WorkOrderController {
             assigneeType: payload.assigneeType,
             assigneeId: payload.assigneeId,
             ...snapshot,
+            showServicePrices: payload.showServicePrices !== false,
             terms: payload.terms || null,
             managerSignature: companySignature,
             managerSignedAt: companySignature ? new Date() : null,
@@ -525,6 +529,9 @@ export class WorkOrderController {
             projectId: payload.projectId, title: payload.title.trim(), scope: String(payload.scope || "").trim(),
             startDate: checked.startDate!, endDate: checked.endDate!, assigneeType: payload.assigneeType,
             assigneeId: payload.assigneeId, ...snapshot, terms: payload.terms || null,
+            showServicePrices: typeof payload.showServicePrices === "boolean"
+              ? payload.showServicePrices
+              : existing.showServicePrices,
             managerSignature: companySignature || existing.managerSignature,
             managerSignedAt: (companySignature || existing.managerSignature) ? (existing.managerSignedAt || new Date()) : null,
             status: "pending", approvedAt: null, canceledAt: null, assigneeSignature: null, assigneeSignedAt: null,
