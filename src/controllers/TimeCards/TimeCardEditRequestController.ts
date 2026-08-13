@@ -625,8 +625,6 @@ export class TimeCardEditRequestController {
             id: true,
             name: true,
             isDisabled: true,
-            projectVisibilityMode: true,
-            company: { select: { projectVisibilityMode: true } },
           },
         });
         if (!requester || requester.isDisabled) {
@@ -649,28 +647,22 @@ export class TimeCardEditRequestController {
           return res.status(400).json({ error: "This project or service is not active." });
         }
 
-        const visibilityMode =
-          requester.projectVisibilityMode ||
-          requester.company?.projectVisibilityMode ||
-          "allActive";
-        if (visibilityMode === "assignedOnly") {
-          const assignment = await prisma.userServiceProject.findFirst({
-            where: {
-              user_id: requesterId,
-              service_project_id: serviceProject.id,
-              assigned_at: { lte: parsedCheckIn },
-              OR: [
-                { removed_at: null },
-                { removed_at: { gte: parsedCheckIn } },
-              ],
-            },
-            select: { id: true },
+        const assignment = await prisma.userServiceProject.findFirst({
+          where: {
+            user_id: requesterId,
+            service_project_id: serviceProject.id,
+            assigned_at: { lte: parsedCheckIn },
+            OR: [
+              { removed_at: null },
+              { removed_at: { gte: parsedCheckIn } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (!assignment) {
+          return res.status(403).json({
+            error: "You were not assigned to this service during the requested time.",
           });
-          if (!assignment) {
-            return res.status(403).json({
-              error: "You were not assigned to this service during the requested time.",
-            });
-          }
         }
 
         const existingPendingRequest = await prisma.timeCardEditRequest.findFirst({

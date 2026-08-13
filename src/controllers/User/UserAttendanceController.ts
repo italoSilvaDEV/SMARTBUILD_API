@@ -524,6 +524,8 @@ export class UserAttendanceController {
             if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
             const visibilityMode = user.projectVisibilityMode || user.company?.projectVisibilityMode || 'allActive';
+            const requiresActiveAssignment =
+                purpose === 'missing_entry' || visibilityMode === 'assignedOnly';
 
             const userCompanyIds = [user.company_id, ...user.companies.map(c => c.companyId)].filter(Boolean) as string[];
             const finalCompanyIds = companyId ? [companyId as string].filter(id => userCompanyIds.includes(id)) : userCompanyIds;
@@ -539,12 +541,13 @@ export class UserAttendanceController {
                         },
                         company_id: { in: finalCompanyIds }
                     },
-                    // Se o modo for 'assignedOnly', filtra apenas onde o usuário está atribuído
-                    ...(visibilityMode === 'assignedOnly' ? {
+                    // Missing-entry selection is always restricted to the worker's active assignments.
+                    // Regular check-in continues to follow the configured project visibility mode.
+                    ...(requiresActiveAssignment ? {
                         UserServiceProject: {
                             some: {
                                 user_id: resolvedUserId,
-                                ...(purpose === 'missing_entry' ? {} : { removed_at: null })
+                                removed_at: null
                             }
                         }
                     } : {}),
