@@ -2,6 +2,20 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "./calculaHoraExt
 
 const SHORT_BREAK_MINUTES = 15;
 const PAID_SHORT_BREAKS_PER_DAY = 2;
+export const MIN_AUTOMATIC_BREAK_WORKED_MINUTES = 4 * 60;
+
+export function getAutomaticBreakMinutes(
+  configuredBreakMinutes: number | null | undefined,
+  grossWorkedMinutes: number
+) {
+  const normalizedGrossMinutes = Math.max(0, Math.round(grossWorkedMinutes));
+  if (normalizedGrossMinutes < MIN_AUTOMATIC_BREAK_WORKED_MINUTES) return 0;
+
+  return Math.min(
+    Math.max(0, Number(configuredBreakMinutes) || 0),
+    normalizedGrossMinutes
+  );
+}
 
 function getAttendanceIdentity(attendance: any) {
   if (attendance?.id) return String(attendance.id);
@@ -77,16 +91,19 @@ function buildAutomaticBreakMap(attendances: any[]) {
       (a, b) => new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime()
     );
 
-    const breakTarget = sortedAttendances.find(
-      (attendance) =>
-        !attendance?.user?.manualBreakEnabled && getGrossWorkedHours(attendance) > 0
-    );
+    const breakTarget = sortedAttendances.find((attendance) => {
+      const grossWorkedMinutes = Math.round(getGrossWorkedHours(attendance) * 60);
+      return (
+        !attendance?.user?.manualBreakEnabled &&
+        grossWorkedMinutes >= MIN_AUTOMATIC_BREAK_WORKED_MINUTES
+      );
+    });
 
     if (!breakTarget) return;
 
     const grossWorkedMinutes = Math.round(getGrossWorkedHours(breakTarget) * 60);
-    const breakMinutesApplied = Math.min(
-      breakTarget?.user?.defaultBreakMinutes || 0,
+    const breakMinutesApplied = getAutomaticBreakMinutes(
+      breakTarget?.user?.defaultBreakMinutes,
       grossWorkedMinutes
     );
 
