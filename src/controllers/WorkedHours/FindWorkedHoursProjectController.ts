@@ -5,6 +5,7 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calc
 import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
 import { getWorkedHoursPrice, workedHoursToNumber } from "../../utils/workedHoursCost";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
+import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -147,12 +148,23 @@ export class FindWorkedHoursProjectController {
             const formattedResult = resultAttendance.map((attendance) => {
                 let hoursWorked = 0;
                 if (attendance.check_out_time && attendance.check_in_time) {
+                    const grossHours = calcularHorasTrabalhadas(
+                        attendance.check_in_time.toISOString(),
+                        attendance.check_out_time.toISOString(),
+                        attendance.workStartTime,
+                        attendance.workEndTime,
+                        0,
+                    );
+                    const grossWorkedMinutes = Math.round((
+                        convertHHMMToDecimal(grossHours.normais) +
+                        convertHHMMToDecimal(grossHours.extras)
+                    ) * 60);
                     const hours = calcularHorasTrabalhadas(
                         attendance.check_in_time.toISOString(),
                         attendance.check_out_time.toISOString(),
                         attendance.workStartTime,
                         attendance.workEndTime,
-                        attendance.user.defaultBreakMinutes || 0,
+                        getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes),
                     );
                     hoursWorked =
                         convertHHMMToDecimal(hours.normais) +

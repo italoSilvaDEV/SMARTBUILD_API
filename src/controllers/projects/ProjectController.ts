@@ -14,6 +14,7 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
+import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
 import { userCanViewFinancials } from "../../utils/financialAccess";
@@ -2052,12 +2053,23 @@ export class ProjectController {
           let overtimeHours = 0;
 
           if (attendance.check_out_time && attendance.check_in_time) {
+            const grossHours = calcularHorasTrabalhadas(
+              attendance.check_in_time.toISOString(),
+              attendance.check_out_time.toISOString(),
+              attendance.workStartTime,
+              attendance.workEndTime,
+              0,
+            );
+            const grossWorkedMinutes = Math.round((
+              convertHHMMToDecimal(grossHours.normais) +
+              convertHHMMToDecimal(grossHours.extras)
+            ) * 60);
             const hours = calcularHorasTrabalhadas(
               attendance.check_in_time.toISOString(),
               attendance.check_out_time.toISOString(),
               attendance.workStartTime,
               attendance.workEndTime,
-              attendance.user.defaultBreakMinutes || 0,
+              getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes),
             );
             regularHours = convertHHMMToDecimal(hours.normais);
             overtimeHours = convertHHMMToDecimal(hours.extras);

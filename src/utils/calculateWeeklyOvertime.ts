@@ -1,5 +1,6 @@
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "./calculaHoraExtra";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "./paidShortGaps";
+import { getAutomaticBreakMinutes } from "./attendanceBreaks";
 
 export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attendances: any[] }>) {
   let totalPrice = 0;
@@ -22,12 +23,22 @@ export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attenda
 
       let dailyHours = 0;
       if (attendance.check_out_time) {
+        const grossHours = calcularHorasTrabalhadas(
+          attendance.check_in_time.toISOString(),
+          attendance.check_out_time.toISOString(),
+          attendance.workStartTime,
+          attendance.workEndTime,
+          0
+        );
+        const grossWorkedMinutes = Math.round(
+          (convertHHMMToDecimal(grossHours.normais) + convertHHMMToDecimal(grossHours.extras)) * 60
+        );
         const hours = calcularHorasTrabalhadas(
           attendance.check_in_time.toISOString(),
           attendance.check_out_time.toISOString(),
           attendance.workStartTime,
           attendance.workEndTime,
-          attendance.user.defaultBreakMinutes || 0
+          getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes)
         );
         dailyHours =
           convertHHMMToDecimal(hours.normais) +
@@ -124,12 +135,22 @@ export function calculateWeeklyOvertimePerAttendance(
     sorted.forEach((attendance) => {
       let dailyHours = 0;
       if (attendance.check_out_time) {
+        const grossHours = calcularHorasTrabalhadas(
+          attendance.check_in_time.toISOString(),
+          attendance.check_out_time.toISOString(),
+          attendance.workStartTime,
+          attendance.workEndTime,
+          0
+        );
+        const grossWorkedMinutes = Math.round(
+          (convertHHMMToDecimal(grossHours.normais) + convertHHMMToDecimal(grossHours.extras)) * 60
+        );
         const hours = calcularHorasTrabalhadas(
           attendance.check_in_time.toISOString(),
           attendance.check_out_time.toISOString(),
           attendance.workStartTime,
           attendance.workEndTime,
-          attendance.user?.defaultBreakMinutes ?? 0
+          getAutomaticBreakMinutes(attendance.user?.defaultBreakMinutes, grossWorkedMinutes)
         );
         dailyHours =
           convertHHMMToDecimal(hours.normais) +

@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import { prisma } from "../../utils/prisma";
 import { TimeService } from "../../services/TimeService";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
+import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 import { PLANNING_SYSTEM_PROMPT, SYNTHESIS_PROMPT, SYSTEM_PROMPT } from "./prompts";
 import {
   ACTIVE_PROJECT_STATUSES,
@@ -4225,12 +4226,23 @@ export class AIAssistantController {
       return { totalCost: 0, totalHours: 0 };
     }
 
+    const grossHours = calcularHorasTrabalhadas(
+      new Date(attendance.check_in_time).toISOString(),
+      new Date(attendance.check_out_time).toISOString(),
+      attendance.workStartTime,
+      attendance.workEndTime,
+      0
+    );
+    const grossWorkedMinutes = Math.round((
+      convertHHMMToDecimal(grossHours.normais) +
+      convertHHMMToDecimal(grossHours.extras)
+    ) * 60);
     const hours = calcularHorasTrabalhadas(
       new Date(attendance.check_in_time).toISOString(),
       new Date(attendance.check_out_time).toISOString(),
       attendance.workStartTime,
       attendance.workEndTime,
-      attendance.user?.defaultBreakMinutes || 0
+      getAutomaticBreakMinutes(attendance.user?.defaultBreakMinutes, grossWorkedMinutes)
     );
 
     const regularHours = convertHHMMToDecimal(hours.normais);
