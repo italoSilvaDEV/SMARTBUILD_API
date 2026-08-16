@@ -4,6 +4,10 @@ import path from "path";
 import OpenAI from "openai";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
+import {
+  extractTargetPricingInstruction,
+  reconcileServicesToTarget,
+} from "../../utils/smartBuilderPricing";
 
 type EstimateAiRole = "user" | "assistant" | "system";
 
@@ -282,116 +286,6 @@ function sumServicesTotal(services: SmartBuilderService[]) {
   }, 0));
 }
 
-function parseMoneyAmount(value: string) {
-  const normalized = String(value || "").trim().toLowerCase();
-  const multiplier = /\bk\b/.test(normalized) ? 1_000 : /\b(m|million)\b/.test(normalized) ? 1_000_000 : 1;
-  const cleaned = normalized
-    .replace(/[$,\s]/g, "")
-    .replace(/\b(k|m|million|dollars?|usd)\b/g, "")
-    .replace(/[^\d.]/g, "");
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? roundCurrency(parsed * multiplier) : null;
-}
-
-function extractTargetPricingInstruction(message: string) {
-  const normalized = String(message || "").toLowerCase();
-  const moneyMatches = Array.from(normalized.matchAll(/(?:\$|usd\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:k|m|million|dollars?|usd)?/gi))
-    .map((match) => {
-      const raw = match[0];
-      const index = typeof match.index === "number" ? match.index : 0;
-      const context = normalized.slice(Math.max(0, index - 45), index + raw.length + 45);
-      const hasCurrencySignal = /[$]|\busd\b|\bdollars?\b|\bk\b|\bm\b|\bmillion\b/i.test(raw);
-      const hasTargetContext = /\b(total|budget|amount|target|not exceed|maximum|max|around|about|approximately|roughly|cost|price|valor|or[cç]amento|pre[cç]o)\b/i.test(context);
-      const parsed = parseMoneyAmount(raw);
-
-      if (parsed === null) return null;
-      if (!hasCurrencySignal && !hasTargetContext) return null;
-      if (!hasCurrencySignal && parsed >= 1900 && parsed <= 2099 && /\b(19|20)\d{2}\b/.test(raw)) return null;
-
-      return parsed;
-    })
-    .filter((value): value is number => typeof value === "number" && value > 0);
-  const targetTotal = moneyMatches.length ? moneyMatches[moneyMatches.length - 1] : null;
-
-  if (!targetTotal) {
-    return {
-      pricingIntent: "standard",
-      targetTotal: null,
-      toleranceType: null as "exact" | "approximate" | "not_exceed" | null,
-      toleranceAmount: null as number | null,
-    };
-  }
-
-  const isNotExceed = [
-    "not exceed",
-    "do not exceed",
-    "don't exceed",
-    "no more than",
-    "maximum",
-    "max ",
-    "under ",
-    "below ",
-    "up to",
-    "nao passar",
-    "não passar",
-    "maximo",
-    "máximo",
-  ].some((term) => normalized.includes(term));
-
-  const isApproximate = [
-    "around",
-    "about",
-    "approximately",
-    "approx",
-    "roughly",
-    "near",
-    "close to",
-    "cerca",
-    "aproximadamente",
-    "por volta",
-    "perto de",
-  ].some((term) => normalized.includes(term));
-
-  if (isNotExceed) {
-    return {
-      pricingIntent: "not_exceed",
-      targetTotal,
-      toleranceType: "not_exceed" as const,
-      toleranceAmount: 1,
-    };
-  }
-
-  if (isApproximate) {
-    return {
-      pricingIntent: "approximate_total",
-      targetTotal,
-      toleranceType: "approximate" as const,
-      toleranceAmount: roundCurrency(targetTotal * 0.02),
-    };
-  }
-
-  const mentionsTotalOrBudget = [
-    "total",
-    "budget",
-    "amount",
-    "price",
-    "cost",
-    "estimate",
-    "valor",
-    "orçamento",
-    "orcamento",
-    "preco",
-    "preço",
-  ].some((term) => normalized.includes(term));
-
-  return {
-    pricingIntent: mentionsTotalOrBudget ? "exact_total" : "standard",
-    targetTotal: mentionsTotalOrBudget ? targetTotal : null,
-    toleranceType: mentionsTotalOrBudget ? ("exact" as const) : null,
-    toleranceAmount: mentionsTotalOrBudget ? 1 : null,
-  };
-}
-
 function normalizeServices(services: SmartBuilderService[]) {
   return (Array.isArray(services) ? services : []).map((service) => {
     const quantity = decimalToNumber(service.quantity ?? service.hours, 1) || 1;
@@ -413,6 +307,8 @@ function normalizeServices(services: SmartBuilderService[]) {
 
 function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], message = "") {
   const targetInstruction = extractTargetPricingInstruction(message);
+  const hasExplicitTarget = targetInstruction.targetTotal !== null
+    && targetInstruction.pricingIntent !== "standard";
   const fallbackProposedServices = normalizeServices(fallbackServices);
   const fallbackProposedTotal = sumServicesTotal(fallbackProposedServices);
   const fallback = {
@@ -431,12 +327,16 @@ function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], 
   if (!raw || typeof raw !== "object") return fallback;
   const proposedServices = normalizeServices(Array.isArray(raw.proposedServices) ? raw.proposedServices : fallbackServices);
   const proposedTotal = sumServicesTotal(proposedServices);
-  const targetTotal = typeof raw.targetTotal === "number"
-    ? roundCurrency(raw.targetTotal)
-    : targetInstruction.targetTotal;
-  const pricingIntent = typeof raw.pricingIntent === "string" && raw.pricingIntent
-    ? raw.pricingIntent
-    : targetInstruction.pricingIntent;
+  const targetTotal = hasExplicitTarget
+    ? targetInstruction.targetTotal
+    : typeof raw.targetTotal === "number"
+      ? roundCurrency(raw.targetTotal)
+      : targetInstruction.targetTotal;
+  const pricingIntent = hasExplicitTarget
+    ? targetInstruction.pricingIntent
+    : typeof raw.pricingIntent === "string" && raw.pricingIntent
+      ? raw.pricingIntent
+      : targetInstruction.pricingIntent;
 
   return {
     assistantMessage: typeof raw.assistantMessage === "string" ? raw.assistantMessage : fallback.assistantMessage,
@@ -449,6 +349,41 @@ function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], 
     targetVariance: targetTotal !== null ? roundCurrency(proposedTotal - targetTotal) : null,
     documentPricingDetected: typeof raw.documentPricingDetected === "boolean" ? raw.documentPricingDetected : null,
     instructionComplianceNotes: Array.isArray(raw.instructionComplianceNotes) ? raw.instructionComplianceNotes.map(String) : [],
+  };
+}
+
+function enforceExplicitTargetPricing(
+  parsed: ReturnType<typeof normalizeAiResponse>,
+  message: string
+) {
+  const instruction = extractTargetPricingInstruction(message);
+  const hasExplicitTarget = instruction.targetTotal !== null
+    && instruction.pricingIntent !== "standard";
+
+  if (!hasExplicitTarget) {
+    return { parsed, adjusted: false };
+  }
+
+  const reconciliation = reconcileServicesToTarget(parsed.proposedServices, instruction);
+  const proposedServices = normalizeServices(reconciliation.services);
+  const proposedTotal = sumServicesTotal(proposedServices);
+
+  return {
+    adjusted: reconciliation.adjusted,
+    parsed: {
+      ...parsed,
+      proposedServices,
+      pricingIntent: instruction.pricingIntent,
+      targetTotal: instruction.targetTotal,
+      proposedTotal,
+      targetVariance: roundCurrency(proposedTotal - Number(instruction.targetTotal)),
+      instructionComplianceNotes: reconciliation.adjusted
+        ? [
+          ...parsed.instructionComplianceNotes,
+          "Service prices were reconciled by the backend to match the explicit user target.",
+        ]
+        : parsed.instructionComplianceNotes,
+    },
   };
 }
 
@@ -2222,8 +2157,14 @@ function validateSmartBuilderProposal(params: {
   const warnings: string[] = [];
   const proposedServices = params.parsed.proposedServices || [];
   const targetInstruction = extractTargetPricingInstruction(params.message);
-  const targetTotal = params.parsed.targetTotal ?? targetInstruction.targetTotal;
-  const pricingIntent = params.parsed.pricingIntent || targetInstruction.pricingIntent;
+  const hasExplicitTarget = targetInstruction.targetTotal !== null
+    && targetInstruction.pricingIntent !== "standard";
+  const targetTotal = hasExplicitTarget
+    ? targetInstruction.targetTotal
+    : params.parsed.targetTotal;
+  const pricingIntent = hasExplicitTarget
+    ? targetInstruction.pricingIntent
+    : params.parsed.pricingIntent || targetInstruction.pricingIntent;
   const proposedTotal = sumServicesTotal(proposedServices);
 
   if (!proposedServices.length) {
@@ -2303,8 +2244,9 @@ async function repairSmartBuilderProposalIfNeeded(params: {
   companyId?: string | null;
   traceId?: string;
 }) {
+  const guardedProposal = enforceExplicitTargetPricing(params.parsed, params.message);
   const validation = validateSmartBuilderProposal({
-    parsed: params.parsed,
+    parsed: guardedProposal.parsed,
     currentServices: params.currentServices,
     message: params.message,
     attachments: params.attachments,
@@ -2314,24 +2256,24 @@ async function repairSmartBuilderProposalIfNeeded(params: {
   if (validation.passed) {
     return {
       parsed: {
-        ...params.parsed,
+        ...guardedProposal.parsed,
         proposedTotal: validation.proposedTotal,
-        targetTotal: validation.targetTotal ?? params.parsed.targetTotal,
+        targetTotal: validation.targetTotal ?? guardedProposal.parsed.targetTotal,
         targetVariance: validation.targetTotal !== null && validation.targetTotal !== undefined
           ? roundCurrency(validation.proposedTotal - Number(validation.targetTotal))
-          : params.parsed.targetVariance,
-        warnings: [...params.parsed.warnings, ...validation.warnings],
+          : guardedProposal.parsed.targetVariance,
+        warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
       },
       validation,
-      repaired: false,
+      repaired: guardedProposal.adjusted,
     };
   }
 
   if (!openai) {
     return {
       parsed: {
-        ...params.parsed,
-        warnings: [...params.parsed.warnings, ...validation.warnings],
+        ...guardedProposal.parsed,
+        warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
       },
       validation,
       repaired: false,
@@ -2370,7 +2312,7 @@ async function repairSmartBuilderProposalIfNeeded(params: {
               "Keep descriptions detailed and safe HTML.",
               "Return the same schema fields, including metadata fields.",
             ],
-            previousProposal: params.parsed,
+            previousProposal: guardedProposal.parsed,
           }),
         },
       ],
@@ -2394,8 +2336,9 @@ async function repairSmartBuilderProposalIfNeeded(params: {
       params.traceId
     );
     const repaired = normalizeAiResponse(safeParseAiJson(getResponseText(repairResponse)), params.currentServices, params.message);
+    const guardedRepair = enforceExplicitTargetPricing(repaired, params.message);
     const repairedValidation = validateSmartBuilderProposal({
-      parsed: repaired,
+      parsed: guardedRepair.parsed,
       currentServices: params.currentServices,
       message: params.message,
       attachments: params.attachments,
@@ -2411,16 +2354,16 @@ async function repairSmartBuilderProposalIfNeeded(params: {
       targetTotal: repairedValidation.targetTotal,
     });
 
-    if (repairedValidation.passed || repairedValidation.errors.length <= validation.errors.length) {
+    if (repairedValidation.passed) {
       return {
         parsed: {
-          ...repaired,
+          ...guardedRepair.parsed,
           proposedTotal: repairedValidation.proposedTotal,
-          targetTotal: repairedValidation.targetTotal ?? repaired.targetTotal,
+          targetTotal: repairedValidation.targetTotal ?? guardedRepair.parsed.targetTotal,
           targetVariance: repairedValidation.targetTotal !== null && repairedValidation.targetTotal !== undefined
             ? roundCurrency(repairedValidation.proposedTotal - Number(repairedValidation.targetTotal))
-            : repaired.targetVariance,
-          warnings: [...repaired.warnings, ...repairedValidation.warnings],
+            : guardedRepair.parsed.targetVariance,
+          warnings: [...guardedRepair.parsed.warnings, ...repairedValidation.warnings],
         },
         validation: repairedValidation,
         repaired: true,
@@ -2434,8 +2377,8 @@ async function repairSmartBuilderProposalIfNeeded(params: {
 
   return {
     parsed: {
-      ...params.parsed,
-      warnings: [...params.parsed.warnings, ...validation.warnings],
+      ...guardedProposal.parsed,
+      warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
     },
     validation,
     repaired: false,
@@ -2646,6 +2589,17 @@ export class SmartBuilderEstimateController {
         companyId: estimate.project.company_id,
         traceId,
       });
+      if (!proposalResult.validation.passed) {
+        logSmartBuilderTrace(traceId, "proposal.rejected", {
+          errors: proposalResult.validation.errors,
+          proposedTotal: proposalResult.validation.proposedTotal,
+          targetTotal: proposalResult.validation.targetTotal,
+        }, "warn");
+        return res.status(422).json({
+          success: false,
+          error: "The generated estimate could not be validated. Please try again with a more specific instruction.",
+        });
+      }
       const parsed = proposalResult.parsed;
 
       const assistantMessage = await prisma.estimateAiMessage.create({
@@ -2816,6 +2770,17 @@ export class SmartBuilderEstimateController {
         companyId,
         traceId,
       });
+      if (!proposalResult.validation.passed) {
+        logSmartBuilderTrace(traceId, "proposal.rejected", {
+          errors: proposalResult.validation.errors,
+          proposedTotal: proposalResult.validation.proposedTotal,
+          targetTotal: proposalResult.validation.targetTotal,
+        }, "warn");
+        return res.status(422).json({
+          success: false,
+          error: "The generated estimate could not be validated. Please try again with a more specific instruction.",
+        });
+      }
       const parsed = proposalResult.parsed;
       const now = new Date().toISOString();
       const nextSession: DraftSessionPayload = {
