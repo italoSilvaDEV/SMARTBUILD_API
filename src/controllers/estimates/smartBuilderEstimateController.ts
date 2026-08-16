@@ -81,7 +81,7 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
   : null;
 
 const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5.5";
-const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.5";
+const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.4-mini";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 10_000);
