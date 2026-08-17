@@ -61,6 +61,7 @@ model User {
   isExtraPaidUser Boolean? @default(false)
 
   token_recover_password       String?                   @unique
+  passwordRecoverySentAt       DateTime?                 @map("password_recovery_sent_at")
   autorId                      String?
   last_acess                   DateTime?
   date_creation                DateTime                  @default(now())

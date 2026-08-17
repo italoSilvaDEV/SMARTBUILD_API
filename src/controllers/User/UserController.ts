@@ -19,6 +19,9 @@ import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
 
+const PASSWORD_RECOVERY_COOLDOWN_SECONDS = 60;
+const PASSWORD_RECOVERY_COOLDOWN_MS =
+  PASSWORD_RECOVERY_COOLDOWN_SECONDS * 1000;
 
 export class UserController {
   constructor() {
@@ -1381,31 +1384,85 @@ export class UserController {
     if (!user) {
       return response.status(400).json({ error: "User not found!" });
     }
+
+    const now = new Date();
+    const cooldownThreshold = new Date(
+      now.getTime() - PASSWORD_RECOVERY_COOLDOWN_MS,
+    );
     const token = crypto.randomBytes(3).toString("hex").toUpperCase();
-    await prisma.user.update({
+
+    // The conditional update makes the cooldown atomic, so simultaneous
+    // requests cannot send multiple recovery emails for the same account.
+    const cooldownLock = await prisma.user.updateMany({
       where: {
         id: user.id,
+        OR: [
+          { passwordRecoverySentAt: null },
+          { passwordRecoverySentAt: { lte: cooldownThreshold } },
+        ],
       },
       data: {
         token_recover_password: token,
+        passwordRecoverySentAt: now,
       },
     });
 
-      const companyAvatar = user.company?.avatar ? await getPresignedUrl(user.company.avatar) : '';
-      const templateEmail = RecoverPassword(user.name.toUpperCase(), companyAvatar, token);
+    if (cooldownLock.count === 0) {
+      const recoveryState = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { passwordRecoverySentAt: true },
+      });
+      const elapsedMs = recoveryState?.passwordRecoverySentAt
+        ? Date.now() - recoveryState.passwordRecoverySentAt.getTime()
+        : 0;
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((PASSWORD_RECOVERY_COOLDOWN_MS - elapsedMs) / 1000),
+      );
 
-      try {
-        await sendEmail({
-          to: email,
-          subject: "Smart Build - Password Reset",
-          html: templateEmail
-        });
-        console.log("e-mail enviado com sucesso!");
-        return response.json({ message: "Email sent successfully" });
-      } catch (error) {
-        console.error("Erro ao enviar e-mail:", error);
-        return response.status(500).json({ error: "Erro ao enviar e-mail" });
-      }
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      return response.status(429).json({
+        error: `Please wait ${retryAfterSeconds} seconds before requesting another code.`,
+        retryAfterSeconds,
+      });
+    }
+
+    const companyAvatar = user.company?.avatar
+      ? await getPresignedUrl(user.company.avatar)
+      : "";
+    const templateEmail = RecoverPassword(
+      user.name.toUpperCase(),
+      companyAvatar,
+      token,
+    );
+
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Smart Build - Password Reset",
+        html: templateEmail,
+      });
+      console.log("e-mail enviado com sucesso!");
+      return response.json({
+        message: "Email sent successfully",
+        retryAfterSeconds: PASSWORD_RECOVERY_COOLDOWN_SECONDS,
+      });
+    } catch (error) {
+      // If delivery fails, release this attempt so the user can retry instead
+      // of being locked out by an email that was never sent.
+      await prisma.user.updateMany({
+        where: {
+          id: user.id,
+          token_recover_password: token,
+        },
+        data: {
+          token_recover_password: user.token_recover_password,
+          passwordRecoverySentAt: user.passwordRecoverySentAt,
+        },
+      });
+      console.error("Erro ao enviar e-mail:", error);
+      return response.status(500).json({ error: "Erro ao enviar e-mail" });
+    }
   }
 
   async validCode(request: Request, response: Response) {
@@ -1460,6 +1517,7 @@ export class UserController {
         },
         data: {
           token_recover_password: null,
+          passwordRecoverySentAt: null,
           password: password,
         },
       });
