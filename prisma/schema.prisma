@@ -1481,6 +1481,12 @@ model BidRequestRecipient {
   approvedAt         DateTime?
   rejectedAt         DateTime?
   notes              String?                   @db.Text
+  submissionSource   String                    @default("portal")
+  externalDocumentKey         String?          @db.Text
+  externalDocumentName        String?
+  externalDocumentContentType String?
+  externalDocumentSize        Int?
+  extractionConfidence        Float?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
   bidRequestId       String

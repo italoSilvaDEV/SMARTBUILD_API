@@ -6,9 +6,11 @@ import { bidRequestEmail } from "../../templateEmail/bidRequest";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import {
   deleteS3ObjectQuietly,
+  getStagedObjectBuffer,
   StagedUploadReference,
   verifyStagedUploadReference,
 } from "../../utils/S3/stagedUpload";
+import { extractExternalProposalFromDocument } from "../../services/bidRequests/externalProposalExtraction";
 
 const includeBid = {
   items: { orderBy: { position: "asc" as const } },
@@ -69,12 +71,12 @@ async function serialize(bid: any, publicRecipientId?: string) {
       url: await getPresignedUrl(attachment.key).catch(() => ""),
     })),
   );
-  const recipients = (bid.recipients || [])
+  const recipients = await Promise.all((bid.recipients || [])
     .filter(
       (recipient: any) =>
         !publicRecipientId || recipient.id === publicRecipientId,
     )
-    .map((recipient: any) => ({
+    .map(async (recipient: any) => ({
       id: recipient.id,
       status: recipient.status,
       subcontractorId: recipient.subcontractorId,
@@ -84,9 +86,17 @@ async function serialize(bid: any, publicRecipientId?: string) {
       approvedAt: recipient.approvedAt,
       rejectedAt: recipient.rejectedAt,
       notes: recipient.notes || "",
+      submissionSource: recipient.submissionSource || "portal",
+      extractionConfidence: recipient.extractionConfidence,
+      externalDocument: recipient.externalDocumentKey ? {
+        name: recipient.externalDocumentName,
+        contentType: recipient.externalDocumentContentType,
+        size: recipient.externalDocumentSize,
+        url: await getPresignedUrl(recipient.externalDocumentKey).catch(() => ""),
+      } : null,
       items: serializeItems(recipient.items),
       total: proposalTotal(recipient.items),
-    }));
+    })));
   return {
     ...bid,
     items: serializeItems(bid.items),
@@ -152,6 +162,78 @@ function validatePayload(payload: any) {
 }
 
 export class BidRequestController {
+  async extractExternalProposal(req: Request, res: Response) {
+    const bid = await prisma.bidRequest.findUnique({ where: { id: req.params.id } });
+    if (!bid) return res.status(404).json({ error: "Bid request not found" });
+    if (!(await canAccess(req, bid.companyId))) return res.status(403).json({ error: "Access denied" });
+    if (bid.status !== "pending") return res.status(409).json({ error: "This bid request is closed" });
+    const upload = req.body?.upload as StagedUploadReference;
+    try {
+      await verifyStagedUploadReference(upload, { companyId: bid.companyId, userId: (req as any).userId, purpose: "bid-proposal-attachment" });
+      const supportedTypes = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+      if (!supportedTypes.has(upload.contentType)) return res.status(400).json({ error: "Only PDF and DOCX files are supported" });
+      const data = await extractExternalProposalFromDocument(await getStagedObjectBuffer(upload.key), upload.originalName, upload.contentType);
+      return res.json({ data });
+    } catch (error: any) {
+      console.error("[bidRequest.extractExternalProposal]", { message: error?.message });
+      const status = Number(error?.status || 0);
+      if (status === 429) return res.status(429).json({ error: "AI extraction is busy. Please try again shortly." });
+      if (error?.name === "APIConnectionTimeoutError") return res.status(504).json({ error: "The document took too long to process. Please try again." });
+      return res.status(500).json({ error: "Unable to read this document. You can continue with manual entry." });
+    }
+  }
+
+  async createExternalProposal(req: Request, res: Response) {
+    const bid = await prisma.bidRequest.findUnique({ where: { id: req.params.id } });
+    if (!bid) return res.status(404).json({ error: "Bid request not found" });
+    if (!(await canAccess(req, bid.companyId))) return res.status(403).json({ error: "Access denied" });
+    if (bid.status !== "pending") return res.status(409).json({ error: "This bid request is closed" });
+    const subcontractorName = String(req.body?.subcontractorName || "").trim();
+    const subcontractorEmail = String(req.body?.subcontractorEmail || "").trim().toLowerCase();
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const upload = req.body?.upload as StagedUploadReference | undefined;
+    if (!subcontractorName || !/^\S+@\S+\.\S+$/.test(subcontractorEmail)) return res.status(400).json({ error: "Subcontractor name and a valid email are required" });
+    if (!items.length || items.some((item: any) => !String(item?.name || "").trim())) return res.status(400).json({ error: "At least one named proposal item is required" });
+    if (items.length > 250) return res.status(400).json({ error: "Proposal exceeds the 250 item limit" });
+
+    try {
+      if (upload) await verifyStagedUploadReference(upload, { companyId: bid.companyId, userId: (req as any).userId, purpose: "bid-proposal-attachment" });
+      const previousDocumentKey = await prisma.$transaction(async (tx) => {
+        const subcontractor = await tx.subcontractor.upsert({
+          where: { email_company_id: { email: subcontractorEmail, company_id: bid.companyId } },
+          update: { name: subcontractorName }, create: { name: subcontractorName, email: subcontractorEmail, company_id: bid.companyId },
+        });
+        const existing = await tx.bidRequestRecipient.findUnique({ where: { bidRequestId_subcontractorId: { bidRequestId: bid.id, subcontractorId: subcontractor.id } } });
+        if (existing?.status === "approved") throw new Error("Approved proposals cannot be replaced");
+        const common = {
+          status: "submitted" as const, submittedAt: new Date(), notes: String(req.body?.notes || "").trim() || null,
+          subcontractorName, subcontractorEmail, submissionSource: "external",
+          externalDocumentKey: upload?.key || existing?.externalDocumentKey || null,
+          externalDocumentName: upload?.originalName || existing?.externalDocumentName || null,
+          externalDocumentContentType: upload?.contentType || existing?.externalDocumentContentType || null,
+          externalDocumentSize: upload?.size || existing?.externalDocumentSize || null,
+          extractionConfidence: req.body?.extractionConfidence == null ? null : Math.min(1, Math.max(0, Number(req.body.extractionConfidence) || 0)),
+        };
+        const recipient = existing
+          ? await tx.bidRequestRecipient.update({ where: { id: existing.id }, data: common })
+          : await tx.bidRequestRecipient.create({ data: { ...common, bidRequestId: bid.id, subcontractorId: subcontractor.id } });
+        await tx.bidProposalItem.deleteMany({ where: { recipientId: recipient.id } });
+        await tx.bidProposalItem.createMany({ data: items.map((item: any, position: number) => ({
+          recipientId: recipient.id, name: String(item.name).trim(), description: String(item.description || "").trim() || null,
+          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1, unitPrice: Math.max(0, Number(item.unitPrice) || 0), position, isCustom: true,
+        })) });
+        return existing?.externalDocumentKey && upload?.key && existing.externalDocumentKey !== upload.key ? existing.externalDocumentKey : null;
+      });
+      if (previousDocumentKey) await deleteS3ObjectQuietly(previousDocumentKey);
+      const record = await prisma.bidRequest.findUnique({ where: { id: bid.id }, include: includeBid });
+      return res.status(201).json({ data: await serialize(record) });
+    } catch (error: any) {
+      console.error("[bidRequest.createExternalProposal]", { message: error?.message });
+      if (error?.message === "Approved proposals cannot be replaced") return res.status(409).json({ error: error.message });
+      return res.status(500).json({ error: "Unable to save external proposal" });
+    }
+  }
+
   async list(req: Request, res: Response) {
     const companyId = String(req.query.companyId || "");
     if (!companyId)

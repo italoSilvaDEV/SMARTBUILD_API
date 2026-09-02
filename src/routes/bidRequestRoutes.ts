@@ -10,6 +10,8 @@ bidRequestRoutes.put("/public/:publicToken/submit", controller.submitPublic.bind
 bidRequestRoutes.use(checkToken);
 bidRequestRoutes.get("/", controller.list.bind(controller));
 bidRequestRoutes.post("/", controller.create.bind(controller));
+bidRequestRoutes.post("/:id/external-proposals/extract", controller.extractExternalProposal.bind(controller));
+bidRequestRoutes.post("/:id/external-proposals", controller.createExternalProposal.bind(controller));
 bidRequestRoutes.get("/:id", controller.get.bind(controller));
 bidRequestRoutes.post("/:id/send", controller.send.bind(controller));
 bidRequestRoutes.patch("/:id/cancel", controller.cancel.bind(controller));
