@@ -61,6 +61,7 @@ model User {
   isExtraPaidUser Boolean? @default(false)
 
   token_recover_password       String?                   @unique
+  passwordRecoverySentAt       DateTime?                 @map("password_recovery_sent_at")
   autorId                      String?
   last_acess                   DateTime?
   date_creation                DateTime                  @default(now())
@@ -1480,6 +1481,12 @@ model BidRequestRecipient {
   approvedAt         DateTime?
   rejectedAt         DateTime?
   notes              String?                   @db.Text
+  submissionSource   String                    @default("portal")
+  externalDocumentKey         String?          @db.Text
+  externalDocumentName        String?
+  externalDocumentContentType String?
+  externalDocumentSize        Int?
+  extractionConfidence        Float?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
   bidRequestId       String
