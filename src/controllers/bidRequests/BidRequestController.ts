@@ -61,6 +61,19 @@ async function finalizeExpired(companyId?: string) {
   });
 }
 
+async function reopenAutoFinalized(filters: { id?: string; companyId?: string } = {}) {
+  await prisma.bidRequest.updateMany({
+    where: {
+      ...(filters.id ? { id: filters.id } : {}),
+      ...(filters.companyId ? { companyId: filters.companyId } : {}),
+      status: "finalized",
+      approvedRecipientId: null,
+      responseDeadline: { gt: new Date() },
+    },
+    data: { status: "pending", finalizedAt: null },
+  });
+}
+
 async function serialize(bid: any, publicRecipientId?: string) {
   const attachments = await Promise.all(
     (bid.attachments || []).map(async (attachment: any) => ({
@@ -124,6 +137,77 @@ async function canAccess(req: Request, companyId: string) {
   );
 }
 
+async function deliverBidRequest(
+  record: any,
+  recipients: any[],
+  message: string,
+) {
+  const logo = record.company.avatar
+    ? await getPresignedUrl(record.company.avatar).catch(() => "")
+    : "";
+  const baseUrl = String(
+    process.env.URL_FRONT || process.env.FRONTEND_URL || "",
+  ).replace(/\/$/, "");
+  const results = await Promise.allSettled(
+    recipients.map((recipient) =>
+      sendEmail({
+        to: recipient.subcontractorEmail,
+        subject: `Bid Request #${record.number} from ${record.company.name}`,
+        html: bidRequestEmail({
+          recipientName: recipient.subcontractorName,
+          companyName: record.company.name,
+          companyLogo: logo,
+          number: record.number,
+          projectName: record.projectName,
+          deadline: record.responseDeadline,
+          responseLink: `${baseUrl}/bid-request-response/${recipient.publicToken}`,
+          message: message || undefined,
+        }),
+        companyId: record.companyId,
+        throwOnError: true,
+        debugContext: `bidRequest.send.${record.id}.${recipient.id}`,
+      }),
+    ),
+  );
+  const now = new Date();
+  await prisma.$transaction(
+    recipients.map((recipient, index) =>
+      prisma.bidRequestRecipient.update({
+        where: { id: recipient.id },
+        data:
+          results[index].status === "fulfilled"
+            ? {
+                deliveryStatus: "sent",
+                invitedAt: recipient.invitedAt || now,
+                lastSentAt: now,
+                sendCount: { increment: 1 },
+              }
+            : { deliveryStatus: "failed" },
+      }),
+    ),
+  );
+  const failed = results.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [
+          {
+            recipient: recipients[index].subcontractorEmail,
+            error:
+              result.reason instanceof Error
+                ? result.reason.message
+                : "Unable to send",
+          },
+        ]
+      : [],
+  );
+  if (failed.length < results.length) {
+    await prisma.bidRequest.update({
+      where: { id: record.id },
+      data: { sentAt: now },
+    });
+  }
+  return { sent: results.length - failed.length, failed };
+}
+
 function validatePayload(payload: any) {
   const deadlineValue = String(payload.responseDeadline || "");
   const deadline = new Date(
@@ -162,6 +246,160 @@ function validatePayload(payload: any) {
 }
 
 export class BidRequestController {
+  async addRecipients(req: Request, res: Response) {
+    await reopenAutoFinalized({ id: req.params.id });
+    const record = await prisma.bidRequest.findUnique({
+      where: { id: req.params.id },
+      include: {
+        items: { orderBy: { position: "asc" } },
+        recipients: true,
+        company: true,
+      },
+    });
+    if (!record) return res.status(404).json({ error: "Bid request not found" });
+    if (!(await canAccess(req, record.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+    if (record.status !== "pending" || record.approvedRecipientId)
+      return res.status(409).json({ error: "This bid request is closed" });
+    if (record.responseDeadline.getTime() < Date.now())
+      return res.status(409).json({ error: "The response deadline has passed" });
+
+    const subcontractorIds = [
+      ...new Set<string>(
+        Array.isArray(req.body?.subcontractorIds)
+          ? req.body.subcontractorIds.map(String)
+          : [],
+      ),
+    ];
+    if (!subcontractorIds.length || subcontractorIds.length > 100)
+      return res.status(400).json({ error: "Select at least one valid subcontractor" });
+    const existingIds = new Set(record.recipients.map((item) => item.subcontractorId));
+    if (subcontractorIds.some((id) => existingIds.has(id)))
+      return res.status(409).json({ error: "A selected subcontractor is already part of this bid request" });
+    const subcontractors = await prisma.subcontractor.findMany({
+      where: { id: { in: subcontractorIds }, company_id: record.companyId },
+    });
+    if (subcontractors.length !== subcontractorIds.length)
+      return res.status(400).json({ error: "A selected subcontractor is invalid" });
+
+    const createdIds = await prisma.$transaction(async (tx) => {
+      const ids: string[] = [];
+      for (const subcontractor of subcontractors) {
+        const recipient = await tx.bidRequestRecipient.create({
+          data: {
+            bidRequestId: record.id,
+            subcontractorId: subcontractor.id,
+            subcontractorName: subcontractor.name,
+            subcontractorEmail: subcontractor.email,
+            items: {
+              create: record.items.map((item, position) => ({
+                name: item.name,
+                description: item.description,
+                quantity: item.quantity,
+                unitPrice: item.suggestedValue || 0,
+                position,
+                isCustom: false,
+                sourceItemId: item.id,
+              })),
+            },
+          },
+        });
+        ids.push(recipient.id);
+      }
+      return ids;
+    });
+
+    let delivery: { sent: number; failed: Array<{ recipient: string; error: string }> } | undefined;
+    if (req.body?.sendNow !== false) {
+      const newRecipients = await prisma.bidRequestRecipient.findMany({
+        where: { id: { in: createdIds } },
+      });
+      delivery = await deliverBidRequest(
+        record,
+        newRecipients,
+        typeof req.body?.message === "string"
+          ? req.body.message.trim()
+          : record.customMessage || "",
+      );
+    }
+    const updated = await prisma.bidRequest.findUnique({
+      where: { id: record.id },
+      include: includeBid,
+    });
+    return res.status(201).json({ data: await serialize(updated), delivery });
+  }
+
+  async enterRecipientProposal(req: Request, res: Response) {
+    await reopenAutoFinalized({ id: req.params.id });
+    const recipient = await prisma.bidRequestRecipient.findFirst({
+      where: { id: req.params.recipientId, bidRequestId: req.params.id },
+      include: { bidRequest: true },
+    });
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+    const bid = recipient.bidRequest;
+    if (!(await canAccess(req, bid.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+    if (bid.status === "canceled" || bid.approvedRecipientId)
+      return res.status(409).json({ error: "This bid request is closed" });
+    if (recipient.status !== "pending" && recipient.status !== "expired")
+      return res.status(409).json({ error: "Only unanswered proposals can be entered" });
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (
+      !items.length ||
+      items.length > 250 ||
+      items.some((item: any) => !String(item?.name || "").trim() || Number(item.unitPrice) < 0)
+    )
+      return res.status(400).json({ error: "At least one valid proposal item is required" });
+    const upload = req.body?.upload as StagedUploadReference | undefined;
+    if (upload)
+      await verifyStagedUploadReference(upload, {
+        companyId: bid.companyId,
+        userId: (req as any).userId,
+        purpose: "bid-proposal-attachment",
+      });
+    const previousDocumentKey = recipient.externalDocumentKey;
+    await prisma.$transaction(async (tx) => {
+      await tx.bidProposalItem.deleteMany({ where: { recipientId: recipient.id } });
+      await tx.bidRequestRecipient.update({
+        where: { id: recipient.id },
+        data: {
+          status: "submitted",
+          submittedAt: new Date(),
+          notes: String(req.body?.notes || "").trim() || null,
+          submissionSource: upload ? "admin_import" : "admin_manual",
+          enteredById: (req as any).userId,
+          enteredAt: new Date(),
+          externalDocumentKey: upload?.key || null,
+          externalDocumentName: upload?.originalName || null,
+          externalDocumentContentType: upload?.contentType || null,
+          externalDocumentSize: upload?.size || null,
+          extractionConfidence:
+            req.body?.extractionConfidence == null
+              ? null
+              : Math.min(1, Math.max(0, Number(req.body.extractionConfidence) || 0)),
+          items: {
+            create: items.map((item: any, position: number) => ({
+              name: String(item.name).trim(),
+              description: String(item.description || "").trim() || null,
+              quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+              unitPrice: Math.max(0, Number(item.unitPrice) || 0),
+              position,
+              isCustom: Boolean(item.isCustom),
+              sourceItemId: item.sourceItemId || null,
+            })),
+          },
+        },
+      });
+    });
+    if (previousDocumentKey && previousDocumentKey !== upload?.key)
+      await deleteS3ObjectQuietly(previousDocumentKey);
+    const updated = await prisma.bidRequest.findUnique({
+      where: { id: bid.id },
+      include: includeBid,
+    });
+    return res.json({ data: await serialize(updated) });
+  }
+
   async extractExternalProposal(req: Request, res: Response) {
     const bid = await prisma.bidRequest.findUnique({ where: { id: req.params.id } });
     if (!bid) return res.status(404).json({ error: "Bid request not found" });
@@ -240,6 +478,7 @@ export class BidRequestController {
       return res.status(400).json({ error: "Company ID is required" });
     if (!(await canAccess(req, companyId)))
       return res.status(403).json({ error: "Access denied" });
+    await reopenAutoFinalized({ companyId });
     await finalizeExpired(companyId);
     const records = await prisma.bidRequest.findMany({
       where: { companyId },
@@ -252,6 +491,7 @@ export class BidRequestController {
   }
 
   async get(req: Request, res: Response) {
+    await reopenAutoFinalized({ id: req.params.id });
     await finalizeExpired();
     const record = await prisma.bidRequest.findUnique({
       where: { id: req.params.id },
@@ -411,6 +651,7 @@ export class BidRequestController {
   }
 
   async send(req: Request, res: Response) {
+    await reopenAutoFinalized({ id: req.params.id });
     await finalizeExpired();
     const record = await prisma.bidRequest.findUnique({
       where: { id: req.params.id },
@@ -460,58 +701,15 @@ export class BidRequestController {
       typeof req.body?.message === "string"
         ? req.body.message.trim()
         : record.customMessage || "";
-    const logo = record.company.avatar
-      ? await getPresignedUrl(record.company.avatar).catch(() => "")
-      : "";
-    const baseUrl = String(
-      process.env.URL_FRONT || process.env.FRONTEND_URL || "",
-    ).replace(/\/$/, "");
-    const results = await Promise.allSettled(
-      recipients.map((recipient) =>
-        sendEmail({
-          to: recipient.subcontractorEmail,
-          subject: `Bid Request #${record.number} from ${record.company.name}`,
-          html: bidRequestEmail({
-            recipientName: recipient.subcontractorName,
-            companyName: record.company.name,
-            companyLogo: logo,
-            number: record.number,
-            projectName: record.projectName,
-            deadline: record.responseDeadline,
-            responseLink: `${baseUrl}/bid-request-response/${recipient.publicToken}`,
-            message: message || undefined,
-          }),
-          companyId: record.companyId,
-          throwOnError: true,
-          debugContext: `bidRequest.send.${record.id}.${recipient.id}`,
-        }),
-      ),
-    );
-    const failed = results.flatMap((result, index) =>
-      result.status === "rejected"
-        ? [
-            {
-              recipient: recipients[index].subcontractorEmail,
-              error:
-                result.reason instanceof Error
-                  ? result.reason.message
-                  : "Unable to send",
-            },
-          ]
-        : [],
-    );
-    if (failed.length === results.length)
+    const delivery = await deliverBidRequest(record, recipients, message);
+    if (delivery.failed.length === recipients.length)
       return res
         .status(502)
-        .json({ error: "Unable to send bid request", failed });
-    await prisma.bidRequest.update({
-      where: { id: record.id },
-      data: { sentAt: new Date() },
-    });
+        .json({ error: "Unable to send bid request", failed: delivery.failed });
     return res.json({
       success: true,
-      sent: results.length - failed.length,
-      failed,
+      sent: delivery.sent,
+      failed: delivery.failed,
     });
   }
 
@@ -627,15 +825,6 @@ export class BidRequestController {
           },
         },
       });
-      const pendingRecipients = await tx.bidRequestRecipient.count({
-        where: { bidRequestId: recipient.bidRequestId, status: "pending" },
-      });
-      if (pendingRecipients === 0) {
-        await tx.bidRequest.updateMany({
-          where: { id: recipient.bidRequestId, status: "pending" },
-          data: { status: "finalized", finalizedAt: new Date() },
-        });
-      }
     });
     return res.json({ success: true });
   }

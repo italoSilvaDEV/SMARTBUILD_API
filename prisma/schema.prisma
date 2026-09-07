@@ -1482,6 +1482,12 @@ model BidRequestRecipient {
   rejectedAt         DateTime?
   notes              String?                   @db.Text
   submissionSource   String                    @default("portal")
+  deliveryStatus     String                    @default("not_sent")
+  invitedAt          DateTime?
+  lastSentAt         DateTime?
+  sendCount          Int                       @default(0)
+  enteredById        String?
+  enteredAt          DateTime?
   externalDocumentKey         String?          @db.Text
   externalDocumentName        String?
   externalDocumentContentType String?
