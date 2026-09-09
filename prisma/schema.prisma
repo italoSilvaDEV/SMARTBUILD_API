@@ -1320,6 +1320,7 @@ model WorkOrder {
   projectAddress      String?               @db.Text
   projectManagerName  String?
   projectManagerPhone String?
+  showClientName      Boolean               @default(true)
   showServicePrices   Boolean               @default(true)
   terms               String?               @db.Text
   assigneeSignature   String?               @db.LongText
