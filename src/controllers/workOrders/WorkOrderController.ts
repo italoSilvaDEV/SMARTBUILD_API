@@ -32,8 +32,11 @@ const asDate = (value: unknown) => {
 const serialize = (order: any, publicView = false) => {
   const { sourcePdfKey, signedPdfKey, attachments, projectManagers, ...safeOrder } = order;
   void sourcePdfKey; void signedPdfKey; void attachments; void projectManagers;
+  const visibleOrder = publicView && order.showClientName === false
+    ? { ...safeOrder, projectName: undefined }
+    : safeOrder;
   return {
-    ...safeOrder,
+    ...visibleOrder,
     attachments: [],
     projectManagers: (order.projectManagers || []).map((manager: any) => publicView ? {
       id: manager.id,
@@ -203,6 +206,9 @@ function validatePayload(payload: any) {
   }
   if (payload.showServicePrices !== undefined && typeof payload.showServicePrices !== "boolean") {
     return { error: "showServicePrices must be a boolean" };
+  }
+  if (payload.showClientName !== undefined && typeof payload.showClientName !== "boolean") {
+    return { error: "showClientName must be a boolean" };
   }
   return { startDate, endDate, items };
 }
@@ -457,6 +463,7 @@ export class WorkOrderController {
             assigneeType: payload.assigneeType,
             assigneeId: payload.assigneeId,
             ...snapshot,
+            showClientName: payload.showClientName !== false,
             showServicePrices: payload.showServicePrices !== false,
             terms: payload.terms || null,
             managerSignature: companySignature,
@@ -529,6 +536,9 @@ export class WorkOrderController {
             projectId: payload.projectId, title: payload.title.trim(), scope: String(payload.scope || "").trim(),
             startDate: checked.startDate!, endDate: checked.endDate!, assigneeType: payload.assigneeType,
             assigneeId: payload.assigneeId, ...snapshot, terms: payload.terms || null,
+            showClientName: typeof payload.showClientName === "boolean"
+              ? payload.showClientName
+              : existing.showClientName,
             showServicePrices: typeof payload.showServicePrices === "boolean"
               ? payload.showServicePrices
               : existing.showServicePrices,
@@ -629,7 +639,7 @@ export class WorkOrderController {
           to: recipient,
           subject: `Work Order #${order.number} from ${order.company.name}`,
           html: workOrderEmail({ recipientName: order.assigneeName, companyName: order.company.name, companyLogo,
-            number: order.number, projectName: order.projectName, startDate: order.startDate, endDate: order.endDate,
+            number: order.number, projectName: order.showClientName ? order.projectName : undefined, startDate: order.startDate, endDate: order.endDate,
             reviewLink: `${String(process.env.URL_FRONT || "").replace(/\/$/, "")}/work-order-response/${order.publicToken}`,
             message: String(req.body.message || "").trim() || undefined }),
           companyId: order.companyId,

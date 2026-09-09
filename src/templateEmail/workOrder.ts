@@ -10,7 +10,7 @@ export function workOrderEmail(data: {
   companyName: string;
   companyLogo?: string;
   number: number;
-  projectName: string;
+  projectName?: string;
   startDate: Date;
   endDate: Date;
   reviewLink: string;
@@ -20,6 +20,9 @@ export function workOrderEmail(data: {
   const logo = data.companyLogo
     ? `<img src="${escapeHtml(data.companyLogo)}" alt="${escapeHtml(data.companyName)}" style="display:block;max-width:150px;max-height:54px;object-fit:contain">`
     : `<div style="font-size:20px;font-weight:700;color:#101827">${escapeHtml(data.companyName)}</div>`;
+  const projectRow = data.projectName
+    ? `<tr><td style="padding:16px 0;color:#6b7280;font-size:12px">PROJECT</td><td align="right" style="padding:16px 0;font-weight:700">${escapeHtml(data.projectName)}</td></tr>`
+    : "";
 
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,sans-serif;color:#101827">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px">
@@ -31,7 +34,7 @@ export function workOrderEmail(data: {
           <p style="margin:0 0 18px;line-height:1.6;color:#4b5563">Hello ${escapeHtml(data.recipientName)},</p>
           <p style="margin:0 0 24px;line-height:1.6;color:#4b5563">${escapeHtml(data.message || `${data.companyName} has sent you a work order for the project below.`)}</p>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb">
-            <tr><td style="padding:16px 0;color:#6b7280;font-size:12px">PROJECT</td><td align="right" style="padding:16px 0;font-weight:700">${escapeHtml(data.projectName)}</td></tr>
+            ${projectRow}
             <tr><td style="padding:0 0 16px;color:#6b7280;font-size:12px">SCHEDULE</td><td align="right" style="padding:0 0 16px">${date(data.startDate)} - ${date(data.endDate)}</td></tr>
           </table>
           <table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0 20px"><tr><td style="background:#101827;border-radius:5px">
