@@ -650,6 +650,40 @@ export class BidRequestController {
     }
   }
 
+  async update(req: Request, res: Response) {
+    const payload = req.body;
+    const record = await prisma.bidRequest.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!record)
+      return res.status(404).json({ error: "Bid request not found" });
+    if (!(await canAccess(req, record.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+    if (record.status !== "pending" || record.approvedRecipientId)
+      return res.status(409).json({ error: "Only open bid requests can be edited" });
+
+    const title = String(payload.title || "").trim();
+    if (!title)
+      return res.status(400).json({ error: "Title is required" });
+    if (title.length > 191)
+      return res.status(400).json({ error: "Title is too long" });
+
+    try {
+      await prisma.bidRequest.update({
+        where: { id: record.id },
+        data: { title },
+      });
+      const updated = await prisma.bidRequest.findUnique({
+        where: { id: record.id },
+        include: includeBid,
+      });
+      return res.json({ data: await serialize(updated) });
+    } catch (error) {
+      console.error("[bidRequest.update]", error);
+      return res.status(500).json({ error: "Unable to update bid request" });
+    }
+  }
+
   async send(req: Request, res: Response) {
     await reopenAutoFinalized({ id: req.params.id });
     await finalizeExpired();
