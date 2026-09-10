@@ -7,6 +7,9 @@ const stripeRoutes = Router();
 const stripeController = new StripeController();
 const stripeInvoicePaymentController = new StripeInvoicePaymentController();
 
+stripeRoutes.get("/stripe/connect/mobile-return", stripeController.mobileConnectReturn.bind(stripeController));
+stripeRoutes.get("/stripe/connect/mobile-refresh", stripeController.mobileConnectRefresh.bind(stripeController));
+
 // Conectar Company ao Stripe
 stripeRoutes.get("/stripe/connect/:companyId", checkToken, stripeController.connectCompany.bind(stripeController));
 
