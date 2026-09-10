@@ -489,9 +489,9 @@ export class UserController {
         const subscription = await prisma.subscription.findFirst({
           where: {
             companyId: user.company.id,
-            // isActive: true
+            isActive: true
           },
-          orderBy: { endDate: 'desc' }
+          orderBy: { startDate: 'desc' }
         });
         subscriptionInfo = subscription;
 
@@ -1695,8 +1695,9 @@ export class UserController {
       const subscription = await prisma.subscription.findFirst({
         where: {
           companyId: user.company.id,
+          isActive: true
         },
-        orderBy: { endDate: 'desc' }
+        orderBy: { startDate: 'desc' }
       });
 
       subscriptionInfo = subscription;
@@ -1873,6 +1874,7 @@ export class UserController {
       const subscription = await prisma.subscription.findFirst({
         where: {
           companyId: company_id,
+          isActive: true
         },
         orderBy: { startDate: 'desc' }
       });
