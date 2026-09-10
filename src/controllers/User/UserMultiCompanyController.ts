@@ -265,8 +265,9 @@ export class UserMultiCompanyController {
         const subscription = await prisma.subscription.findFirst({
           where: {
             companyId: companyId,
+            isActive: true
           },
-          orderBy: { endDate: 'desc' }
+          orderBy: { startDate: 'desc' }
         });
         subscriptionInfo = subscription;
 
