@@ -6,6 +6,7 @@ import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import dotenv from "dotenv";
+import Jwt from "jsonwebtoken";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
 import {
     buildInvoiceTypeFilter,
@@ -15,6 +16,57 @@ import {
 dotenv.config();
 
 const stripe = stripeConfig.getClient();
+
+type StripeMobileReturnPayload = {
+    companyId: string;
+    purpose: "stripe_connect_return";
+    redirectTo: string;
+};
+
+function normalizeStripeMobileRedirect(value: unknown): string | undefined {
+    if (typeof value !== "string" || !value.trim()) return undefined;
+    try {
+        const redirect = new URL(value);
+        const route = `${redirect.hostname}${redirect.pathname}`.replace(/^\/+|\/+$/g, "");
+        return redirect.protocol === "smartbuildadmin:" && route === "company-settings"
+            ? redirect.toString()
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function issueStripeMobileReturnToken(companyId: string, redirectTo: string) {
+    return Jwt.sign(
+        { companyId, purpose: "stripe_connect_return", redirectTo } satisfies StripeMobileReturnPayload,
+        String(process.env.SECRET_JWT),
+        { algorithm: "HS256", expiresIn: "20m" },
+    );
+}
+
+function verifyStripeMobileReturnToken(token: unknown): StripeMobileReturnPayload | null {
+    if (typeof token !== "string" || !token) return null;
+    try {
+        const payload = Jwt.verify(token, String(process.env.SECRET_JWT), {
+            algorithms: ["HS256"],
+        }) as StripeMobileReturnPayload;
+        return payload.purpose === "stripe_connect_return" && normalizeStripeMobileRedirect(payload.redirectTo)
+            ? payload
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function isMissingStripeAccountError(error: unknown) {
+    if (!error || typeof error !== "object") return false;
+
+    const stripeError = error as { code?: unknown; message?: unknown; param?: unknown };
+    return stripeError.code === "resource_missing" && (
+        stripeError.param === "account" ||
+        String(stripeError.message || "").toLowerCase().includes("no such account")
+    );
+}
 
 type Estimate = {
     id: string;
@@ -195,6 +247,17 @@ export class StripeController {
                 return res.status(404).json({ error: "Company not found" });
             }
 
+            const authenticatedUserId = (req as any).userId as string | undefined;
+            const userCompany = authenticatedUserId
+                ? await prisma.userCompany.findFirst({ where: { companyId, userId: authenticatedUserId } })
+                : null;
+            const legacyUser = authenticatedUserId
+                ? await prisma.user.findUnique({ where: { id: authenticatedUserId }, select: { company_id: true } })
+                : null;
+            if (!authenticatedUserId || (!userCompany && legacyUser?.company_id !== companyId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             let stripeAccountId = company.stripeAccountId;
 
             if (!stripeAccountId) {
@@ -209,22 +272,78 @@ export class StripeController {
 
             const account = await stripe.accounts.retrieve(stripeAccountId);
 
-            if (!account.requirements?.disabled_reason) {
+            const isConnected = account.details_submitted && account.charges_enabled && account.payouts_enabled;
+            if (isConnected) {
                 return res.status(400).json({ error: "Account already connected" });
             }
+
+            const mobileRedirect = normalizeStripeMobileRedirect(req.query.redirectTo);
+            const mobileToken = mobileRedirect
+                ? issueStripeMobileReturnToken(companyId, mobileRedirect)
+                : null;
+            const apiBaseUrl = String(process.env.URL_API || "").replace(/\/$/, "");
+            const refreshUrl = mobileToken
+                ? `${apiBaseUrl}/stripe/connect/mobile-refresh?token=${encodeURIComponent(mobileToken)}`
+                : `${process.env.URL_FRONT}/stripe-config`;
+            const returnUrl = mobileToken
+                ? `${apiBaseUrl}/stripe/connect/mobile-return?token=${encodeURIComponent(mobileToken)}`
+                : `${process.env.URL_FRONT}/stripe-config`;
 
             // Redireciona para o onboarding existente
             const accountLink = await stripe.accountLinks.create({
                 account: stripeAccountId,
-                refresh_url: `${process.env.URL_FRONT}/stripe-config`,
-                return_url: `${process.env.URL_FRONT}/stripe-config`,
+                refresh_url: refreshUrl,
+                return_url: returnUrl,
                 type: "account_onboarding",
             });
 
             return res.status(200).json({ url: accountLink.url });
         } catch (error) {
             console.error("Erro ao criar conta Stripe:", error);
+            if (isMissingStripeAccountError(error)) {
+                return res.status(409).json({
+                    code: "stripe_account_unavailable",
+                    error: "The connected Stripe account is unavailable in the current environment",
+                });
+            }
             return res.status(500).json({ error: "Error creating Stripe account" });
+        }
+    }
+
+    async mobileConnectReturn(req: Request, res: Response) {
+        const payload = verifyStripeMobileReturnToken(req.query.token);
+        if (!payload) return res.status(400).send("Invalid or expired Stripe return link.");
+
+        const redirect = new URL(payload.redirectTo);
+        redirect.searchParams.set("provider", "stripe");
+        redirect.searchParams.set("success", "true");
+        return res.redirect(redirect.toString());
+    }
+
+    async mobileConnectRefresh(req: Request, res: Response) {
+        const payload = verifyStripeMobileReturnToken(req.query.token);
+        if (!payload) return res.status(400).send("Invalid or expired Stripe return link.");
+
+        try {
+            const company = await prisma.company.findUnique({ where: { id: payload.companyId } });
+            if (!company?.stripeAccountId) return res.status(404).send("Stripe account not found.");
+
+            const token = String(req.query.token);
+            const apiBaseUrl = String(process.env.URL_API || "").replace(/\/$/, "");
+            const accountLink = await stripe.accountLinks.create({
+                account: company.stripeAccountId,
+                refresh_url: `${apiBaseUrl}/stripe/connect/mobile-refresh?token=${encodeURIComponent(token)}`,
+                return_url: `${apiBaseUrl}/stripe/connect/mobile-return?token=${encodeURIComponent(token)}`,
+                type: "account_onboarding",
+            });
+            return res.redirect(accountLink.url);
+        } catch (error) {
+            console.error("Erro ao renovar link de onboarding Stripe:", error);
+            return res.status(isMissingStripeAccountError(error) ? 409 : 500).send(
+                isMissingStripeAccountError(error)
+                    ? "The connected Stripe account is unavailable in the current environment."
+                    : "Could not renew the Stripe onboarding link.",
+            );
         }
     }
 
@@ -232,6 +351,17 @@ export class StripeController {
         const { companyId } = req.params;
 
         try {
+            const authenticatedUserId = (req as any).userId as string | undefined;
+            const userCompany = authenticatedUserId
+                ? await prisma.userCompany.findFirst({ where: { companyId, userId: authenticatedUserId } })
+                : null;
+            const legacyUser = authenticatedUserId
+                ? await prisma.user.findUnique({ where: { id: authenticatedUserId }, select: { company_id: true } })
+                : null;
+            if (!authenticatedUserId || (!userCompany && legacyUser?.company_id !== companyId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             const company = await prisma.company.findUnique({
                 where: { id: companyId },
             });
@@ -283,6 +413,15 @@ export class StripeController {
             });
         } catch (error) {
             console.error("Erro ao verificar status do Stripe:", error);
+            if (isMissingStripeAccountError(error)) {
+                return res.status(200).json({
+                    hasStripeAccount: true,
+                    connected: false,
+                    requiresOnboarding: true,
+                    pendingRequirements: [],
+                    unavailableReason: "account_not_found",
+                });
+            }
             return res.status(500).json({ error: "Internal Server Error" });
         }
     }

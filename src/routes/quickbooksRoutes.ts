@@ -22,7 +22,7 @@ const quickBooksEstimateController = new QuickBooksEstimateController();
 const quickBooksInvoiceImportController = new QuickBooksInvoiceImportController();
 
 // Rotas de autorização
-quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", quickbooksController.authorize); 
+quickbooksRoutes.get("/quickbooks/authorize/:userId/:companyId", checkToken, quickbooksController.authorize);
 quickbooksRoutes.get("/quickbooks/callback", quickbooksController.callback);
 quickbooksRoutes.get("/quickbooks/status/:userId/:companyId", checkToken, quickbooksController.checkStatus);
 quickbooksRoutes.post("/quickbooks/refresh-token/:userId/:companyId", checkToken, quickbooksController.refreshToken);
