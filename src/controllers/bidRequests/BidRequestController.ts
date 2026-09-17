@@ -95,6 +95,8 @@ async function serialize(bid: any, publicRecipientId?: string) {
       subcontractorId: recipient.subcontractorId,
       subcontractorName: recipient.subcontractorName,
       subcontractorEmail: recipient.subcontractorEmail,
+      categoryId: recipient.categoryId || null,
+      categoryName: recipient.categoryName || null,
       submittedAt: recipient.submittedAt,
       approvedAt: recipient.approvedAt,
       rejectedAt: recipient.rejectedAt,
@@ -245,7 +247,200 @@ function validatePayload(payload: any) {
   return { deadline, items, subcontractorIds };
 }
 
+function getRecipientCategoryAssignments(
+  payload: any,
+  subcontractorIds: string[],
+) {
+  const raw = payload?.recipientCategories;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return {} as Record<string, string>;
+  const selectedIds = new Set(subcontractorIds);
+  return Object.entries(raw).reduce<Record<string, string>>(
+    (assignments, [subcontractorId, categoryId]) => {
+      const normalizedCategoryId = String(categoryId || "").trim();
+      if (selectedIds.has(subcontractorId) && normalizedCategoryId)
+        assignments[subcontractorId] = normalizedCategoryId;
+      return assignments;
+    },
+    {},
+  );
+}
+
+async function resolveRecipientCategories(
+  companyId: string,
+  assignments: Record<string, string>,
+) {
+  const categoryIds = [...new Set(Object.values(assignments))];
+  if (!categoryIds.length) return new Map<string, { id: string; category_name: string }>();
+  const categories = await prisma.category.findMany({
+    where: {
+      id: { in: categoryIds },
+      company_id: companyId,
+      status_category: { not: false },
+    },
+    select: { id: true, category_name: true },
+  });
+  if (categories.length !== categoryIds.length) return null;
+  return new Map(categories.map((category) => [category.id, category]));
+}
+
 export class BidRequestController {
+  async listRecipientCategories(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    if (!companyId)
+      return res.status(400).json({ error: "Company ID is required" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const categories = await prisma.category.findMany({
+      where: { company_id: companyId },
+      orderBy: { category_name: "asc" },
+      select: {
+        id: true,
+        category_name: true,
+        type_category: true,
+        status_category: true,
+        date_update: true,
+        _count: {
+          select: {
+            bidRequestRecipients: true,
+            workedHours: true,
+          },
+        },
+      },
+    });
+
+    return res.json({
+      data: categories.map(({ _count, ...category }) => ({
+        ...category,
+        isActive: category.status_category !== false,
+        bidRequestCount: _count.bidRequestRecipients,
+        subcontractorUseCount: _count.workedHours,
+      })),
+    });
+  }
+
+  async createRecipientCategory(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    const categoryName = String(req.body?.categoryName || "").trim();
+    const typeCategory = String(req.body?.typeCategory || "Residential").trim();
+    if (!companyId || !categoryName)
+      return res.status(400).json({ error: "Company ID and category name are required" });
+    if (categoryName.length > 191)
+      return res.status(400).json({ error: "Category name is too long" });
+    if (!new Set(["Residential", "Commercial"]).has(typeCategory))
+      return res.status(400).json({ error: "Category type is invalid" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const duplicate = await prisma.category.findFirst({
+      where: {
+        company_id: companyId,
+        category_name: categoryName,
+        type_category: typeCategory,
+      },
+      select: { id: true, status_category: true },
+    });
+    if (duplicate)
+      return res.status(409).json({
+        error: duplicate.status_category === false
+          ? "An archived category already uses this name"
+          : "This category has already been registered",
+      });
+
+    const category = await prisma.category.create({
+      data: {
+        company_id: companyId,
+        category_name: categoryName,
+        type_category: typeCategory,
+        status_category: true,
+      },
+    });
+    return res.status(201).json({ data: { ...category, isActive: true } });
+  }
+
+  async updateRecipientCategoryDefinition(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    const categoryId = String(req.params.categoryId || "").trim();
+    if (!companyId || !categoryId)
+      return res.status(400).json({ error: "Company ID and category ID are required" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, company_id: companyId },
+    });
+    if (!category)
+      return res.status(404).json({ error: "Category not found" });
+
+    const data: { category_name?: string; status_category?: boolean } = {};
+    if (req.body?.categoryName !== undefined) {
+      const categoryName = String(req.body.categoryName || "").trim();
+      if (!categoryName)
+        return res.status(400).json({ error: "Category name is required" });
+      if (categoryName.length > 191)
+        return res.status(400).json({ error: "Category name is too long" });
+      const duplicate = await prisma.category.findFirst({
+        where: {
+          company_id: companyId,
+          category_name: categoryName,
+          type_category: category.type_category,
+          NOT: { id: categoryId },
+        },
+        select: { id: true },
+      });
+      if (duplicate)
+        return res.status(409).json({ error: "This category has already been registered" });
+      data.category_name = categoryName;
+    }
+    if (typeof req.body?.isActive === "boolean")
+      data.status_category = req.body.isActive;
+    if (!Object.keys(data).length)
+      return res.status(400).json({ error: "No category changes were provided" });
+
+    const updated = await prisma.category.update({
+      where: { id: categoryId },
+      data,
+    });
+    return res.json({ data: { ...updated, isActive: updated.status_category !== false } });
+  }
+
+  async updateRecipientCategory(req: Request, res: Response) {
+    const recipient = await prisma.bidRequestRecipient.findFirst({
+      where: { id: req.params.recipientId, bidRequestId: req.params.id },
+      include: { bidRequest: true },
+    });
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+    if (!(await canAccess(req, recipient.bidRequest.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const categoryId = String(req.body?.categoryId || "").trim() || null;
+    const category = categoryId
+      ? await prisma.category.findFirst({
+          where: {
+            id: categoryId,
+            company_id: recipient.bidRequest.companyId,
+            status_category: { not: false },
+          },
+        })
+      : null;
+    if (categoryId && !category)
+      return res.status(400).json({ error: "The selected category is invalid" });
+
+    await prisma.bidRequestRecipient.update({
+      where: { id: recipient.id },
+      data: {
+        categoryId: category?.id || null,
+        categoryName: category?.category_name || null,
+      },
+    });
+    const updated = await prisma.bidRequest.findUnique({
+      where: { id: recipient.bidRequestId },
+      include: includeBid,
+    });
+    return res.json({ data: await serialize(updated) });
+  }
+
   async addRecipients(req: Request, res: Response) {
     await reopenAutoFinalized({ id: req.params.id });
     const record = await prisma.bidRequest.findUnique({
@@ -281,16 +476,23 @@ export class BidRequestController {
     });
     if (subcontractors.length !== subcontractorIds.length)
       return res.status(400).json({ error: "A selected subcontractor is invalid" });
+    const categoryAssignments = getRecipientCategoryAssignments(req.body, subcontractorIds);
+    const recipientCategories = await resolveRecipientCategories(record.companyId, categoryAssignments);
+    if (!recipientCategories)
+      return res.status(400).json({ error: "A selected category is invalid" });
 
     const createdIds = await prisma.$transaction(async (tx) => {
       const ids: string[] = [];
       for (const subcontractor of subcontractors) {
+        const category = recipientCategories.get(categoryAssignments[subcontractor.id]);
         const recipient = await tx.bidRequestRecipient.create({
           data: {
             bidRequestId: record.id,
             subcontractorId: subcontractor.id,
             subcontractorName: subcontractor.name,
             subcontractorEmail: subcontractor.email,
+            categoryId: category?.id || null,
+            categoryName: category?.category_name || null,
             items: {
               create: record.items.map((item, position) => ({
                 name: item.name,
@@ -538,6 +740,16 @@ export class BidRequestController {
       return res
         .status(400)
         .json({ error: "A selected subcontractor is invalid" });
+    const categoryAssignments = getRecipientCategoryAssignments(
+      payload,
+      checked.subcontractorIds!,
+    );
+    const recipientCategories = await resolveRecipientCategories(
+      payload.companyId,
+      categoryAssignments,
+    );
+    if (!recipientCategories)
+      return res.status(400).json({ error: "A selected category is invalid" });
     const uploads: StagedUploadReference[] = Array.isArray(payload.attachments)
       ? payload.attachments
       : [];
@@ -606,31 +818,36 @@ export class BidRequestController {
                 })),
               },
               recipients: {
-                create: subcontractors.map((subcontractor) => ({
-                  subcontractorId: subcontractor.id,
-                  subcontractorName: subcontractor.name,
-                  subcontractorEmail: subcontractor.email,
-                  items: {
-                    create: baseItems.map(
-                      (
-                        item: {
-                          name: string;
-                          description: string | null;
-                          quantity: number;
-                          suggestedValue: number | null;
-                        },
-                        position: number,
-                      ) => ({
-                        name: item.name,
-                        description: item.description,
-                        quantity: item.quantity,
-                        unitPrice: item.suggestedValue || 0,
-                        position,
-                        isCustom: false,
-                      }),
-                    ),
-                  },
-                })),
+                create: subcontractors.map((subcontractor) => {
+                  const category = recipientCategories.get(categoryAssignments[subcontractor.id]);
+                  return {
+                    subcontractorId: subcontractor.id,
+                    subcontractorName: subcontractor.name,
+                    subcontractorEmail: subcontractor.email,
+                    categoryId: category?.id || null,
+                    categoryName: category?.category_name || null,
+                    items: {
+                      create: baseItems.map(
+                        (
+                          item: {
+                            name: string;
+                            description: string | null;
+                            quantity: number;
+                            suggestedValue: number | null;
+                          },
+                          position: number,
+                        ) => ({
+                          name: item.name,
+                          description: item.description,
+                          quantity: item.quantity,
+                          unitPrice: item.suggestedValue || 0,
+                          position,
+                          isCustom: false,
+                        }),
+                      ),
+                    },
+                  };
+                }),
               },
             },
             include: includeBid,

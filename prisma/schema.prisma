@@ -488,6 +488,7 @@ model Category {
   userServiceProjects          UserServiceProject[]
   subContractorServiceProjects SubContractorServiceProject[]
   workedHours                  Workedhours[]
+  bidRequestRecipients         BidRequestRecipient[]
 
   @@map("service")
 }
@@ -1502,11 +1503,15 @@ model BidRequestRecipient {
   bidRequest         BidRequest                @relation(fields: [bidRequestId], references: [id], onDelete: Cascade)
   subcontractorId    String
   subcontractor      Subcontractor             @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  categoryId         String?
+  categoryName       String?
+  category           Category?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   items              BidProposalItem[]
 
   @@unique([bidRequestId, subcontractorId])
   @@index([bidRequestId, status])
   @@index([subcontractorId])
+  @@index([categoryId])
   @@map("bid_request_recipient")
 }
 
