@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../utils/prisma";
+import { sessionCanManageCompany, userHasCompanyAccess } from "../../../utils/companyAccess";
 import {
   buildUnsupportedTypesEntityError,
   isTypesEntitySupportedByPrismaClient,
@@ -42,6 +43,10 @@ export class SyncPreferencesController {
     const { companyId } = req.params;
 
     try {
+      if (!await userHasCompanyAccess((req as any).userId, companyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       await this.normalizeQboToSmartOnlyPreferences({ companyId });
 
       const prefs = await prisma.syncPreferences.findMany({
@@ -62,6 +67,10 @@ export class SyncPreferencesController {
     const { userId } = req.params;
 
     try {
+      if ((req as any).userId !== userId) {
+        return res.status(403).json({ error: "User does not have access to these preferences" });
+      }
+
       await this.normalizeQboToSmartOnlyPreferences({ userId });
 
       const prefs = await prisma.syncPreferences.findMany({
@@ -90,6 +99,10 @@ export class SyncPreferencesController {
     }
 
     try {
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       if (!isTypesEntitySupportedByPrismaClient(typesEntity)) {
         throw buildUnsupportedTypesEntityError(typesEntity);
       }
@@ -133,6 +146,10 @@ export class SyncPreferencesController {
         return res.status(404).json({ error: "PreferÃªncia nÃ£o encontrada" });
       }
 
+      if (!await userHasCompanyAccess((req as any).userId, existing.companyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       const normalizedTypeSync = normalizeSyncTypeForEntity(existing.typesEntity, typeSync);
 
       const updated = await prisma.syncPreferences.update({
@@ -151,6 +168,14 @@ export class SyncPreferencesController {
     const { id } = req.params;
 
     try {
+      const existing = await prisma.syncPreferences.findUnique({ where: { id } });
+      if (!existing) {
+        return res.status(404).json({ error: "Preference not found" });
+      }
+      if (!await userHasCompanyAccess((req as any).userId, existing.companyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       await prisma.syncPreferences.delete({ where: { id } });
       return res.status(204).send();
     } catch (error: any) {
@@ -174,6 +199,10 @@ export class SyncPreferencesController {
 
       if (!existing) {
         return res.status(404).json({ error: "PreferÃªncia nÃ£o encontrada" });
+      }
+
+      if (!await userHasCompanyAccess((req as any).userId, existing.companyId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
       }
 
       const data: { isDisable: boolean; typeSync?: "QuickBooksToSmartBuild" } = {

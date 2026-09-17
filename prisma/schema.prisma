@@ -103,8 +103,9 @@ model User {
   quickBooksAccount    QuickBooksAccount?
   quickBooksAccount_id String?            @unique
 
-  canceledEstimates Estimate[] @relation("canceledEstimates")
-  Audit             Audit[]
+  canceledEstimates  Estimate[]   @relation("canceledEstimates")
+  Audit              Audit[]
+  planInvitesCreated PlanInvite[] @relation("PlanInviteCreatedBy")
 
   SyncPreferences SyncPreferences[] @relation("SyncPreferences")
   SyncStatus      SyncStatus[]      @relation("SyncStatus")
@@ -403,6 +404,7 @@ model Company {
 
   // NOVO: Pagamentos QBO
   paymentTransactions PaymentTransaction[]
+  planInvitesUsed     PlanInvite[]         @relation("PlanInviteUsedByCompany")
 
   // Sales CRM
   salesDeals SalesDeal[] // Deals relacionados à empresa
@@ -2503,6 +2505,12 @@ enum ValidityType {
   DAYS
 }
 
+enum PlanInviteStatus {
+  ACTIVE
+  USED
+  REVOKED
+}
+
 model Plan {
   id                String          @id @default(uuid())
   name              String
@@ -2518,12 +2526,34 @@ model Plan {
   subscriptions     Subscription[] // Relaciona-se com as assinaturas
   Company           Company[]
   campaigns         Campaign[] // Relaciona-se com as campanhas
+  planInvites       PlanInvite[]
 
   allowedEmployees Int?
   stripeProductId  String? // Campo para armazenar o ID do produto no Stripe
   stripePriceId    String? // Campo para armazenar o ID do preço no Stripe
   isCampaign       Boolean @default(false) // Indica se o plano pode ser usado em campanhas
+  isInviteOnly     Boolean @default(false) // Disponível apenas por convite individual de uso único
   isActive         Boolean @default(true) // Indica se o plano está ativo (visível/disponível)
+}
+
+model PlanInvite {
+  id              String           @id @default(uuid())
+  code            String           @unique @db.VarChar(24)
+  planId          String
+  plan            Plan             @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status          PlanInviteStatus @default(ACTIVE)
+  activePlanKey   String?          @unique
+  createdByUserId String?
+  createdBy       User?            @relation("PlanInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  usedByCompanyId String?
+  usedByCompany   Company?         @relation("PlanInviteUsedByCompany", fields: [usedByCompanyId], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now())
+  usedAt          DateTime?
+  revokedAt       DateTime?
+
+  @@index([planId, createdAt])
+  @@index([status])
+  @@map("plan_invites")
 }
 
 model Campaign {

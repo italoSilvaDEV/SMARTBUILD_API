@@ -7,6 +7,29 @@ import { oauthClient } from "../util/QuickBooksOAuthClient";
 import { refreshAccessToken } from "../util/QuickBooksTokenService";
 import { issueState, verifyAndConsumeState } from "../util/QuickBooksState";
 import { qboClientForAccount } from "../util/http/qboClientFactory";
+import { sessionCanManageCompany } from "../../../utils/companyAccess";
+
+const webSettingsUrl = () => `${process.env.URL_FRONT}/stripe-config`;
+
+function normalizeMobileSettingsRedirect(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+
+  try {
+    const redirect = new URL(value);
+    const route = `${redirect.hostname}${redirect.pathname}`.replace(/^\/+|\/+$/g, "");
+    return redirect.protocol === "smartbuildadmin:" && route === "company-settings"
+      ? redirect.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function settingsRedirect(redirectTo: string | undefined, params: Record<string, string>) {
+  const target = new URL(redirectTo || webSettingsUrl());
+  Object.entries(params).forEach(([key, value]) => target.searchParams.set(key, value));
+  return target.toString();
+}
 
 export class QuickBooksController {
   // faz o oauth para o quickbooks
@@ -27,6 +50,10 @@ export class QuickBooksController {
         return res.status(404).json({ error: "User not found" });
       }
 
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       const clientId = process.env.QUICKBOOKS_CLIENT_ID;
 
       // Construir o redirectUri combinando URL_API e a rota de callback
@@ -34,7 +61,11 @@ export class QuickBooksController {
       // console.log("valor do redirectUri", redirectUri)
 
       // emite nonce seguro e salva contexto
-      const nonce = await issueState(userId, companyId);
+      const nonce = await issueState(
+        userId,
+        companyId,
+        normalizeMobileSettingsRedirect(req.query.redirectTo),
+      );
 
       //  scopes necessários para InvoiceLink / online payments
       const scopes = [
@@ -62,25 +93,37 @@ export class QuickBooksController {
   //ainda nao utlizada pelo frontend
   async callback(req: Request, res: Response) {
     console.log("inicio de callback")
+    let callbackRedirectTo: string | undefined;
     try {
       const { error, code, state, realmId } = req.query;
 
-      if (error) {
-        return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(String(error))}`);
-      }
       if (typeof state !== "string" || !state) {
-        return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=invalid_state`);
-      }
-      if (!code || !realmId) {
-        return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=missing_params`);
+        return res.redirect(settingsRedirect(undefined, { error: "invalid_state", provider: "quickbooks" }));
       }
 
       // valida e consome state
       const v = await verifyAndConsumeState(state);
       if (!v.ok) {
-        return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=invalid_state_${v.reason}`);
+        return res.redirect(settingsRedirect(undefined, {
+          error: `invalid_state_${v.reason}`,
+          provider: "quickbooks",
+        }));
       }
-      const { userId, companyId } = v;
+      const { userId, companyId, redirectTo } = v;
+      callbackRedirectTo = redirectTo ?? undefined;
+
+      if (error) {
+        return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+          error: String(error),
+          provider: "quickbooks",
+        }));
+      }
+      if (!code || !realmId) {
+        return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+          error: "missing_params",
+          provider: "quickbooks",
+        }));
+      }
 
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -136,11 +179,11 @@ export class QuickBooksController {
 
       if (existingRealmAccount && existingRealmAccount.company_id !== companyId) {
         console.log("Quickbooks já conectado a outra empresa")
-        return res.redirect(
-          `${process.env.URL_FRONT}/stripe-config?error=realm_already_used&msg=${encodeURIComponent(
-            `This QuickBooks company is already connected to another company in the system.`
-          )}`
-        );
+        return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+          error: "realm_already_used",
+          msg: "This QuickBooks company is already connected to another company in the system.",
+          provider: "quickbooks",
+        }));
       }
 
       if (account) {
@@ -151,11 +194,11 @@ export class QuickBooksController {
         // Mantemos o bloqueio apenas quando a conexão atual ainda está ativa.
         if (isSwitchingRealm && !account.isDisabled) {
           console.log("Empresa ja conectada a outra empresa: ", account.companyName)
-          return res.redirect(
-            `${process.env.URL_FRONT}/stripe-config?error=different_company&msg=${encodeURIComponent(
-              `This company is already connected to the QuickBooks company: ${account.companyName || account.realmId}. Please connect to the same company.`
-            )}`
-          );
+          return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+            error: "different_company",
+            msg: `This company is already connected to the QuickBooks company: ${account.companyName || account.realmId}. Please connect to the same company.`,
+            provider: "quickbooks",
+          }));
         }
 
         account = await prisma.quickBooksAccount.update({
@@ -272,18 +315,24 @@ export class QuickBooksController {
           data: { needsReauthorization: true },
         });
 
-        return res.redirect(
-          `${process.env.URL_FRONT}/stripe-config?error=invalid_realm&msg=${encodeURIComponent(
-            "Selecione uma empresa do QuickBooks Online (Accounting)."
-          )}`
-        );
+        return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+          error: "invalid_realm",
+          msg: "Select a QuickBooks Online Accounting company.",
+          provider: "quickbooks",
+        }));
       }
 
-      return res.redirect(`${process.env.URL_FRONT}/stripe-config?success=true`);
+      return res.redirect(settingsRedirect(redirectTo ?? undefined, {
+        provider: "quickbooks",
+        success: "true",
+      }));
 
     } catch (error: any) {
       console.error("Erro no callback do QuickBooks:", error);
-      return res.redirect(`${process.env.URL_FRONT}/stripe-config?error=${encodeURIComponent(error.message)}`);
+      return res.redirect(settingsRedirect(callbackRedirectTo, {
+        error: error.message || "quickbooks_callback_failed",
+        provider: "quickbooks",
+      }));
     }
   }
   //utlizada pelo frontend para checar se o usuario esta conectado ao quickbooks
@@ -304,15 +353,7 @@ export class QuickBooksController {
         return res.status(400).json({ error: "Company ID is required" });
       }
 
-      // Verificar se o usuário tem acesso à empresa
-      const userCompany = await prisma.userCompany.findFirst({
-        where: {
-          userId: userId,
-          companyId: companyId
-        }
-      });
-
-      if (!userCompany) {
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
         return res.status(403).json({ error: "User does not have access to this company" });
       }
 
@@ -474,15 +515,7 @@ export class QuickBooksController {
         return res.status(400).json({ error: "Company ID is required" });
       }
 
-      // Verificar se o usuário tem acesso à empresa
-      const userCompany = await prisma.userCompany.findFirst({
-        where: {
-          userId: userId,
-          companyId: companyId
-        }
-      });
-
-      if (!userCompany) {
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
         return res.status(403).json({ error: "User does not have access to this company" });
       }
 
@@ -537,15 +570,7 @@ export class QuickBooksController {
         return res.status(400).json({ error: "Company ID is required" });
       }
 
-      // Verificar se o usuário tem acesso à empresa
-      const userCompany = await prisma.userCompany.findFirst({
-        where: {
-          userId: userId,
-          companyId: companyId
-        }
-      });
-
-      if (!userCompany) {
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
         return res.status(403).json({ error: "User does not have access to this company" });
       }
 
@@ -623,7 +648,7 @@ export class QuickBooksController {
   //  NOVO: Forçar reautorização (marca como needsReauthorization)
   async forceReauthorization(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
+      const { userId, companyId } = req.params;
 
       // Verificar se o usuário existe
       const user = await prisma.user.findUnique({
@@ -634,9 +659,13 @@ export class QuickBooksController {
         return res.status(404).json({ error: "User not found" });
       }
 
+      if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+        return res.status(403).json({ error: "User does not have access to this company" });
+      }
+
       // Buscar a conta QuickBooks do usuário
-      const quickBooksAccount = await prisma.quickBooksAccount.findFirst({
-        where: { user_id: userId }
+      const quickBooksAccount = await prisma.quickBooksAccount.findUnique({
+        where: { company_id: companyId }
       });
 
       if (!quickBooksAccount) {
@@ -657,7 +686,7 @@ export class QuickBooksController {
       return res.status(200).json({
         message: "Reautorização forçada com sucesso",
         needsReauthorization: true,
-        authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${quickBooksAccount.company_id}`
+        authUrl: `${process.env.URL_API}/quickbooks/authorize/${userId}/${companyId}`
       });
 
     } catch (error: any) {

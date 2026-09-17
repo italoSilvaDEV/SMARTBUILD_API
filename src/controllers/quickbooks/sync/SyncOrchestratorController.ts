@@ -13,6 +13,7 @@ import {
     isTypesEntitySupportedByPrismaClient,
     normalizeSyncTypeForEntity,
 } from "../syncPreference/syncPreferenceUtils";
+import { sessionCanManageCompany } from "../../../utils/companyAccess";
 
 const QBO_TO_SMART_ONLY_SYNC_ENTITIES = ["projects"];
 
@@ -91,6 +92,10 @@ export class SyncOrchestratorController {
         }
 
         try {
+            if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             // 1) Cria/atualiza preferências (rápido)
             const createdPreferences = await this.createOrUpdatePreferences(syncPreferences, userId, companyId);
 
@@ -171,6 +176,10 @@ export class SyncOrchestratorController {
         }
 
         try {
+            if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             // Buscar preferências existentes
             await this.normalizeQboToSmartOnlyPreferences(companyId, userId);
 
@@ -218,6 +227,10 @@ export class SyncOrchestratorController {
         }
 
         try {
+            if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             // Buscar os status principais
             await this.normalizeQboToSmartOnlyPreferences(companyId, userId);
 
@@ -308,6 +321,10 @@ export class SyncOrchestratorController {
         }
 
         try {
+            if (!await sessionCanManageCompany((req as any).userId, companyId, userId)) {
+                return res.status(403).json({ error: "User does not have access to this company" });
+            }
+
             const pageNumber = parseInt(page as string);
             const limitNumber = parseInt(limit as string);
             const skip = (pageNumber - 1) * limitNumber;

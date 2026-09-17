@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
+import { userHasCompanyAccess } from "../../utils/companyAccess";
 
 export class QuickBooksConfigController {
     // Buscar configurações de uma empresa
@@ -7,6 +8,10 @@ export class QuickBooksConfigController {
         const { companyId } = req.params;
 
         try {
+            if (!await userHasCompanyAccess((req as any).userId, companyId)) {
+                return res.status(403).json({ success: false, error: "User does not have access to this company" });
+            }
+
             const configurations = await prisma.quickBooksConfig.findMany({
                 where: {
                     companyId: companyId
@@ -34,6 +39,10 @@ export class QuickBooksConfigController {
         const { companyId, configType } = req.params;
 
         try {
+            if (!await userHasCompanyAccess((req as any).userId, companyId)) {
+                return res.status(403).json({ success: false, error: "User does not have access to this company" });
+            }
+
             const configuration = await prisma.quickBooksConfig.findUnique({
                 where: {
                     configType_companyId: {
@@ -62,6 +71,10 @@ export class QuickBooksConfigController {
         const { configType, isActive } = req.body;
 
         try {
+            if (!await userHasCompanyAccess((req as any).userId, companyId)) {
+                return res.status(403).json({ success: false, error: "User does not have access to this company" });
+            }
+
             // Validar dados de entrada
             if (!configType || typeof isActive !== 'boolean') {
                 return res.status(400).json({
@@ -120,6 +133,10 @@ export class QuickBooksConfigController {
         const { companyId, configType } = req.params;
 
         try {
+            if (!await userHasCompanyAccess((req as any).userId, companyId)) {
+                return res.status(403).json({ success: false, error: "User does not have access to this company" });
+            }
+
             const configuration = await prisma.quickBooksConfig.findUnique({
                 where: {
                     configType_companyId: {
