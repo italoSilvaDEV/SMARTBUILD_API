@@ -18,10 +18,6 @@ export class PlanController {
         return res.status(400).json({ message: 'A plan cannot be both campaign and invite-only' });
       }
 
-      if (isInviteOnly && validityType !== 'FREE') {
-        return res.status(400).json({ message: 'Invite-only plans must use the FREE validity type' });
-      }
-      
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
         JSON.stringify([]);
@@ -272,13 +268,8 @@ export class PlanController {
 
       const nextIsCampaign = isCampaign !== undefined ? isCampaign : currentPlan.isCampaign;
       const nextIsInviteOnly = isInviteOnly !== undefined ? isInviteOnly : currentPlan.isInviteOnly;
-      const nextValidityType = validityType !== undefined ? validityType : currentPlan.validityType;
       if (nextIsCampaign && nextIsInviteOnly) {
         return res.status(400).json({ message: 'A plan cannot be both campaign and invite-only' });
-      }
-
-      if (nextIsInviteOnly && nextValidityType !== 'FREE') {
-        return res.status(400).json({ message: 'Invite-only plans must use the FREE validity type' });
       }
       
       const processedFeatures = features ? 

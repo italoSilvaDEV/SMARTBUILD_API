@@ -1,21 +1,24 @@
-import { Prisma, PlanInviteStatus, ValidityType } from "@prisma/client";
+import { PlanInviteStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import { OWNER_FULL_ACCESS_DATA } from "../../utils/ownerFullAccess";
+import { createPlanInviteCode } from "../../utils/planInviteCode";
+import { prisma } from "../../utils/prisma";
 import {
-  issuePlanInviteToken,
+  issueRegistrationToken,
   verifyPlanInviteToken,
 } from "../../utils/publicAccessTokens";
-import { prisma } from "../../utils/prisma";
 
 const publicPlanSelect = {
   id: true,
   name: true,
   description: true,
+  price: true,
   validityType: true,
   validityDuration: true,
   allowedEmployees: true,
   isActive: true,
+  isCampaign: true,
   isInviteOnly: true,
 } satisfies Prisma.PlanSelect;
 
@@ -36,32 +39,17 @@ function serializeInvite(
     revokedAt: invite.revokedAt,
     usedByCompany: invite.usedByCompany,
     plan: invite.plan,
-    token:
-      invite.status === PlanInviteStatus.ACTIVE
-        ? issuePlanInviteToken(invite.id)
-        : null,
+    code: invite.status === PlanInviteStatus.ACTIVE ? invite.code : null,
   };
 }
 
-async function applyPermissionsToOffice(
-  tx: Prisma.TransactionClient,
-  officeId: string,
-  permissionIds: string[],
-) {
-  if (permissionIds.length === 0) return;
+function resolveInviteWhere(value: string): Prisma.PlanInviteWhereUniqueInput | null {
+  if (!value.includes(".")) {
+    return { code: value };
+  }
 
-  await tx.userPermission.createMany({
-    data: permissionIds.map((permissionId) => ({
-      office_id: officeId,
-      permission_id: permissionId,
-      editAll: false,
-    })),
-  });
-}
-
-function readInviteId(token: string) {
   try {
-    return verifyPlanInviteToken(token).inviteId;
+    return { id: verifyPlanInviteToken(value).inviteId };
   } catch {
     return null;
   }
@@ -86,7 +74,6 @@ export class PlanInviteController {
         orderBy: { createdAt: "desc" },
         take: 10,
       });
-
       const activeInvite = invites.find(
         (invite) => invite.status === PlanInviteStatus.ACTIVE,
       );
@@ -115,25 +102,15 @@ export class PlanInviteController {
       if (!plan) {
         return res.status(404).json({ message: "Plan not found" });
       }
-
       if (!plan.isActive) {
-        return res.status(400).json({ message: "Inactive plans cannot generate invitations" });
-      }
-
-      if (!plan.isInviteOnly) {
         return res.status(400).json({
-          message: "Only invite-only plans can generate invitations",
-        });
-      }
-
-      if (plan.validityType !== ValidityType.FREE) {
-        return res.status(400).json({
-          message: "One-time invitations currently support FREE trial plans only",
+          message: "Inactive plans cannot generate invitations",
         });
       }
 
       const invite = await prisma.planInvite.create({
         data: {
+          code: createPlanInviteCode(),
           planId,
           activePlanKey: planId,
           createdByUserId: userId,
@@ -143,7 +120,10 @@ export class PlanInviteController {
 
       return res.status(201).json(serializeInvite(invite));
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
         return res.status(409).json({
           message: "This plan already has an active invitation",
         });
@@ -182,34 +162,28 @@ export class PlanInviteController {
   }
 
   async getPublic(req: Request, res: Response) {
-    const inviteId = readInviteId(req.params.token);
-    if (!inviteId) {
+    const code = String(req.params.code || "").trim();
+    const inviteWhere = resolveInviteWhere(code);
+    if (!inviteWhere) {
       return res.status(404).json({ message: "Invitation not found", code: "INVALID" });
     }
 
     try {
       const invite = await prisma.planInvite.findUnique({
-        where: { id: inviteId },
+        where: inviteWhere,
         include: inviteInclude,
       });
 
       if (!invite) {
         return res.status(404).json({ message: "Invitation not found", code: "INVALID" });
       }
-
       if (invite.status === PlanInviteStatus.USED) {
         return res.status(410).json({ message: "This invitation has already been used", code: "USED" });
       }
-
       if (invite.status === PlanInviteStatus.REVOKED) {
         return res.status(410).json({ message: "This invitation was revoked", code: "REVOKED" });
       }
-
-      if (
-        !invite.plan.isActive ||
-        !invite.plan.isInviteOnly ||
-        invite.plan.validityType !== ValidityType.FREE
-      ) {
+      if (!invite.plan.isActive) {
         return res.status(410).json({ message: "This invitation is no longer available", code: "UNAVAILABLE" });
       }
 
@@ -224,21 +198,20 @@ export class PlanInviteController {
   }
 
   async redeem(req: Request, res: Response) {
-    const inviteId = readInviteId(req.params.token);
-    if (!inviteId) {
+    const code = String(req.params.code || "").trim();
+    const inviteWhere = resolveInviteWhere(code);
+    if (!inviteWhere) {
       return res.status(404).json({ message: "Invitation not found", code: "INVALID" });
     }
 
     const companyName = String(req.body?.company_name || "").trim();
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
-    const phone = String(req.body?.phone || "").trim();
     const password = String(req.body?.password || "");
 
-    if (!companyName || !name || !email || !phone || !password) {
+    if (!companyName || !name || !email || !password) {
       return res.status(400).json({ message: "All registration fields are required" });
     }
-
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must contain at least 6 characters" });
     }
@@ -248,29 +221,14 @@ export class PlanInviteController {
       const result = await prisma.$transaction(
         async (tx) => {
           const invite = await tx.planInvite.findUnique({
-            where: { id: inviteId },
-            include: {
-              plan: {
-                include: {
-                  permissionGroup: {
-                    include: {
-                      GroupPermissionsList: { select: { permission_id: true } },
-                    },
-                  },
-                },
-              },
-            },
+            where: inviteWhere,
+            include: { plan: { select: publicPlanSelect } },
           });
 
           if (!invite || invite.status !== PlanInviteStatus.ACTIVE) {
             throw new Error("INVITE_ALREADY_USED");
           }
-
-          if (
-            !invite.plan.isActive ||
-            !invite.plan.isInviteOnly ||
-            invite.plan.validityType !== ValidityType.FREE
-          ) {
+          if (!invite.plan.isActive) {
             throw new Error("INVITE_UNAVAILABLE");
           }
 
@@ -286,7 +244,6 @@ export class PlanInviteController {
               usedAt: new Date(),
             },
           });
-
           if (claimed.count !== 1) {
             throw new Error("INVITE_ALREADY_USED");
           }
@@ -296,27 +253,19 @@ export class PlanInviteController {
             throw new Error("EMAIL_ALREADY_REGISTERED");
           }
 
-          const company = await tx.company.create({
-            data: {
-              name: companyName,
-              planId: invite.planId,
-              allowedEmployees: invite.plan.allowedEmployees,
-            },
-          });
-
+          const company = await tx.company.create({ data: { name: companyName } });
           const ownerOffice = await tx.office.create({
             data: { name: "Owner", company_id: company.id },
           });
-
           const user = await tx.user.create({
             data: {
               name,
               email,
-              phone,
+              phone: req.body?.phone || null,
               password: hashedPassword,
               document: null,
               city_and_state: null,
-              rules: [],
+              rules: JSON.stringify(req.body?.rules) || {},
               office_id: ownerOffice.id,
               profession: null,
               company_id: company.id,
@@ -332,64 +281,30 @@ export class PlanInviteController {
               office_id: ownerOffice.id,
             },
           });
-
-          const permissionIds = invite.plan.permissionGroup.GroupPermissionsList.map(
-            (permission) => permission.permission_id,
-          );
-          await applyPermissionsToOffice(tx, ownerOffice.id, permissionIds);
-
-          await tx.office.create({
-            data: { name: "Worker", company_id: company.id },
-          });
-
-          const administratorOffice = await tx.office.create({
-            data: { name: "Administrator", company_id: company.id },
-          });
-          await applyPermissionsToOffice(tx, administratorOffice.id, permissionIds);
-
-          const startDate = new Date();
-          const endDate = new Date(startDate);
-          endDate.setDate(endDate.getDate() + invite.plan.validityDuration);
-
-          const subscription = await tx.subscription.create({
-            data: {
-              companyId: company.id,
-              planId: invite.planId,
-              startDate,
-              endDate,
-              isActive: true,
-              billingProvider: "free",
-              fromCampaign: false,
-            },
-          });
-
           await tx.planInvite.update({
             where: { id: invite.id },
             data: { usedByCompanyId: company.id },
           });
 
-          return {
-            companyId: company.id,
-            userId: user.id,
-            subscriptionId: subscription.id,
-            subscriptionEndDate: subscription.endDate,
-          };
+          return { companyId: company.id, userId: user.id, plan: invite.plan };
         },
         { maxWait: 5000, timeout: 20000 },
       );
 
-      return res.status(201).json(result);
+      return res.status(201).json({
+        id: result.companyId,
+        plan: result.plan,
+        registrationToken: issueRegistrationToken(result.companyId, result.userId),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
 
       if (message === "INVITE_ALREADY_USED") {
         return res.status(409).json({ message: "This invitation has already been used", code: "USED" });
       }
-
       if (message === "INVITE_UNAVAILABLE") {
         return res.status(410).json({ message: "This invitation is no longer available", code: "UNAVAILABLE" });
       }
-
       if (
         message === "EMAIL_ALREADY_REGISTERED" ||
         (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")

@@ -2533,6 +2533,7 @@ model Plan {
 
 model PlanInvite {
   id              String           @id @default(uuid())
+  code            String           @unique @db.VarChar(24)
   planId          String
   plan            Plan             @relation(fields: [planId], references: [id], onDelete: Restrict)
   status          PlanInviteStatus @default(ACTIVE)

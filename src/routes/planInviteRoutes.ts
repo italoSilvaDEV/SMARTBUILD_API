@@ -26,11 +26,11 @@ planInviteRoutes.delete(
 );
 
 planInviteRoutes.get(
-  "/plan-invites/:token",
+  "/plan-invites/:code",
   controller.getPublic.bind(controller),
 );
 planInviteRoutes.post(
-  "/plan-invites/:token/redeem",
+  "/plan-invites/:code/redeem",
   controller.redeem.bind(controller),
 );
 

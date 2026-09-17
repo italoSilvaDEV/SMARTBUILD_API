@@ -63,13 +63,6 @@ export const verifyEstimatePublicToken = (token: string) => {
   return payload as EstimateTokenPayload;
 };
 
-export const issuePlanInviteToken = (inviteId: string) =>
-  Jwt.sign(
-    { purpose: "plan_invite", inviteId } satisfies PlanInviteTokenPayload,
-    getPublicAccessSecret(),
-    { algorithm: "HS256", noTimestamp: true }
-  );
-
 export const verifyPlanInviteToken = (token: string) => {
   const payload = Jwt.verify(token, getPublicAccessSecret(), {
     algorithms: ["HS256"],
