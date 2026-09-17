@@ -15,6 +15,7 @@ const prismaMock: any = {
     updateMany: jest.fn(),
   },
   bidProposalItem: { deleteMany: jest.fn() },
+  category: { findMany: jest.fn(), findFirst: jest.fn() },
   subcontractor: { findMany: jest.fn() },
   user: { findFirst: jest.fn() },
   $transaction: jest.fn(async (operation: any) =>
@@ -140,6 +141,153 @@ describe("Bid Request recipient management", () => {
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(prismaMock.bidRequestRecipient.create).not.toHaveBeenCalled();
+  });
+
+  it("persists a validated category for each new recipient", async () => {
+    const subcontractor = { id: "sub-1", name: "Roof Co", email: "roof@example.com" };
+    const category = { id: "category-1", category_name: "Roofing" };
+    const recipient = {
+      id: "recipient-1",
+      bidRequestId: baseBid.id,
+      subcontractorId: subcontractor.id,
+      subcontractorName: subcontractor.name,
+      subcontractorEmail: subcontractor.email,
+      categoryId: category.id,
+      categoryName: category.category_name,
+      status: "pending",
+      submissionSource: "portal",
+      items: [],
+    };
+    prismaMock.bidRequest.findUnique
+      .mockResolvedValueOnce(baseBid)
+      .mockResolvedValueOnce({ ...baseBid, recipients: [recipient] });
+    prismaMock.subcontractor.findMany.mockResolvedValue([subcontractor]);
+    prismaMock.category.findMany.mockResolvedValue([category]);
+    prismaMock.bidRequestRecipient.create.mockResolvedValue(recipient);
+    const res = response();
+
+    await new BidRequestController().addRecipients(
+      {
+        params: { id: baseBid.id },
+        body: {
+          subcontractorIds: [subcontractor.id],
+          recipientCategories: { [subcontractor.id]: category.id },
+          sendNow: false,
+        },
+        userId: "user-1",
+      } as any,
+      res,
+    );
+
+    expect(prismaMock.category.findMany).toHaveBeenCalledWith({
+      where: { id: { in: [category.id] }, company_id: baseBid.companyId },
+      select: { id: true, category_name: true },
+    });
+    expect(prismaMock.bidRequestRecipient.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subcontractorId: subcontractor.id,
+        categoryId: category.id,
+        categoryName: category.category_name,
+      }),
+    });
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("rejects a recipient category from outside the company", async () => {
+    const subcontractor = { id: "sub-1", name: "Roof Co", email: "roof@example.com" };
+    prismaMock.bidRequest.findUnique.mockResolvedValue(baseBid);
+    prismaMock.subcontractor.findMany.mockResolvedValue([subcontractor]);
+    prismaMock.category.findMany.mockResolvedValue([]);
+    const res = response();
+
+    await new BidRequestController().addRecipients(
+      {
+        params: { id: baseBid.id },
+        body: {
+          subcontractorIds: [subcontractor.id],
+          recipientCategories: { [subcontractor.id]: "category-from-another-company" },
+          sendNow: false,
+        },
+        userId: "user-1",
+      } as any,
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "A selected category is invalid" });
+    expect(prismaMock.bidRequestRecipient.create).not.toHaveBeenCalled();
+  });
+
+  it("updates the category of an existing recipient", async () => {
+    const category = {
+      id: "category-1",
+      category_name: "Roofing",
+      company_id: baseBid.companyId,
+    };
+    const recipient = {
+      id: "recipient-1",
+      bidRequestId: baseBid.id,
+      subcontractorId: "sub-1",
+      subcontractorName: "Roof Co",
+      subcontractorEmail: "roof@example.com",
+      status: "pending",
+      submissionSource: "portal",
+      categoryId: null,
+      categoryName: null,
+      items: [],
+      bidRequest: baseBid,
+    };
+    prismaMock.bidRequestRecipient.findFirst.mockResolvedValue(recipient);
+    prismaMock.category.findFirst.mockResolvedValue(category);
+    prismaMock.bidRequestRecipient.update.mockResolvedValue({});
+    prismaMock.bidRequest.findUnique.mockResolvedValue({
+      ...baseBid,
+      recipients: [
+        { ...recipient, categoryId: category.id, categoryName: category.category_name },
+      ],
+    });
+    const res = response();
+
+    await new BidRequestController().updateRecipientCategory(
+      {
+        params: { id: baseBid.id, recipientId: recipient.id },
+        body: { categoryId: category.id },
+        userId: "user-1",
+      } as any,
+      res,
+    );
+
+    expect(prismaMock.category.findFirst).toHaveBeenCalledWith({
+      where: { id: category.id, company_id: baseBid.companyId },
+    });
+    expect(prismaMock.bidRequestRecipient.update).toHaveBeenCalledWith({
+      where: { id: recipient.id },
+      data: { categoryId: category.id, categoryName: category.category_name },
+    });
+    expect(res.json).toHaveBeenCalledWith({ data: expect.any(Object) });
+  });
+
+  it("rejects changing a recipient to another company's category", async () => {
+    const recipient = {
+      id: "recipient-1",
+      bidRequestId: baseBid.id,
+      bidRequest: baseBid,
+    };
+    prismaMock.bidRequestRecipient.findFirst.mockResolvedValue(recipient);
+    prismaMock.category.findFirst.mockResolvedValue(null);
+    const res = response();
+
+    await new BidRequestController().updateRecipientCategory(
+      {
+        params: { id: baseBid.id, recipientId: recipient.id },
+        body: { categoryId: "category-from-another-company" },
+        userId: "user-1",
+      } as any,
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(prismaMock.bidRequestRecipient.update).not.toHaveBeenCalled();
   });
 
   it("lets an admin enter an unanswered proposal", async () => {

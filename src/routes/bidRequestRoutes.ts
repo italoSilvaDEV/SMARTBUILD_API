@@ -14,6 +14,7 @@ bidRequestRoutes.put("/:id", controller.update.bind(controller));
 bidRequestRoutes.post("/:id/external-proposals/extract", controller.extractExternalProposal.bind(controller));
 bidRequestRoutes.post("/:id/external-proposals", controller.createExternalProposal.bind(controller));
 bidRequestRoutes.post("/:id/recipients", controller.addRecipients.bind(controller));
+bidRequestRoutes.patch("/:id/recipients/:recipientId/category", controller.updateRecipientCategory.bind(controller));
 bidRequestRoutes.put("/:id/recipients/:recipientId/proposal", controller.enterRecipientProposal.bind(controller));
 bidRequestRoutes.get("/:id", controller.get.bind(controller));
 bidRequestRoutes.post("/:id/send", controller.send.bind(controller));

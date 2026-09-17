@@ -95,6 +95,8 @@ async function serialize(bid: any, publicRecipientId?: string) {
       subcontractorId: recipient.subcontractorId,
       subcontractorName: recipient.subcontractorName,
       subcontractorEmail: recipient.subcontractorEmail,
+      categoryId: recipient.categoryId || null,
+      categoryName: recipient.categoryName || null,
       submittedAt: recipient.submittedAt,
       approvedAt: recipient.approvedAt,
       rejectedAt: recipient.rejectedAt,
@@ -245,7 +247,72 @@ function validatePayload(payload: any) {
   return { deadline, items, subcontractorIds };
 }
 
+function getRecipientCategoryAssignments(
+  payload: any,
+  subcontractorIds: string[],
+) {
+  const raw = payload?.recipientCategories;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return {} as Record<string, string>;
+  const selectedIds = new Set(subcontractorIds);
+  return Object.entries(raw).reduce<Record<string, string>>(
+    (assignments, [subcontractorId, categoryId]) => {
+      const normalizedCategoryId = String(categoryId || "").trim();
+      if (selectedIds.has(subcontractorId) && normalizedCategoryId)
+        assignments[subcontractorId] = normalizedCategoryId;
+      return assignments;
+    },
+    {},
+  );
+}
+
+async function resolveRecipientCategories(
+  companyId: string,
+  assignments: Record<string, string>,
+) {
+  const categoryIds = [...new Set(Object.values(assignments))];
+  if (!categoryIds.length) return new Map<string, { id: string; category_name: string }>();
+  const categories = await prisma.category.findMany({
+    where: { id: { in: categoryIds }, company_id: companyId },
+    select: { id: true, category_name: true },
+  });
+  if (categories.length !== categoryIds.length) return null;
+  return new Map(categories.map((category) => [category.id, category]));
+}
+
 export class BidRequestController {
+  async updateRecipientCategory(req: Request, res: Response) {
+    const recipient = await prisma.bidRequestRecipient.findFirst({
+      where: { id: req.params.recipientId, bidRequestId: req.params.id },
+      include: { bidRequest: true },
+    });
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+    if (!(await canAccess(req, recipient.bidRequest.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const categoryId = String(req.body?.categoryId || "").trim() || null;
+    const category = categoryId
+      ? await prisma.category.findFirst({
+          where: { id: categoryId, company_id: recipient.bidRequest.companyId },
+        })
+      : null;
+    if (categoryId && !category)
+      return res.status(400).json({ error: "The selected category is invalid" });
+
+    await prisma.bidRequestRecipient.update({
+      where: { id: recipient.id },
+      data: {
+        categoryId: category?.id || null,
+        categoryName: category?.category_name || null,
+      },
+    });
+    const updated = await prisma.bidRequest.findUnique({
+      where: { id: recipient.bidRequestId },
+      include: includeBid,
+    });
+    return res.json({ data: await serialize(updated) });
+  }
+
   async addRecipients(req: Request, res: Response) {
     await reopenAutoFinalized({ id: req.params.id });
     const record = await prisma.bidRequest.findUnique({
@@ -281,16 +348,23 @@ export class BidRequestController {
     });
     if (subcontractors.length !== subcontractorIds.length)
       return res.status(400).json({ error: "A selected subcontractor is invalid" });
+    const categoryAssignments = getRecipientCategoryAssignments(req.body, subcontractorIds);
+    const recipientCategories = await resolveRecipientCategories(record.companyId, categoryAssignments);
+    if (!recipientCategories)
+      return res.status(400).json({ error: "A selected category is invalid" });
 
     const createdIds = await prisma.$transaction(async (tx) => {
       const ids: string[] = [];
       for (const subcontractor of subcontractors) {
+        const category = recipientCategories.get(categoryAssignments[subcontractor.id]);
         const recipient = await tx.bidRequestRecipient.create({
           data: {
             bidRequestId: record.id,
             subcontractorId: subcontractor.id,
             subcontractorName: subcontractor.name,
             subcontractorEmail: subcontractor.email,
+            categoryId: category?.id || null,
+            categoryName: category?.category_name || null,
             items: {
               create: record.items.map((item, position) => ({
                 name: item.name,
@@ -538,6 +612,16 @@ export class BidRequestController {
       return res
         .status(400)
         .json({ error: "A selected subcontractor is invalid" });
+    const categoryAssignments = getRecipientCategoryAssignments(
+      payload,
+      checked.subcontractorIds!,
+    );
+    const recipientCategories = await resolveRecipientCategories(
+      payload.companyId,
+      categoryAssignments,
+    );
+    if (!recipientCategories)
+      return res.status(400).json({ error: "A selected category is invalid" });
     const uploads: StagedUploadReference[] = Array.isArray(payload.attachments)
       ? payload.attachments
       : [];
@@ -606,31 +690,36 @@ export class BidRequestController {
                 })),
               },
               recipients: {
-                create: subcontractors.map((subcontractor) => ({
-                  subcontractorId: subcontractor.id,
-                  subcontractorName: subcontractor.name,
-                  subcontractorEmail: subcontractor.email,
-                  items: {
-                    create: baseItems.map(
-                      (
-                        item: {
-                          name: string;
-                          description: string | null;
-                          quantity: number;
-                          suggestedValue: number | null;
-                        },
-                        position: number,
-                      ) => ({
-                        name: item.name,
-                        description: item.description,
-                        quantity: item.quantity,
-                        unitPrice: item.suggestedValue || 0,
-                        position,
-                        isCustom: false,
-                      }),
-                    ),
-                  },
-                })),
+                create: subcontractors.map((subcontractor) => {
+                  const category = recipientCategories.get(categoryAssignments[subcontractor.id]);
+                  return {
+                    subcontractorId: subcontractor.id,
+                    subcontractorName: subcontractor.name,
+                    subcontractorEmail: subcontractor.email,
+                    categoryId: category?.id || null,
+                    categoryName: category?.category_name || null,
+                    items: {
+                      create: baseItems.map(
+                        (
+                          item: {
+                            name: string;
+                            description: string | null;
+                            quantity: number;
+                            suggestedValue: number | null;
+                          },
+                          position: number,
+                        ) => ({
+                          name: item.name,
+                          description: item.description,
+                          quantity: item.quantity,
+                          unitPrice: item.suggestedValue || 0,
+                          position,
+                          isCustom: false,
+                        }),
+                      ),
+                    },
+                  };
+                }),
               },
             },
             include: includeBid,
