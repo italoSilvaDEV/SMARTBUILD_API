@@ -28,6 +28,11 @@ type EstimateTokenPayload = {
   email: string;
 };
 
+type PlanInviteTokenPayload = {
+  purpose: "plan_invite";
+  inviteId: string;
+};
+
 export const issueRegistrationToken = (companyId: string, userId: string) =>
   Jwt.sign(
     { purpose: "company_registration", companyId, userId } satisfies RegistrationTokenPayload,
@@ -56,4 +61,23 @@ export const verifyEstimatePublicToken = (token: string) => {
     throw new Error("Invalid estimate access token");
   }
   return payload as EstimateTokenPayload;
+};
+
+export const issuePlanInviteToken = (inviteId: string) =>
+  Jwt.sign(
+    { purpose: "plan_invite", inviteId } satisfies PlanInviteTokenPayload,
+    getPublicAccessSecret(),
+    { algorithm: "HS256", noTimestamp: true }
+  );
+
+export const verifyPlanInviteToken = (token: string) => {
+  const payload = Jwt.verify(token, getPublicAccessSecret(), {
+    algorithms: ["HS256"],
+  }) as Partial<PlanInviteTokenPayload>;
+
+  if (payload.purpose !== "plan_invite" || !payload.inviteId) {
+    throw new Error("Invalid plan invitation token");
+  }
+
+  return payload as PlanInviteTokenPayload;
 };

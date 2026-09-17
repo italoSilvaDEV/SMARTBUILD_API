@@ -37,6 +37,12 @@ export class SubscriptionController {
         return res.status(400).json({ message: 'This endpoint is only for FREE plan subscription. Use Stripe checkout for paid plans.' });
       }
 
+      if (plan.isInviteOnly) {
+        return res.status(403).json({
+          message: 'This plan requires a valid one-time invitation'
+        });
+      }
+
       const company = await prisma.company.findUnique({
         where: { id: companyId }
       });
