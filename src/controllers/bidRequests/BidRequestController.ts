@@ -273,7 +273,11 @@ async function resolveRecipientCategories(
   const categoryIds = [...new Set(Object.values(assignments))];
   if (!categoryIds.length) return new Map<string, { id: string; category_name: string }>();
   const categories = await prisma.category.findMany({
-    where: { id: { in: categoryIds }, company_id: companyId },
+    where: {
+      id: { in: categoryIds },
+      company_id: companyId,
+      status_category: { not: false },
+    },
     select: { id: true, category_name: true },
   });
   if (categories.length !== categoryIds.length) return null;
@@ -281,6 +285,126 @@ async function resolveRecipientCategories(
 }
 
 export class BidRequestController {
+  async listRecipientCategories(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    if (!companyId)
+      return res.status(400).json({ error: "Company ID is required" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const categories = await prisma.category.findMany({
+      where: { company_id: companyId },
+      orderBy: { category_name: "asc" },
+      select: {
+        id: true,
+        category_name: true,
+        type_category: true,
+        status_category: true,
+        date_update: true,
+        _count: {
+          select: {
+            bidRequestRecipients: true,
+            workedHours: true,
+          },
+        },
+      },
+    });
+
+    return res.json({
+      data: categories.map(({ _count, ...category }) => ({
+        ...category,
+        isActive: category.status_category !== false,
+        bidRequestCount: _count.bidRequestRecipients,
+        subcontractorUseCount: _count.workedHours,
+      })),
+    });
+  }
+
+  async createRecipientCategory(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    const categoryName = String(req.body?.categoryName || "").trim();
+    const typeCategory = String(req.body?.typeCategory || "Residential").trim();
+    if (!companyId || !categoryName)
+      return res.status(400).json({ error: "Company ID and category name are required" });
+    if (categoryName.length > 191)
+      return res.status(400).json({ error: "Category name is too long" });
+    if (!new Set(["Residential", "Commercial"]).has(typeCategory))
+      return res.status(400).json({ error: "Category type is invalid" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const duplicate = await prisma.category.findFirst({
+      where: {
+        company_id: companyId,
+        category_name: categoryName,
+        type_category: typeCategory,
+      },
+      select: { id: true, status_category: true },
+    });
+    if (duplicate)
+      return res.status(409).json({
+        error: duplicate.status_category === false
+          ? "An archived category already uses this name"
+          : "This category has already been registered",
+      });
+
+    const category = await prisma.category.create({
+      data: {
+        company_id: companyId,
+        category_name: categoryName,
+        type_category: typeCategory,
+        status_category: true,
+      },
+    });
+    return res.status(201).json({ data: { ...category, isActive: true } });
+  }
+
+  async updateRecipientCategoryDefinition(req: Request, res: Response) {
+    const companyId = String(req.params.companyId || "").trim();
+    const categoryId = String(req.params.categoryId || "").trim();
+    if (!companyId || !categoryId)
+      return res.status(400).json({ error: "Company ID and category ID are required" });
+    if (!(await canAccess(req, companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const category = await prisma.category.findFirst({
+      where: { id: categoryId, company_id: companyId },
+    });
+    if (!category)
+      return res.status(404).json({ error: "Category not found" });
+
+    const data: { category_name?: string; status_category?: boolean } = {};
+    if (req.body?.categoryName !== undefined) {
+      const categoryName = String(req.body.categoryName || "").trim();
+      if (!categoryName)
+        return res.status(400).json({ error: "Category name is required" });
+      if (categoryName.length > 191)
+        return res.status(400).json({ error: "Category name is too long" });
+      const duplicate = await prisma.category.findFirst({
+        where: {
+          company_id: companyId,
+          category_name: categoryName,
+          type_category: category.type_category,
+          NOT: { id: categoryId },
+        },
+        select: { id: true },
+      });
+      if (duplicate)
+        return res.status(409).json({ error: "This category has already been registered" });
+      data.category_name = categoryName;
+    }
+    if (typeof req.body?.isActive === "boolean")
+      data.status_category = req.body.isActive;
+    if (!Object.keys(data).length)
+      return res.status(400).json({ error: "No category changes were provided" });
+
+    const updated = await prisma.category.update({
+      where: { id: categoryId },
+      data,
+    });
+    return res.json({ data: { ...updated, isActive: updated.status_category !== false } });
+  }
+
   async updateRecipientCategory(req: Request, res: Response) {
     const recipient = await prisma.bidRequestRecipient.findFirst({
       where: { id: req.params.recipientId, bidRequestId: req.params.id },
@@ -293,7 +417,11 @@ export class BidRequestController {
     const categoryId = String(req.body?.categoryId || "").trim() || null;
     const category = categoryId
       ? await prisma.category.findFirst({
-          where: { id: categoryId, company_id: recipient.bidRequest.companyId },
+          where: {
+            id: categoryId,
+            company_id: recipient.bidRequest.companyId,
+            status_category: { not: false },
+          },
         })
       : null;
     if (categoryId && !category)
