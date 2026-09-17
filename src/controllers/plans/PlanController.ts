@@ -12,8 +12,12 @@ export class PlanController {
   // integrado com stripe
   async create(req: Request, res: Response) {
     try {
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isActive } = req.body;
-      
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isInviteOnly, isActive } = req.body;
+
+      if (isCampaign && isInviteOnly) {
+        return res.status(400).json({ message: 'A plan cannot be both campaign and invite-only' });
+      }
+
       const processedFeatures = features ? 
         (typeof features === 'string' ? features : JSON.stringify(features)) : 
         JSON.stringify([]);
@@ -79,6 +83,7 @@ export class PlanController {
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
           isCampaign: isCampaign || false,
+          isInviteOnly: isInviteOnly || false,
           isActive: isActive !== undefined ? isActive : true
         },
         include: {
@@ -110,6 +115,7 @@ export class PlanController {
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
         isCampaign: plan.isCampaign,
+        isInviteOnly: plan.isInviteOnly,
         isActive: plan.isActive,
         createdAt: plan.createdAt,
         updatedAt: plan.updatedAt
@@ -126,9 +132,12 @@ export class PlanController {
     try {
       const { grouped } = req.query;
       
-      const whereClause = grouped === 'true' 
-        ? { isCampaign: false, isActive: true } 
-        : {}
+      const includeInviteOnly = Boolean((req as any).masterActor);
+      const whereClause = grouped === 'true'
+        ? { isCampaign: false, isInviteOnly: false, isActive: true }
+        : includeInviteOnly
+          ? {}
+          : { isInviteOnly: false };
       
       const plans = await prisma.plan.findMany({
         where: whereClause,
@@ -158,6 +167,7 @@ export class PlanController {
         stripePriceId: plan.stripePriceId,
         allowedEmployees: plan.allowedEmployees,
         isCampaign: plan.isCampaign,
+        isInviteOnly: plan.isInviteOnly,
         isActive: plan.isActive
       }));
 
@@ -210,6 +220,11 @@ export class PlanController {
         res.status(404).json({ message: 'Plan not found' });
         return;
       }
+
+      if (plan.isInviteOnly) {
+        res.status(404).json({ message: 'Plan not found' });
+        return;
+      }
       
       // Formatar o resultado
       const formattedPlan = {
@@ -225,6 +240,8 @@ export class PlanController {
         createdAt: plan.createdAt,
         stripeProductId: plan.stripeProductId,
         updatedAt: plan.updatedAt,
+        isCampaign: plan.isCampaign,
+        isInviteOnly: plan.isInviteOnly,
         isActive: plan.isActive
       };
       
@@ -238,7 +255,7 @@ export class PlanController {
   async updatePlan(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign,  isActive } = req.body;
+      const { name, description, price, features, validityType, validityDuration, permissionGroupId, allowedEmployees, isCampaign, isInviteOnly, isActive } = req.body;
       
       // Buscar o plano atual para verificar se há alterações e se existem IDs do Stripe
       const currentPlan = await prisma.plan.findUnique({
@@ -247,6 +264,12 @@ export class PlanController {
 
       if (!currentPlan) {
         return res.status(404).json({ message: 'Plan not found' });
+      }
+
+      const nextIsCampaign = isCampaign !== undefined ? isCampaign : currentPlan.isCampaign;
+      const nextIsInviteOnly = isInviteOnly !== undefined ? isInviteOnly : currentPlan.isInviteOnly;
+      if (nextIsCampaign && nextIsInviteOnly) {
+        return res.status(400).json({ message: 'A plan cannot be both campaign and invite-only' });
       }
       
       const processedFeatures = features ? 
@@ -345,6 +368,7 @@ export class PlanController {
           stripePriceId,
           allowedEmployees: allowedEmployees ? parseInt(allowedEmployees) : null,
           isCampaign: isCampaign !== undefined ? isCampaign : undefined,
+          isInviteOnly: isInviteOnly !== undefined ? isInviteOnly : undefined,
           isActive: isActive !== undefined ? isActive : undefined
         },
         include: { permissionGroup: true }
@@ -365,6 +389,7 @@ export class PlanController {
         stripePriceId: updatedPlan.stripePriceId,
         allowedEmployees: updatedPlan.allowedEmployees,
         isCampaign: updatedPlan.isCampaign,
+        isInviteOnly: updatedPlan.isInviteOnly,
         createdAt: updatedPlan.createdAt,
         updatedAt: updatedPlan.updatedAt
       };
@@ -465,6 +490,7 @@ export class PlanController {
         stripePriceId: updatedPlan.stripePriceId,
         allowedEmployees: updatedPlan.allowedEmployees,
         isCampaign: updatedPlan.isCampaign,
+        isInviteOnly: updatedPlan.isInviteOnly,
         isActive: updatedPlan.isActive,
         createdAt: updatedPlan.createdAt,
         updatedAt: updatedPlan.updatedAt
@@ -487,6 +513,10 @@ export class PlanController {
       where: { planId: id }
     });
 
-    return subscriptionsCount > 0 || companiesCount > 0; 
+    const invitesCount = await prisma.planInvite.count({
+      where: { planId: id }
+    });
+
+    return subscriptionsCount > 0 || companiesCount > 0 || invitesCount > 0;
   }
-} 
+}

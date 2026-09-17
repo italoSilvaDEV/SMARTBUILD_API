@@ -2449,6 +2449,23 @@ export class StripeController {
                 return res.status(404).json({ error: "Empresa não encontrada" });
             }
 
+            if (plan.isInviteOnly) {
+                const redeemedInvite = await prisma.planInvite.findFirst({
+                    where: {
+                        planId,
+                        usedByCompanyId: companyId,
+                        status: 'USED'
+                    },
+                    select: { id: true }
+                });
+
+                if (!redeemedInvite) {
+                    return res.status(403).json({
+                        error: "Este plano exige um convite individual válido"
+                    });
+                }
+            }
+
             // Preparar datas para a assinatura
             const startDate = new Date();
             let endDate = new Date();

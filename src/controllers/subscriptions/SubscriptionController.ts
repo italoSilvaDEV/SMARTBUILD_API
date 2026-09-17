@@ -45,6 +45,23 @@ export class SubscriptionController {
         return res.status(400).json({ message: 'Company not found' });
       }
 
+      if (plan.isInviteOnly) {
+        const redeemedInvite = await prisma.planInvite.findFirst({
+          where: {
+            planId,
+            usedByCompanyId: companyId,
+            status: 'USED'
+          },
+          select: { id: true }
+        });
+
+        if (!redeemedInvite) {
+          return res.status(403).json({
+            message: 'This plan requires a valid one-time invitation'
+          });
+        }
+      }
+
       let fromCampaign = false;
       if (campaignId) {
         const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
