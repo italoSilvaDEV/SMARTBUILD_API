@@ -18,10 +18,61 @@ import { stripeConfig } from "../../config/stripe";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { buildLegacySnapshot, buildPolicySnapshot, toEffectiveDate } from "../../utils/breakPolicies";
 
 const PASSWORD_RECOVERY_COOLDOWN_SECONDS = 60;
 const PASSWORD_RECOVERY_COOLDOWN_MS =
   PASSWORD_RECOVERY_COOLDOWN_SECONDS * 1000;
+
+async function resolveInitialBreakPolicy(companyId: string | undefined, requestedMode?: unknown, requestedPolicyId?: unknown) {
+  if (!companyId) return null;
+  const mode = typeof requestedMode === "string" ? requestedMode : "";
+  if (mode === "legacy") return { mode: "legacy" as const, policy: null };
+  if (mode === "specific") {
+    const policy = await prisma.breakPolicy.findFirst({
+      where: { id: String(requestedPolicyId || ""), companyId, isActive: true },
+    });
+    if (!policy) throw new Error("Active break policy not found");
+    return { mode: "specific" as const, policy };
+  }
+
+  const policy = await prisma.breakPolicy.findFirst({
+    where: { companyId, isDefault: true, isActive: true },
+  });
+  if (mode === "company" && !policy) throw new Error("Active default break policy not found");
+  return policy ? { mode: "company" as const, policy } : null;
+}
+
+async function saveInitialBreakPolicyAssignment(params: {
+  userId: string;
+  companyId: string;
+  selection: Awaited<ReturnType<typeof resolveInitialBreakPolicy>>;
+  defaultBreakMinutes?: unknown;
+  updatedById?: string;
+}) {
+  if (!params.selection) return;
+  const effectiveFrom = toEffectiveDate();
+  const snapshot = params.selection.mode === "legacy"
+    ? buildLegacySnapshot(params.defaultBreakMinutes, effectiveFrom)
+    : buildPolicySnapshot(params.selection.policy!, params.selection.mode, effectiveFrom);
+  await prisma.userBreakPolicyAssignment.upsert({
+    where: { userId_companyId: { userId: params.userId, companyId: params.companyId } },
+    create: {
+      userId: params.userId,
+      companyId: params.companyId,
+      policyId: params.selection.policy?.id || null,
+      mode: params.selection.mode,
+      history: [snapshot] as any,
+      updatedById: params.updatedById,
+    },
+    update: {
+      policyId: params.selection.policy?.id || null,
+      mode: params.selection.mode,
+      history: [snapshot] as any,
+      updatedById: params.updatedById,
+    },
+  });
+}
 
 export class UserController {
   constructor() {
@@ -99,6 +150,11 @@ export class UserController {
         return res.status(400).json({ error: validationError });
       }
 
+      const initialBreakPolicy = await resolveInitialBreakPolicy(
+        data.company_id,
+        (data as any).breakPolicyMode,
+        (data as any).breakPolicyId
+      );
 
       const officeRecord = await prisma.office.findUnique({
         where: { id: data.office_id },
@@ -158,6 +214,14 @@ export class UserController {
           data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
         });
 
+        await saveInitialBreakPolicyAssignment({
+          userId: userExists.id,
+          companyId: company_id,
+          selection: initialBreakPolicy,
+          defaultBreakMinutes: userExists.defaultBreakMinutes,
+          updatedById: (req as any).userId,
+        });
+
         if (isOwnerOffice) {
           await prisma.user.update({
             where: { id: userExists.id },
@@ -203,7 +267,7 @@ export class UserController {
           }
         }
 
-        return res.status(201).json({ message: "User created successfully" });
+        return res.status(201).json({ message: "User created successfully", userId: userExists.id });
       }
 
       let pass: string;
@@ -273,6 +337,14 @@ export class UserController {
         });
       }
 
+      await saveInitialBreakPolicyAssignment({
+        userId: user.id,
+        companyId: data.company_id,
+        selection: initialBreakPolicy,
+        defaultBreakMinutes: (data as any).defaultBreakMinutes,
+        updatedById: (req as any).userId,
+      });
+
       const company = await prisma.company.findUnique({
         where: { id: data.company_id },
         select: { avatar: true }
@@ -297,7 +369,7 @@ export class UserController {
         deleteFile(`./public/tmp/user/${req.file.filename}`);
       }
 
-      return res.status(201).json({ message: "User created successfully" });
+      return res.status(201).json({ message: "User created successfully", userId: user.id });
     } catch (error: any) {
       console.error(`[create] Error:`, error);
       return res.status(500).json({ error: error.message || "Internal error" });
@@ -1081,6 +1153,16 @@ export class UserController {
           defaultBreakMinutes: true,
           manualBreakEnabled: true,
           paidShortGapEnabled: true,
+          breakPolicyAssignments: {
+            where: company_id ? { companyId: company_id } : undefined,
+            take: 1,
+            select: {
+              mode: true,
+              policyId: true,
+              history: true,
+              policy: { select: { id: true, name: true, isActive: true, isDefault: true } },
+            },
+          },
           projectVisibilityMode: true,
           invoiceEditAll: true,
           projectEditAll: true,

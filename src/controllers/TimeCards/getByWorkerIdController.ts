@@ -232,6 +232,7 @@ export class getByWorkerIdController {
                     office: true,
                     isOverTime: true,
                     defaultBreakMinutes: true,
+                    breakPolicyAssignments: { select: { companyId: true, history: true } },
                     manualBreakEnabled: true,
                     paidShortGapEnabled: true,
                     dailyRate: true
@@ -301,6 +302,7 @@ export class getByWorkerIdController {
                             hourly_price: true,
                             isOverTime: true,
                             defaultBreakMinutes: true,
+                            breakPolicyAssignments: { select: { companyId: true, history: true } },
                             manualBreakEnabled: true,
                             paidShortGapEnabled: true,
                             dailyRate: true

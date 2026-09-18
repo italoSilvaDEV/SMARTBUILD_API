@@ -1,6 +1,6 @@
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "./calculaHoraExtra";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "./paidShortGaps";
-import { getAutomaticBreakMinutes } from "./attendanceBreaks";
+import { getEffectiveAutomaticBreakMinutes } from "./attendanceBreaks";
 
 export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attendances: any[] }>) {
   let totalPrice = 0;
@@ -38,7 +38,12 @@ export function calculateWeeklyOvertime(weeklyAttendances: Map<string, { attenda
           attendance.check_out_time.toISOString(),
           attendance.workStartTime,
           attendance.workEndTime,
-          getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes)
+          getEffectiveAutomaticBreakMinutes(
+            attendance.user,
+            grossWorkedMinutes,
+            attendance.date || attendance.check_in_time,
+            attendance.company_id || attendance.companyId
+          )
         );
         dailyHours =
           convertHHMMToDecimal(hours.normais) +
@@ -88,13 +93,18 @@ export type AttendanceForOvertime = {
   user_id: string;
   check_in_time: Date;
   check_out_time: Date | null;
+  date?: Date;
+  company_id?: string | null;
+  companyId?: string | null;
   workStartTime: string | null;
   workEndTime: string | null;
   isOvertime: boolean | null;
   user: {
     hourly_price?: number | null;
     defaultBreakMinutes?: number | null;
+    manualBreakEnabled?: boolean | null;
     paidShortGapEnabled?: boolean | null;
+    breakPolicyAssignments?: Array<{ companyId: string; history: unknown }>;
   };
 };
 
@@ -150,7 +160,12 @@ export function calculateWeeklyOvertimePerAttendance(
           attendance.check_out_time.toISOString(),
           attendance.workStartTime,
           attendance.workEndTime,
-          getAutomaticBreakMinutes(attendance.user?.defaultBreakMinutes, grossWorkedMinutes)
+          getEffectiveAutomaticBreakMinutes(
+            attendance.user,
+            grossWorkedMinutes,
+            attendance.date || attendance.check_in_time,
+            attendance.company_id || attendance.companyId
+          )
         );
         dailyHours =
           convertHHMMToDecimal(hours.normais) +

@@ -1,4 +1,5 @@
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "./calculaHoraExtra";
+import { getBreakPolicySnapshotForDate } from "./breakPolicies";
 
 const SHORT_BREAK_MINUTES = 15;
 const PAID_SHORT_BREAKS_PER_DAY = 2;
@@ -15,6 +16,38 @@ export function getAutomaticBreakMinutes(
     Math.max(0, Number(configuredBreakMinutes) || 0),
     normalizedGrossMinutes
   );
+}
+
+export function getEffectiveAutomaticBreakMinutes(
+  user: any,
+  grossWorkedMinutes: number,
+  attendanceDate?: Date | string | null,
+  companyId?: string | null
+) {
+  const normalizedGrossMinutes = Math.max(0, Math.round(grossWorkedMinutes));
+  if (user?.manualBreakEnabled) {
+    return getAutomaticBreakMinutes(user?.defaultBreakMinutes, normalizedGrossMinutes);
+  }
+  const parsedDate = attendanceDate ? new Date(attendanceDate) : new Date();
+  const effectiveDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+  const assignments = Array.isArray(user?.breakPolicyAssignments) ? user.breakPolicyAssignments : [];
+  const assignment = companyId
+    ? assignments.find((item: any) => item?.companyId === companyId)
+    : assignments.length === 1 ? assignments[0] : null;
+  const snapshot = getBreakPolicySnapshotForDate(assignment?.history, effectiveDate);
+
+  if (!snapshot) {
+    return getAutomaticBreakMinutes(user?.defaultBreakMinutes, normalizedGrossMinutes);
+  }
+
+  if (!snapshot.weekdays.includes(effectiveDate.getUTCDay())) return 0;
+
+  const deductedMinutes = snapshot.rules.reduce((total, rule) => {
+    if (normalizedGrossMinutes < rule.afterMinutes) return total;
+    return total + Math.max(0, rule.deductMinutes);
+  }, 0);
+
+  return Math.min(deductedMinutes, normalizedGrossMinutes);
 }
 
 function getAttendanceIdentity(attendance: any) {
@@ -95,16 +128,23 @@ function buildAutomaticBreakMap(attendances: any[]) {
       const grossWorkedMinutes = Math.round(getGrossWorkedHours(attendance) * 60);
       return (
         !attendance?.user?.manualBreakEnabled &&
-        grossWorkedMinutes >= MIN_AUTOMATIC_BREAK_WORKED_MINUTES
+        getEffectiveAutomaticBreakMinutes(
+          attendance?.user,
+          grossWorkedMinutes,
+          attendance?.date || attendance?.check_in_time,
+          attendance?.company_id || attendance?.companyId
+        ) > 0
       );
     });
 
     if (!breakTarget) return;
 
     const grossWorkedMinutes = Math.round(getGrossWorkedHours(breakTarget) * 60);
-    const breakMinutesApplied = getAutomaticBreakMinutes(
-      breakTarget?.user?.defaultBreakMinutes,
-      grossWorkedMinutes
+    const breakMinutesApplied = getEffectiveAutomaticBreakMinutes(
+      breakTarget?.user,
+      grossWorkedMinutes,
+      breakTarget?.date || breakTarget?.check_in_time,
+      breakTarget?.company_id || breakTarget?.companyId
     );
 
     breakByAttendance.set(getAttendanceIdentity(breakTarget), breakMinutesApplied);
