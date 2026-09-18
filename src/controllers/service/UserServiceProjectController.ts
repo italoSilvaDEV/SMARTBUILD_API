@@ -686,17 +686,21 @@ export class UserServiceProjectController {
                   }
                 }
               },
-              {
-                serviceProject: {
-                  some: {
-                    name: {
-                      contains: searchTerm
-                    }
-                  }
-                }
-              },
-              ...(Number.isFinite(numericSearch)
-                ? [{ contract_number: numericSearch }]
+              ...(paginationRequested
+                ? [
+                    {
+                      serviceProject: {
+                        some: {
+                          name: {
+                            contains: searchTerm
+                          }
+                        }
+                      }
+                    },
+                    ...(Number.isFinite(numericSearch)
+                      ? [{ contract_number: numericSearch }]
+                      : [])
+                  ]
                 : [])
             ]
           })
