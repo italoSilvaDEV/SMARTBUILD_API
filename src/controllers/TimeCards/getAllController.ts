@@ -313,6 +313,7 @@ export class getAllController {
                                                     hourly_price: true,
                                                     avatar: true,
                                                     defaultBreakMinutes: true,
+                                                    breakPolicyAssignments: { select: { companyId: true, history: true } },
                                                     manualBreakEnabled: true,
                                                     paidShortGapEnabled: true,
                                                     dailyRate: true
@@ -389,6 +390,7 @@ export class getAllController {
                             isOverTime: true,
                             avatar: true,
                             defaultBreakMinutes: true,
+                            breakPolicyAssignments: { select: { companyId: true, history: true } },
                             manualBreakEnabled: true,
                             paidShortGapEnabled: true,
                             dailyRate: true
@@ -436,6 +438,7 @@ export class getAllController {
                             hourly_price: true,
                             isOverTime: true,
                             defaultBreakMinutes: true,
+                            breakPolicyAssignments: { select: { companyId: true, history: true } },
                             manualBreakEnabled: true,
                             paidShortGapEnabled: true,
                             dailyRate: true

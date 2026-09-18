@@ -5,7 +5,7 @@ import { DateTime } from "luxon";
 import { prisma } from "../../utils/prisma";
 import { TimeService } from "../../services/TimeService";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
-import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
+import { getEffectiveAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 import { PLANNING_SYSTEM_PROMPT, SYNTHESIS_PROMPT, SYSTEM_PROMPT } from "./prompts";
 import {
   ACTIVE_PROJECT_STATUSES,
@@ -2016,6 +2016,8 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
+                        manualBreakEnabled: true,
                       },
                     },
                   },
@@ -2235,6 +2237,8 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
+                        manualBreakEnabled: true,
                       },
                     },
                   },
@@ -2343,6 +2347,8 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
+                        manualBreakEnabled: true,
                       },
                     },
                   },
@@ -2435,6 +2441,8 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
+                        manualBreakEnabled: true,
                       },
                     },
                   },
@@ -2519,6 +2527,8 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
+                        manualBreakEnabled: true,
                       },
                     },
                   },
@@ -4242,7 +4252,12 @@ export class AIAssistantController {
       new Date(attendance.check_out_time).toISOString(),
       attendance.workStartTime,
       attendance.workEndTime,
-      getAutomaticBreakMinutes(attendance.user?.defaultBreakMinutes, grossWorkedMinutes)
+      getEffectiveAutomaticBreakMinutes(
+        attendance.user,
+        grossWorkedMinutes,
+        attendance.date || attendance.check_in_time,
+        attendance.company_id
+      )
     );
 
     const regularHours = convertHHMMToDecimal(hours.normais);
@@ -4538,6 +4553,7 @@ export class AIAssistantController {
             hourly_price: true,
             isOverTime: true,
             defaultBreakMinutes: true,
+            breakPolicyAssignments: { select: { companyId: true, history: true } },
             manualBreakEnabled: true,
             dailyRate: true,
           },
@@ -4969,6 +4985,7 @@ export class AIAssistantController {
                         name: true,
                         hourly_price: true,
                         defaultBreakMinutes: true,
+                        breakPolicyAssignments: { select: { companyId: true, history: true } },
                         manualBreakEnabled: true,
                       },
                     },

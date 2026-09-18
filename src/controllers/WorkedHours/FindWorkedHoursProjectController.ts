@@ -5,7 +5,7 @@ import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calc
 import { calculateWeeklyOvertimePerAttendance } from "../../utils/calculateWeeklyOvertime";
 import { getWorkedHoursPrice, workedHoursToNumber } from "../../utils/workedHoursCost";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
-import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
+import { getEffectiveAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 
 export class FindWorkedHoursProjectController {
     async handle(request: Request, response: Response) {
@@ -134,6 +134,8 @@ export class FindWorkedHoursProjectController {
                             avatar: true,
                             hourly_price: true,
                             defaultBreakMinutes: true,
+                            breakPolicyAssignments: { select: { companyId: true, history: true } },
+                            manualBreakEnabled: true,
                             paidShortGapEnabled: true
                         }
                     }
@@ -164,7 +166,12 @@ export class FindWorkedHoursProjectController {
                         attendance.check_out_time.toISOString(),
                         attendance.workStartTime,
                         attendance.workEndTime,
-                        getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes),
+                        getEffectiveAutomaticBreakMinutes(
+                            attendance.user,
+                            grossWorkedMinutes,
+                            attendance.date || attendance.check_in_time,
+                            attendance.company_id
+                        ),
                     );
                     hoursWorked =
                         convertHHMMToDecimal(hours.normais) +
@@ -323,6 +330,8 @@ export class FindWorkedHoursProjectController {
                             avatar: true,
                             hourly_price: true,
                             defaultBreakMinutes: true,
+                            breakPolicyAssignments: { select: { companyId: true, history: true } },
+                            manualBreakEnabled: true,
                             paidShortGapEnabled: true
                         }
                     }
