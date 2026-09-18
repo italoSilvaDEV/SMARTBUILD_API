@@ -5,11 +5,13 @@ import { DeleteCompanyMasterController } from "../controllers/company/deleteComp
 import { checkToken } from "../middlewares/checkToken"
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
+import { BreakPolicyController } from "../controllers/company/BreakPolicyController";
 
 const companyRoutes = Router()
 
 const Company = new CompanyController()
 const deleteMasterController = new DeleteCompanyMasterController();
+const breakPolicies = new BreakPolicyController();
 
 const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/company"))
 //criar
@@ -39,6 +41,14 @@ companyRoutes.put(
 companyRoutes.get('/company/:id', checkToken, Company.searchOneCompany);
 companyRoutes.get('/company/:id/accent-color', checkToken, Company.getAccentColor);
 companyRoutes.patch('/company/:id/accent-color', checkToken, Company.updateAccentColor);
+
+companyRoutes.get('/company/:companyId/break-policies', checkToken, breakPolicies.list);
+companyRoutes.post('/company/:companyId/break-policies', checkToken, breakPolicies.create);
+companyRoutes.patch('/company/:companyId/break-policies/assign', checkToken, breakPolicies.assign);
+companyRoutes.get('/company/:companyId/break-policies/audits', checkToken, breakPolicies.audits);
+companyRoutes.patch('/company/:companyId/break-policies/:policyId', checkToken, breakPolicies.update);
+companyRoutes.patch('/company/:companyId/break-policies/:policyId/default', checkToken, breakPolicies.setDefault);
+companyRoutes.patch('/company/:companyId/break-policies/:policyId/active', checkToken, breakPolicies.setActive);
 
 companyRoutes.get('/company-details-contract/:id', checkToken, Company.searchOneCompanyNotes);
 

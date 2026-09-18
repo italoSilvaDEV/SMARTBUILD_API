@@ -163,6 +163,7 @@ async function getTimeCardTotal(companyId: string, period: DashboardPeriod, rang
                     id: true,
                     hourly_price: true,
                     defaultBreakMinutes: true,
+                    breakPolicyAssignments: { select: { companyId: true, history: true } },
                     manualBreakEnabled: true,
                     paidShortGapEnabled: true
                 }
@@ -493,6 +494,7 @@ function findDashboardAttendances(
                     id: true,
                     hourly_price: true,
                     defaultBreakMinutes: true,
+                    breakPolicyAssignments: { select: { companyId: true, history: true } },
                     manualBreakEnabled: true,
                     paidShortGapEnabled: true
                 }

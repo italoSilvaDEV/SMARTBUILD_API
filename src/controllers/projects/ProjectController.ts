@@ -14,7 +14,7 @@ import fs from "fs";
 import { calcularHorasTrabalhadas, convertHHMMToDecimal } from "../../utils/calculaHoraExtra";
 import { calculateWeeklyOvertime } from "../../utils/calculateWeeklyOvertime";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours } from "../../utils/paidShortGaps";
-import { getAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
+import { getEffectiveAutomaticBreakMinutes } from "../../utils/attendanceBreaks";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
 import { userCanViewFinancials } from "../../utils/financialAccess";
@@ -405,6 +405,8 @@ export class ProjectController {
                         select: {
                           hourly_price: true,
                           defaultBreakMinutes: true,
+                          breakPolicyAssignments: { select: { companyId: true, history: true } },
+                          manualBreakEnabled: true,
                           paidShortGapEnabled: true
                         }
                       }
@@ -721,6 +723,8 @@ export class ProjectController {
                         select: {
                           hourly_price: true,
                           defaultBreakMinutes: true,
+                          breakPolicyAssignments: { select: { companyId: true, history: true } },
+                          manualBreakEnabled: true,
                           paidShortGapEnabled: true
                         },
                       }
@@ -2034,6 +2038,8 @@ export class ProjectController {
               avatar: true,
               hourly_price: true,
               defaultBreakMinutes: true,
+              breakPolicyAssignments: { select: { companyId: true, history: true } },
+              manualBreakEnabled: true,
               paidShortGapEnabled: true,
             },
           },
@@ -2069,7 +2075,12 @@ export class ProjectController {
               attendance.check_out_time.toISOString(),
               attendance.workStartTime,
               attendance.workEndTime,
-              getAutomaticBreakMinutes(attendance.user.defaultBreakMinutes, grossWorkedMinutes),
+              getEffectiveAutomaticBreakMinutes(
+                attendance.user,
+                grossWorkedMinutes,
+                attendance.date || attendance.check_in_time,
+                attendance.company_id
+              ),
             );
             regularHours = convertHHMMToDecimal(hours.normais);
             overtimeHours = convertHHMMToDecimal(hours.extras);
