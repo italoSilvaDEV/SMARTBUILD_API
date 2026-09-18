@@ -565,6 +565,18 @@ export class UserServiceProjectController {
   async getProjectsGroupedByAddress(req: Request, res: Response) {
     try {
       const { userId, companyId, search } = req.query;
+      const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined;
+      const requestedPage = Number(req.query.page);
+      const requestedLimit = Number(req.query.limit);
+      const page = Number.isFinite(requestedPage) && requestedPage > 0
+        ? Math.floor(requestedPage)
+        : 1;
+      const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(Math.floor(requestedLimit), 25)
+        : 10;
+      const searchTerm = typeof search === 'string'
+        ? search.trim().toLowerCase()
+        : '';
 
       if (!userId) {
         return res.status(400).json({ error: 'User ID is required.' });
@@ -621,13 +633,22 @@ export class UserServiceProjectController {
         return res.status(200).json({
           projects: [],
           total: 0,
-          totalServices: 0
+          totalServices: 0,
+          ...(paginationRequested
+            ? {
+                pagination: {
+                  page,
+                  limit,
+                  totalPages: 0,
+                  hasNextPage: false
+                }
+              }
+            : {})
         });
       }
 
-      // Busca todos os projetos em andamento (respeitando projectVisibilityMode)
-      const projects = await prisma.project.findMany({
-        where: {
+      const numericSearch = Number(searchTerm);
+      const projectWhere: Prisma.ProjectWhereInput = {
           // Status do projeto: apenas "In Progress" e "Final walkthrough"
           status_project: {
             in: ["In Progress", "Final walkthrough", "Pre-Start"]
@@ -651,23 +672,38 @@ export class UserServiceProjectController {
               }
             : {}),
           // Busca por endereço ou nome do cliente (opcional)
-          ...(search && {
+          ...(searchTerm && {
             OR: [
               {
                 location: {
-                  contains: (search as string).toLowerCase()
+                  contains: searchTerm
                 }
               },
               {
                 client: {
                   name: {
-                    contains: (search as string).toLowerCase()
+                    contains: searchTerm
                   }
                 }
-              }
+              },
+              {
+                serviceProject: {
+                  some: {
+                    name: {
+                      contains: searchTerm
+                    }
+                  }
+                }
+              },
+              ...(Number.isFinite(numericSearch)
+                ? [{ contract_number: numericSearch }]
+                : [])
             ]
           })
-        },
+        };
+
+      const projectsQuery = prisma.project.findMany({
+        where: projectWhere,
         include: {
           client: {
             select: {
@@ -714,8 +750,34 @@ export class UserServiceProjectController {
         },
         orderBy: {
           date_update: 'desc'
-        }
+        },
+        ...(paginationRequested
+          ? {
+              skip: (page - 1) * limit,
+              take: limit
+            }
+          : {})
       });
+
+      // O contrato legado continua fazendo somente o findMany completo.
+      // As contagens adicionais são executadas apenas quando o cliente pede paginação.
+      const [projects, paginatedTotal, paginatedTotalServices] = paginationRequested
+        ? await Promise.all([
+            projectsQuery,
+            prisma.project.count({ where: projectWhere }),
+            prisma.serviceProject.count({
+              where: {
+                Project: {
+                  is: projectWhere
+                },
+                OR: [
+                  { status: { not: "Canceled" } },
+                  { status: null }
+                ]
+              }
+            })
+          ])
+        : [await projectsQuery, 0, 0];
 
       // Processa projetos (1 endereço = 1 projeto normalmente)
       // Se houver múltiplos projetos no mesmo endereço, aparecem múltiplas vezes na lista
@@ -783,8 +845,20 @@ export class UserServiceProjectController {
 
       res.status(200).json({
         projects: projectsWithServices,
-        total: projectsWithServices.length,
-        totalServices: projectsWithServices.reduce((sum, p) => sum + p.servicesCount, 0)
+        total: paginationRequested ? paginatedTotal : projectsWithServices.length,
+        totalServices: paginationRequested
+          ? paginatedTotalServices
+          : projectsWithServices.reduce((sum, p) => sum + p.servicesCount, 0),
+        ...(paginationRequested
+          ? {
+              pagination: {
+                page,
+                limit,
+                totalPages: Math.ceil(paginatedTotal / limit),
+                hasNextPage: page * limit < paginatedTotal
+              }
+            }
+          : {})
       });
     } catch (error) {
       console.error(error);
