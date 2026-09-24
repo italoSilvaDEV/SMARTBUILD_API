@@ -1195,6 +1195,7 @@ function buildClassicEstimateHtml(input: {
           .bold { color: #1f1f1f; font-weight: 700; }
           .estimate-number { color: #B78A4F; font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
           .services-section { padding: 20px 24px 24px; background: #fff; display: block; page-break-inside: auto; overflow: visible; }
+          .services-heading { page-break-inside: avoid; break-inside: avoid; break-inside: avoid-page; }
           .services-separator { padding-bottom: 18px; margin-bottom: 32px; border-bottom: 2px solid #e5e7eb; }
           h2 { color: #1a1a1a; font-size: 18px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 8px; }
           .section-title-line { width: 100%; height: 3px; background: #1a1a1a; margin-bottom: 20px; }
@@ -1220,8 +1221,9 @@ function buildClassicEstimateHtml(input: {
           .summary-row.deposit { color: #0f7a55; border-top: 1px solid #e5e7eb; padding: 8px 16px; }
           .total { padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
           .single-total { margin-top: 30px; }
-          .introduction-page { page-break-before: always; page-break-after: always; break-before: page; break-after: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
-          .introduction-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.7; }
+          .introduction-page { margin: 0; padding: 28px 40px 36px; box-sizing: border-box; page-break-before: auto; page-break-after: auto; break-before: auto; break-after: auto; page-break-inside: auto; break-inside: auto; }
+          .introduction-page .terms-title { margin-bottom: 16px; page-break-after: avoid; break-after: avoid; break-after: avoid-page; }
+          .introduction-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.7; orphans: 3; widows: 3; }
           .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
           .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
@@ -1234,9 +1236,9 @@ function buildClassicEstimateHtml(input: {
           .photo img { width: 100%; height: 180px; object-fit: cover; display: block; }
           .photo div { padding: 9px; }
           .signature-block {
-            margin: 0 48px 24px;
-            padding-top: 130px;
-            min-height: 224px;
+            margin: 0 48px;
+            padding: 130px 0 36px;
+            min-height: 238px;
             box-sizing: border-box;
             page-break-inside: avoid;
             break-inside: avoid;
@@ -1321,9 +1323,11 @@ function buildClassicEstimateHtml(input: {
           </section>
           ${introductionSection}
           <section class="services-section">
-            <div class="services-separator"></div>
-            <h2>Scope of Work</h2>
-            <div class="section-title-line"></div>
+            <div class="services-heading">
+              <div class="services-separator"></div>
+              <h2>Scope of Work</h2>
+              <div class="section-title-line"></div>
+            </div>
             <table>
               <thead>
                 <tr>
