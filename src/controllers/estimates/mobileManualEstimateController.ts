@@ -1220,8 +1220,9 @@ function buildClassicEstimateHtml(input: {
           .summary-row.deposit { color: #0f7a55; border-top: 1px solid #e5e7eb; padding: 8px 16px; }
           .total { padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
           .single-total { margin-top: 30px; }
-          .introduction-page { page-break-before: always; page-break-after: always; break-before: page; break-after: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
-          .introduction-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.7; }
+          .introduction-page { page-break-before: auto; page-break-after: always; break-before: auto; break-after: page; margin: 0; padding: 28px 40px; box-sizing: border-box; page-break-inside: auto; break-inside: auto; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+          .introduction-page .terms-title { margin-bottom: 16px; page-break-after: avoid; break-after: avoid-page; }
+          .introduction-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.7; orphans: 3; widows: 3; }
           .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
           .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
