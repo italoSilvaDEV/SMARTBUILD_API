@@ -1100,7 +1100,16 @@ function buildClassicEstimateHtml(input: {
       `,
     )
     .join("");
-  const introductionText = richTextToPlainText(input.description);
+  const templateVariables = {
+    clientEmail: input.client.email,
+    clientName: input.client.name,
+    projectLocation: input.location.address,
+  };
+  const introductionText = replaceEstimateTemplateVariables(
+    richTextToPlainText(input.description),
+    templateVariables,
+  );
+  const termsText = replaceEstimateTemplateVariables(input.terms, templateVariables);
   const introductionSection = introductionText
     ? `
       <section class="introduction-page">
@@ -1109,11 +1118,11 @@ function buildClassicEstimateHtml(input: {
       </section>
     `
     : "";
-  const termsSection = input.terms?.trim()
+  const termsSection = termsText.trim()
     ? `
       <section class="terms-page">
         <h2 class="terms-title">TERMS & CONDITIONS</h2>
-        <div class="terms-content">${escapeHtml(input.terms || "")}</div>
+        <div class="terms-content">${escapeHtml(termsText)}</div>
         <div class="contact-card">
           <h3>CONTACT INFORMATION</h3>
           <p>${escapeHtml(input.company.name)}</p>
@@ -1452,6 +1461,16 @@ function richTextToPlainText(value: string) {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+function replaceEstimateTemplateVariables(
+  value: string,
+  data: { clientEmail: string; clientName: string; projectLocation: string },
+) {
+  return String(value || "")
+    .replace(/\{\{\s*clientName\s*\}\}/gi, data.clientName || "[Not provided]")
+    .replace(/\{\{\s*clientEmail\s*\}\}/gi, data.clientEmail || "[Not provided]")
+    .replace(/\{\{\s*projectLocation\s*\}\}/gi, data.projectLocation || "[Not provided]");
 }
 
 function decodeHtmlEntities(value: string) {
