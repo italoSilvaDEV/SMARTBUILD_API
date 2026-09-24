@@ -49,6 +49,7 @@ type MobileManualEstimatePayload = {
   };
   projectFlow?: boolean;
   projectId?: string;
+  description?: string;
   terms: string;
   services: Array<{
     catalogServiceId?: string;
@@ -184,6 +185,7 @@ export class MobileManualEstimateController {
           logoUrl: companyLogoUrl,
         },
         dateCreation: payload.dateCreation,
+        description: payload.description || "",
         estimateNumber: verifiedEstimateNumber,
         location: payload.location,
         photos: payload.standalonePhotos || [],
@@ -335,7 +337,7 @@ export class MobileManualEstimateController {
             amountPaid: 0,
             balanceDue: Number(financialFields.balanceDue),
             date_creation: payload.dateCreation ? new Date(payload.dateCreation) : new Date(),
-            description: "",
+            description: payload.description || "",
             discountAmount: financialFields.discountAmount,
             discountType: financialFields.discountType,
             discountValue: financialFields.discountValue,
@@ -606,6 +608,7 @@ export class MobileManualEstimateController {
           logoUrl: companyLogoUrl,
         },
         dateCreation,
+        description: estimate.description || "",
         estimateNumber: estimate.number,
         location: {
           address: estimate.project.location || "",
@@ -1030,6 +1033,7 @@ function buildClassicEstimateHtml(input: {
     webSiteUrl?: string | null;
   };
   dateCreation: string;
+  description: string;
   estimateNumber: string;
   location: MobileManualEstimatePayload["location"];
   photos: NonNullable<MobileManualEstimatePayload["standalonePhotos"]>;
@@ -1096,6 +1100,15 @@ function buildClassicEstimateHtml(input: {
       `,
     )
     .join("");
+  const introductionText = richTextToPlainText(input.description);
+  const introductionSection = introductionText
+    ? `
+      <section class="introduction-page">
+        <h2 class="terms-title">INTRODUCTION</h2>
+        <div class="introduction-content">${escapeHtml(introductionText)}</div>
+      </section>
+    `
+    : "";
   const termsSection = input.terms?.trim()
     ? `
       <section class="terms-page">
@@ -1207,6 +1220,8 @@ function buildClassicEstimateHtml(input: {
           .summary-row.deposit { color: #0f7a55; border-top: 1px solid #e5e7eb; padding: 8px 16px; }
           .total { padding: 12px 16px; border-top: 3px solid #1a1a1a; background: #f8f9fa; display: flex; justify-content: space-between; text-transform: uppercase; font-size: 20px; font-weight: 700; }
           .single-total { margin-top: 30px; }
+          .introduction-page { page-break-before: always; page-break-after: always; break-before: page; break-after: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
+          .introduction-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.7; }
           .terms-page { page-break-before: always; break-before: page; margin-top: 0; padding: 40px; min-height: 297mm; box-sizing: border-box; }
           .terms-title { color: #000; font-size: 18px; font-weight: 600; text-transform: uppercase; margin: 0 0 24px; letter-spacing: 0; }
           .terms-content { white-space: pre-wrap; color: #333; font-size: 12px; line-height: 1.6; }
@@ -1304,6 +1319,7 @@ function buildClassicEstimateHtml(input: {
               </div>
             </div>
           </section>
+          ${introductionSection}
           <section class="services-section">
             <div class="services-separator"></div>
             <h2>Scope of Work</h2>
@@ -1403,6 +1419,71 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function richTextToPlainText(value: string) {
+  let text = String(value || "").trim();
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    const normalized = text
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<!--([\s\S]*?)-->/g, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "- ")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<\/(p|div|section|article|header|footer|h[1-6]|blockquote|tr)>/gi, "\n\n")
+      .replace(/<\/(ul|ol)>/gi, "\n")
+      .replace(/<\/?[a-z][^>]*>/gi, "");
+    const decoded = decodeHtmlEntities(normalized);
+
+    text = decoded;
+    if (decoded === normalized || !/<\/?[a-z][^>]*>|&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(decoded)) {
+      break;
+    }
+  }
+
+  return text
+    .replace(/[\u00a0\u2002\u2003]/g, " ")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function decodeHtmlEntities(value: string) {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    bull: "-",
+    emsp: " ",
+    ensp: " ",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+
+  return value.replace(/&(#\d+|#x[\da-f]+|[a-z]+);/gi, (entity, code: string) => {
+    if (code.startsWith("#")) {
+      const isHex = code[1]?.toLowerCase() === "x";
+      const parsed = Number.parseInt(code.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 0x10ffff) {
+        try {
+          return String.fromCodePoint(parsed);
+        } catch {
+          return entity;
+        }
+      }
+
+      return entity;
+    }
+
+    return namedEntities[code.toLowerCase()] ?? entity;
+  });
 }
 
 function roundMoney(value: number) {
