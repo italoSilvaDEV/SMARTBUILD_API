@@ -8,6 +8,10 @@ import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import {
+  resolveValidEstimateCatalogServiceIds,
+  sanitizeEstimateCatalogServiceId,
+} from "../../utils/estimateCatalogServiceIds";
 import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import {
@@ -376,6 +380,12 @@ export class CreateFullEstimateForProjectController {
       }
 
       const result = await prisma.$transaction(async (tx) => {
+        const validCatalogServiceIds = await resolveValidEstimateCatalogServiceIds(
+          tx,
+          projectCompanyId,
+          payload.services,
+          "estimate.create-full.project"
+        );
         const templateNumberInt = parseInt(String(payload.pdf?.templateNumber || "1"));
 
         const pdfProject = await tx.pdfProject.create({
@@ -446,6 +456,10 @@ export class CreateFullEstimateForProjectController {
           const quantity = Number(service.quantity ?? 1);
           const unitPrice = Number(service.unitPrice ?? service.price ?? 0);
           const lineTotal = Number(service.lineTotal ?? quantity * unitPrice);
+          const catalogServiceId = sanitizeEstimateCatalogServiceId(
+            service.id_service,
+            validCatalogServiceIds
+          );
 
           await tx.estimateServiceProject.create({
             data: {
@@ -458,7 +472,7 @@ export class CreateFullEstimateForProjectController {
               originalUnitPrice: service.originalUnitPrice ?? unitPrice,
               originalLineTotal: service.originalLineTotal ?? lineTotal,
               notes: service.notes || null,
-              id_service: service.id_service || null,
+              id_service: catalogServiceId,
               hours: service.hours ?? quantity,
               price: service.price ?? unitPrice,
               start_date: service.start_date || null,

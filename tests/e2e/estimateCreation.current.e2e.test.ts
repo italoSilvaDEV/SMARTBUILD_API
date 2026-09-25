@@ -110,6 +110,14 @@ const mockPrisma: RecordMap = {
   user: {
     update: jest.fn().mockResolvedValue({}),
   },
+  service: {
+    findMany: jest.fn(async ({ where }: any) => {
+      const validIds = new Set(["catalog-service-1", "global-service-1"]);
+      return (where?.id?.in || [])
+        .filter((id: string) => validIds.has(id))
+        .map((id: string) => ({ id }));
+    }),
+  },
   client: {
     findUnique: jest.fn(async ({ where }: any) => {
       const unique = where?.email_company_id;
@@ -1133,6 +1141,69 @@ describe("current estimate creation user flow (isolated E2E contract)", () => {
         sessionId: "ai-session-1",
         role: "user",
         content: "Create this estimate",
+      }),
+    ]);
+  });
+
+  it("saves SmartBuilder services as custom when their temporary catalog ids do not exist", async () => {
+    const payload = {
+      project: {
+        seller_user_id: "seller-1",
+        price: 300,
+        status_project: "Pending",
+        company_id: "company-1",
+        client: {
+          name: "Client One",
+          email: "client@example.com",
+          phone: "555-0101",
+        },
+        location: "123 Main St",
+        lat: "40.7128",
+        log: "-74.0060",
+        radius: "25",
+      },
+      pdf: {
+        type_pdf: "estimate",
+        templateNumber: 2,
+      },
+      estimate: {
+        preGeneratedNumber: "1001",
+        totalAmount: 300,
+        type_estimate: "estimate",
+      },
+      services: [
+        {
+          name: "AI generated service",
+          quantity: 1,
+          unitPrice: 200,
+          lineTotal: 200,
+          id_service: "draft-service-0",
+        },
+        {
+          name: "Catalog service",
+          quantity: 1,
+          unitPrice: 100,
+          lineTotal: 100,
+          id_service: "catalog-service-1",
+        },
+      ],
+    };
+
+    const response = await request(app)
+      .post("/estimate/create-full")
+      .set(auth)
+      .field("payload", JSON.stringify(payload))
+      .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), "estimate.pdf");
+
+    expect(response.status).toBe(201);
+    expect(mockState.estimateServices).toEqual([
+      expect.objectContaining({
+        name: "AI generated service",
+        id_service: null,
+      }),
+      expect.objectContaining({
+        name: "Catalog service",
+        id_service: "catalog-service-1",
       }),
     ]);
   });
