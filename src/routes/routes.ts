@@ -67,6 +67,7 @@ import { workOrderRoutes } from './workOrderRoutes'
 import { trackingConfigMasterRoutes } from './trackingConfigMasterRoutes'
 import { scheduleNotificationRoutes } from './scheduleNotificationRoutes'
 import { bidRequestRoutes } from './bidRequestRoutes'
+import { accountsPayableRoutes } from './accountsPayableRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 // Nova configuração de upload para imagens genéricas
@@ -117,6 +118,7 @@ router.use(invoiceAutoEmailRoutes);
 router.use("/estimate", estimateRoutes);
 router.use("/work-orders", workOrderRoutes);
 router.use("/bid-requests", bidRequestRoutes);
+router.use("/company/:companyId/accounts-payable", accountsPayableRoutes);
 router.use(fildsPdfProjectRoutes);
 router.use(fileRoutes);
 router.use(pasteRoutes);
