@@ -424,6 +424,24 @@ model Company {
   breakPolicies          BreakPolicy[]
   breakPolicyAudits      BreakPolicyAudit[]
   breakPolicyAssignments UserBreakPolicyAssignment[]
+  accountsPayable        AccountPayable[]
+}
+
+model AccountPayable {
+  id          String    @id @default(uuid()) @map("id")
+  companyId   String    @map("company_id")
+  name        String    @db.VarChar(100) @map("name")
+  description String    @default("") @db.VarChar(500) @map("description")
+  amount      Decimal   @db.Decimal(15, 2) @map("amount")
+  paidAt      DateTime? @map("paid_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt], map: "accounts_payable_company_id_created_at_idx")
+  @@index([companyId, paidAt], map: "accounts_payable_company_id_paid_at_idx")
+  @@map("accounts_payable")
 }
 
 model BreakPolicy {

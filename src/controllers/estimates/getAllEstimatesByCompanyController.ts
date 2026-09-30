@@ -338,7 +338,11 @@ export class GetAllEstimatesByCompanyController {
                             },
                             InvoicePaymentTimeLine: true,
                         },
-                        orderBy: [{ date_creation: "desc" }, { id: "desc" }],
+                        orderBy: [
+                            { number: "desc" },
+                            { date_creation: "desc" },
+                            { id: "desc" },
+                        ],
                         skip,
                         take,
                     }),
