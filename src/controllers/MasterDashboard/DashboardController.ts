@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
+import { isMasterPaidSubscription } from "../../utils/masterPaidSubscription";
 
 export class DashboardController {
     async handle(request: Request, response: Response) {
@@ -62,6 +63,13 @@ export class DashboardController {
                     },
                     select: {
                         companyId: true,
+                        billingProvider: true,
+                        appleBillingStatus: true,
+                        storeEnvironment: true,
+                        autoRenewing: true,
+                        paymentFailed: true,
+                        isActive: true,
+                        endDate: true,
                         plan: {
                             select: {
                                 validityType: true
@@ -234,14 +242,17 @@ export class DashboardController {
                 }
             });
 
-            const subscriptionTypeByCompany = new Map<string, string>();
+            const subscriptionTypeByCompany = new Map<string, "FREE" | "PAID">();
             activeSubscriptions.forEach(subscription => {
                 const type = subscription.plan?.validityType;
                 if (!type) return;
 
+                const category = type === "FREE" ? "FREE" : isMasterPaidSubscription(subscription, now) ? "PAID" : null;
+                if (!category) return;
+
                 const currentType = subscriptionTypeByCompany.get(subscription.companyId);
-                if (!currentType || currentType === 'FREE') {
-                    subscriptionTypeByCompany.set(subscription.companyId, type);
+                if (!currentType || currentType === "FREE") {
+                    subscriptionTypeByCompany.set(subscription.companyId, category);
                 }
             });
 
@@ -261,7 +272,7 @@ export class DashboardController {
             subscriptionTypeByCompany.forEach(type => {
                 if (type === 'FREE') {
                     freeClients += 1;
-                } else {
+                } else if (type === "PAID") {
                     paidClients += 1;
                 }
             });

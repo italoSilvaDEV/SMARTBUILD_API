@@ -4,6 +4,7 @@ import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
 import { StripeSubscriptionItemService } from "../../services/StripeSubscriptionItemService";
 import { grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
+import { sendMetaPurchaseFromCheckout } from "../../services/MetaConversionsService";
 
 const stripe = stripeConfig.getClient();
 
@@ -232,7 +233,7 @@ export class StripeWebHooksController {
             }
 
             /* ---------- CHECKOUT COMPLETED ---------- */
-            else if (event.type === "checkout.session.completed") {
+            else if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
                 console.log("processando pagamento checkout.session.completed");
                 const session = event.data.object as Stripe.Checkout.Session;
 
@@ -260,6 +261,13 @@ export class StripeWebHooksController {
                             ? session.subscription
                             : session.subscription?.id;
                         console.log("Nova assinatura Stripe ID:", stripeSubscriptionId);
+                        if (session.payment_status === "paid") {
+                            try {
+                                await sendMetaPurchaseFromCheckout(session);
+                            } catch {
+                                console.error("Meta purchase event failed for checkout session:", session.id);
+                            }
+                        }
                     }
                 }
             }
