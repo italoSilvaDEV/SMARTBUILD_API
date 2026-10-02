@@ -9,7 +9,6 @@ const maxDeliveryAttempts = 5;
 const retryDelayMs = 5 * 60 * 1000;
 
 export type MetaCheckoutAttribution = {
-    consent: true;
     fbp?: string;
     fbc?: string;
 };
@@ -17,19 +16,17 @@ export type MetaCheckoutAttribution = {
 export function parseMetaCheckoutAttribution(value: unknown): MetaCheckoutAttribution | null {
     if (!value || typeof value !== "object") return null;
     const input = value as Record<string, unknown>;
-    if (input.consent !== true) return null;
-
     const fbp = typeof input.fbp === "string" && input.fbp.length <= 200 && trackingValue.test(input.fbp)
         ? input.fbp : undefined;
     const fbc = typeof input.fbc === "string" && input.fbc.length <= 300 && trackingValue.test(input.fbc)
         ? input.fbc : undefined;
-    return fbp || fbc ? { consent: true, ...(fbp && { fbp }), ...(fbc && { fbc }) } : null;
+    return fbp || fbc ? { ...(fbp && { fbp }), ...(fbc && { fbc }) } : null;
 }
 
 export function buildMetaPurchaseEvent(session: Stripe.Checkout.Session) {
     const metadata = session.metadata || {};
-    if (session.mode !== "subscription" || session.payment_status !== "paid" || !session.amount_total || metadata.metaConsent !== "granted") return null;
-    const attribution = parseMetaCheckoutAttribution({ consent: true, fbp: metadata.metaFbp, fbc: metadata.metaFbc });
+    if (session.mode !== "subscription" || session.payment_status !== "paid" || !session.amount_total) return null;
+    const attribution = parseMetaCheckoutAttribution({ fbp: metadata.metaFbp, fbc: metadata.metaFbc });
     if (!attribution) return null;
 
     return {
