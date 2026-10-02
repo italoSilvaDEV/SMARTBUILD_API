@@ -27,6 +27,12 @@ export class CustomInvoicePaymentController {
           externalInvoiceId: true,
           updatedAt: true,
           totalAmount: true,
+          InvoiceSendHistory: {
+            take: 1,
+            select: {
+              id: true
+            }
+          },
           project: {
             select: {
               id: true,
@@ -181,13 +187,21 @@ export class CustomInvoicePaymentController {
         where: { invoiceId }
       });
 
+      const invoiceWasPreviouslySent = invoice.InvoiceSendHistory.length > 0;
+
+      if (!invoiceWasPreviouslySent) {
+        console.log(`[CustomInvoicePayment] Payment confirmation skipped for unsent invoice ${invoice.id}`);
+      }
+
       try {
         const project = invoice.project || invoice.estimate?.project;
         const client = project?.client;
         const company = project?.company;
         const workContext = project?.workContext;
 
-        const recipientEmail = workContext?.Email || client?.email;
+        const recipientEmail = invoiceWasPreviouslySent
+          ? workContext?.Email || client?.email
+          : undefined;
         const recipientName = workContext?.Name || client?.name || 'Client';
 
         if (recipientEmail) {
@@ -230,7 +244,8 @@ export class CustomInvoicePaymentController {
               recipientEmail: recipientEmail,
               location: workContext?.location || project?.location || "Not specified"
             },
-            attachments: attachments as any
+            attachments: attachments as any,
+            throwOnError: true
           });
 
           await prisma.invoiceEmailLog.create({
@@ -244,6 +259,25 @@ export class CustomInvoicePaymentController {
         }
       } catch (emailError: any) {
         console.error("Error sending payment confirmation email:", emailError);
+
+        const project = invoice.project || invoice.estimate?.project;
+        const recipientEmail = project?.workContext?.Email || project?.client?.email;
+
+        if (recipientEmail) {
+          try {
+            await prisma.invoiceEmailLog.create({
+              data: {
+                invoice: { connect: { id: invoice.id } },
+                recipient: recipientEmail,
+                status: "error",
+                errorMessage: emailError?.message || "Unknown error",
+                sentAt: new Date()
+              }
+            });
+          } catch (logError) {
+            console.error("Error recording payment confirmation email failure:", logError);
+          }
+        }
       }
 
       return res.status(201).json({

@@ -16,7 +16,7 @@ const openai = new OpenAI({
 const AUDIO_CONFIG = {
     MAX_SIZE: 25 * 1024 * 1024,
     VALID_EXTENSIONS: ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'],
-    MODEL: 'whisper-1',
+    MODEL: process.env.OPENAI_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe',
     LANGUAGE: 'pt'
 } as const;
 
@@ -343,7 +343,7 @@ export class OpenAIController {
         try {
             const response = await openai.audio.transcriptions.create({
                 file: fs.createReadStream(file.path),
-                model: "whisper-1",
+                model: AUDIO_CONFIG.MODEL,
                 response_format: "text",
                 prompt: OpenIaPrompt.transcribeAudio()
             })

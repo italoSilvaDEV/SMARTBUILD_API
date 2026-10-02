@@ -4,6 +4,14 @@ import path from "path";
 import OpenAI from "openai";
 import { prisma } from "../../utils/prisma";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
+import {
+  extractTargetPricingInstruction,
+  reconcileServicesToTarget,
+} from "../../utils/smartBuilderPricing";
+import {
+  getExpectedDocumentServiceCount,
+  hasSmartBuilderDocumentImportIntent,
+} from "../../utils/smartBuilderDocumentIntent";
 
 type EstimateAiRole = "user" | "assistant" | "system";
 
@@ -81,7 +89,7 @@ const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
   : null;
 
 const SERVICE_MODEL = process.env.SMARTBUILDER_SERVICE_MODEL || "gpt-5.5";
-const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.5";
+const DOC_MODEL = process.env.SMARTBUILDER_DOC_MODEL || "gpt-5.4-mini";
 const WEB_SEARCH_ENABLED = String(process.env.SMARTBUILDER_WEB_SEARCH_ENABLED || "true").toLowerCase() === "true";
 const WEB_SEARCH_TOOL_TYPE = process.env.SMARTBUILDER_WEB_SEARCH_TOOL_TYPE || "web_search";
 const WEB_SEARCH_TIMEOUT_MS = Number(process.env.SMARTBUILDER_WEB_SEARCH_TIMEOUT_MS || 10_000);
@@ -89,7 +97,7 @@ const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_TIMEOUT
 const OPENAI_RETRY_TIMEOUT_MS = Number(process.env.SMARTBUILDER_OPENAI_RETRY_TIMEOUT_MS || 45_000);
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_MAX_OUTPUT_TOKENS || 4200);
 const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_WEB_RESEARCH_MAX_OUTPUT_TOKENS || 700);
-const OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_DOC_CONTEXT_MAX_OUTPUT_TOKENS || 2500);
+const OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS = Number(process.env.SMARTBUILDER_DOC_CONTEXT_MAX_OUTPUT_TOKENS || 6000);
 const OPENAI_MAX_SERVICE_TOOL_CALLS = Number(process.env.SMARTBUILDER_MAX_SERVICE_TOOL_CALLS || 2);
 const OPENAI_MAX_TRANSIENT_RETRIES = Number(process.env.SMARTBUILDER_OPENAI_MAX_TRANSIENT_RETRIES || 0);
 const OPENAI_TRANSIENT_RETRY_DELAY_MS = Number(process.env.SMARTBUILDER_OPENAI_TRANSIENT_RETRY_DELAY_MS || 1_500);
@@ -208,6 +216,82 @@ const smartBuilderJsonSchema = {
   ],
 };
 
+const smartBuilderFileContextJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    documentHasExplicitPricing: { type: "boolean" },
+    sourceStructure: {
+      type: "string",
+      enum: [
+        "priced_line_item_based",
+        "unit_based",
+        "room_based",
+        "phase_based",
+        "section_based",
+        "allowance_or_alternate_based",
+        "summary_total_only",
+        "mixed",
+        "unknown",
+      ],
+    },
+    pricesFound: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          label: { type: "string" },
+          amount: { type: ["number", "null"] },
+          rawValue: { type: ["string", "null"] },
+        },
+        required: ["label", "amount", "rawValue"],
+      },
+    },
+    missingPrices: { type: "array", items: { type: "string" } },
+    scopeGroups: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          scope: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "scope"],
+      },
+    },
+    lineItems: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          quantity: { type: ["number", "null"] },
+          unit: { type: ["string", "null"] },
+          unitPrice: { type: ["number", "null"] },
+          total: { type: ["number", "null"] },
+          scope: { type: "array", items: { type: "string" } },
+        },
+        required: ["name", "quantity", "unit", "unitPrice", "total", "scope"],
+      },
+    },
+    exclusionsOrAlternates: { type: "array", items: { type: "string" } },
+    importantCopyNotes: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "documentHasExplicitPricing",
+    "sourceStructure",
+    "pricesFound",
+    "missingPrices",
+    "scopeGroups",
+    "lineItems",
+    "exclusionsOrAlternates",
+    "importantCopyNotes",
+  ],
+};
+
 function supportsReasoningControls(model: string) {
   const normalizedModel = String(model || "").toLowerCase();
   return normalizedModel.startsWith("gpt-5") || normalizedModel.startsWith("o");
@@ -282,116 +366,6 @@ function sumServicesTotal(services: SmartBuilderService[]) {
   }, 0));
 }
 
-function parseMoneyAmount(value: string) {
-  const normalized = String(value || "").trim().toLowerCase();
-  const multiplier = /\bk\b/.test(normalized) ? 1_000 : /\b(m|million)\b/.test(normalized) ? 1_000_000 : 1;
-  const cleaned = normalized
-    .replace(/[$,\s]/g, "")
-    .replace(/\b(k|m|million|dollars?|usd)\b/g, "")
-    .replace(/[^\d.]/g, "");
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? roundCurrency(parsed * multiplier) : null;
-}
-
-function extractTargetPricingInstruction(message: string) {
-  const normalized = String(message || "").toLowerCase();
-  const moneyMatches = Array.from(normalized.matchAll(/(?:\$|usd\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:k|m|million|dollars?|usd)?/gi))
-    .map((match) => {
-      const raw = match[0];
-      const index = typeof match.index === "number" ? match.index : 0;
-      const context = normalized.slice(Math.max(0, index - 45), index + raw.length + 45);
-      const hasCurrencySignal = /[$]|\busd\b|\bdollars?\b|\bk\b|\bm\b|\bmillion\b/i.test(raw);
-      const hasTargetContext = /\b(total|budget|amount|target|not exceed|maximum|max|around|about|approximately|roughly|cost|price|valor|or[cç]amento|pre[cç]o)\b/i.test(context);
-      const parsed = parseMoneyAmount(raw);
-
-      if (parsed === null) return null;
-      if (!hasCurrencySignal && !hasTargetContext) return null;
-      if (!hasCurrencySignal && parsed >= 1900 && parsed <= 2099 && /\b(19|20)\d{2}\b/.test(raw)) return null;
-
-      return parsed;
-    })
-    .filter((value): value is number => typeof value === "number" && value > 0);
-  const targetTotal = moneyMatches.length ? moneyMatches[moneyMatches.length - 1] : null;
-
-  if (!targetTotal) {
-    return {
-      pricingIntent: "standard",
-      targetTotal: null,
-      toleranceType: null as "exact" | "approximate" | "not_exceed" | null,
-      toleranceAmount: null as number | null,
-    };
-  }
-
-  const isNotExceed = [
-    "not exceed",
-    "do not exceed",
-    "don't exceed",
-    "no more than",
-    "maximum",
-    "max ",
-    "under ",
-    "below ",
-    "up to",
-    "nao passar",
-    "não passar",
-    "maximo",
-    "máximo",
-  ].some((term) => normalized.includes(term));
-
-  const isApproximate = [
-    "around",
-    "about",
-    "approximately",
-    "approx",
-    "roughly",
-    "near",
-    "close to",
-    "cerca",
-    "aproximadamente",
-    "por volta",
-    "perto de",
-  ].some((term) => normalized.includes(term));
-
-  if (isNotExceed) {
-    return {
-      pricingIntent: "not_exceed",
-      targetTotal,
-      toleranceType: "not_exceed" as const,
-      toleranceAmount: 1,
-    };
-  }
-
-  if (isApproximate) {
-    return {
-      pricingIntent: "approximate_total",
-      targetTotal,
-      toleranceType: "approximate" as const,
-      toleranceAmount: roundCurrency(targetTotal * 0.02),
-    };
-  }
-
-  const mentionsTotalOrBudget = [
-    "total",
-    "budget",
-    "amount",
-    "price",
-    "cost",
-    "estimate",
-    "valor",
-    "orçamento",
-    "orcamento",
-    "preco",
-    "preço",
-  ].some((term) => normalized.includes(term));
-
-  return {
-    pricingIntent: mentionsTotalOrBudget ? "exact_total" : "standard",
-    targetTotal: mentionsTotalOrBudget ? targetTotal : null,
-    toleranceType: mentionsTotalOrBudget ? ("exact" as const) : null,
-    toleranceAmount: mentionsTotalOrBudget ? 1 : null,
-  };
-}
-
 function normalizeServices(services: SmartBuilderService[]) {
   return (Array.isArray(services) ? services : []).map((service) => {
     const quantity = decimalToNumber(service.quantity ?? service.hours, 1) || 1;
@@ -413,6 +387,8 @@ function normalizeServices(services: SmartBuilderService[]) {
 
 function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], message = "") {
   const targetInstruction = extractTargetPricingInstruction(message);
+  const hasExplicitTarget = targetInstruction.targetTotal !== null
+    && targetInstruction.pricingIntent !== "standard";
   const fallbackProposedServices = normalizeServices(fallbackServices);
   const fallbackProposedTotal = sumServicesTotal(fallbackProposedServices);
   const fallback = {
@@ -431,12 +407,16 @@ function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], 
   if (!raw || typeof raw !== "object") return fallback;
   const proposedServices = normalizeServices(Array.isArray(raw.proposedServices) ? raw.proposedServices : fallbackServices);
   const proposedTotal = sumServicesTotal(proposedServices);
-  const targetTotal = typeof raw.targetTotal === "number"
-    ? roundCurrency(raw.targetTotal)
-    : targetInstruction.targetTotal;
-  const pricingIntent = typeof raw.pricingIntent === "string" && raw.pricingIntent
-    ? raw.pricingIntent
-    : targetInstruction.pricingIntent;
+  const targetTotal = hasExplicitTarget
+    ? targetInstruction.targetTotal
+    : typeof raw.targetTotal === "number"
+      ? roundCurrency(raw.targetTotal)
+      : targetInstruction.targetTotal;
+  const pricingIntent = hasExplicitTarget
+    ? targetInstruction.pricingIntent
+    : typeof raw.pricingIntent === "string" && raw.pricingIntent
+      ? raw.pricingIntent
+      : targetInstruction.pricingIntent;
 
   return {
     assistantMessage: typeof raw.assistantMessage === "string" ? raw.assistantMessage : fallback.assistantMessage,
@@ -449,6 +429,41 @@ function normalizeAiResponse(raw: any, fallbackServices: SmartBuilderService[], 
     targetVariance: targetTotal !== null ? roundCurrency(proposedTotal - targetTotal) : null,
     documentPricingDetected: typeof raw.documentPricingDetected === "boolean" ? raw.documentPricingDetected : null,
     instructionComplianceNotes: Array.isArray(raw.instructionComplianceNotes) ? raw.instructionComplianceNotes.map(String) : [],
+  };
+}
+
+function enforceExplicitTargetPricing(
+  parsed: ReturnType<typeof normalizeAiResponse>,
+  message: string
+) {
+  const instruction = extractTargetPricingInstruction(message);
+  const hasExplicitTarget = instruction.targetTotal !== null
+    && instruction.pricingIntent !== "standard";
+
+  if (!hasExplicitTarget) {
+    return { parsed, adjusted: false };
+  }
+
+  const reconciliation = reconcileServicesToTarget(parsed.proposedServices, instruction);
+  const proposedServices = normalizeServices(reconciliation.services);
+  const proposedTotal = sumServicesTotal(proposedServices);
+
+  return {
+    adjusted: reconciliation.adjusted,
+    parsed: {
+      ...parsed,
+      proposedServices,
+      pricingIntent: instruction.pricingIntent,
+      targetTotal: instruction.targetTotal,
+      proposedTotal,
+      targetVariance: roundCurrency(proposedTotal - Number(instruction.targetTotal)),
+      instructionComplianceNotes: reconciliation.adjusted
+        ? [
+          ...parsed.instructionComplianceNotes,
+          "Service prices were reconciled by the backend to match the explicit user target.",
+        ]
+        : parsed.instructionComplianceNotes,
+    },
   };
 }
 
@@ -841,8 +856,10 @@ function buildUserPrompt(params: {
     pricingInstruction: buildPricingInstructionBlock(pricingInstruction),
     currentServices: normalizeServices(params.currentServices),
     editSafety: {
-      currentServicesAreSourceOfTruth: params.currentServices.length > 0,
-      rule: "If currentServices exist, return the full final list and keep unchanged services unless the latest user instruction asks to modify/remove them.",
+      currentServicesAreSourceOfTruth: params.currentServices.length > 0 && !copyImportMode,
+      rule: copyImportMode
+        ? "Document copy/import mode is active. Use every real source line item/group from the document as the final service structure. Do not preserve, consolidate into, or limit the result to the existing service count."
+        : "If currentServices exist, return the full final list and keep unchanged services unless the latest user instruction asks to modify/remove them.",
     },
     estimateContext: params.estimateContext,
     marketResearch: {
@@ -1017,75 +1034,7 @@ function buildWebSearchOptions() {
 }
 
 function hasImportPricingIntent(message: string, attachments: SmartBuilderAttachment[]) {
-  if (!attachments.length) return false;
-
-  const normalizedMessage = message.toLowerCase();
-  return [
-    "copy",
-    "copy this",
-    "copy the",
-    "copy from",
-    "import",
-    "replicate",
-    "recreate",
-    "duplicate",
-    "extract",
-    "transcribe",
-    "convert this pdf",
-    "turn this pdf",
-    "use this pdf",
-    "use the pdf",
-    "use this file",
-    "use the file",
-    "from this pdf",
-    "from the pdf",
-    "based on this pdf",
-    "based on the pdf",
-    "same scope",
-    "same price",
-    "same prices",
-    "use the values",
-    "use these values",
-    "copy this quote",
-    "copy this proposal",
-    "copy this bid",
-    "copy this estimate",
-    "import this quote",
-    "import this proposal",
-    "import this bid",
-    "import this estimate",
-    "use this quote",
-    "use this proposal",
-    "use this bid",
-    "use this estimate",
-    "replicate this quote",
-    "replicate this proposal",
-    "replicate this bid",
-    "replicate this estimate",
-    "orcamento",
-    "orçamento",
-    "proposta",
-    "copie",
-    "copia",
-    "copiar",
-    "importe",
-    "importar",
-    "replicar",
-    "recriar",
-    "extrair",
-    "transcrever",
-    "converter esse pdf",
-    "usar esse pdf",
-    "usar este pdf",
-    "use esse pdf",
-    "use este pdf",
-    "a partir desse pdf",
-    "a partir deste pdf",
-    "igual ao pdf",
-    "mesmo escopo",
-    "mesmos valores",
-    "usar os valores",
-  ].some((term) => normalizedMessage.includes(term));
+  return hasSmartBuilderDocumentImportIntent(message, attachments.length > 0);
 }
 
 function shouldAllowWebSearch(params: {
@@ -1889,6 +1838,24 @@ function buildEstimateGenerationInput(params: {
   ];
 }
 
+function buildFileContextInput(message: string, contentParts: any[]) {
+  return [
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: JSON.stringify({
+            currentUserInstruction: message,
+            rule: "Read the attached document independently. Do not infer its structure from previous services or conversation history.",
+          }),
+        },
+        ...contentParts,
+      ],
+    },
+  ];
+}
+
 async function resolveFunctionToolCalls(response: any, params: {
   model: string;
   input: any[];
@@ -2009,6 +1976,7 @@ function getSmartBuilderErrorResponse(error: any) {
 
 async function createFileContextAgentResponse(params: {
   input: any[];
+  importPricingIntent: boolean;
   companyId?: string | null;
   traceId?: string;
 }) {
@@ -2016,27 +1984,29 @@ async function createFileContextAgentResponse(params: {
     model: DOC_MODEL,
     instructions: [
       "You are fileContextAgent for SmartBuilder estimates.",
-      "Read the attached PDF/image/document inputs and extract only compact, useful estimating context.",
-      "Return a compact structured text report using the exact labels below. Do not return prose before or after the report.",
-      "DOCUMENT_HAS_EXPLICIT_PRICING: true or false.",
-      "SOURCE_STRUCTURE: one of priced_line_item_based, unit_based, room_based, phase_based, section_based, allowance_or_alternate_based, summary_total_only, mixed, unknown.",
-      "PRICES_FOUND: list exact prices/totals found with their source labels, or none.",
-      "MISSING_PRICES: list source groups/items that have scope but no explicit pricing, or none.",
-      "SCOPE_BY_UNIT_OR_SECTION: preserve the document's own unit/room/phase/section grouping. For each group, include its exact title and concise copied scope bullets.",
-      "LINE_ITEMS: include explicit line items only when the document itself presents separate line items or priced rows. Include name, quantity, unit price, total, and copied scope when present.",
-      "EXCLUSIONS_OR_ALTERNATES: include only exclusions/alternates explicitly stated in the document.",
-      "IMPORTANT_COPY_NOTES: explain which source groups should become services and why. Mention any document-level/common/general groups only if the document presents them as distinct scope, allowance, alternate, or priced line item.",
+      "Read only the current attached PDF/image/document and extract estimating context into the required JSON schema.",
+      "Do not use previous conversation services as the document structure and do not preserve an existing service count.",
+      params.importPricingIntent
+        ? "COPY/IMPORT MODE IS ACTIVE: enumerate every real priced row or distinct source group. Do not consolidate several source rows into broad trade categories."
+        : "The document is supporting context unless the current user instruction requests copying/importing it.",
+      "For lineItems, include every distinct priced row presented by the source. Exclude only subtotal/total summary rows that duplicate the component amounts.",
+      "For scopeGroups, preserve each distinct unit, room, phase, section, allowance, alternate, or other commercial group from the source.",
       "If the file is existing estimate/proposal/bid/quote, preserve original names, values, quantities, totals, section titles, and unit labels exactly in the report.",
-      "If pricing is absent, say DOCUMENT_HAS_EXPLICIT_PRICING: false and do not invent pricing in this file-context report.",
+      "If pricing is absent, set documentHasExplicitPricing to false and do not invent pricing in this file-context report.",
       "If the user's current request asks to copy/import and also adjust totals, wording, services, or values, extract the source facts without deciding the final adjustment.",
       "Do not add assumptions, exclusions, code/licensing language, HVAC, hidden damage, structural scope, or quality standards unless the document explicitly says them.",
-      "Keep output concise and under the configured token budget.",
+      "Keep each scope bullet concise so every source line item fits within the output budget.",
     ].join("\n"),
     input: params.input,
     max_output_tokens: OPENAI_DOC_CONTEXT_MAX_OUTPUT_TOKENS,
     parallel_tool_calls: false,
     ...buildReasoningOptions(DOC_MODEL, DOC_REASONING_EFFORT, true),
-    ...buildTextOptions(DOC_MODEL, { type: "text" }, true),
+    ...buildTextOptions(DOC_MODEL, {
+      type: "json_schema",
+      name: "smartbuilder_file_context",
+      strict: true,
+      schema: smartBuilderFileContextJsonSchema,
+    }, true),
   };
 
   logSmartBuilderTrace(params.traceId, "fileContextAgent.start", {
@@ -2061,6 +2031,7 @@ async function createFileContextAgentResponse(params: {
 async function createStructuredEstimateResponse(params: {
   model: string;
   input: any[];
+  fileContextInput?: any[];
   hasDocumentAttachment: boolean;
   companyId?: string | null;
   allowWebSearch?: boolean;
@@ -2085,14 +2056,29 @@ async function createStructuredEstimateResponse(params: {
   let serviceInput = inputHasNonTextParts(params.input) && !params.hasDocumentAttachment
     ? stripInputToTextOnly(params.input)
     : params.input;
+  let documentContext: any = null;
+  let expectedDocumentServiceCount = 0;
 
   if (params.hasDocumentAttachment) {
     const fileContext = await createFileContextAgentResponse({
-      input: params.input,
+      input: params.fileContextInput?.length ? params.fileContextInput : params.input,
+      importPricingIntent: Boolean(params.importPricingIntent),
       companyId: params.companyId,
       traceId: params.traceId,
     });
-    const fileContextText = getResponseText(fileContext).slice(0, 9000);
+    const fileContextText = getResponseText(fileContext);
+    documentContext = safeParseAiJson(fileContextText);
+    expectedDocumentServiceCount = params.importPricingIntent
+      ? getExpectedDocumentServiceCount(documentContext)
+      : 0;
+    logSmartBuilderTrace(params.traceId, "fileContext.parsed", {
+      importPricingIntent: Boolean(params.importPricingIntent),
+      sourceStructure: documentContext?.sourceStructure || null,
+      documentHasExplicitPricing: documentContext?.documentHasExplicitPricing ?? null,
+      lineItemCount: Array.isArray(documentContext?.lineItems) ? documentContext.lineItems.length : 0,
+      scopeGroupCount: Array.isArray(documentContext?.scopeGroups) ? documentContext.scopeGroups.length : 0,
+      expectedDocumentServiceCount,
+    });
     serviceInput = [
       ...stripInputToTextOnly(params.input),
       {
@@ -2104,10 +2090,13 @@ async function createStructuredEstimateResponse(params: {
               "Document context extracted by fileContextAgent. Use this as attachment context for the final service proposal.",
               "If the user asks to copy/import/replicate/use this document, the document context is the baseline for service structure and scope.",
               "The latest user instruction still has priority. If the user asked to copy/import and also adjust pricing, total, descriptions, or scope, preserve the document baseline while applying those requested changes.",
-              "For copy/import mode, follow SOURCE_STRUCTURE and IMPORTANT_COPY_NOTES. Convert the document's real commercial groups into services: priced rows, units, rooms, phases, sections, allowances, alternates, or distinct general/common groups.",
+              "For copy/import mode, follow sourceStructure, lineItems, scopeGroups, and importantCopyNotes. Convert the document's real commercial groups into services: priced rows, units, rooms, phases, sections, allowances, alternates, or distinct general/common groups.",
               "Only create a separate document-level/general/common service when the document presents it as a distinct scope group, allowance, alternate, or priced line item. Avoid derived summary services that duplicate scope already inside other services.",
-              "If DOCUMENT_HAS_EXPLICIT_PRICING is false, keep the copied service names/descriptions faithful to SCOPE_BY_UNIT_OR_SECTION and estimate only the money fields. Add one warning that pricing was estimated because the document did not include explicit prices.",
-              "If DOCUMENT_HAS_EXPLICIT_PRICING is true, copy quantities, unit prices, and totals exactly from LINE_ITEMS/PRICES_FOUND unless the latest user instruction explicitly asks to change pricing or match a target total.",
+              "If documentHasExplicitPricing is false, keep the copied service names/descriptions faithful to scopeGroups and estimate only the money fields. Add one warning that pricing was estimated because the document did not include explicit pricing.",
+              "If documentHasExplicitPricing is true, copy quantities, unit prices, and totals exactly from lineItems/pricesFound unless the latest user instruction explicitly asks to change pricing or match a target total.",
+              expectedDocumentServiceCount > 0
+                ? `The document extractor identified ${expectedDocumentServiceCount} source service items. Return at least those ${expectedDocumentServiceCount} items; do not consolidate or omit them.`
+                : "Preserve every source item identified in the document context.",
               "Do not add scope that is absent from the document context.",
               fileContextText || "No readable document context was extracted.",
             ].join("\n\n"),
@@ -2145,13 +2134,19 @@ async function createStructuredEstimateResponse(params: {
     params.traceId
   );
 
-  return resolveFunctionToolCalls(response, {
+  const resolvedResponse = await resolveFunctionToolCalls(response, {
     model: SERVICE_MODEL,
     input: serviceInput,
     companyId: params.companyId,
     allowWebSearch: params.allowWebSearch,
     traceId: params.traceId,
   });
+  (resolvedResponse as any).__smartBuilderDocumentContext = {
+    expectedDocumentServiceCount,
+    sourceStructure: documentContext?.sourceStructure || null,
+    documentHasExplicitPricing: documentContext?.documentHasExplicitPricing ?? null,
+  };
+  return resolvedResponse;
 }
 
 function hasRemovalInstruction(message: string) {
@@ -2217,13 +2212,20 @@ function validateSmartBuilderProposal(params: {
   message: string;
   attachments: SmartBuilderAttachment[];
   importPricingIntent: boolean;
+  expectedDocumentServiceCount?: number;
 }) {
   const errors: string[] = [];
   const warnings: string[] = [];
   const proposedServices = params.parsed.proposedServices || [];
   const targetInstruction = extractTargetPricingInstruction(params.message);
-  const targetTotal = params.parsed.targetTotal ?? targetInstruction.targetTotal;
-  const pricingIntent = params.parsed.pricingIntent || targetInstruction.pricingIntent;
+  const hasExplicitTarget = targetInstruction.targetTotal !== null
+    && targetInstruction.pricingIntent !== "standard";
+  const targetTotal = hasExplicitTarget
+    ? targetInstruction.targetTotal
+    : params.parsed.targetTotal;
+  const pricingIntent = hasExplicitTarget
+    ? targetInstruction.pricingIntent
+    : params.parsed.pricingIntent || targetInstruction.pricingIntent;
   const proposedTotal = sumServicesTotal(proposedServices);
 
   if (!proposedServices.length) {
@@ -2248,12 +2250,18 @@ function validateSmartBuilderProposal(params: {
   if (
     params.currentServices.length > 0
     && proposedServices.length < params.currentServices.length
+    && !params.importPricingIntent
     && !hasRemovalInstruction(params.message)
   ) {
     errors.push("The proposal removed existing services even though the user did not ask to remove services.");
   }
 
   if (params.importPricingIntent && params.attachments.length > 0) {
+    const expectedDocumentServiceCount = Number(params.expectedDocumentServiceCount || 0);
+    if (expectedDocumentServiceCount > 0 && proposedServices.length < expectedDocumentServiceCount) {
+      errors.push(`The document contains ${expectedDocumentServiceCount} source service items, but the proposal returned only ${proposedServices.length}. Copy every source item without consolidation.`);
+    }
+
     if (proposedServices.some(looksLikeDerivedCopyImportSummary)) {
       errors.push("The copy/import proposal appears to add a derived all-units/general summary service that may duplicate source-document scope.");
     }
@@ -2299,39 +2307,42 @@ async function repairSmartBuilderProposalIfNeeded(params: {
   message: string;
   attachments: SmartBuilderAttachment[];
   importPricingIntent: boolean;
+  expectedDocumentServiceCount?: number;
   hasDocumentAttachment: boolean;
   companyId?: string | null;
   traceId?: string;
 }) {
+  const guardedProposal = enforceExplicitTargetPricing(params.parsed, params.message);
   const validation = validateSmartBuilderProposal({
-    parsed: params.parsed,
+    parsed: guardedProposal.parsed,
     currentServices: params.currentServices,
     message: params.message,
     attachments: params.attachments,
     importPricingIntent: params.importPricingIntent,
+    expectedDocumentServiceCount: params.expectedDocumentServiceCount,
   });
 
   if (validation.passed) {
     return {
       parsed: {
-        ...params.parsed,
+        ...guardedProposal.parsed,
         proposedTotal: validation.proposedTotal,
-        targetTotal: validation.targetTotal ?? params.parsed.targetTotal,
+        targetTotal: validation.targetTotal ?? guardedProposal.parsed.targetTotal,
         targetVariance: validation.targetTotal !== null && validation.targetTotal !== undefined
           ? roundCurrency(validation.proposedTotal - Number(validation.targetTotal))
-          : params.parsed.targetVariance,
-        warnings: [...params.parsed.warnings, ...validation.warnings],
+          : guardedProposal.parsed.targetVariance,
+        warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
       },
       validation,
-      repaired: false,
+      repaired: guardedProposal.adjusted,
     };
   }
 
   if (!openai) {
     return {
       parsed: {
-        ...params.parsed,
-        warnings: [...params.parsed.warnings, ...validation.warnings],
+        ...guardedProposal.parsed,
+        warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
       },
       validation,
       repaired: false,
@@ -2360,17 +2371,19 @@ async function repairSmartBuilderProposalIfNeeded(params: {
             targetPricingInstruction: extractTargetPricingInstruction(params.message),
             currentServices: normalizeServices(params.currentServices),
             importPricingIntent: params.importPricingIntent,
+            expectedDocumentServiceCount: params.expectedDocumentServiceCount || 0,
             hasDocumentAttachment: params.hasDocumentAttachment,
             repairRules: [
               "Fix every validation error.",
               "Do not remove existing services unless the latest user instruction asks for removal.",
               "Keep all text in professional American English.",
               "If copy/import is active, preserve source structure/scope and explicit prices unless the latest user instruction asks for price changes.",
+              "If expectedDocumentServiceCount is greater than zero, return at least that many distinct source services and do not consolidate source rows.",
               "If a target total exists, adjust service prices proportionally or intelligently so the proposedTotal satisfies the tolerance.",
               "Keep descriptions detailed and safe HTML.",
               "Return the same schema fields, including metadata fields.",
             ],
-            previousProposal: params.parsed,
+            previousProposal: guardedProposal.parsed,
           }),
         },
       ],
@@ -2385,7 +2398,7 @@ async function repairSmartBuilderProposalIfNeeded(params: {
           toolChoice: "none",
           useReasoning: false,
           enableVerbosity: false,
-          maxOutputTokens: Math.min(OPENAI_MAX_OUTPUT_TOKENS, 3600),
+          maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
         }),
       },
       OPENAI_RETRY_TIMEOUT_MS,
@@ -2394,12 +2407,14 @@ async function repairSmartBuilderProposalIfNeeded(params: {
       params.traceId
     );
     const repaired = normalizeAiResponse(safeParseAiJson(getResponseText(repairResponse)), params.currentServices, params.message);
+    const guardedRepair = enforceExplicitTargetPricing(repaired, params.message);
     const repairedValidation = validateSmartBuilderProposal({
-      parsed: repaired,
+      parsed: guardedRepair.parsed,
       currentServices: params.currentServices,
       message: params.message,
       attachments: params.attachments,
       importPricingIntent: params.importPricingIntent,
+      expectedDocumentServiceCount: params.expectedDocumentServiceCount,
     });
 
     logSmartBuilderTrace(params.traceId, "proposal.repair.completed", {
@@ -2411,16 +2426,16 @@ async function repairSmartBuilderProposalIfNeeded(params: {
       targetTotal: repairedValidation.targetTotal,
     });
 
-    if (repairedValidation.passed || repairedValidation.errors.length <= validation.errors.length) {
+    if (repairedValidation.passed) {
       return {
         parsed: {
-          ...repaired,
+          ...guardedRepair.parsed,
           proposedTotal: repairedValidation.proposedTotal,
-          targetTotal: repairedValidation.targetTotal ?? repaired.targetTotal,
+          targetTotal: repairedValidation.targetTotal ?? guardedRepair.parsed.targetTotal,
           targetVariance: repairedValidation.targetTotal !== null && repairedValidation.targetTotal !== undefined
             ? roundCurrency(repairedValidation.proposedTotal - Number(repairedValidation.targetTotal))
-            : repaired.targetVariance,
-          warnings: [...repaired.warnings, ...repairedValidation.warnings],
+            : guardedRepair.parsed.targetVariance,
+          warnings: [...guardedRepair.parsed.warnings, ...repairedValidation.warnings],
         },
         validation: repairedValidation,
         repaired: true,
@@ -2434,8 +2449,8 @@ async function repairSmartBuilderProposalIfNeeded(params: {
 
   return {
     parsed: {
-      ...params.parsed,
-      warnings: [...params.parsed.warnings, ...validation.warnings],
+      ...guardedProposal.parsed,
+      warnings: [...guardedProposal.parsed.warnings, ...validation.warnings],
     },
     validation,
     repaired: false,
@@ -2591,7 +2606,7 @@ export class SmartBuilderEstimateController {
         : [];
 
       const input = buildEstimateGenerationInput({
-        priorMessages: (session.messages || []) as any,
+        priorMessages: grounding.importPricingIntent ? [] : (session.messages || []) as any,
         userPrompt,
         contentParts: prepared.contentParts,
       });
@@ -2626,6 +2641,7 @@ export class SmartBuilderEstimateController {
       const response = await createStructuredEstimateResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
+        fileContextInput: buildFileContextInput(message, prepared.contentParts),
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId: estimate.project.company_id,
         allowWebSearch: grounding.allowWebSearch,
@@ -2633,6 +2649,7 @@ export class SmartBuilderEstimateController {
         traceId,
       });
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
+      const documentContext = (response as any).__smartBuilderDocumentContext || {};
 
       const rawText = getResponseText(response);
       const initialParsed = normalizeAiResponse(safeParseAiJson(rawText), currentServices, message);
@@ -2642,10 +2659,22 @@ export class SmartBuilderEstimateController {
         message,
         attachments: prepared.attachments,
         importPricingIntent: grounding.importPricingIntent,
+        expectedDocumentServiceCount: documentContext.expectedDocumentServiceCount || 0,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId: estimate.project.company_id,
         traceId,
       });
+      if (!proposalResult.validation.passed) {
+        logSmartBuilderTrace(traceId, "proposal.rejected", {
+          errors: proposalResult.validation.errors,
+          proposedTotal: proposalResult.validation.proposedTotal,
+          targetTotal: proposalResult.validation.targetTotal,
+        }, "warn");
+        return res.status(422).json({
+          success: false,
+          error: "The generated estimate could not be validated. Please try again with a more specific instruction.",
+        });
+      }
       const parsed = proposalResult.parsed;
 
       const assistantMessage = await prisma.estimateAiMessage.create({
@@ -2762,7 +2791,7 @@ export class SmartBuilderEstimateController {
 
       const priorMessages = Array.isArray(draftSession.messages) ? draftSession.messages : [];
       const input = buildEstimateGenerationInput({
-        priorMessages,
+        priorMessages: grounding.importPricingIntent ? [] : priorMessages,
         userPrompt,
         contentParts: prepared.contentParts,
       });
@@ -2797,6 +2826,7 @@ export class SmartBuilderEstimateController {
       const response = await createStructuredEstimateResponse({
         model: prepared.hasDocumentAttachment ? DOC_MODEL : SERVICE_MODEL,
         input,
+        fileContextInput: buildFileContextInput(message, prepared.contentParts),
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId,
         allowWebSearch: grounding.allowWebSearch,
@@ -2804,6 +2834,7 @@ export class SmartBuilderEstimateController {
         traceId,
       });
       const toolUsage = (response as any).__smartBuilderToolUsage || {};
+      const documentContext = (response as any).__smartBuilderDocumentContext || {};
 
       const initialParsed = normalizeAiResponse(safeParseAiJson(getResponseText(response)), currentServices, message);
       const proposalResult = await repairSmartBuilderProposalIfNeeded({
@@ -2812,10 +2843,22 @@ export class SmartBuilderEstimateController {
         message,
         attachments: prepared.attachments,
         importPricingIntent: grounding.importPricingIntent,
+        expectedDocumentServiceCount: documentContext.expectedDocumentServiceCount || 0,
         hasDocumentAttachment: prepared.hasDocumentAttachment,
         companyId,
         traceId,
       });
+      if (!proposalResult.validation.passed) {
+        logSmartBuilderTrace(traceId, "proposal.rejected", {
+          errors: proposalResult.validation.errors,
+          proposedTotal: proposalResult.validation.proposedTotal,
+          targetTotal: proposalResult.validation.targetTotal,
+        }, "warn");
+        return res.status(422).json({
+          success: false,
+          error: "The generated estimate could not be validated. Please try again with a more specific instruction.",
+        });
+      }
       const parsed = proposalResult.parsed;
       const now = new Date().toISOString();
       const nextSession: DraftSessionPayload = {

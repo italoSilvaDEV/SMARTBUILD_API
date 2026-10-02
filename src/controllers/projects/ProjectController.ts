@@ -1869,6 +1869,14 @@ export class ProjectController {
     }
 
     try {
+      await prisma.workOrder.deleteMany({
+        where: { projectId: id }
+      })
+
+      await prisma.bidRequest.deleteMany({
+        where: { projectId: id }
+      })
+
       await prisma.invoiceCostProject.deleteMany({
         where: {
           project_id: id

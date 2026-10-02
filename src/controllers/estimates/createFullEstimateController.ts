@@ -8,6 +8,10 @@ import { deleteFile } from "../../config/file";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
 import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
+import {
+  resolveValidEstimateCatalogServiceIds,
+  sanitizeEstimateCatalogServiceId,
+} from "../../utils/estimateCatalogServiceIds";
 import { addCompanySignatureImageToPdfBuffer, addCompanySignatureToPdfBuffer } from "../../utils/pdfEstimateSignatures";
 import { fireAndForgetUpsertEstimateToQBO } from "../quickbooks/estimate/QuickBooksEstimateOutboundService";
 import {
@@ -511,6 +515,12 @@ export class CreateFullEstimateController {
       }
 
       const result = await prisma.$transaction(async (tx) => {
+        const validCatalogServiceIds = await resolveValidEstimateCatalogServiceIds(
+          tx,
+          payload.project.company_id,
+          payload.services,
+          "estimate.create-full"
+        );
         const project = await createProject(tx, payload.project);
         const templateNumberInt = parseInt(String(payload.pdf?.templateNumber || "1"));
 
@@ -576,6 +586,10 @@ export class CreateFullEstimateController {
           const quantity = Number(service.quantity ?? 1);
           const unitPrice = Number(service.unitPrice ?? service.price ?? 0);
           const lineTotal = Number(service.lineTotal ?? quantity * unitPrice);
+          const catalogServiceId = sanitizeEstimateCatalogServiceId(
+            service.id_service,
+            validCatalogServiceIds
+          );
 
           const estimateService = await tx.estimateServiceProject.create({
             data: {
@@ -588,7 +602,7 @@ export class CreateFullEstimateController {
               originalUnitPrice: service.originalUnitPrice ?? unitPrice,
               originalLineTotal: service.originalLineTotal ?? lineTotal,
               notes: service.notes || null,
-              id_service: service.id_service || null,
+              id_service: catalogServiceId,
               hours: service.hours ?? quantity,
               price: service.price ?? unitPrice,
               start_date: service.start_date || null,
@@ -605,7 +619,7 @@ export class CreateFullEstimateController {
                 estimateServiceId: estimateService.id,
                 name: service.name,
                 description: service.description || "",
-                id_service: service.id_service || null,
+                id_service: catalogServiceId,
                 hours: service.hours ?? quantity,
                 price: service.price ?? unitPrice,
                 start_date: service.start_date || null,

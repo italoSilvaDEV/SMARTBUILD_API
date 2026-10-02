@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient, UserAttendance, UserServiceProject } from '@prisma/client';
 import { getPresignedUrl } from '../utils/S3/getPresignedUrl';
+import { validateAttendanceTimeRange } from '../utils/attendanceTimeValidation';
 
 const prisma = new PrismaClient();
 
@@ -292,13 +293,8 @@ export class AttendanceService {
         const checkInDate = new Date(check_in_time);
         const checkOutDate = new Date(check_out_time);
 
-        if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
-            throw new Error('INVALID_ATTENDANCE_TIME');
-        }
-
-        if (checkOutDate <= checkInDate) {
-            throw new Error('CHECK_OUT_BEFORE_CHECK_IN');
-        }
+        const validationError = validateAttendanceTimeRange(checkInDate, checkOutDate);
+        if (validationError) throw new Error(validationError);
 
         const user = await this.getUserAttendanceConfig(tx, user_id);
 
