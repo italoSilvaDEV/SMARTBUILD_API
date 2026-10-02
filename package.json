@@ -8,6 +8,7 @@
     "dev": "npm-run-all -p dev:api dev:worker",
     "build": "tsc && node scripts/copyPublicAssets.js",
     "plans:sync-mobile-permissions": "node dist/scripts/syncMobilePlanPermissions.js",
+    "apple:reconcile-billing": "node dist/scripts/reconcileAppleBilling.js",
     "tracking:prune": "ts-node src/scripts/pruneWorkerTracking.ts",
     "stripe:webhooks:sync": "ts-node src/scripts/setupStripeWebhooks.ts",
     "start:worker": "node dist/workers/quickbooks/quickbooksWorker.js",

@@ -525,6 +525,17 @@ model Webhooks {
   @@map("webhooks")
 }
 
+model MetaPurchaseDelivery {
+  stripeSessionId String    @id @map("stripe_session_id")
+  status          String    @default("PENDING")
+  claimedAt       DateTime  @default(now()) @map("claimed_at")
+  sentAt          DateTime? @map("sent_at")
+  attemptCount    Int       @default(0) @map("attempt_count")
+  nextRetryAt     DateTime? @map("next_retry_at")
+
+  @@map("meta_purchase_deliveries")
+}
+
 model Office {
   id              String           @id @default(uuid())
   name            String
@@ -2512,6 +2523,8 @@ model Subscription {
   storeEnvironment               StoreEnvironment?
   autoRenewing                   Boolean?
   lastVerifiedAt                 DateTime?
+  appleBillingStatus             String?           @db.VarChar(32)
+  appleLastChargedAt             DateTime?
   fromCampaign                   Boolean           @default(false) // Indica se a assinatura foi criada através de uma campanha
   campaignId                     String? // ID da campanha (opcional)
   campaign                       Campaign?         @relation(fields: [campaignId], references: [id])

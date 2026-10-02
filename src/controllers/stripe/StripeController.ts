@@ -8,6 +8,7 @@ import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInv
 import dotenv from "dotenv";
 import Jwt from "jsonwebtoken";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
+import { parseMetaCheckoutAttribution } from "../../services/MetaConversionsService";
 import {
     buildInvoiceTypeFilter,
     expandInvoiceStatusFilters,
@@ -2411,7 +2412,8 @@ export class StripeController {
                 planId,
                 companyId,
                 referralId, //  Receber o referral ID do front-end
-                returnUrl // URL customizada para success/cancel (ex: master/clients)
+                returnUrl, // URL customizada para success/cancel (ex: master/clients)
+                metaAttribution,
             } = req.body;
 
             if (!planId || !companyId) {
@@ -2483,6 +2485,7 @@ export class StripeController {
             // metadata: Para sistema interno (companyId, planId, etc.)
 
             const clientReferenceId = referralId || null; // Apenas referral ID (ou null)
+            const marketingAttribution = parseMetaCheckoutAttribution(metaAttribution);
 
             if (referralId) {
                 console.log(' [Rewardful] Referral ID enviado para rastreamento:', referralId);
@@ -2525,7 +2528,12 @@ export class StripeController {
                             plan.allowedEmployees.toString() :
                             null,
                     //  Referral ID também no metadata para backup/debugging
-                    ...(referralId && { referralId })
+                    ...(referralId && { referralId }),
+                    ...(marketingAttribution && {
+                        metaConsent: "granted",
+                        ...(marketingAttribution.fbp && { metaFbp: marketingAttribution.fbp }),
+                        ...(marketingAttribution.fbc && { metaFbc: marketingAttribution.fbc }),
+                    })
                 },
                 ...(referralId && referralId.trim() !== '' && { client_reference_id: referralId }), // Incluir client_reference_id 
             };

@@ -8,6 +8,7 @@ import { prisma } from "../../utils/prisma";
 import { OWNER_FULL_ACCESS_DATA, grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { refreshAppleBillingStatus } from "../../services/AppleBillingStatusService";
 
 type MobileProvider = "google" | "apple";
 type StorePlatform = "ios" | "android";
@@ -1070,11 +1071,18 @@ export class MobileAuthController {
       const pending = verifyPendingToken(pendingToken);
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
-      await persistVerifiedStoreSubscription({
+      const subscription = await persistVerifiedStoreSubscription({
         billingProvider: platform === "ios" ? "apple" : "google",
         companyId: pending.companyId,
         purchase,
       });
+      if (platform === "ios") {
+        try {
+          await refreshAppleBillingStatus(subscription.id);
+        } catch (error) {
+          console.error("[MobileAuth.verifyPurchase] Apple billing status will be retried", error);
+        }
+      }
       return res.json(await buildAuthResponse(pending.userId, pending.companyId));
     } catch (error: any) {
       console.error("[MobileAuth.verifyPurchase]", error);
@@ -1100,12 +1108,19 @@ export class MobileAuthController {
 
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
-      await persistVerifiedStoreSubscription({
+      const subscription = await persistVerifiedStoreSubscription({
         billingProvider: platform === "ios" ? "apple" : "google",
         companyId: userCompany.companyId,
         purchase,
         rejectActiveStripe: true,
       });
+      if (platform === "ios") {
+        try {
+          await refreshAppleBillingStatus(subscription.id);
+        } catch (error) {
+          console.error("[MobileAuth.restorePurchase] Apple billing status will be retried", error);
+        }
+      }
 
       return res.json(await buildAuthResponse(userId, userCompany.companyId));
     } catch (error: any) {
@@ -1207,16 +1222,17 @@ export class MobileAuthController {
       const paymentFailed = notificationType === "DID_FAIL_TO_RENEW";
       const inactiveTypes = new Set(["EXPIRED", "REFUND", "REVOKE"]);
 
-      await updateExistingStoreSubscription({
+      const subscription = await updateExistingStoreSubscription({
         billingProvider: "apple",
         purchase: { ...purchase, active: purchase.active && !inactiveTypes.has(notificationType) },
         paymentFailed,
       });
+      if (subscription) await refreshAppleBillingStatus(subscription.id);
 
       return res.status(200).json({ received: true });
     } catch (error: any) {
       console.error("[MobileAuth.appleWebhook]", error);
-      return res.status(200).json({ received: true, error: error.message || "Apple webhook ignored." });
+      return res.status(500).json({ error: "Apple notification could not be processed." });
     }
   }
 

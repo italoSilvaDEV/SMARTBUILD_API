@@ -12,6 +12,8 @@ import { quickbooksWebHooksRoutes } from './routes/quickbooksWebhooksRoutes';
 import { setupInvoiceAutoEmailJob } from './jobs/invoiceAutoEmailJob';
 import { setupTrackingHealthJob } from './jobs/trackingHealthJob';
 import { setupTrackingRetentionJob } from './jobs/trackingRetentionJob';
+import { setupMetaPurchaseRetryJob } from './jobs/metaPurchaseRetryJob';
+import { setupAppleBillingStatusJob } from './jobs/appleBillingStatusJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
 import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
 import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeService';
@@ -74,6 +76,8 @@ app.use(express.static('public'));
   setupInvoiceAutoEmailJob(); // Iniciar job de envio automático de emails
   setupTrackingHealthJob();
   setupTrackingRetentionJob();
+  setupMetaPurchaseRetryJob();
+  setupAppleBillingStatusJob();
 })();
 
 server.listen(4003, () =>

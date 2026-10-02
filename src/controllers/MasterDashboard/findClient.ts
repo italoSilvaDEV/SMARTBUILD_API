@@ -71,6 +71,10 @@ export class FindClientById {
                 include: {
                     plan: true,
                 },
+            }) || await prisma.subscription.findFirst({
+                where: { companyId, billingProvider: "apple" },
+                include: { plan: true },
+                orderBy: { endDate: "desc" },
             });
 
             const ownerUser = company.userCompanies.find(uc =>
@@ -100,6 +104,10 @@ export class FindClientById {
                 type: activeSubscription.plan?.validityType || "Unknown",
                 startDate: activeSubscription.startDate,
                 endDate: activeSubscription.endDate,
+                billingProvider: activeSubscription.billingProvider,
+                appleBillingStatus: activeSubscription.appleBillingStatus,
+                appleLastChargedAt: activeSubscription.appleLastChargedAt,
+                storeEnvironment: activeSubscription.storeEnvironment,
             } : null;
 
             return response.json({

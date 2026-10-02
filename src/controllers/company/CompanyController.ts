@@ -12,6 +12,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { OWNER_FULL_ACCESS_DATA } from "../../utils/ownerFullAccess";
 import { issueRegistrationToken } from "../../utils/publicAccessTokens";
+import { isMasterPaidSubscription } from "../../utils/masterPaidSubscription";
 export class CompanyController {
     constructor() {
         this.create = this.create.bind(this);
@@ -843,7 +844,7 @@ export class CompanyController {
                                 shouldInclude = planType === 'FREE';
                                 break;
                             case 'paid':
-                                shouldInclude = !!planType && planType !== 'FREE';
+                                shouldInclude = company.Subscription?.some(sub => isMasterPaidSubscription(sub)) ?? false;
                                 break;
                             case 'active':
                                 shouldInclude = isActive;
@@ -875,6 +876,11 @@ export class CompanyController {
                             startDate: sub.startDate,
                             endDate: sub.endDate,
                             isActive: sub.isActive,
+                            billingProvider: sub.billingProvider,
+                            appleBillingStatus: sub.appleBillingStatus,
+                            storeEnvironment: sub.storeEnvironment,
+                            autoRenewing: sub.autoRenewing,
+                            paymentFailed: sub.paymentFailed,
                             plan: sub.plan
                         })) || [],
                         extraEmployees: company._count?.userCompanies ?? 0
