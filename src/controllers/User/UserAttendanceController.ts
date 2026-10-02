@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { AttendanceService } from '../../services/AttendanceService';
 import { getPresignedUrl } from '../../utils/S3/getPresignedUrl';
 import { SocketService } from '../../services/SocketService';
+import { validateAttendanceTimeRange } from '../../utils/attendanceTimeValidation';
 
 const prisma = new PrismaClient();
 const attendanceService = new AttendanceService();
@@ -285,11 +286,52 @@ export class UserAttendanceController {
             const { id } = req.params;
             const { check_in_time, check_out_time, note } = req.body;
 
-            const checkInDate = new Date(check_in_time);
-            const checkOutDate = check_out_time ? new Date(check_out_time) : null;
+            const currentAttendance = await prisma.userAttendance.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    user_id: true,
+                    check_in_time: true,
+                    check_out_time: true,
+                },
+            });
 
-            if (checkOutDate && checkInDate > checkOutDate) {
-                res.status(400).json({ error: 'Check-in time cannot be later than check-out time.' });
+            if (!currentAttendance) {
+                res.status(404).json({ error: 'ATTENDANCE_NOT_FOUND' });
+                return;
+            }
+
+            const checkInDate = check_in_time !== undefined
+                ? new Date(check_in_time)
+                : currentAttendance.check_in_time;
+            const checkOutDate = check_out_time !== undefined
+                ? (check_out_time ? new Date(check_out_time) : null)
+                : currentAttendance.check_out_time;
+
+            const validationError = validateAttendanceTimeRange(checkInDate, checkOutDate);
+            if (validationError) {
+                res.status(400).json({ error: validationError });
+                return;
+            }
+
+            const overlappingAttendance = await prisma.userAttendance.findFirst({
+                where: {
+                    id: { not: id },
+                    user_id: currentAttendance.user_id,
+                    ...(checkOutDate ? { check_in_time: { lt: checkOutDate } } : {}),
+                    OR: [
+                        { check_out_time: null },
+                        { check_out_time: { gt: checkInDate } },
+                    ],
+                },
+                select: { id: true },
+            });
+
+            if (overlappingAttendance) {
+                res.status(409).json({
+                    error: 'ATTENDANCE_OVERLAP',
+                    conflictingAttendanceId: overlappingAttendance.id,
+                });
                 return;
             }
 
@@ -311,6 +353,7 @@ export class UserAttendanceController {
 
             res.status(200).json(updated);
         } catch (error) {
+            console.error('[AttendanceController] Error updating attendance times:', error);
             res.status(500).json({ error: 'Error while updating attendance times.' });
         }
     }
@@ -618,7 +661,10 @@ export class UserAttendanceController {
             case 'BREAK_ALREADY_OPEN': return 400;
             case 'BREAK_NOT_OPEN': return 400;
             case 'INVALID_ATTENDANCE_TIME': return 400;
+            case 'CHECK_IN_FUTURE': return 400;
+            case 'CHECK_OUT_FUTURE': return 400;
             case 'CHECK_OUT_BEFORE_CHECK_IN': return 400;
+            case 'ATTENDANCE_DURATION_EXCEEDED': return 400;
             case 'DUPLICATE_ATTENDANCE': return 409;
             case 'ATTENDANCE_OVERLAP': return 409;
             default: return 500;

@@ -10,6 +10,10 @@ import { deleteFileFromS3 } from "../../utils/S3/deleteFileFromS3";
 import { syncEstimateDiscountedServices } from "../../utils/estimateDiscountSync";
 import { buildEstimateFinancialFields } from "../../utils/estimateDiscount";
 import {
+  resolveValidEstimateCatalogServiceIds,
+  sanitizeEstimateCatalogServiceId,
+} from "../../utils/estimateCatalogServiceIds";
+import {
   addClientSignatureImageToPdfBuffer,
   addCompanySignatureImageToPdfBuffer,
   addCompanySignatureToPdfBuffer,
@@ -413,6 +417,12 @@ export class UpdateFullEstimateController {
       }
 
       const result = await prisma.$transaction(async (tx) => {
+        const validCatalogServiceIds = await resolveValidEstimateCatalogServiceIds(
+          tx,
+          estimateCompanyId,
+          [...serviceCreates, ...serviceUpdates],
+          "estimate.update-full"
+        );
         const nextClientId = fields.client?.id || estimate.project?.client_id;
         const nextWorkContextId =
           fields.workContextId !== undefined
@@ -499,13 +509,24 @@ export class UpdateFullEstimateController {
             throw new Error("Service not found");
           }
 
+          const normalizedService = service.id_service === undefined
+            ? service
+            : {
+              ...service,
+              id_service: sanitizeEstimateCatalogServiceId(service.id_service, validCatalogServiceIds),
+            };
+
           await tx.estimateServiceProject.update({
             where: { id: service.id },
-            data: buildServiceData(service, true),
+            data: buildServiceData(normalizedService, true),
           });
         }
 
         for (const service of serviceCreates) {
+          const catalogServiceId = sanitizeEstimateCatalogServiceId(
+            service.id_service,
+            validCatalogServiceIds
+          );
           const nextPosition = service.pos !== undefined && service.pos !== null
             ? Number(service.pos)
             : ((await tx.estimateServiceProject.aggregate({
@@ -524,7 +545,7 @@ export class UpdateFullEstimateController {
               lineTotal: Number(service.lineTotal),
               originalUnitPrice: Number(service.unitPrice),
               originalLineTotal: Number(service.lineTotal),
-              id_service: service.id_service || null,
+              id_service: catalogServiceId,
               pos: Number.isFinite(nextPosition) ? nextPosition : 0,
             },
           });
