@@ -2530,7 +2530,6 @@ export class StripeController {
                     //  Referral ID também no metadata para backup/debugging
                     ...(referralId && { referralId }),
                     ...(marketingAttribution && {
-                        metaConsent: "granted",
                         ...(marketingAttribution.fbp && { metaFbp: marketingAttribution.fbp }),
                         ...(marketingAttribution.fbc && { metaFbc: marketingAttribution.fbc }),
                     })

@@ -21,16 +21,15 @@ const session = (overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Check
     amount_total: 2599,
     currency: "usd",
     created: 1760000000,
-    metadata: { metaConsent: "granted", metaFbp: "fb.1.1760000000.123456789" },
+    metadata: { metaFbp: "fb.1.1760000000.123456789" },
     ...overrides,
 } as Stripe.Checkout.Session);
 
 describe("Meta checkout conversion", () => {
-    it("accepts only consented, valid browser identifiers", () => {
-        expect(parseMetaCheckoutAttribution({ consent: true, fbp: "fb.1.1760000000.123456789" }))
-            .toEqual({ consent: true, fbp: "fb.1.1760000000.123456789" });
-        expect(parseMetaCheckoutAttribution({ consent: false, fbp: "fb.1.1760000000.123456789" })).toBeNull();
-        expect(parseMetaCheckoutAttribution({ consent: true, fbp: "invalid" })).toBeNull();
+    it("accepts only valid browser identifiers", () => {
+        expect(parseMetaCheckoutAttribution({ fbp: "fb.1.1760000000.123456789" }))
+            .toEqual({ fbp: "fb.1.1760000000.123456789" });
+        expect(parseMetaCheckoutAttribution({ fbp: "invalid" })).toBeNull();
     });
 
     it("builds a paid purchase event without personal contact data", () => {
@@ -42,7 +41,7 @@ describe("Meta checkout conversion", () => {
         });
     });
 
-    it("does not report unpaid, trial, or unconsented checkouts as purchases", () => {
+    it("does not report unpaid, trial, or unattributed checkouts as purchases", () => {
         expect(buildMetaPurchaseEvent(session({ payment_status: "unpaid" }))).toBeNull();
         expect(buildMetaPurchaseEvent(session({ amount_total: 0 }))).toBeNull();
         expect(buildMetaPurchaseEvent(session({ metadata: {} }))).toBeNull();
