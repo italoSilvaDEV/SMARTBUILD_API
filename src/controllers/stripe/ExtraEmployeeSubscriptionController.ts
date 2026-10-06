@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { StripeSubscriptionItemService } from "../../services/StripeSubscriptionItemService";
 import { StripeExtraEmployeeService } from "../../services/StripeExtraEmployeeService";
 import { prisma } from "../../utils/prisma";
+import { activeUserFilter } from "../../helpers/employeeLimit";
 
 /**
  * Controller for managing extra employee subscription items
@@ -106,11 +107,13 @@ export class ExtraEmployeeSubscriptionController {
       }
 
       // Count extra paid users
+      // Only active users occupy an extra seat (disabled ones free it)
       const extraPaidUsersCount = await prisma.userCompany.count({
         where: {
           companyId,
           user: {
             isExtraPaidUser: true,
+            ...activeUserFilter,
           },
         },
       });
@@ -138,6 +141,7 @@ export class ExtraEmployeeSubscriptionController {
             userId: { in: userIds },
             user: {
               isExtraPaidUser: true,
+              ...activeUserFilter,
             },
           },
           select: {
@@ -209,13 +213,13 @@ export class ExtraEmployeeSubscriptionController {
 
       // Count total users using UserCompany model (new N:N relationship)
       const totalUsersCount = await prisma.userCompany.count({
-        where: { companyId },
+        where: { companyId, user: { ...activeUserFilter } },
       });
 
       // Count extra paid users using UserCompany model
       // We need to join with User to check isExtraPaidUser
       const extraPaidUsersResult = await prisma.userCompany.findMany({
-        where: { companyId },
+        where: { companyId, user: { ...activeUserFilter } },
         select: {
           user: {
             select: {
@@ -299,6 +303,7 @@ export class ExtraEmployeeSubscriptionController {
           companyId,
           user: {
             isExtraPaidUser: true,
+            ...activeUserFilter,
           },
         },
         select: {
