@@ -13,6 +13,9 @@ export class EmployeeLimitError extends Error {
   }
 }
 
+// Prisma filter for active users (isDisabled is nullable: NULL counts as active)
+export const activeUserFilter = { OR: [{ isDisabled: false }, { isDisabled: null }] };
+
 // Disabled users do not occupy a seat; only active ones (isDisabled = false) count.
 export async function countActiveEmployees(
   companyId: string,
