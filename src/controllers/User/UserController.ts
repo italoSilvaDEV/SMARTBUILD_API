@@ -16,6 +16,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
 import { stripeConfig } from "../../config/stripe";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
+import { assertEmployeeSeatAvailable, countActiveEmployees, EmployeeLimitError } from "../../helpers/employeeLimit";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
 import { buildLegacySnapshot, buildPolicySnapshot, toEffectiveDate } from "../../utils/breakPolicies";
@@ -94,27 +95,11 @@ export class UserController {
     if (company_id) {
       try {
 
-        const company = await prisma.company.findUnique({
-          where: { id: company_id },
-          select: { allowedEmployees: true, extraEmployees: true }
-        });
-        if (company) {
-          const allowedEmployees = company.allowedEmployees || 0;
-          const extraEmployees = company.extraEmployees || 0;
-          const maxEmployees = allowedEmployees + extraEmployees;
-
-          const whereCount = isMultiCompany
-            ? { companies: { some: { companyId: company_id } } }
-            : { company_id };
-
-          const currentEmployeesCount = await prisma.user.count({ where: whereCount });
-          if (currentEmployeesCount >= maxEmployees) {
-            return res.status(400).json({
-              error: `Unable to create new user. Company has reached the maximum number of employees allowed (${maxEmployees}).`
-            });
-          }
-        }
+        await assertEmployeeSeatAvailable(company_id, { isMultiCompany });
       } catch (error) {
+        if (error instanceof EmployeeLimitError) {
+          return res.status(400).json({ error: error.message });
+        }
         console.error(`[create] Error verifying employee limit:`, error);
       }
     }
@@ -290,12 +275,13 @@ export class UserController {
       const allowedEmployees = companyForExtraCheck?.allowedEmployees ?? 0;
       const companyPaidShortGapEnabled = companyForExtraCheck?.paidShortGapEnabled ?? true;
       
-      const whereCountForExtra = isMultiCompany
-        ? { companies: { some: { companyId: company_id } } }
-        : { company_id };
-      const currentEmployeesCountForExtra = await prisma.user.count({ where: whereCountForExtra });
-      
-      // Se currentEmployeesCount >= allowedEmployees, este usuário extra
+      // Só usuários ativos e do plano ocupam as vagas do plano (desativados não contam)
+      const currentEmployeesCountForExtra = await countActiveEmployees(company_id, {
+        isMultiCompany,
+        onlyPlanSeats: true,
+      });
+
+      // Se as vagas do plano já estão ocupadas, este usuário é extra
       const isExtraPaidUser = currentEmployeesCountForExtra >= allowedEmployees;
       
       console.log(`[create] isExtraPaidUser determination: currentCount=${currentEmployeesCountForExtra}, allowed=${allowedEmployees}, isExtra=${isExtraPaidUser}`);
@@ -761,6 +747,30 @@ export class UserController {
         select: { paidShortGapEnabled: true },
       }) : null;
       const effectivePaidShortGapEnabled = companyPolicy?.paidShortGapEnabled ?? user.paidShortGapEnabled ?? true;
+
+      // Reactivating a disabled user takes a seat: block when the company has none free
+      if (user.isDisabled === true && isDisabled === false) {
+        const memberships = await prisma.userCompany.findMany({
+          where: { userId: id },
+          select: { companyId: true },
+        });
+        const seatCompanyIds = new Set<string>(memberships.map((m) => m.companyId));
+        if (user.company_id) seatCompanyIds.add(user.company_id);
+
+        const isMultiCompany = await isMultiCompanyEnabled();
+        for (const seatCompanyId of seatCompanyIds) {
+          try {
+            await assertEmployeeSeatAvailable(seatCompanyId, { excludeUserId: id, isMultiCompany });
+          } catch (error) {
+            if (error instanceof EmployeeLimitError) {
+              return response.status(400).json({
+                error: `Cannot enable user: company has reached the maximum number of active employees allowed (${error.maxEmployees}). Disable another user or purchase more seats.`,
+              });
+            }
+            throw error;
+          }
+        }
+      }
 
       // Validation for enabling extra paid users
       // Only validate if: user is extra paid AND we're trying to enable them (isDisabled = false)
