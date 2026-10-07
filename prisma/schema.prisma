@@ -2232,6 +2232,27 @@ model InvoicePayment {
   invoiceId String  @unique // Cada fatura pode ter apenas um registro de pagamento
 }
 
+model InvoiceDeletionAudit {
+  id              String   @id @default(uuid())
+  invoiceId       String
+  companyId       String
+  projectId       String
+  estimateId      String?
+  deletedById     String
+  deletedAt       DateTime @default(now())
+  invoiceNumber   String?
+  invoiceType     String
+  invoiceStatus   String
+  invoiceAmount   Decimal
+  paymentMethod   String?
+  paymentAmount   Float?
+  paymentPaidAt   DateTime?
+
+  @@index([invoiceId])
+  @@index([companyId, deletedAt])
+  @@map("invoice_deletion_audit")
+}
+
 // ===== PAGAMENTOS PARCIAIS QUICKBOOKS =====
 // PaymentTransaction: Representa um pagamento recebido no QuickBooks
 model PaymentTransaction {
