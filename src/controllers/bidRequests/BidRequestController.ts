@@ -62,15 +62,32 @@ async function finalizeExpired(companyId?: string) {
 }
 
 async function reopenAutoFinalized(filters: { id?: string; companyId?: string } = {}) {
-  await prisma.bidRequest.updateMany({
-    where: {
-      ...(filters.id ? { id: filters.id } : {}),
-      ...(filters.companyId ? { companyId: filters.companyId } : {}),
-      status: "finalized",
-      approvedRecipientId: null,
-      responseDeadline: { gt: new Date() },
-    },
-    data: { status: "pending", finalizedAt: null },
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.bidRequest.updateMany({
+      where: {
+        ...(filters.id ? { id: filters.id } : {}),
+        ...(filters.companyId ? { companyId: filters.companyId } : {}),
+        status: "finalized",
+        approvedRecipientId: null,
+        approvedWorkOrderId: null,
+        responseDeadline: { gt: now },
+      },
+      data: { status: "pending", finalizedAt: null },
+    });
+    await tx.bidRequestRecipient.updateMany({
+      where: {
+        status: "expired",
+        bidRequest: {
+          ...(filters.id ? { id: filters.id } : {}),
+          ...(filters.companyId ? { companyId: filters.companyId } : {}),
+          status: "pending",
+          approvedRecipientId: null,
+          responseDeadline: { gt: now },
+        },
+      },
+      data: { status: "pending" },
+    });
   });
 }
 
@@ -899,6 +916,135 @@ export class BidRequestController {
       console.error("[bidRequest.update]", error);
       return res.status(500).json({ error: "Unable to update bid request" });
     }
+  }
+
+  async changeDeadline(req: Request, res: Response) {
+    const record = await prisma.bidRequest.findUnique({
+      where: { id: req.params.id },
+      include: { recipients: true },
+    });
+    if (!record)
+      return res.status(404).json({ error: "Bid request not found" });
+    if (!(await canAccess(req, record.companyId)))
+      return res.status(403).json({ error: "Access denied" });
+
+    const now = new Date();
+    if (record.status === "pending")
+      return res.status(409).json({ error: "This Bid Request is already open" });
+    if (
+      record.status !== "finalized" ||
+      record.canceledAt ||
+      record.approvedRecipientId ||
+      record.approvedWorkOrderId ||
+      (record.status === "finalized" && record.responseDeadline >= now)
+    )
+      return res.status(409).json({
+        error: "Awarded, canceled, or otherwise finalized bid requests cannot be reopened",
+      });
+
+    const value = req.body?.responseDeadline;
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+      return res.status(400).json({ error: "Choose a valid response deadline" });
+    const deadline = new Date(`${value}T23:59:59.999`);
+    const [year, month, day] = value.split("-").map(Number);
+    if (
+      Number.isNaN(deadline.getTime()) ||
+      deadline.getFullYear() !== year ||
+      deadline.getMonth() + 1 !== month ||
+      deadline.getDate() !== day ||
+      deadline <= now ||
+      deadline.getTime() === record.responseDeadline.getTime()
+    )
+      return res.status(400).json({ error: "Choose a different future deadline" });
+
+    const notifyRecipientIds = req.body?.notifyRecipientIds;
+    if (
+      notifyRecipientIds != null &&
+      (!Array.isArray(notifyRecipientIds) ||
+        notifyRecipientIds.some((id: unknown) => typeof id !== "string"))
+    )
+      return res.status(400).json({ error: "Invalid notification recipients" });
+    const selectedIds = [...new Set<string>(notifyRecipientIds || [])];
+    const eligibleIds = new Set(
+      record.recipients
+        .filter((recipient) => recipient.status === "pending" || recipient.status === "expired")
+        .map((recipient) => recipient.id),
+    );
+    if (selectedIds.some((id) => !eligibleIds.has(id)))
+      return res.status(400).json({ error: "Only unanswered subcontractors can be notified" });
+
+    if (req.body?.reason != null && typeof req.body.reason !== "string")
+      return res.status(400).json({ error: "Invalid reason" });
+    const reason = String(req.body?.reason || "").trim();
+    if (reason.length > 500)
+      return res.status(400).json({ error: "Reason is too long" });
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.bidRequest.updateMany({
+          where: {
+            id: record.id,
+            approvedRecipientId: null,
+            approvedWorkOrderId: null,
+            canceledAt: null,
+            status: record.status,
+            responseDeadline: record.responseDeadline,
+          },
+          data: {
+            responseDeadline: deadline,
+            status: "pending",
+            finalizedAt: null,
+          },
+        });
+        if (updated.count !== 1) throw new Error("BID_REQUEST_STATE_CHANGED");
+        await tx.bidRequestRecipient.updateMany({
+          where: { bidRequestId: record.id, status: "expired" },
+          data: { status: "pending" },
+        });
+        await tx.audit.create({
+          data: {
+            userId: (req as any).userId,
+            action: JSON.stringify({
+              type: "bid_request_deadline_changed",
+              bidRequestId: record.id,
+              companyId: record.companyId,
+              previousDeadline: record.responseDeadline.toISOString(),
+              newDeadline: deadline.toISOString(),
+              reopened: record.status === "finalized",
+              reason,
+            }),
+          },
+        });
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "BID_REQUEST_STATE_CHANGED")
+        return res.status(409).json({ error: "This Bid Request changed. Refresh and try again." });
+      console.error("[bidRequest.changeDeadline]", error);
+      return res.status(500).json({ error: "Unable to change response deadline" });
+    }
+
+    const updated = await prisma.bidRequest.findUnique({
+      where: { id: record.id },
+      include: includeBid,
+    });
+    if (!updated)
+      return res.status(404).json({ error: "Bid request not found" });
+    let delivery = { sent: 0, failed: [] as Array<{ recipient: string; error: string }> };
+    if (selectedIds.length) {
+      const recipients = updated.recipients.filter(
+        (recipient) => selectedIds.includes(recipient.id) && recipient.status === "pending",
+      );
+      try {
+        delivery = await deliverBidRequest(updated, recipients, updated.customMessage || "");
+      } catch (error) {
+        console.error("[bidRequest.changeDeadline.notify]", error);
+        delivery.failed = recipients.map((recipient) => ({
+          recipient: recipient.subcontractorEmail,
+          error: "Unable to send the updated deadline",
+        }));
+      }
+    }
+    return res.json({ data: await serialize(updated), delivery });
   }
 
   async send(req: Request, res: Response) {
