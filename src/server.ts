@@ -1,4 +1,5 @@
 import express from 'express';
+import { setupAppAnalyticsRetentionJob } from './jobs/appAnalyticsRetentionJob';
 import compression from 'compression';
 import { createServer } from 'http';
 import { SocketService } from './services/SocketService';
@@ -62,6 +63,8 @@ app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
 // Compress API payloads without changing their JSON contract. Webhooks stay
 // above this middleware so their raw-body verification path remains untouched.
 app.use(compression({ threshold: 1024 }));
+app.use('/mobile/analytics/events', express.json({ limit: '64kb' }));
+app.use('/mobile/analytics/auth-events', express.json({ limit: '16kb' }));
 app.use(express.json({ limit: '25mb' }));
 app.use(router)
 
@@ -78,6 +81,7 @@ app.use(express.static('public'));
   setupTrackingRetentionJob();
   setupMetaPurchaseRetryJob();
   setupAppleBillingStatusJob();
+  setupAppAnalyticsRetentionJob();
 })();
 
 server.listen(4003, () =>
