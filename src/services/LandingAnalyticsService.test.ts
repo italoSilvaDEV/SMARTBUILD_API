@@ -36,3 +36,15 @@ test('ranks named buttons and averages reading time per session, including older
   expect(result.buttons[0]).toMatchObject({id:'schedule-demo-save-and-send',clicks:3,sessions:2});
   expect(result.buttons[1]).toMatchObject({id:'legacy-interaction',clicks:1});
 });
+test('keeps section drop-off correct across page versions and ranks video controls', () => {
+  const secondSession = 'b0000000-0000-4000-8000-000000000002';
+  const rows = [
+    {...event, action:'section_view', section:'our-world', sectionIndex:6},
+    {...event, action:'video', section:'our-world', sectionIndex:6, target:'our-world-rony-play'},
+    {...event, sessionId:secondSession, action:'section_view', section:'our-world', sectionIndex:5},
+    {...event, sessionId:secondSession, action:'video', section:'our-world', sectionIndex:5, target:'our-world-rony-play'},
+  ].map(parseLandingEvent);
+  const result = summarizeLanding(rows);
+  expect(result.sections[0].stoppedHere).toBe(2);
+  expect(result.buttons[0]).toMatchObject({id:'our-world-rony-play',clicks:2,sessions:2});
+});

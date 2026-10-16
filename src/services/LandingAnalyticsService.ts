@@ -48,7 +48,7 @@ export function summarizeLanding(events: LandingEvent[]) {
       clicks: rows.length, sessions: unique(rows), avgValue: rows.some(e => e.value !== null) ? rows.reduce((s,e) => s + (e.value || 0),0)/rows.length : null }));
   };
   const buttonGroups = new Map<string, LandingEvent[]>();
-  for (const e of events.filter(e => ['cta_click', 'demo', 'faq', 'toggle'].includes(e.action))) {
+  for (const e of events.filter(e => ['cta_click', 'demo', 'faq', 'toggle', 'video'].includes(e.action))) {
     const key = JSON.stringify([normalizedTarget(e), e.section]);
     buttonGroups.set(key, [...(buttonGroups.get(key) || []), e]);
   }
@@ -62,7 +62,9 @@ export function summarizeLanding(events: LandingEvent[]) {
     const index = Math.min(...rows.map(e => e.sectionIndex ?? 100));
     const stoppedHere = [...sessions.values()].filter(es => {
       const seen = es.filter(e => e.action === 'section_view');
-      return seen.some(e => e.section === id) && Math.max(...seen.map(e => e.sectionIndex ?? -1)) === index;
+      const furthest = seen.reduce<LandingEvent | null>((last, event) =>
+        !last || (event.sectionIndex ?? -1) >= (last.sectionIndex ?? -1) ? event : last, null);
+      return furthest?.section === id;
     }).length;
     const exits = rows.filter(e => e.action === 'section_exit');
     const timeBySession = new Map<string, number>();
