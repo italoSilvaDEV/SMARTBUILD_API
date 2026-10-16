@@ -10,6 +10,7 @@ import { sendEmail } from "../../utils/sendEmail";
 import { formatInvoicePaymentDate } from "../../utils/invoicePaymentDate";
 import { getInvoiceWorkSiteAddress } from "../../utils/invoiceWorkSite";
 import { normalizeInvoiceCoefficient } from "../../utils/invoiceCoefficient";
+import { deletePaidOtherInvoice, PaidOtherInvoiceDeletionError } from "../../services/deletePaidOtherInvoice";
 
 const stripe = stripeConfig.getClient();
 
@@ -1931,9 +1932,19 @@ export class CustomInvoiceController {
     }
 
     if (invoice.status === "paid") {
-      return res.status(400).json({
-        error: "Invoice is already paid, cannot be deleted"
-      })
+      const actorId = (req as any).userId as string | undefined;
+      if (!actorId) return res.status(401).json({ error: "Unauthorized" });
+
+      try {
+        await deletePaidOtherInvoice(id, actorId);
+        return res.status(200).json({ message: "Invoice deleted successfully" });
+      } catch (error) {
+        if (error instanceof PaidOtherInvoiceDeletionError) {
+          return res.status(error.status).json({ error: error.message });
+        }
+        console.error("[CustomInvoiceController] Failed to delete paid Other invoice:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+      }
     }
 
     try {

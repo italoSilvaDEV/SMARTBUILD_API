@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { appAnalyticsRoutes } from './appAnalyticsRoutes'
 import { userRoutes } from './userRoutes'
 import { serviceRoutes } from './serviceRoutes'
 import { catalogRoutes } from './catalogRoutes'
@@ -70,6 +71,7 @@ import { bidRequestRoutes } from './bidRequestRoutes'
 import { accountsPayableRoutes } from './accountsPayableRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
+router.use(appAnalyticsRoutes)
 // Nova configuração de upload para imagens genéricas
 const uploadImageGeneric = multer(
   uploadConfig.upload("./public/tmp/image-upload")
