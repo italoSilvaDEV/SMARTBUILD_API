@@ -65,6 +65,7 @@ app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
 app.use(compression({ threshold: 1024 }));
 app.use('/mobile/analytics/events', express.json({ limit: '64kb' }));
 app.use('/mobile/analytics/auth-events', express.json({ limit: '16kb' }));
+app.use('/landing/analytics/events', express.json({ limit: '32kb' }));
 app.use(express.json({ limit: '25mb' }));
 app.use(router)
 
