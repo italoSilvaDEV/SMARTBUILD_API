@@ -3504,3 +3504,24 @@ model TaskNotification {
   @@index([taskId])
   @@map("task_notifications")
 }
+
+model LandingAnalyticsEvent {
+  id String @id @db.VarChar(36)
+  sessionId String @db.VarChar(36)
+  action String @db.VarChar(32)
+  environment String @db.VarChar(16)
+  device String @db.VarChar(12)
+  section String? @db.VarChar(100)
+  sectionIndex Int?
+  target String? @db.VarChar(100)
+  value Int?
+  durationMs Int?
+  newVisitor Boolean @default(false)
+  utmCampaign String? @db.VarChar(100)
+  utmSource String? @db.VarChar(100)
+  occurredAt DateTime @db.DateTime(3)
+  receivedAt DateTime @default(now()) @db.DateTime(3)
+  @@index([environment, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@map("landing_analytics_events")
+}
