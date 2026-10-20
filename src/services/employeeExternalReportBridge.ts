@@ -5,7 +5,7 @@ import { prisma } from '../utils/prisma';
 import { collaboration, collaborationEnabled } from './SubcontractorCollaborationService';
 import { externalServiceError, SubcontractorAccessService } from './SubcontractorAccessService';
 
-export async function withExternalAuthors<T extends { id: string; author: any }>(pending: Promise<T[]>, userId: string | undefined, permittedServiceIds?: ReadonlySet<string>): Promise<(T & { externalLikesCount?: number; externalCommentsCount?: number })[]> {
+export async function withExternalAuthors<T extends { id: string; author: any }>(pending: Promise<T[]>, userId: string | undefined, permittedServiceIds?: ReadonlySet<string>, permittedProjectIds?: ReadonlySet<string>): Promise<(T & { externalLikesCount?: number; externalCommentsCount?: number })[]> {
   const activities = await pending;
   const missing = activities.filter(a => !a.author).map(a => a.id);
   if (!missing.length) return activities;
@@ -21,7 +21,7 @@ export async function withExternalAuthors<T extends { id: string; author: any }>
     try { if (userId) { await collaboration.internalMember(userId, companyId); allowed.add(companyId); } } catch { /* Never expose an external report across companies. */ }
   }
   const byId = new Map(records.map(r => [r.id, r]));
-  return activities.filter(a => !byId.has(a.id) || allowed.has(byId.get(a.id)!.externalAccess!.subcontractor.company_id || '') || permittedServiceIds?.has(byId.get(a.id)!.serviceProjectId || '')).map(a => {
+  return activities.filter(a => !byId.has(a.id) || allowed.has(byId.get(a.id)!.externalAccess!.subcontractor.company_id || '') || permittedServiceIds?.has(byId.get(a.id)!.serviceProjectId || '') || permittedProjectIds?.has(byId.get(a.id)!.externalProjectId || '')).map(a => {
     const record = byId.get(a.id);
     if (!record) return a;
     return { ...a, author: { id: record.externalAuthorId!, name: `${record.externalAuthor!.subcontractorAccount!.name} · ${record.externalAccess!.subcontractor.name}`, avatar: null },

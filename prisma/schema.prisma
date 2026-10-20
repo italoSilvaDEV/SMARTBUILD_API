@@ -749,6 +749,12 @@ model CustomServiceSchedule {
 }
 
 model Activities {
+  externalProjectId String?
+  ReportProject Project? @relation("ExternalProjectReports", fields: [externalProjectId], references: [id], onDelete: Cascade)
+  externalAssignmentId String?
+  externalAssignmentType String? @db.VarChar(16)
+  externalAssignmentTargetId String?
+  @@index([externalProjectId, date_creation])
   externalAuthorId String?
   externalAuthor Participant? @relation(fields: [externalAuthorId], references: [id], onDelete: Restrict)
   externalAccessId String?
@@ -923,6 +929,8 @@ model ImgCatalog {
 }
 
 model Project {
+  externalReports Activities[] @relation("ExternalProjectReports")
+  externalReportPhotos GalleryAfter[] @relation("ExternalProjectPhotos")
   id                 String               @id @default(uuid())
   contract_number    Int?
   price              Decimal
@@ -1176,6 +1184,9 @@ model GalleryBefore {
 }
 
 model GalleryAfter {
+  externalProjectId String?
+  ReportProject Project? @relation("ExternalProjectPhotos", fields: [externalProjectId], references: [id], onDelete: Cascade)
+  @@index([externalProjectId])
   id               String          @id @default(uuid())
   url              String
   title            String?

@@ -54,8 +54,13 @@ subcontractorCollaborationRoutes.use('/subcontractor', (req: ScopedRequest, res,
   window.count++; writeWindows.set(key, window); next();
 });
 for (const action of ['enhance-description', 'transcribe-and-enhance'] as const) subcontractorCollaborationRoutes.post(`/subcontractor/report-ai/${action}`, route(async (req,res) => {
-  if (typeof req.query.serviceProjectId !== 'string') return collaborationFail(400, 'INVALID_SERVICE');
-  await collaboration.assertService(scope(req), req.query.serviceProjectId);
+  if (req.query.projectId !== undefined) {
+    if (req.query.serviceProjectId !== undefined) return collaborationFail(400, 'INVALID_REPORT_TARGET');
+    await collaboration.assertProject(scope(req), req.query.projectId);
+  } else {
+    if (typeof req.query.serviceProjectId !== 'string') return collaborationFail(400, 'INVALID_SERVICE');
+    await collaboration.assertService(scope(req), req.query.serviceProjectId);
+  }
   const { OpenAIController } = await import('../controllers/OpenAI/OpenAIController');
   const controller = new OpenAIController();
   return action === 'enhance-description' ? controller.enhanceDescription(req,res) : controller.transcribeAndEnhance(req,res);
@@ -77,20 +82,27 @@ subcontractorCollaborationRoutes.delete('/subcontractor/chat/:chatId/messages/:m
 for (const archived of [true, false]) subcontractorCollaborationRoutes.patch(`/subcontractor/chat/:chatId/${archived ? 'archive' : 'unarchive'}`, route(async (req,res) => {
   await collaboration.archive(req.params.chatId, scope(req), archived); res.sendStatus(204);
 }));
+subcontractorCollaborationRoutes.get('/subcontractor/report-projects', route(async (req,res) => res.json(await collaboration.projects(scope(req)))));
 subcontractorCollaborationRoutes.get('/subcontractor/report-services', route(async (req,res) => res.json(await collaboration.services(scope(req)))));
 subcontractorCollaborationRoutes.get('/subcontractor/reports', route(async (req,res) => res.json(await collaboration.reports(scope(req), req.query.limit, req.query.offset))));
 subcontractorCollaborationRoutes.post('/subcontractor/reports', upload.array('photos', 50), route(async (req,res) => {
   const photos: { key: string }[] = [];
   try {
-    if (typeof req.body?.serviceProjectId !== 'string') return collaborationFail(400, 'INVALID_SERVICE');
-    await collaboration.assertService(scope(req), req.body.serviceProjectId);
+    const projectTarget = req.body?.projectId !== undefined;
+    if (projectTarget) {
+      if (req.body.serviceProjectId !== undefined) return collaborationFail(400, 'INVALID_REPORT_TARGET');
+      await collaboration.assertProject(scope(req), req.body.projectId);
+    } else {
+      if (typeof req.body?.serviceProjectId !== 'string') return collaborationFail(400, 'INVALID_SERVICE');
+      await collaboration.assertService(scope(req), req.body.serviceProjectId);
+    }
     const files = req.files as Express.Multer.File[] || [];
     if ((!req.body.text || !req.body.text.trim()) && !files.length) return collaborationFail(400, 'INVALID_REPORT');
     for (const file of files) {
       if (!file.mimetype.startsWith('image/')) return collaborationFail(400, 'INVALID_PHOTO');
       photos.push({ key: await uploadFileToS3_2(file, 'feed') });
     }
-    res.status(201).json({ success: true, data: await collaboration.createReport(req.externalSession!, req.body.text, req.body.serviceProjectId, photos) });
+    res.status(201).json({ success: true, data: projectTarget ? await collaboration.createProjectReport(req.externalSession!, req.body.text, req.body.projectId, photos) : await collaboration.createReport(req.externalSession!, req.body.text, req.body.serviceProjectId, photos) });
   } catch(e) { await Promise.all(photos.map(photo => deleteFileFromS3(photo.key).catch(() => {}))); throw e; }
 }));
 subcontractorCollaborationRoutes.put('/subcontractor/reports/:postId', route(async (req,res) => res.json(await collaboration.editReport(scope(req), req.params.postId, req.body?.text))));

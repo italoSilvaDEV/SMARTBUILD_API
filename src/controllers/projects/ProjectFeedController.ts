@@ -1,3 +1,4 @@
+import { collaborationEnabled } from '../../services/SubcontractorCollaborationService';
 import { withExternalAuthors, externalCommentsForEmployee, externalLikesForEmployee } from '../../services/employeeExternalReportBridge';
 import multer from "multer";
 import Jwt from "jsonwebtoken";
@@ -315,7 +316,7 @@ export class ProjectFeedController {
 
             const serviceProjectIds = serviceProjects.map(sp => sp.id);
 
-            if (serviceProjectIds.length === 0) {
+            if (serviceProjectIds.length === 0 && (!collaborationEnabled() || !(await prisma.activities.count({where:{externalProjectId:projectId,externalAuthorId:{not:null}}})))) {
                 return response.status(200).json({
                     success: true,
                     data: {
@@ -326,11 +327,7 @@ export class ProjectFeedController {
             }
 
             // Monta filtros para activities
-            const activityFilters: any = {
-                serviceProjectId: {
-                    in: serviceProjectIds
-                }
-            };
+            const activityFilters: any = { OR: [{serviceProjectId:{in:serviceProjectIds}}, {externalProjectId:projectId,externalAuthorId:{not:null}}] };
 
             // Filtro por serviço específico
             if (serviceProjectId && typeof serviceProjectId === 'string') {
@@ -357,6 +354,7 @@ export class ProjectFeedController {
             const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: activityFilters,
                 include: {
+                    ReportProject: {include:{client:true}},
                     author: {
                         select: {
                             id: true,
@@ -379,9 +377,7 @@ export class ProjectFeedController {
             // Busca fotos marcadas como FEED_POST dos serviços
             const feedPhotos = await prisma.galleryAfter.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    },
+                    OR: [{serviceProjectId:{in:serviceProjectIds}}, {externalProjectId:projectId}],
                     title: 'FEED_POST'
                 },
                 orderBy: {
@@ -452,7 +448,9 @@ export class ProjectFeedController {
                     }))
                 );
 
+                const locationProject = activity.ReportProject || serviceProject?.Project;
                 posts.push({
+                    ...(activity.ReportProject ? {reportScope:'project',project:{id:activity.ReportProject.id,status:activity.ReportProject.status_project,client:activity.ReportProject.client}} : {}),
                     type: 'post',
                     id: activity.id,
                     text: activity.text === '📷' ? null : activity.text, // Retorna null se for só emoji
@@ -469,11 +467,11 @@ export class ProjectFeedController {
                         name: serviceProject.name,
                         projectId: serviceProject.projectId
                     } : null,
-                    location: serviceProject?.Project ? {
-                        address: serviceProject.Project.location,
+                    location: locationProject ? {
+                        address: locationProject.location,
                         coordinates: {
-                            lat: serviceProject.Project.lat ? parseFloat(serviceProject.Project.lat) : null,
-                            lng: serviceProject.Project.log ? parseFloat(serviceProject.Project.log) : null
+                            lat: locationProject.lat ? parseFloat(locationProject.lat) : null,
+                            lng: locationProject.log ? parseFloat(locationProject.log) : null
                         }
                     } : null,
                     photos: photos,
@@ -1058,6 +1056,15 @@ export class ProjectFeedController {
                 ]
             };
 
+            const legacyServiceIds = activityFilters.serviceProjectId;
+            const legacyCompanyFilter = activityFilters.ServiceProject;
+            delete activityFilters.serviceProjectId;
+            delete activityFilters.ServiceProject;
+            activityFilters.OR = [
+                {ServiceProject:legacyCompanyFilter,...(legacyServiceIds?{serviceProjectId:legacyServiceIds}:{})},
+                {externalAuthorId:{not:null},ReportProject:{company_id:{in:companyIds},...(typeof projectId==='string'&&projectId?{id:projectId}:{})}},
+            ];
+
             // Filtro por autor
             if (userId && typeof userId === 'string') {
                 activityFilters.authorId = userId;
@@ -1078,6 +1085,7 @@ export class ProjectFeedController {
             const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: activityFilters,
                 include: {
+                    ReportProject: {include:{client:true}},
                     author: {
                         select: {
                             id: true,
@@ -1121,9 +1129,7 @@ export class ProjectFeedController {
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    },
+                    OR:[{serviceProjectId:{in:serviceProjectIds}},{description:{in:activities.filter(a=>a.externalProjectId).map(a=>a.id)}}],
                     title: 'FEED_POST'
                 },
                 orderBy: {
@@ -1188,7 +1194,9 @@ export class ProjectFeedController {
                     }))
                 );
 
+                const reportProject = activity.ReportProject || activity.ServiceProject?.Project;
                 posts.push({
+                    ...(activity.externalProjectId ? {reportScope:'project'} : {}),
                     type: 'post',
                     id: activity.id,
                     text: activity.text === '📷' ? null : activity.text,
@@ -1205,16 +1213,16 @@ export class ProjectFeedController {
                         name: activity.ServiceProject.name,
                         projectId: activity.ServiceProject.projectId
                     } : null,
-                    project: activity.ServiceProject?.Project ? {
-                        id: activity.ServiceProject.Project.id,
-                        status: activity.ServiceProject.Project.status_project,
-                        client: activity.ServiceProject.Project.client
+                    project: reportProject ? {
+                        id: reportProject.id,
+                        status: reportProject.status_project,
+                        client: reportProject.client
                     } : null,
-                    location: activity.ServiceProject?.Project ? {
-                        address: activity.ServiceProject.Project.location,
+                    location: reportProject ? {
+                        address: reportProject.location,
                         coordinates: {
-                            lat: activity.ServiceProject.Project.lat ? parseFloat(activity.ServiceProject.Project.lat) : null,
-                            lng: activity.ServiceProject.Project.log ? parseFloat(activity.ServiceProject.Project.log) : null
+                            lat: reportProject.lat ? parseFloat(reportProject.lat) : null,
+                            lng: reportProject.log ? parseFloat(reportProject.log) : null
                         }
                     } : null,
                     photos: photos,

@@ -17,6 +17,14 @@ const chatInclude = {
 const page = (limit: unknown = 50, offset: unknown = 0) => ({ take: Math.min(Math.max(Math.floor(Number(limit)) || 50, 1), 100), skip: Math.min(Math.max(Math.floor(Number(offset)) || 0, 0), 10000) });
 export const externalRoom = (scope: Pick<CollaborationScope, 'accountId' | 'accessId' | 'version'>) => `subcontractor:${scope.accountId}:${scope.accessId}:${scope.version}`;
 
+const reportProjectInclude = { include: { client: { select: { id: true, name: true } } } } as const;
+const reportAssignmentInclude = {
+  service_project: { include: { Project: reportProjectInclude } },
+  sub_service_project: { include: { serviceProject: { include: { Project: reportProjectInclude } }, custom_service_schedule: { include: { project: reportProjectInclude } } } },
+  custom_service_schedule: { include: { project: reportProjectInclude } },
+} as const;
+const activeProjectStatuses = ['Pre-Start', 'In Progress', 'Final walkthrough'];
+
 export class SubcontractorCollaborationService {
   async scope(session: ExternalSession, db: any = prisma): Promise<CollaborationScope> {
     if (!collaborationEnabled()) return collaborationFail(503, 'SUBCONTRACTOR_COLLABORATION_DISABLED');
@@ -267,8 +275,68 @@ export class SubcontractorCollaborationService {
     if (!service) return collaborationFail(403, 'SERVICE_ACCESS_DENIED');
     return service;
   }
+  reportAssignmentWhere(scope: CollaborationScope, projectId?: string) {
+    const project = { ...(projectId ? { id: projectId } : {}), company_id: scope.companyId, status_project: { in: activeProjectStatuses } };
+    const service = { Project: project, OR: [{ status: null }, { status: { not: 'Canceled' } }] };
+    const custom = { project };
+    return { subcontractor_id: scope.subcontractorId, removed_at: null, OR: [
+      { service_project: service },
+      { custom_service_schedule: custom },
+      { sub_service_project: { status: { not: 'Canceled' }, OR: [{ serviceProject: service }, { custom_service_schedule: custom }] } },
+    ] };
+  }
+
+  private assignmentTargets(link: any, scope: CollaborationScope, expectedId?: string) {
+    const validProject = (project: any) => project && project.company_id === scope.companyId && activeProjectStatuses.includes(project.status_project) && (!expectedId || project.id === expectedId);
+    const activeService = (service: any) => service && service.status !== 'Canceled';
+    const candidates: { type: string; targetId: string; project: any }[] = [];
+    if (activeService(link.service_project)) candidates.push({ type: 'service', targetId: link.service_project.id, project: link.service_project.Project });
+    if (link.custom_service_schedule) candidates.push({ type: 'customService', targetId: link.custom_service_schedule.id, project: link.custom_service_schedule.project });
+    const sub = link.sub_service_project;
+    if (sub && sub.status !== 'Canceled') {
+      if (activeService(sub.serviceProject)) candidates.push({ type: 'subservice', targetId: sub.id, project: sub.serviceProject.Project });
+      if (sub.custom_service_schedule) candidates.push({ type: 'subservice', targetId: sub.id, project: sub.custom_service_schedule.project });
+    }
+    return candidates.filter(candidate => validProject(candidate.project));
+  }
+
+  async projects(scope: CollaborationScope) {
+    const links = await prisma.subContractorServiceProject.findMany({ where: this.reportAssignmentWhere(scope), include: reportAssignmentInclude, orderBy: { id: 'asc' } });
+    const projects = new Map<string, any>();
+    for (const link of links) for (const target of this.assignmentTargets(link, scope)) {
+      const project = target.project;
+      if (!projects.has(project.id)) projects.set(project.id, { id: project.id, location: project.location, contract_number: project.contract_number, status_project: project.status_project, client: project.client });
+    }
+    return [...projects.values()].sort((a, b) => (a.location || '').localeCompare(b.location || ''));
+  }
+
+  async assertProject(scope: CollaborationScope, projectId: unknown, db: any = prisma) {
+    if (typeof projectId !== 'string' || !projectId || projectId.length > 191) return collaborationFail(400, 'INVALID_PROJECT');
+    const link = await db.subContractorServiceProject.findFirst({ where: this.reportAssignmentWhere(scope, projectId), include: reportAssignmentInclude, orderBy: { id: 'asc' } });
+    const target = link && this.assignmentTargets(link, scope, projectId)[0];
+    if (!target) return collaborationFail(403, 'PROJECT_ACCESS_DENIED');
+    return { ...target, assignmentId: link.id };
+  }
+
+  async createProjectReport(session: ExternalSession, text: unknown, projectId: unknown, photos: { key: string }[]) {
+    const content = typeof text === 'string' ? text.trim() : '';
+    if ((!content && !photos.length) || content.length > 20000 || photos.length > 50) return collaborationFail(400, 'INVALID_REPORT');
+    return prisma.$transaction(async tx => {
+      const scope = await this.scope(session, tx);
+      const target = await this.assertProject(scope, projectId, tx);
+      const activity = await tx.activities.create({ data: { text: content || '📷', externalProjectId: target.project.id,
+        externalAuthorId: scope.participantId, externalAccessId: scope.accessId, externalAssignmentId: target.assignmentId,
+        externalAssignmentType: target.type, externalAssignmentTargetId: target.targetId } });
+      for (const photo of photos) await tx.galleryAfter.create({ data: { externalProjectId: target.project.id, url: photo.key, title: 'FEED_POST', description: activity.id } });
+      return { id: activity.id };
+    });
+  }
+
   reportWhere(scope: CollaborationScope) {
-    return { externalAuthorId: scope.participantId, externalAccessId: scope.accessId, ServiceProject: { Project: { company_id: scope.companyId } } };
+    return { externalAuthorId: scope.participantId, externalAccessId: scope.accessId, OR: [
+      { externalProjectId: null, ServiceProject: { Project: { company_id: scope.companyId } } },
+      { ReportProject: { company_id: scope.companyId } },
+    ] };
   }
   async ownReport(scope: CollaborationScope, id: string, db: any = prisma) {
     const post = await db.activities.findFirst({ where: { id, ...this.reportWhere(scope) } });
@@ -290,22 +358,25 @@ export class SubcontractorCollaborationService {
   }
   async reports(scope: CollaborationScope, limit?: unknown, offset?: unknown) {
     const [posts, total] = await Promise.all([
-      prisma.activities.findMany({ where: this.reportWhere(scope), include: { ServiceProject: { include: { Project: { include: { client: true } } } }, _count: { select: { comments: true, likes: true, externalComments: true, externalLikes: true } } }, orderBy: { date_creation: 'desc' }, ...page(limit, offset) }),
+      prisma.activities.findMany({ where: this.reportWhere(scope), include: { ReportProject: { include: { client: true } }, ServiceProject: { include: { Project: { include: { client: true } } } }, _count: { select: { comments: true, likes: true, externalComments: true, externalLikes: true } } }, orderBy: { date_creation: 'desc' }, ...page(limit, offset) }),
       prisma.activities.count({ where: this.reportWhere(scope) }),
     ]);
     return { success: true, data: { total, posts: await Promise.all(posts.map(async post => {
       const photos = await prisma.galleryAfter.findMany({ where: { description: post.id, title: 'FEED_POST', serviceProjectId: post.serviceProjectId } });
+      const project = post.ReportProject || post.ServiceProject?.Project;
       return { id: post.id, type: 'post', text: post.text === '📷' ? null : post.text, date_creation: post.date_creation,
         author: { id: scope.participantId, name: scope.name, avatar: null }, authorType: 'subcontractor',
-        serviceProject: { id: post.ServiceProject!.id, name: post.ServiceProject!.name },
-        project: { id: post.ServiceProject!.Project!.id, status: post.ServiceProject!.Project!.status_project, client: post.ServiceProject!.Project!.client },
+        serviceProject: post.ServiceProject ? { id: post.ServiceProject.id, name: post.ServiceProject.name } : null,
+        project: project ? { id: project.id, status: project.status_project, client: project.client, location: project.location } : null,
+        ...(post.ReportProject ? {location:{address:post.ReportProject.location,coordinates:{lat:post.ReportProject.lat?parseFloat(post.ReportProject.lat):null,lng:post.ReportProject.log?parseFloat(post.ReportProject.log):null}}} : {}),
         photos: await Promise.all(photos.map(async photo => ({ id: photo.id, url: await getPresignedUrl(photo.url), date_creation: photo.date_creation }))),
         likesCount: post._count.likes + post._count.externalLikes, commentsCount: post._count.comments + post._count.externalComments };
     })) } };
   }
   async editReport(scope: CollaborationScope, id: string, text: unknown) {
     const post = await this.ownReport(scope, id);
-    await this.assertService(scope, post.serviceProjectId!);
+    if (post.externalProjectId) await this.assertProject(scope, post.externalProjectId);
+    else await this.assertService(scope, post.serviceProjectId!);
     if (typeof text !== 'string' || !text.trim() || text.length > 20000) return collaborationFail(400, 'INVALID_REPORT');
     await prisma.activities.update({ where: { id }, data: { text: text.trim() } });
     return { success: true };

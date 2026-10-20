@@ -10,8 +10,8 @@ Implemented locally, 2026-10-20. No database migration, production write, deploy
 - Existing company managers can create/edit mixed groups in the Web. One subcontractor access per group keeps external representatives separated; multiple internal Users are allowed. App group creation stays unavailable, matching the worker app. Removed external members lose access while their historic message authors remain intact.
 - An internal recipient must still belong to that company and be a chat member. Sender, company and external author identifiers come from authentication/resource membership, never from submitted IDs.
 - External Daily Logs are visible only to their author in the selected access. Another representative of the same subcontractor does not inherit them. Switching companies cannot expose the previous company's posts.
-- Publishing and editing require a current direct service or subservice assignment with removed_at NULL, a non-canceled service and an active project status (Pre-Start, In Progress, Final walkthrough), all inside the selected company. A schedule-only assignment does not grant every service in a project.
-- Removing an assignment blocks new publication/editing there. The author can still read/delete their previous posts and discuss those posts while their company access remains active.
+- The updated app publishes directly to authorized projects through active service, subservice or Custom Service assignments. See [subcontractor-project-reports.md](subcontractor-project-reports.md) for the additional additive migration and current project rules. Older service-target endpoints retain their original scope.
+- Removing all qualifying project assignments blocks new project publication/editing there. The author can still read/delete their previous posts and discuss those posts while their company access remains active.
 - External comments/reactions are restricted to those own posts. Internal users see the new reports through existing project/service/admin feeds, with the representative and subcontractor displayed as author. Existing validated public-feed links retain their existing service scope.
 
 ## Data and compatibility
