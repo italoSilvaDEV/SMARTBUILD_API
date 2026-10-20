@@ -3508,7 +3508,6 @@ model TaskNotification {
   @@map("task_notifications")
 }
 
-<<<<<<< Updated upstream
 model LandingAnalyticsEvent {
   id String @id @db.VarChar(36)
   sessionId String @db.VarChar(36)
@@ -3528,9 +3527,8 @@ model LandingAnalyticsEvent {
   @@index([environment, occurredAt])
   @@index([sessionId, occurredAt])
   @@map("landing_analytics_events")
-=======
-// External identities are independent of employees. Existing business records
-// and chat/feed authors are deliberately not backfilled by this migration.
+}
+
 model SubcontractorAccount {
   id             String   @id @default(uuid())
   email          String   @unique
@@ -3600,5 +3598,4 @@ model Participant {
   subcontractorAccount   SubcontractorAccount? @relation(fields: [subcontractorAccountId], references: [id], onDelete: Restrict)
 
   @@map("participants")
->>>>>>> Stashed changes
 }
