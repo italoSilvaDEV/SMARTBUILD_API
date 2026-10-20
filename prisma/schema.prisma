@@ -3535,9 +3535,14 @@ model LandingAnalyticsEvent {
   action String @db.VarChar(32)
   environment String @db.VarChar(16)
   device String @db.VarChar(12)
+  landingSlug String @default("pro-smartbuild") @db.VarChar(64)
+  landingName String? @db.VarChar(120)
+  pageUrl String? @db.VarChar(255)
   section String? @db.VarChar(100)
+  sectionLabel String? @db.VarChar(120)
   sectionIndex Int?
   target String? @db.VarChar(100)
+  targetLabel String? @db.VarChar(120)
   value Int?
   durationMs Int?
   newVisitor Boolean @default(false)
@@ -3546,6 +3551,7 @@ model LandingAnalyticsEvent {
   occurredAt DateTime @db.DateTime(3)
   receivedAt DateTime @default(now()) @db.DateTime(3)
   @@index([environment, occurredAt])
+  @@index([landingSlug, environment, occurredAt])
   @@index([sessionId, occurredAt])
   @@map("landing_analytics_events")
 }

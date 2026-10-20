@@ -2,7 +2,7 @@ import { Router, json } from 'express';
 import { prisma } from '../utils/prisma';
 import { checkToken } from '../middlewares/checkToken';
 import { requireMaster } from '../middlewares/requireMaster';
-import { parseLandingEvent, summarizeLanding } from '../services/LandingAnalyticsService';
+import { compareLandings, parseLandingEvent, summarizeLanding } from '../services/LandingAnalyticsService';
 export const landingAnalyticsRoutes = Router();
 const limits = new Map<string, { at: number; count: number }>();
 landingAnalyticsRoutes.post('/landing/analytics/events', json({ limit: '32kb' }), async (req, res) => {
@@ -24,6 +24,8 @@ landingAnalyticsRoutes.get('/master/landing-analytics', checkToken, requireMaste
   if (!Number.isFinite(+from) || !Number.isFinite(+to) || to <= from || +to-+from > 31*86400000) return res.status(400).json({ error: 'Choose a period of at most 31 days' });
   const environment = req.query.environment || 'production';
   if (!['production','development'].includes(String(environment))) return res.sendStatus(400);
+  const landing = req.query.landing === undefined || req.query.landing === '' ? null : req.query.landing;
+  if (landing !== null && (typeof landing !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(landing))) return res.sendStatus(400);
   const filters: Record<string,string> = {};
   for (const name of ['device','utmCampaign','utmSource']) {
     if (req.query[name] !== undefined) {
@@ -35,6 +37,8 @@ landingAnalyticsRoutes.get('/master/landing-analytics', checkToken, requireMaste
   try {
     const events = await prisma.landingAnalyticsEvent.findMany({ where: { occurredAt: {gte:from,lt:to}, environment:String(environment), ...filters }, orderBy: [{occurredAt:'asc'},{id:'asc'}], take:20001 });
     if (events.length > 20000) return res.status(422).json({error:'Too many events. Narrow the period or filters.'});
-    return res.json({...summarizeLanding(events), collectionEnabled: process.env.LANDING_ANALYTICS_ENABLED === 'true'});
+    // Sem ?landing o resumo junta todas; o comparativo sempre lista cada landing do período
+    const selected = landing ? events.filter(e => e.landingSlug === landing) : events;
+    return res.json({...summarizeLanding(selected), landing, landings: compareLandings(events), collectionEnabled: process.env.LANDING_ANALYTICS_ENABLED === 'true'});
   } catch { return res.status(503).json({error:'Landing analytics temporarily unavailable'}); }
 });
