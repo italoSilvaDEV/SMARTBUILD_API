@@ -34,6 +34,12 @@ Keep the feature disabled until schema deployment and controlled testing are com
 
 Rollback is to disable the feature and leave the additive tables/history in place. Do not drop tables to roll back an application release.
 
+### MySQL compatibility and manually repaired deployments
+
+The participant identity CHECK was removed because it references `userId` and `subcontractorAccountId`, whose foreign keys use `ON UPDATE CASCADE`. MySQL prohibits this combination. Foreign keys, unique indexes, the participant type enum and all three status/delivery CHECKs remain. The database does not enforce the exclusive choice between participant identities; creation code must supply the identity matching its type (invitation acceptance creates a subcontractor participant with only `subcontractorAccountId`).
+
+If an environment already repaired this migration manually, compare its exact executed SQL, `SHOW CREATE TABLE` for all four new tables and its `_prisma_migrations` record with this repository before another migration deployment. A local file correction does not reconcile an already recorded migration checksum. Do not rerun the CREATE TABLE statements, reset the database or edit migration history blindly. Preserve the backup and document the actual repair before choosing the appropriate reconciliation procedure.
+
 ## Management authorization
 
 All management endpoints require the existing employee `checkToken`, an enabled company and a verified company membership. The company-specific office takes precedence over the legacy office. Allowed managers are Owner/Administrator or offices explicitly granted both `Subcontractors` and `User Management` within the company's plan. An empty office permission list does not grant management access. Being a subcontractor itself never grants management rights.

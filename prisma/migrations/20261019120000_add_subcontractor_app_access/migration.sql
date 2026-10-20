@@ -81,10 +81,9 @@ ALTER TABLE `participants` ADD CONSTRAINT `participants_subcontractorAccountId_f
 
 -- Only new tables are constrained; no legacy rows are rewritten.
 -- MySQL 8.0.16+ enforces CHECK constraints.
-ALTER TABLE `participants` ADD CONSTRAINT `participants_identity_check` CHECK (
-    (`type` = 'internal' AND `userId` IS NOT NULL AND `subcontractorAccountId` IS NULL)
-    OR (`type` = 'subcontractor' AND `userId` IS NULL AND `subcontractorAccountId` IS NOT NULL)
-);
+-- Do not add an identity CHECK over userId/subcontractorAccountId: MySQL
+-- disallows it with these foreign keys' ON UPDATE CASCADE actions.
+-- Participant creation must supply exactly the identity matching its type.
 ALTER TABLE `subcontractor_accesses` ADD CONSTRAINT `subcontractor_access_status_check` CHECK (`status` IN ('active', 'revoked'));
 ALTER TABLE `subcontractor_invites` ADD CONSTRAINT `subcontractor_invite_status_check` CHECK (`status` IN ('pending', 'accepted', 'revoked'));
 ALTER TABLE `subcontractor_invites` ADD CONSTRAINT `subcontractor_invite_delivery_check` CHECK (`deliveryStatus` IN ('pending', 'sent', 'failed'));
