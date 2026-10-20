@@ -70,6 +70,7 @@ import { trackingConfigMasterRoutes } from './trackingConfigMasterRoutes'
 import { scheduleNotificationRoutes } from './scheduleNotificationRoutes'
 import { bidRequestRoutes } from './bidRequestRoutes'
 import { accountsPayableRoutes } from './accountsPayableRoutes'
+import { subcontractorAccessRoutes } from './subcontractorAccessRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 router.use(appAnalyticsRoutes)
@@ -96,6 +97,8 @@ router.post(
 );
 
 router.use(userRoutes)
+// External auth/acceptance must precede tutorialRoutes' router-wide checkToken.
+router.use(subcontractorAccessRoutes)
 router.use(mobileAuthRoutes)
 router.use(companyRoutes)
 router.use(serviceRoutes)
