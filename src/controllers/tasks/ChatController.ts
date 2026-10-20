@@ -132,8 +132,17 @@ export class ChatController {
         };
       }));
 
-      const external = externalEnabled ? await collaboration.chats(userId, companyId as string, archivedOnly) : [];
-      return res.json(externalEnabled ? [...chats, ...external].sort((a,b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()) : chats);
+      // External conversations supplement the employee list; their lookup must
+      // not prevent workers from accessing their existing conversations.
+      if (externalEnabled) {
+        try {
+          const external = await collaboration.chats(userId, companyId as string, archivedOnly);
+          return res.json([...chats, ...external].sort((a,b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()));
+        } catch {
+          console.warn('[ChatController.listChats] Subcontractor chats unavailable; returning employee chats.');
+        }
+      }
+      return res.json(chats);
     } catch (error: any) {
       console.error("[ChatController.listChats] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -371,8 +380,15 @@ export class ChatController {
         return u.user;
       }));
 
-      const external=collaborationEnabled()?await collaboration.externalContacts((req as any).userId,companyId):[];
-      return res.json([...usersWithUrls,...external]);
+      if (collaborationEnabled()) {
+        try {
+          const external = await collaboration.externalContacts((req as any).userId, companyId);
+          return res.json([...usersWithUrls, ...external]);
+        } catch {
+          console.warn('[ChatController.listCompanyUsers] Subcontractor contacts unavailable; returning employee contacts.');
+        }
+      }
+      return res.json(usersWithUrls);
     } catch (error: any) {
       console.error("[ChatController.listCompanyUsers] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
