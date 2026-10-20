@@ -52,6 +52,7 @@ model ExtraEmployeeConfig {
 }
 
 model User {
+  participant           Participant?
   id                    String   @id @default(uuid())
   avatar                String?
   name                  String
@@ -177,6 +178,9 @@ model User {
 }
 
 model Chat {
+  externalPrivateKey String? @unique
+  externalMembers ChatExternalMember[]
+  externalMessages ChatExternalMessage[]
   id      String  @id @default(uuid())
   name    String? // Nulo para conversas 1:1, preenchido para grupos
   avatar  String? // Foto do grupo
@@ -745,6 +749,19 @@ model CustomServiceSchedule {
 }
 
 model Activities {
+  externalProjectId String?
+  ReportProject Project? @relation("ExternalProjectReports", fields: [externalProjectId], references: [id], onDelete: Cascade)
+  externalAssignmentId String?
+  externalAssignmentType String? @db.VarChar(16)
+  externalAssignmentTargetId String?
+  @@index([externalProjectId, date_creation])
+  externalAuthorId String?
+  externalAuthor Participant? @relation(fields: [externalAuthorId], references: [id], onDelete: Restrict)
+  externalAccessId String?
+  externalAccess SubcontractorAccess? @relation(fields: [externalAccessId], references: [id], onDelete: Restrict)
+  externalComments FeedExternalComment[]
+  externalLikes FeedExternalLike[]
+  @@index([externalAuthorId, externalAccessId])
   id   String @id @default(uuid())
   text String @db.Text
 
@@ -912,6 +929,8 @@ model ImgCatalog {
 }
 
 model Project {
+  externalReports Activities[] @relation("ExternalProjectReports")
+  externalReportPhotos GalleryAfter[] @relation("ExternalProjectPhotos")
   id                 String               @id @default(uuid())
   contract_number    Int?
   price              Decimal
@@ -1165,6 +1184,9 @@ model GalleryBefore {
 }
 
 model GalleryAfter {
+  externalProjectId String?
+  ReportProject Project? @relation("ExternalProjectPhotos", fields: [externalProjectId], references: [id], onDelete: Cascade)
+  @@index([externalProjectId])
   id               String          @id @default(uuid())
   url              String
   title            String?
@@ -1366,6 +1388,8 @@ model CostProject {
 }
 
 model Subcontractor {
+  appAccesses   SubcontractorAccess[]
+  appInvites    SubcontractorInvite[]
   id            String   @id @default(uuid())
   name          String
   email         String
@@ -3511,9 +3535,14 @@ model LandingAnalyticsEvent {
   action String @db.VarChar(32)
   environment String @db.VarChar(16)
   device String @db.VarChar(12)
+  landingSlug String @default("pro-smartbuild") @db.VarChar(64)
+  landingName String? @db.VarChar(120)
+  pageUrl String? @db.VarChar(255)
   section String? @db.VarChar(100)
+  sectionLabel String? @db.VarChar(120)
   sectionIndex Int?
   target String? @db.VarChar(100)
+  targetLabel String? @db.VarChar(120)
   value Int?
   durationMs Int?
   newVisitor Boolean @default(false)
@@ -3522,6 +3551,150 @@ model LandingAnalyticsEvent {
   occurredAt DateTime @db.DateTime(3)
   receivedAt DateTime @default(now()) @db.DateTime(3)
   @@index([environment, occurredAt])
+  @@index([landingSlug, environment, occurredAt])
   @@index([sessionId, occurredAt])
   @@map("landing_analytics_events")
+}
+
+model SubcontractorAccount {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String
+  passwordHash   String
+  isDisabled     Boolean  @default(false)
+  sessionVersion Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  accesses       SubcontractorAccess[]
+  participant    Participant?
+
+  @@map("subcontractor_accounts")
+}
+
+model SubcontractorAccess {
+  expoPushToken String?
+  pushTokenExpiresAt DateTime?
+  pushTokenLeaseId String? @db.VarChar(64)
+  chatMemberships ChatExternalMember[]
+  reports Activities[]
+  reportComments FeedExternalComment[]
+  reportLikes FeedExternalLike[]
+  id             String   @id @default(uuid())
+  accountId      String
+  subcontractorId String
+  status         String   @default("active") @db.VarChar(16)
+  version        Int      @default(1)
+  grantedById    String
+  revokedById    String?
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  account        SubcontractorAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  subcontractor  Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, subcontractorId])
+  @@index([subcontractorId, status])
+  @@map("subcontractor_accesses")
+}
+
+model SubcontractorInvite {
+  id             String   @id @default(uuid())
+  subcontractorId String
+  email          String
+  name           String
+  tokenHash      String   @unique @db.Char(64)
+  status         String   @default("pending") @db.VarChar(16)
+  deliveryStatus String   @default("pending") @db.VarChar(16)
+  invitedById    String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  subcontractor  Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+
+  // A resend rotates the token for this slot, invalidating the previous link.
+  @@unique([subcontractorId, email])
+  @@map("subcontractor_invites")
+}
+
+enum ParticipantType {
+  internal
+  subcontractor
+}
+
+model Participant {
+  chatMemberships ChatExternalMember[]
+  reports Activities[]
+  reportComments FeedExternalComment[]
+  reportLikes FeedExternalLike[]
+  id                     String @id @default(uuid())
+  type                   ParticipantType
+  userId                 String? @unique
+  subcontractorAccountId String? @unique
+  createdAt              DateTime @default(now())
+  user                   User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+  subcontractorAccount   SubcontractorAccount? @relation(fields: [subcontractorAccountId], references: [id], onDelete: Restrict)
+
+  @@map("participants")
+}
+
+model ChatExternalMember {
+  id String @id @default(uuid())
+  chatId String
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  joinedAt DateTime @default(now())
+  lastReadAt DateTime @default(now())
+  archivedAt DateTime?
+  removedAt DateTime?
+  messages ChatExternalMessage[]
+  @@unique([chatId, accessId])
+  @@index([participantId, accessId])
+  @@map("chat_external_members")
+}
+
+model ChatExternalMessage {
+  id String @id @default(uuid())
+  chatId String
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderMemberId String
+  senderMember ChatExternalMember @relation(fields: [senderMemberId], references: [id], onDelete: Restrict)
+  text String? @db.Text
+  fileUrl String? @db.Text
+  fileName String?
+  fileType String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([chatId, createdAt])
+  @@map("chat_external_messages")
+}
+
+model FeedExternalComment {
+  id String @id @default(uuid())
+  activityId String
+  activity Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  text String @db.Text
+  date_creation DateTime @default(now())
+  @@index([activityId])
+  @@map("feed_external_comments")
+}
+
+model FeedExternalLike {
+  id String @id @default(uuid())
+  activityId String
+  activity Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  date_creation DateTime @default(now())
+  @@unique([activityId, participantId])
+  @@map("feed_external_likes")
 }

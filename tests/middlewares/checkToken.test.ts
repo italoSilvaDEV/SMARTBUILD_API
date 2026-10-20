@@ -22,6 +22,14 @@ describe("checkToken session revocation", () => {
     process.env.SECRET_JWT = secret;
   });
 
+  it("rejects subcontractor sessions before looking up an employee", async () => {
+    const token = Jwt.sign({ type: "subcontractor_session", sub: "external", sessionVersion: 1 }, secret, { expiresIn: "5m" });
+    const { res, next } = await runMiddleware(token);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
   function runMiddleware(token: string) {
     return new Promise<{
       req: any;

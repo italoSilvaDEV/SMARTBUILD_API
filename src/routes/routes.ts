@@ -59,6 +59,7 @@ import { permissionsKeyRoutes } from './permissionsKeyRoutes'
 import { taskRoutes } from './taskRoutes'
 import { officeRoutes } from './officeRoutes'
 import { chatRoutes } from './chatRoutes'
+import { subcontractorCollaborationRoutes } from './subcontractorCollaborationRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
@@ -70,6 +71,7 @@ import { trackingConfigMasterRoutes } from './trackingConfigMasterRoutes'
 import { scheduleNotificationRoutes } from './scheduleNotificationRoutes'
 import { bidRequestRoutes } from './bidRequestRoutes'
 import { accountsPayableRoutes } from './accountsPayableRoutes'
+import { subcontractorAccessRoutes } from './subcontractorAccessRoutes'
 const uploadImageController = new UploadImageController();
 const router = Router()
 router.use(appAnalyticsRoutes)
@@ -96,6 +98,8 @@ router.post(
 );
 
 router.use(userRoutes)
+// External auth/acceptance must precede tutorialRoutes' router-wide checkToken.
+router.use(subcontractorAccessRoutes)
 router.use(mobileAuthRoutes)
 router.use(companyRoutes)
 router.use(serviceRoutes)
@@ -146,6 +150,7 @@ router.use(pdfInvoicePaidRoutes)
 // Keep contract public signing routes before tutorialRoutes, which installs
 // checkToken at router level and would otherwise intercept /contracts/public.
 router.use("/contracts", contractRoutes)
+router.use(subcontractorCollaborationRoutes)
 router.use(tutorialRoutes)
 router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)

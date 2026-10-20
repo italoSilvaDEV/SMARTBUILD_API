@@ -1,3 +1,5 @@
+import { collaborationEnabled } from '../../services/SubcontractorCollaborationService';
+import { withExternalAuthors } from '../../services/employeeExternalReportBridge';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
@@ -148,7 +150,7 @@ export class PublicFeedLinkController {
             });
 
             // Validações
-            if (!publicLink) {
+            if (!publicLink || !publicLink.projectId || !publicLink.project) {
                 return response.status(404).json({
                     success: false,
                     error: 'Link expired or invalid'
@@ -193,7 +195,7 @@ export class PublicFeedLinkController {
 
             const serviceProjectIds = serviceProjects.map(sp => sp.id);
 
-            if (serviceProjectIds.length === 0) {
+            if (serviceProjectIds.length === 0 && (!collaborationEnabled() || !(await prisma.activities.count({where:{externalProjectId:{in:[publicLink.projectId]},externalAuthorId:{not:null}}})))) {
                 return response.status(200).json({
                     success: true,
                     data: {
@@ -214,13 +216,12 @@ export class PublicFeedLinkController {
             }
 
             // Busca activities dos serviços
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    }
+                    OR:[{serviceProjectId:{in:serviceProjectIds}},{externalProjectId:{in:[publicLink.projectId]},externalAuthorId:{not:null}}]
                 },
                 include: {
+                    ReportProject: {include:{client:true}},
                     author: {
                         select: {
                             id: true,
@@ -238,14 +239,12 @@ export class PublicFeedLinkController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), undefined, new Set(serviceProjectIds), new Set([publicLink.projectId]));
 
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    },
+                    OR:[{serviceProjectId:{in:serviceProjectIds}},{description:{in:activities.filter(a=>a.externalProjectId).map(a=>a.id)}}],
                     title: 'FEED_POST'
                 },
                 orderBy: {
@@ -336,8 +335,8 @@ export class PublicFeedLinkController {
                         }
                     },
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -752,7 +751,7 @@ export class PublicFeedLinkController {
 
             const serviceProjectIds = serviceProjects.map(sp => sp.id);
 
-            if (serviceProjectIds.length === 0) {
+            if (serviceProjectIds.length === 0 && (!collaborationEnabled() || !(await prisma.activities.count({where:{externalProjectId:{in:projectIds},externalAuthorId:{not:null}}})))) {
                 // Retorna informações dos projetos mesmo sem posts
                 const projectsInfo = publicLink.projects.map(p => ({
                     id: p.project.id,
@@ -776,13 +775,12 @@ export class PublicFeedLinkController {
             }
 
             // Busca activities dos serviços
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    }
+                    OR:[{serviceProjectId:{in:serviceProjectIds}},{externalProjectId:{in:projectIds},externalAuthorId:{not:null}}]
                 },
                 include: {
+                    ReportProject: {include:{client:true}},
                     author: {
                         select: {
                             id: true,
@@ -815,14 +813,12 @@ export class PublicFeedLinkController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), undefined, new Set(serviceProjectIds), new Set(projectIds));
 
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
                 where: {
-                    serviceProjectId: {
-                        in: serviceProjectIds
-                    },
+                    OR:[{serviceProjectId:{in:serviceProjectIds}},{description:{in:activities.filter(a=>a.externalProjectId).map(a=>a.id)}}],
                     title: 'FEED_POST'
                 },
                 orderBy: {
@@ -887,6 +883,7 @@ export class PublicFeedLinkController {
                     }))
                 );
 
+                const reportProject = activity.ReportProject || activity.ServiceProject?.Project;
                 posts.push({
                     id: activity.id,
                     text: activity.text === '📷' ? null : activity.text,
@@ -901,20 +898,20 @@ export class PublicFeedLinkController {
                     serviceProject: activity.ServiceProject ? {
                         name: activity.ServiceProject.name
                     } : null,
-                    project: activity.ServiceProject?.Project ? {
-                        id: activity.ServiceProject.Project.id,
-                        clientName: activity.ServiceProject.Project.client?.name || 'N/A'
+                    project: reportProject ? {
+                        id: reportProject.id,
+                        clientName: reportProject.client?.name || 'N/A'
                     } : null,
-                    location: activity.ServiceProject?.Project ? {
-                        address: activity.ServiceProject.Project.location || 'N/A',
+                    location: reportProject ? {
+                        address: reportProject.location || 'N/A',
                         coordinates: {
-                            lat: activity.ServiceProject.Project.lat ? parseFloat(activity.ServiceProject.Project.lat) : null,
-                            lng: activity.ServiceProject.Project.log ? parseFloat(activity.ServiceProject.Project.log) : null
+                            lat: reportProject.lat ? parseFloat(reportProject.lat) : null,
+                            lng: reportProject.log ? parseFloat(reportProject.log) : null
                         }
                     } : null,
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 

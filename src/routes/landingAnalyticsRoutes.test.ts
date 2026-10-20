@@ -21,3 +21,11 @@ test('deduplicates ingestion and refuses a silently truncated report',async()=>{
  (prisma.landingAnalyticsEvent.findMany as jest.Mock).mockResolvedValue(Array(20001).fill(e));
  expect((await request(app).get('/master/landing-analytics').set('Authorization','master')).status).toBe(422);
 });
+test('filters the report by landing and always returns the comparison',async()=>{
+ const base={sessionId:'b0000000-0000-4000-8000-000000000001',action:'session_start',environment:'production',device:'desktop',occurredAt:new Date(),
+   landingName:null,pageUrl:null,section:null,sectionIndex:null,sectionLabel:null,target:null,targetLabel:null,value:null,durationMs:null,newVisitor:true,utmCampaign:null,utmSource:null};
+ (prisma.landingAnalyticsEvent.findMany as jest.Mock).mockResolvedValue([{...base,id:'1',landingSlug:'pro-smartbuild'},{...base,id:'2',sessionId:'b0000000-0000-4000-8000-000000000002',landingSlug:'smartbuild-web'}]);
+ const res=await request(app).get('/master/landing-analytics?landing=smartbuild-web').set('Authorization','master');
+ expect(res.status).toBe(200); expect(res.body.sessions).toBe(1); expect(res.body.landings).toHaveLength(2);
+ expect((await request(app).get('/master/landing-analytics?landing=Bad%20Slug').set('Authorization','master')).status).toBe(400);
+});

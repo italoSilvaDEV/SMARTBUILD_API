@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -50,6 +50,9 @@ export class DeleteSubcontractorController {
       });
 
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+        return res.status(409).json({ error: "Cannot delete a subcontractor with linked records. Revoke app access instead to preserve history." });
+      }
       console.error("Error deleting subcontractor:", error);
       if (error instanceof Error) {
         return res.status(500).json({ error: error.message });
