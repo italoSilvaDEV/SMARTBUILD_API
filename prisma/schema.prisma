@@ -178,6 +178,9 @@ model User {
 }
 
 model Chat {
+  externalPrivateKey String? @unique
+  externalMembers ChatExternalMember[]
+  externalMessages ChatExternalMessage[]
   id      String  @id @default(uuid())
   name    String? // Nulo para conversas 1:1, preenchido para grupos
   avatar  String? // Foto do grupo
@@ -746,6 +749,13 @@ model CustomServiceSchedule {
 }
 
 model Activities {
+  externalAuthorId String?
+  externalAuthor Participant? @relation(fields: [externalAuthorId], references: [id], onDelete: Restrict)
+  externalAccessId String?
+  externalAccess SubcontractorAccess? @relation(fields: [externalAccessId], references: [id], onDelete: Restrict)
+  externalComments FeedExternalComment[]
+  externalLikes FeedExternalLike[]
+  @@index([externalAuthorId, externalAccessId])
   id   String @id @default(uuid())
   text String @db.Text
 
@@ -3545,6 +3555,13 @@ model SubcontractorAccount {
 }
 
 model SubcontractorAccess {
+  expoPushToken String?
+  pushTokenExpiresAt DateTime?
+  pushTokenLeaseId String? @db.VarChar(64)
+  chatMemberships ChatExternalMember[]
+  reports Activities[]
+  reportComments FeedExternalComment[]
+  reportLikes FeedExternalLike[]
   id             String   @id @default(uuid())
   accountId      String
   subcontractorId String
@@ -3589,6 +3606,10 @@ enum ParticipantType {
 }
 
 model Participant {
+  chatMemberships ChatExternalMember[]
+  reports Activities[]
+  reportComments FeedExternalComment[]
+  reportLikes FeedExternalLike[]
   id                     String @id @default(uuid())
   type                   ParticipantType
   userId                 String? @unique
@@ -3598,4 +3619,65 @@ model Participant {
   subcontractorAccount   SubcontractorAccount? @relation(fields: [subcontractorAccountId], references: [id], onDelete: Restrict)
 
   @@map("participants")
+}
+
+model ChatExternalMember {
+  id String @id @default(uuid())
+  chatId String
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  joinedAt DateTime @default(now())
+  lastReadAt DateTime @default(now())
+  archivedAt DateTime?
+  removedAt DateTime?
+  messages ChatExternalMessage[]
+  @@unique([chatId, accessId])
+  @@index([participantId, accessId])
+  @@map("chat_external_members")
+}
+
+model ChatExternalMessage {
+  id String @id @default(uuid())
+  chatId String
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderMemberId String
+  senderMember ChatExternalMember @relation(fields: [senderMemberId], references: [id], onDelete: Restrict)
+  text String? @db.Text
+  fileUrl String? @db.Text
+  fileName String?
+  fileType String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([chatId, createdAt])
+  @@map("chat_external_messages")
+}
+
+model FeedExternalComment {
+  id String @id @default(uuid())
+  activityId String
+  activity Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  text String @db.Text
+  date_creation DateTime @default(now())
+  @@index([activityId])
+  @@map("feed_external_comments")
+}
+
+model FeedExternalLike {
+  id String @id @default(uuid())
+  activityId String
+  activity Activities @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  participantId String
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  accessId String
+  access SubcontractorAccess @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  date_creation DateTime @default(now())
+  @@unique([activityId, participantId])
+  @@map("feed_external_likes")
 }

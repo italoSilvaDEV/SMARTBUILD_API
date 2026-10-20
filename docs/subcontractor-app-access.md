@@ -44,6 +44,8 @@ If an environment already repaired this migration manually, compare its exact ex
 
 All management endpoints require the existing employee `checkToken`, an enabled company and a verified company membership. The company-specific office takes precedence over the legacy office. Allowed managers are Owner/Administrator or offices explicitly granted both `Subcontractors` and `User Management` within the company's plan. An empty office permission list does not grant management access. Being a subcontractor itself never grants management rights.
 
+Authorization uses the office assigned by the `UserCompany` membership for the subcontractor's company, matching existing company login. Historical company creation can reuse an `Office` record from another company; its `company_id` is therefore not an additional membership requirement. Without a `UserCompany` record, only a matching legacy `User.company_id` permits using the legacy office. An existing company membership never inherits a more privileged global role.
+
 ## Endpoints
 
 Management, scoped to an existing subcontractor:
@@ -75,7 +77,7 @@ External JWTs have a dedicated type, audience and issuer. Existing `checkToken` 
 
 Auth endpoints have a bounded per-source, process-local rate limit (30 requests / 15 minutes). It shares a budget across login/invitation exchanges. Before broad rollout, configure an appropriate shared ingress limit and trusted proxy policy; with an unconfigured reverse proxy, the backend may see all clients as one source. No caller-supplied forwarded header is trusted here.
 
-Chat, feed/reports, Socket.IO, notifications, devices, employee tracking and attendance are unchanged. Never pass external sessions into existing employee controllers. Next-phase shared endpoints must explicitly authorize the selected grant and resource, and preserve the subcontractor context on externally authored records. App navigation, password recovery and account profile management remain for that phase.
+External Chat and Daily Logs are implemented through separate selected-context endpoints and additive tables; see [subcontractor-collaboration.md](subcontractor-collaboration.md) for rules, compatibility and the new migration/flag. Employee tracking and attendance remain unavailable to external identities. Password recovery and account editing remain outside this scope.
 
 ## Validation
 

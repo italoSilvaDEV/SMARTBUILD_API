@@ -1,9 +1,13 @@
 import { Router } from 'express';
 import { ProjectFeedController } from '../controllers/projects/ProjectFeedController';
 import { checkToken } from '../middlewares/checkToken';
+import { guardExternalReportForEmployee } from '../services/employeeExternalReportBridge';
 
 const projectFeedController = new ProjectFeedController();
 const projectFeedRoutes = Router();
+// Authenticate only matching legacy feed paths; external sessions stay on their
+// dedicated routes, which are not intercepted by this employee guard.
+projectFeedRoutes.use('/feed/:postId', checkToken, guardExternalReportForEmployee);
 
 // ==================== FEED GLOBAL (ADMIN) ====================
 

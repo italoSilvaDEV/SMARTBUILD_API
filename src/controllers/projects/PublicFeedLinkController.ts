@@ -1,3 +1,4 @@
+import { withExternalAuthors } from '../../services/employeeExternalReportBridge';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
@@ -214,7 +215,7 @@ export class PublicFeedLinkController {
             }
 
             // Busca activities dos serviços
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
                     serviceProjectId: {
                         in: serviceProjectIds
@@ -238,7 +239,7 @@ export class PublicFeedLinkController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), undefined, new Set(serviceProjectIds));
 
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
@@ -336,8 +337,8 @@ export class PublicFeedLinkController {
                         }
                     },
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -776,7 +777,7 @@ export class PublicFeedLinkController {
             }
 
             // Busca activities dos serviços
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
                     serviceProjectId: {
                         in: serviceProjectIds
@@ -815,7 +816,7 @@ export class PublicFeedLinkController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), undefined, new Set(serviceProjectIds));
 
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
@@ -913,8 +914,8 @@ export class PublicFeedLinkController {
                         }
                     } : null,
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 

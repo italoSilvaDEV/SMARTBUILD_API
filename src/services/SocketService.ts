@@ -86,6 +86,25 @@ export class SocketService {
           console.log(`[SocketService] User ${userId} joined room`);
         }
       });
+      const verifiedLeases = new Map<string, ReturnType<typeof setTimeout>>();
+      socket.on('disconnect', () => { for (const timer of verifiedLeases.values()) clearTimeout(timer); verifiedLeases.clear(); });
+      socket.on('join_verified', async (request: { token?: string }) => {
+        const userId = this.resolveSocketUserId(socket, request?.token);
+        if (!userId) return;
+        const { prisma } = await import('../utils/prisma');
+        try {
+          const user = await prisma.user.findFirst({ where: { id: userId, isDisabled: false }, select: { id: true } });
+          const token = this.normalizeBearerToken(request?.token || socket.handshake?.auth?.token || socket.handshake?.headers?.authorization);
+          const claims = token ? Jwt.verify(token, process.env.SECRET_JWT!, { algorithms: ['HS256'] }) as Jwt.JwtPayload : null;
+          if (user && claims?.exp && claims.exp * 1000 > Date.now()) {
+            const room = 'verified-user:' + userId;
+            await socket.join(room);
+            const previous = verifiedLeases.get(room); if (previous) clearTimeout(previous);
+            const timer = setTimeout(() => { socket.leave(room); verifiedLeases.delete(room); }, Math.min(claims.exp * 1000 - Date.now(), 2147483647));
+            timer.unref(); verifiedLeases.set(room, timer);
+          }
+        } catch { /* HTTP remains available when socket authorization fails. */ }
+      });
 
       // Tracking 2.0 company rooms. The token can be sent on the event during
       // transition, or once through Socket.IO handshake auth/Authorization.
@@ -136,6 +155,34 @@ export class SocketService {
       });
     });
 
+    // Dedicated namespace: an external account never joins a User room or a
+    // company-wide employee room. The server derives its selected-access room.
+    const external = this.io.of('/subcontractor');
+    external.use(async (socket, next) => {
+      try {
+        const { verifyExternalSession } = await import('../utils/subcontractorIdentity');
+        const { collaboration, externalRoom } = await import('./SubcontractorCollaborationService');
+        const session = verifyExternalSession(socket.handshake.auth?.token || '');
+        const scope = await collaboration.scope(session);
+        socket.data.externalSession = session;
+        socket.data.accessId = scope.accessId;
+        socket.join(externalRoom(scope));
+        next();
+      } catch { next(new Error('ACCESS_DENIED')); }
+    });
+    external.on('connection', socket => {
+      const timer = setInterval(async () => {
+        try {
+          const { collaboration } = await import('./SubcontractorCollaborationService');
+          await collaboration.scope(socket.data.externalSession);
+          const exp = (socket.data.externalSession as any).exp;
+          if (!exp || exp * 1000 <= Date.now()) socket.disconnect(true);
+        } catch { socket.disconnect(true); }
+      }, 20000);
+      timer.unref();
+      socket.on('disconnect', () => clearInterval(timer));
+    });
+
     return this.io;
   }
 
@@ -144,6 +191,19 @@ export class SocketService {
       this.io.to(userId).emit(event, data);
       console.log(`[SocketService] Emitting ${event} to user ${userId}`);
     }
+  }
+
+  static emitToExternalRoom(room: string, event: string, data: any) {
+    this.io?.of('/subcontractor').to(room).emit(event, data);
+  }
+  static emitToVerifiedUser(userId: string, event: string, data: any) {
+    this.io?.to(`verified-user:${userId}`).emit(event, data);
+  }
+
+  static disconnectExternalAccess(accessId: string) {
+    this.io?.of('/subcontractor').sockets.forEach(socket => {
+      if (socket.data.accessId === accessId) socket.disconnect(true);
+    });
   }
 
   static emitToAll(event: string, data: any) {

@@ -91,6 +91,10 @@ export class PushNotificationService {
     await this.sendPushNotifications(messages);
   }
 
+  static async sendSubcontractorPush(token: string, title: string, body: string, data: Record<string, string>) {
+    await this.sendPushNotifications([{ to: token, title, body, data: { ...data, identity: 'subcontractor' }, sound: 'default', channelId: 'chat' }]);
+  }
+
   private static chunkArray<T>(array: T[], size: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < array.length; i += size) {

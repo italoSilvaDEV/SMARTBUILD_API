@@ -33,5 +33,15 @@ it("keeps the SQL migration additive and constrained to new tables", () => {
   const tables = [...withoutComments.matchAll(/ALTER TABLE `([^`]+)`/g)].map((match) => match[1]);
   expect(tables.every((table) => ["participants", "subcontractor_accesses", "subcontractor_invites"].includes(table))).toBe(true);
   expect(withoutComments.match(/CREATE TABLE/g)).toHaveLength(4);
-  expect(sql).toContain("participants_identity_check");
+  expect(withoutComments).not.toContain("participants_identity_check");
+  expect(withoutComments).toContain("subcontractor_access_status_check");
+});
+
+it('keeps collaboration migration additive without changing User or legacy author columns',()=>{
+ const sql=fs.readFileSync(path.resolve(__dirname,'../../prisma/migrations/20261020150000_add_subcontractor_collaboration/migration.sql'),'utf8').replace(/--[^\n]*/g,'');
+ expect(sql).not.toMatch(/\b(DROP|TRUNCATE|DELETE|INSERT|UPDATE|RENAME)\s+(TABLE|FROM|INTO|`)/i);
+ expect(sql).not.toMatch(/ALTER TABLE `(User|chat_messages|chat_members)`|MODIFY COLUMN|CHANGE COLUMN|CHECK\s*\(/i);
+ expect(sql.match(/CREATE TABLE/g)).toHaveLength(4);
+ expect(sql).toContain('ADD COLUMN `externalAuthorId` VARCHAR(191) NULL');
+ expect(sql).toContain('ADD COLUMN `externalAccessId` VARCHAR(191) NULL');
 });

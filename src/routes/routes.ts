@@ -59,6 +59,7 @@ import { permissionsKeyRoutes } from './permissionsKeyRoutes'
 import { taskRoutes } from './taskRoutes'
 import { officeRoutes } from './officeRoutes'
 import { chatRoutes } from './chatRoutes'
+import { subcontractorCollaborationRoutes } from './subcontractorCollaborationRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
@@ -149,6 +150,7 @@ router.use(pdfInvoicePaidRoutes)
 // Keep contract public signing routes before tutorialRoutes, which installs
 // checkToken at router level and would otherwise intercept /contracts/public.
 router.use("/contracts", contractRoutes)
+router.use(subcontractorCollaborationRoutes)
 router.use(tutorialRoutes)
 router.use(salesRoutes)
 router.use(imagesAttachmentsRoutes)

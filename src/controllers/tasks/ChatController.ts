@@ -1,9 +1,13 @@
+import fs from 'fs/promises';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { SocketService } from "../../services/SocketService";
 import { PushNotificationService } from "../../services/PushNotificationService";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { uploadFileToS3_2 } from "../../utils/S3/uploadFIleS3";
+import { collaboration, collaborationEnabled } from '../../services/SubcontractorCollaborationService';
+import { handleExternalChatForEmployee } from '../../services/employeeExternalChatBridge';
+import { externalServiceError } from '../../services/SubcontractorAccessService';
 
 export class ChatController {
   private readonly deletedMessagePlaceholder = "This message was deleted";
@@ -55,12 +59,14 @@ export class ChatController {
       const { userId } = req.params;
       const { companyId, archived } = req.query;
       const archivedOnly = archived === "true";
+      const externalEnabled = collaborationEnabled() && typeof companyId === 'string' && (req as any).userId === userId;
 
       const chatMemberships = await prisma.chatMember.findMany({
         where: {
           userId,
           archivedAt: archivedOnly ? { not: null } : null,
           chat: {
+            externalMembers: { none: {} },
             ...(companyId ? { companyId: companyId as string } : {})
           }
         },
@@ -126,7 +132,8 @@ export class ChatController {
         };
       }));
 
-      return res.json(chats);
+      const external = externalEnabled ? await collaboration.chats(userId, companyId as string, archivedOnly) : [];
+      return res.json(externalEnabled ? [...chats, ...external].sort((a,b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()) : chats);
     } catch (error: any) {
       console.error("[ChatController.listChats] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -137,12 +144,22 @@ export class ChatController {
   async getOrCreatePrivateChat(req: Request, res: Response) {
     try {
       const { userId, targetUserId, companyId } = req.body;
+      if (typeof targetUserId === 'string' && targetUserId.startsWith('external:')) {
+        if (!collaborationEnabled()) return res.status(503).json({error:'SUBCONTRACTOR_COLLABORATION_DISABLED'});
+        try {
+          const actor=(req as any).userId as string;
+          const scope=await collaboration.scopeForRecipient(actor,companyId,targetUserId.slice(9));
+          return res.json(await collaboration.privateChat(scope,actor,actor));
+        } catch(e) {const error=externalServiceError(e);return res.status(error.status).json({error:error.code});}
+
+      }
 
       // Buscar chat 1:1 existente entre esses dois usuários
       const existingChat = await prisma.chat.findFirst({
         where: {
           isGroup: false,
           companyId,
+          externalMembers: { none: {} },
           AND: [
             { members: { some: { userId } } },
             { members: { some: { userId: targetUserId } } }
@@ -191,13 +208,18 @@ export class ChatController {
       const { name, memberIds, creatorId, companyId } = req.body;
       const file = req.file;
 
+      const parsedMemberIds = typeof memberIds === 'string' ? JSON.parse(memberIds) : memberIds;
+      if (Array.isArray(parsedMemberIds) && parsedMemberIds.some((id:any)=>typeof id==='string'&&id.startsWith('external:'))) {
+        if (!collaborationEnabled()) return res.status(503).json({error:'SUBCONTRACTOR_COLLABORATION_DISABLED'});
+        try { return res.status(201).json(await collaboration.externalGroup((req as any).userId,companyId,name,parsedMemberIds,undefined,file ? ()=>uploadFileToS3_2(file,'chat-avatars') : undefined)); }
+        catch(e) {const error=externalServiceError(e);return res.status(error.status).json({error:error.code});}
+        finally { if (file) await fs.unlink(file.path).catch(() => {}); }
+      }
+
       let avatar = null;
       if (file) {
         avatar = await uploadFileToS3_2(file, "chat-avatars");
       }
-
-      // memberIds pode vir como string se for enviado via FormData
-      const parsedMemberIds = typeof memberIds === 'string' ? JSON.parse(memberIds) : memberIds;
 
       const chat = await prisma.chat.create({
         data: {
@@ -242,6 +264,17 @@ export class ChatController {
       const { chatId } = req.params;
       const { name, memberIds, companyId } = req.body;
       const file = req.file;
+      {
+        const members = typeof memberIds === 'string' ? JSON.parse(memberIds) : memberIds;
+        const hasExternal = await prisma.chatExternalMember.findFirst({ where: { chatId }, select: { id: true } });
+        if (hasExternal || (Array.isArray(members) && members.some((id: any) => typeof id === 'string' && id.startsWith('external:')))) {
+          try {
+            if (!collaborationEnabled()) return res.status(503).json({ error: 'SUBCONTRACTOR_COLLABORATION_DISABLED' });
+            return res.json(await collaboration.externalGroup((req as any).userId, companyId, name, members, chatId, file ? () => uploadFileToS3_2(file, 'chat-avatars') : undefined));
+          } catch (e) { const error = externalServiceError(e); return res.status(error.status).json({ error: error.code }); }
+          finally { if (file) await fs.unlink(file.path).catch(() => {}); }
+        }
+      }
 
       if (!prisma || !prisma.chat) {
         throw new Error("Prisma client or Chat model is not initialized");
@@ -338,7 +371,8 @@ export class ChatController {
         return u.user;
       }));
 
-      return res.json(usersWithUrls);
+      const external=collaborationEnabled()?await collaboration.externalContacts((req as any).userId,companyId):[];
+      return res.json([...usersWithUrls,...external]);
     } catch (error: any) {
       console.error("[ChatController.listCompanyUsers] Error:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -348,6 +382,7 @@ export class ChatController {
   // Enviar mensagem
   async sendMessage(req: Request, res: Response) {
     try {
+      if (await handleExternalChatForEmployee(req, res, 'send')) return;
       const { chatId } = req.params;
       const { senderId, text, companyId } = req.body;
       const file = req.file;
@@ -445,6 +480,7 @@ export class ChatController {
   // Listar mensagens de um chat
   async listMessages(req: Request, res: Response) {
     try {
+      if (await handleExternalChatForEmployee(req, res, 'messages')) return;
       const { chatId } = req.params;
       const { limit = "50", offset = "0", companyId } = req.query;
       const userId = (req as any).userId as string | undefined;
@@ -530,6 +566,7 @@ export class ChatController {
 
   async archiveChat(req: Request, res: Response) {
     try {
+      if (await handleExternalChatForEmployee(req, res, 'archive')) return;
       const { chatId } = req.params;
       const userId = (req as any).userId as string | undefined;
 
@@ -550,6 +587,7 @@ export class ChatController {
 
   async unarchiveChat(req: Request, res: Response) {
     try {
+      if (await handleExternalChatForEmployee(req, res, 'unarchive')) return;
       const { chatId } = req.params;
       const userId = (req as any).userId as string | undefined;
 
@@ -570,6 +608,7 @@ export class ChatController {
 
   async deleteMessage(req: Request, res: Response) {
     try {
+      if (await handleExternalChatForEmployee(req, res, 'delete')) return;
       const { chatId, messageId } = req.params;
       const userId = (req as any).userId as string | undefined;
 

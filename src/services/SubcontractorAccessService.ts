@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma";
 import { sendEmail } from "../utils/sendEmail";
+import { SocketService } from './SocketService';
 import { resolveEffectivePermissions } from "../utils/planPermissions";
 import {
   createInviteToken, hashInviteToken, inviteWebUrl, issueExternalSession,
@@ -29,8 +30,13 @@ export class SubcontractorAccessService {
         companies: { where: { companyId: subcontractor.company.id }, select: { office: { include: { userPermissions: { include: { permission: true } } } } } } },
     });
     if (!user || user.isDisabled) return fail(403, "ACCESS_DENIED");
-    const office = user.companies[0]?.office || (user.company_id === subcontractor.company.id ? user.office : null);
-    if (!office || (office.company_id && office.company_id !== subcontractor.company.id)) return fail(403, "ACCESS_DENIED");
+    const membership = user.companies[0];
+    // The explicit company membership is authoritative, as in company login.
+    // Legacy company creation reused Office rows across companies, so the
+    // Office's company_id is not a reliable membership/authorization boundary.
+    // Never fall back to a global role when a company membership exists.
+    const office = membership ? membership.office : (user.company_id === subcontractor.company.id ? user.office : null);
+    if (!office) return fail(403, "ACCESS_DENIED");
     const role = office.name.trim().toLowerCase();
     const explicit = office.userPermissions.map((entry) => entry.permission.description);
     const plan = subcontractor.company.Plan?.permissionGroup?.GroupPermissionsList.map((entry) => entry.Permissions.description) || [];
@@ -109,9 +115,11 @@ export class SubcontractorAccessService {
       if (!access) return fail(404, "ACCESS_UNAVAILABLE");
       await tx.subcontractorAccess.update({ where: { id: access.id }, data: {
         status: "revoked", version: { increment: 1 }, revokedById: userId!, revokedAt: new Date(),
+        expoPushToken: null, pushTokenExpiresAt: null, pushTokenLeaseId: null,
       } });
       await tx.subcontractorInvite.updateMany({ where: { subcontractorId, email: access.account.email, status: "pending" }, data: { status: "revoked" } });
     });
+    SocketService.disconnectExternalAccess(accessId);
   }
 
   async inspectInvite(token: unknown) {

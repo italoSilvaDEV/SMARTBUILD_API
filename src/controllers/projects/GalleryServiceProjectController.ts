@@ -1,3 +1,6 @@
+import { SubcontractorAccessError } from '../../utils/subcontractorIdentity';
+import { filterExternalFeedPhotos, authorizeExternalReportEmployee, employeeRequestId } from '../../services/employeeExternalReportBridge';
+import { externalServiceError } from '../../services/SubcontractorAccessService';
 import multer from "multer";
 import { uploadFileToS3 } from "../../utils/S3/uploadFIleS3";
 import { Request, Response } from "express";
@@ -32,6 +35,10 @@ export class GalleryProjectController {
                 });
             }
             try {
+                if (type === 'after' && title === 'FEED_POST' && description) {
+                    try { await authorizeExternalReportEmployee(description, employeeRequestId(request), true); }
+                    catch (error) { fs.unlink(file.path,()=>{});const failure=externalServiceError(error);return response.status(failure.status).json({error:failure.code}); }
+                }
                 const fileName = await uploadFileToS3(file, '');
 
                 const project = await prisma.serviceProject.findUnique({
@@ -114,7 +121,7 @@ export class GalleryProjectController {
                     }))
                 ),
                 Promise.all(
-                    galleryAfter.map(async (i) => ({
+                    (await filterExternalFeedPhotos(galleryAfter, request)).map(async (i) => ({
                         id: i.id,
                         url: await getPresignedUrl(i.url),
                         date_creation: i.date_creation,
@@ -165,6 +172,8 @@ export class GalleryProjectController {
                     return response.status(404).json({ error: 'ID inválido ou não encontrado.' });
                 }
 
+                if (existing.title === 'FEED_POST' && existing.description) await authorizeExternalReportEmployee(existing.description, employeeRequestId(request), true);
+
                 deleteFileFromS3(existing.url);
 
                 await prisma.galleryAfter.delete({
@@ -176,7 +185,8 @@ export class GalleryProjectController {
 
             return response.status(400).json({ error: 'Tipo inválido.' });
         } catch (error) {
-            return response.status(500).json({ error: 'Erro interno do servidor.' });
+            if (error instanceof SubcontractorAccessError) { const failure=externalServiceError(error);return response.status(failure.status).json({error:failure.code}); }
+            return response.status(500).json({error:'Erro interno do servidor.'});
         }
     }
 

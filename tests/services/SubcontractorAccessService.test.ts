@@ -60,9 +60,28 @@ describe("company authorization", () => {
     manager(makeOffice("Coordinator", ["Subcontractors"]));
     await expect(service.authorizeManager("manager", "legacy-sub-id")).rejects.toMatchObject({ status: 403 });
   });
-  it("rejects a mismatched company office even if named Owner", async () => {
+  it("honors an explicit membership using a legacy shared Owner office", async () => {
     manager(makeOffice("Owner", [], "other"));
+    await expect(service.authorizeManager("manager", "legacy-sub-id")).resolves.toMatchObject({ id: "legacy-sub-id" });
+  });
+  it("honors an explicit membership using a legacy shared Administrator office", async () => {
+    manager(makeOffice("Administrator", [], "other"));
+    await expect(service.authorizeManager("manager", "legacy-sub-id")).resolves.toMatchObject({ id: "legacy-sub-id" });
+  });
+  it("never upgrades a company Worker to the global Owner role", async () => {
+    manager(makeOffice("Worker"));
+    db.user.findUnique.mockResolvedValue({ isDisabled: false, company_id: "company-a", office: makeOffice("Owner"), companies: [{ office: makeOffice("Worker") }] });
     await expect(service.authorizeManager("manager", "legacy-sub-id")).rejects.toMatchObject({ status: 403 });
+  });
+  it("does not use the global Owner when an existing membership has no office", async () => {
+    manager();
+    db.user.findUnique.mockResolvedValue({ isDisabled: false, company_id: "company-a", office: makeOffice("Owner"), companies: [{ office: null }] });
+    await expect(service.authorizeManager("manager", "legacy-sub-id")).rejects.toMatchObject({ status: 403 });
+  });
+  it("preserves single-company legacy membership with a shared office", async () => {
+    manager();
+    db.user.findUnique.mockResolvedValue({ isDisabled: false, company_id: "company-a", office: makeOffice("Administrator", [], "other"), companies: [] });
+    await expect(service.authorizeManager("manager", "legacy-sub-id")).resolves.toMatchObject({ id: "legacy-sub-id" });
   });
 });
 

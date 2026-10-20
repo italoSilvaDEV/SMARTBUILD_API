@@ -1,3 +1,4 @@
+import { withExternalAuthors, externalCommentsForEmployee, externalLikesForEmployee } from '../../services/employeeExternalReportBridge';
 import multer from "multer";
 import Jwt from "jsonwebtoken";
 import { Request, Response } from "express";
@@ -353,7 +354,7 @@ export class ProjectFeedController {
             }
 
             // Busca activities dos serviços com filtros
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: activityFilters,
                 include: {
                     author: {
@@ -373,7 +374,7 @@ export class ProjectFeedController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), (request as any).userId);
 
             // Busca fotos marcadas como FEED_POST dos serviços
             const feedPhotos = await prisma.galleryAfter.findMany({
@@ -476,8 +477,8 @@ export class ProjectFeedController {
                         }
                     } : null,
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -834,7 +835,7 @@ export class ProjectFeedController {
             }
 
             // Busca activities do serviço
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
                     serviceProjectId: serviceProjectId
                 },
@@ -850,7 +851,7 @@ export class ProjectFeedController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), (request as any).userId);
 
             // Busca fotos marcadas como FEED_POST
             const feedPhotos = await prisma.galleryAfter.findMany({
@@ -939,8 +940,8 @@ export class ProjectFeedController {
                         projectId: serviceProject.projectId
                     },
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -1074,7 +1075,7 @@ export class ProjectFeedController {
             }
 
             // Busca TODAS as activities (ou filtradas)
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: activityFilters,
                 include: {
                     author: {
@@ -1110,7 +1111,7 @@ export class ProjectFeedController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), (request as any).userId);
 
             // Busca IDs de todos os serviços para buscar fotos
             const serviceProjectIds = [
@@ -1217,8 +1218,8 @@ export class ProjectFeedController {
                         }
                     } : null,
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -1327,7 +1328,7 @@ export class ProjectFeedController {
             }
 
             // Busca todas as activities criadas por esse usuário
-            const activities = await prisma.activities.findMany({
+            const activities = await withExternalAuthors(prisma.activities.findMany({
                 where: {
                     authorId: userId
                 },
@@ -1365,7 +1366,7 @@ export class ProjectFeedController {
                 orderBy: {
                     date_creation: 'desc'
                 }
-            });
+            }), (request as any).userId);
 
             // Obtém os serviceProjectIds das activities encontradas
             const activityServiceProjectIds = activities
@@ -1499,8 +1500,8 @@ export class ProjectFeedController {
                         }
                     } : null,
                     photos: photos,
-                    likesCount: likesMap[activity.id] || 0,
-                    commentsCount: commentsMap[activity.id] || 0
+                    likesCount: (likesMap[activity.id] || 0) + (activity.externalLikesCount || 0),
+                    commentsCount: (commentsMap[activity.id] || 0) + (activity.externalCommentsCount || 0)
                 });
             }
 
@@ -1792,6 +1793,7 @@ export class ProjectFeedController {
                 }
             });
 
+            const externalComments = await externalCommentsForEmployee(postId);
             const commentsWithUrls = await Promise.all(
                 comments.map(async (comment) => ({
                     id: comment.id,
@@ -1811,8 +1813,8 @@ export class ProjectFeedController {
             return response.status(200).json({
                 success: true,
                 data: {
-                    comments: commentsWithUrls,
-                    total: commentsWithUrls.length
+                    comments: [...commentsWithUrls, ...externalComments].sort((a,b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime()),
+                    total: commentsWithUrls.length + externalComments.length
                 }
             });
 
@@ -1963,7 +1965,7 @@ export class ProjectFeedController {
                 success: true,
                 data: {
                     likeId: like.id,
-                    totalLikes: totalLikes
+                    totalLikes: totalLikes + (await externalLikesForEmployee(postId)).length
                 }
             });
 
@@ -2022,7 +2024,7 @@ export class ProjectFeedController {
                 success: true,
                 message: 'Like removido com sucesso',
                 data: {
-                    totalLikes: totalLikes
+                    totalLikes: totalLikes + (await externalLikesForEmployee(postId)).length
                 }
             });
 
@@ -2074,11 +2076,12 @@ export class ProjectFeedController {
                 }))
             );
 
+            const externalLikes = await externalLikesForEmployee(postId);
             return response.status(200).json({
                 success: true,
                 data: {
-                    likes: likesWithUrls,
-                    total: likesWithUrls.length
+                    likes: [...likesWithUrls, ...externalLikes],
+                    total: likesWithUrls.length + externalLikes.length
                 }
             });
 
